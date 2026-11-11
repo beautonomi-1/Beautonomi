@@ -22,6 +22,18 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));
 
+// POST requires edit_settings (F3-07); resolve via the same mocked role check.
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: async (...args: unknown[]) => {
+    const { user } = await mockRequireRoleInApi(...args);
+    return { authorized: true, user };
+  },
+  requireAnyPermission: async (...args: unknown[]) => {
+    const { user } = await mockRequireRoleInApi(...args);
+    return { authorized: true, user };
+  },
+}));
+
 vi.mock("@/lib/subscriptions/feature-access", () => ({
   checkYocoFeatureAccess: (...args: unknown[]) => mockCheckYocoFeatureAccess(...args),
 }));

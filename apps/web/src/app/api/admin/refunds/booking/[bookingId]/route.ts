@@ -1,3 +1,4 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
@@ -12,9 +13,10 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { issueAdminWalletRefund } from "@/lib/finance/issue-admin-wallet-refund";
 import { z } from "zod";
+import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
 
 const processRefundSchema = z.object({
-  refund_amount: z.number().positive(),
+  refund_amount: clientMajorAmountSchema,
   refund_reason: z.string().min(1),
   notes: z.string().optional().nullable(),
   substitute_reason: z.string().optional().nullable(),
@@ -74,9 +76,9 @@ export async function POST(
 
     const collected = Math.max(
       Number(b.total_paid ?? 0),
-      Number(b.wallet_amount ?? 0) + Number(b.gift_card_amount ?? 0),
+      addMoney(Number(b.wallet_amount ?? 0), Number(b.gift_card_amount ?? 0)),
     );
-    const available = Math.max(0, collected - Number(b.total_refunded ?? 0));
+    const available = Math.max(0, subtractMoney(collected, Number(b.total_refunded ?? 0)));
 
     if (refund_amount > available + 0.001) {
       return errorResponse(

@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { InteractionManager, View, Text, TouchableOpacity, Platform, DeviceEventEmitter } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -335,7 +336,7 @@ function WeeklyRevenueChart({ data, todayYmd }: { data: WeeklyRevenue[]; todayYm
   const db = (key: string, opts?: Record<string, unknown>) =>
     t(`provider.mobile.screens.dashboard.${key}`, opts) as string;
   const maxRevenue = Math.max(...data.map((d) => d.revenue), 1);
-  const totalRevenue = data.reduce((s, d) => s + d.revenue, 0);
+  const totalRevenue = data.reduce((s, d) => addMoney(s, d.revenue), 0);
   const SHORT_DAYS = [db("daySun"), db("dayMon"), db("dayTue"), db("dayWed"), db("dayThu"), db("dayFri"), db("daySat")];
   // Prefer provider-business `today` from parent (dashboard passes it). Fallback: device local Y/M/D.
   const now = new Date();

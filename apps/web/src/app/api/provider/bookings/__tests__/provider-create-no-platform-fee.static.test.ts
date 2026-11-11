@@ -18,4 +18,11 @@ describe("provider booking create — no platform fee", () => {
     expect(source).toMatch(/const platformFeeAmount = 0;/);
     expect(source).toMatch(/platform_fee_paid_by: null/);
   });
+
+  it("F2-34: applied membership discount is the server resolver, not the client amount", () => {
+    expect(source).toMatch(
+      /const membershipDiscountAmount = membershipResult\.membershipDiscountAmount;/,
+    );
+    expect(source).toMatch(/membership_discount_amount: membershipDiscountAmount/);
+  });
 });

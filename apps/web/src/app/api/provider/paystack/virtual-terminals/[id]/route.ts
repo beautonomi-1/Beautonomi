@@ -6,9 +6,9 @@ import {
   errorResponse,
   getProviderIdForUser,
   handleApiError,
-  requireRoleInApi,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import {
   deactivatePaystackVirtualTerminal,
@@ -23,10 +23,14 @@ const updateTerminalSchema = z.object({
 });
 
 async function resolveProvider(request: NextRequest) {
-  const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+  const permissionCheck = await requirePermission("process_payments", request);
+  if (!permissionCheck.authorized) {
+    return { denied: permissionCheck.response! };
+  }
+  const { user } = permissionCheck;
   const supabase = await getSupabaseServer(request);
   const providerId = await getProviderIdForUser(user.id, supabase, { request });
-  return { supabase, user, providerId };
+  return { denied: undefined, supabase, user, providerId };
 }
 
 export async function GET(
@@ -35,13 +39,16 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { supabase, providerId } = await resolveProvider(request);
+    const resolved = await resolveProvider(request);
+    if (resolved.denied) return resolved.denied;
+    const { supabase, providerId } = resolved;
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
     const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
     if (gate) return gate;
 
-    const { data, error } = await (supabase
+    const admin = getSupabaseAdmin();
+    const { data, error } = await (admin
       .from("provider_paystack_virtual_terminals") as any)
       .select("*")
       .eq("id", id)
@@ -64,7 +71,9 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = updateTerminalSchema.parse(await request.json());
-    const { supabase, providerId } = await resolveProvider(request);
+    const resolved = await resolveProvider(request);
+    if (resolved.denied) return resolved.denied;
+    const { supabase, providerId } = resolved;
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
     const admin = getSupabaseAdmin();
 
@@ -146,7 +155,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { supabase, providerId } = await resolveProvider(request);
+    const resolved = await resolveProvider(request);
+    if (resolved.denied) return resolved.denied;
+    const { supabase, providerId } = resolved;
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
     const admin = getSupabaseAdmin();
 

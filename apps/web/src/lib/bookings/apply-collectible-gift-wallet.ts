@@ -13,6 +13,7 @@ import {
 import { giftRedemptionCreditDecision } from "@/lib/bookings/checkout-bill-adjustment";
 import { computeCollectibleSplits } from "@/lib/bookings/compute-collectible-splits";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 export type ApplyCollectibleGiftWalletInput = {
   supabase: SupabaseClient;
@@ -141,7 +142,7 @@ export async function applyCollectibleGiftAndWallet(
       .eq("payment_provider", "gift_card")
       .in("status", ["pending", "completed", "partially_refunded"]);
     const recordedGiftPayments = (recordedGiftRows ?? []).reduce(
-      (sum, payment) => sum + Number((payment as { amount?: number }).amount || 0),
+      (sum, payment) => addMoney(sum, Number((payment as { amount?: number }).amount || 0)),
       0,
     );
     const giftLegId = buildSyntheticWalletGiftProviderId("gift_card", bookingId, paymentLegSuffix);
@@ -179,7 +180,7 @@ export async function applyCollectibleGiftAndWallet(
       .from("bookings")
       .update({
         gift_card_id: resolvedGiftCardId ?? (bookingRow as { gift_card_id?: string } | null)?.gift_card_id,
-        gift_card_amount: Math.round((prevGift + giftCardAmountApplied) * 100) / 100,
+        gift_card_amount: addMoney(prevGift, giftCardAmountApplied),
       })
       .eq("id", bookingId);
       giftColumnIncreased = true;
@@ -206,7 +207,7 @@ export async function applyCollectibleGiftAndWallet(
           await admin
             .from("bookings")
             .update({
-              gift_card_amount: Math.max(0, Math.round((prevGift - giftCardAmountApplied) * 100) / 100),
+              gift_card_amount: Math.max(0, subtractMoney(prevGift, giftCardAmountApplied)),
             })
             .eq("id", bookingId);
         }
@@ -229,7 +230,7 @@ export async function applyCollectibleGiftAndWallet(
     await admin
       .from("bookings")
       .update({
-        wallet_amount: Math.round((prevWallet + walletAmountApplied) * 100) / 100,
+        wallet_amount: addMoney(prevWallet, walletAmountApplied),
       })
       .eq("id", bookingId);
   }

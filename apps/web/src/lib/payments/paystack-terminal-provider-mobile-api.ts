@@ -3,18 +3,25 @@
  * Mounted on live routes (`/api/provider/settings/payments`, `/api/provider/payments`)
  * when dedicated `/api/provider/paystack/*` paths are unavailable on production.
  */
+import { subtractMoney, addMoney } from "@beautonomi/utils";
+
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
+  mergeTerminalPaymentContact,
+  TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT,
+  viewerMaySeeTerminalPayer,
+} from "@/lib/payments/terminal-payment-columns";
+import {
   errorResponse,
   getOffsetPaginationParams,
   getProviderIdForUser,
   handleApiError,
-  requireRoleInApi,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { getPaystackTerminalAvailability } from "@/lib/payments/paystack-terminal-availability";
 import { checkPaystackVirtualTerminalFeatureAccess } from "@/lib/subscriptions/feature-access";
@@ -50,6 +57,10 @@ import {
 } from "@/lib/gift-cards/sale-gift-card";
 import { settleAdditionalChargePlatformHeld } from "@/lib/bookings/settle-additional-charge-platform-held";
 import { convertToSmallestUnit } from "@/lib/payments/paystack-complete";
+import {
+  resolveTerminalExpectedAmount,
+  terminalExpectedAmountForDisplay,
+} from "@/lib/payments/resolve-terminal-expected-amount";
 
 const setupRequestSchema = z.object({
   name: z.string().trim().optional().nullable(),
@@ -95,28 +106,35 @@ const allocationSchema = z.discriminatedUnion("action", [
 const REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 async function resolveProvider(request: NextRequest) {
-  const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+  const permissionCheck = await requirePermission("process_payments", request);
+  if (!permissionCheck.authorized) {
+    return { denied: permissionCheck.response! };
+  }
+  const { user } = permissionCheck;
   const supabase = await getSupabaseServer(request);
   const providerId = await getProviderIdForUser(user.id, supabase, { request });
-  return { supabase, user, providerId };
+  return { denied: undefined, supabase, user, providerId };
 }
 
 export async function loadPaystackTerminalMobileDetail(request: NextRequest) {
-  const { supabase, providerId } = await resolveProvider(request);
+  const resolved = await resolveProvider(request);
+  if (resolved.denied) return resolved.denied;
+  const { supabase, providerId } = resolved;
   if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
   const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
   if (gate) return gate;
 
   const access = await checkPaystackVirtualTerminalFeatureAccess(providerId, supabase as any);
-  const { data, error } = await (supabase.from("provider_paystack_virtual_terminals") as any)
+  const admin = getSupabaseAdmin();
+  const { data, error } = await (admin.from("provider_paystack_virtual_terminals") as any)
     .select("*")
     .eq("provider_id", providerId)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) throw error;
 
-  const { data: setupRequests, error: setupError } = await (supabase
+  const { data: setupRequests, error: setupError } = await (admin
     .from("provider_paystack_virtual_terminal_setup_requests") as any)
     .select("*")
     .eq("provider_id", providerId)
@@ -133,7 +151,9 @@ export async function loadPaystackTerminalMobileDetail(request: NextRequest) {
 }
 
 export async function requestPaystackTerminalSetupMobile(request: NextRequest) {
-  const { supabase, user, providerId } = await resolveProvider(request);
+  const resolved = await resolveProvider(request);
+  if (resolved.denied) return resolved.denied;
+  const { supabase, user, providerId } = resolved;
   if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
   const admin = getSupabaseAdmin();
 
@@ -261,7 +281,7 @@ export async function requestPaystackTerminalSetupMobile(request: NextRequest) {
     requestId: setupRequest.id,
     providerId,
     providerName: providerBusinessName,
-    requestedBy: user.email ?? user.id,
+    requestedBy: (user as { email?: string | null }).email ?? user.id,
     suggestedTerminalName: terminalName,
     destinationTarget,
   });
@@ -284,7 +304,9 @@ export async function requestPaystackTerminalAssetsMobile(
   request: NextRequest,
   terminalId: string,
 ) {
-  const { supabase, user, providerId } = await resolveProvider(request);
+  const resolved = await resolveProvider(request);
+  if (resolved.denied) return resolved.denied;
+  const { supabase, user, providerId } = resolved;
   if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
   const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
@@ -343,7 +365,7 @@ export async function requestPaystackTerminalAssetsMobile(
     terminalName: updated.display_name ?? updated.name,
     providerName: updated.provider?.business_name ?? null,
     paymentLink: updated.payment_link ?? updated.terminal_url ?? null,
-    requestedBy: user.email ?? user.id,
+    requestedBy: (user as { email?: string | null }).email ?? user.id,
   });
 
   return successResponse({
@@ -354,7 +376,9 @@ export async function requestPaystackTerminalAssetsMobile(
 }
 
 export async function listPaystackTerminalPaymentsMobile(request: NextRequest) {
-  const { supabase, providerId } = await resolveProvider(request);
+  const resolved = await resolveProvider(request);
+  if (resolved.denied) return resolved.denied;
+  const { supabase, user, providerId } = resolved;
   if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
   const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
@@ -372,7 +396,7 @@ export async function listPaystackTerminalPaymentsMobile(request: NextRequest) {
   let query = (supabase.from("provider_paystack_terminal_payments") as any)
     .select(
       `
-          *,
+          ${TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT},
           allocations:provider_terminal_payment_allocations(*),
           terminal:provider_paystack_virtual_terminals(id, name, terminal_code, location_id)
         `,
@@ -389,8 +413,13 @@ export async function listPaystackTerminalPaymentsMobile(request: NextRequest) {
   const { data, error, count } = await query;
   if (error) throw error;
 
+  const items = await mergeTerminalPaymentContact(
+    data ?? [],
+    await viewerMaySeeTerminalPayer(user, request),
+  );
+
   return successResponse({
-    items: data ?? [],
+    items,
     total: count ?? 0,
     limit,
     offset,
@@ -399,7 +428,9 @@ export async function listPaystackTerminalPaymentsMobile(request: NextRequest) {
 }
 
 export async function createPaystackTerminalCollectionIntentMobile(request: NextRequest) {
-  const { supabase, providerId } = await resolveProvider(request);
+  const resolved = await resolveProvider(request);
+  if (resolved.denied) return resolved.denied;
+  const { supabase, providerId } = resolved;
   if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
   const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
@@ -469,6 +500,18 @@ export async function createPaystackTerminalCollectionIntentMobile(request: Next
     }
   }
 
+  const derivedExpected = await resolveTerminalExpectedAmount(
+    getSupabaseAdmin(),
+    providerId,
+    body.entity_type ?? null,
+    body.entity_id ?? null,
+  );
+  const expectedAmount = terminalExpectedAmountForDisplay({
+    derived: derivedExpected,
+    hasEntity: Boolean(body.entity_type && body.entity_id && body.entity_type !== "other"),
+    clientHint: body.expected_amount ?? null,
+  });
+
   return successResponse({
     terminal,
     terminals: selectableTerminals,
@@ -479,10 +522,10 @@ export async function createPaystackTerminalCollectionIntentMobile(request: Next
       paystack_terminal_code: terminal.terminal_code,
       entity_type: body.entity_type ?? null,
       entity_id: body.entity_id ?? null,
-      expected_amount: body.expected_amount ?? null,
+      expected_amount: expectedAmount,
       customer_reference: customerReference,
     },
-    expectedAmount: body.expected_amount ?? null,
+    expectedAmount,
     entityType: body.entity_type ?? null,
     entityId: body.entity_id ?? null,
     customerReference,
@@ -496,7 +539,9 @@ export async function allocatePaystackTerminalPaymentMobile(
   paymentId: string,
 ) {
   const body = allocationSchema.parse(await request.json());
-  const { supabase, user, providerId } = await resolveProvider(request);
+  const resolved = await resolveProvider(request);
+  if (resolved.denied) return resolved.denied;
+  const { supabase, user, providerId } = resolved;
   if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
   const admin = getSupabaseAdmin();
 
@@ -523,7 +568,7 @@ export async function allocatePaystackTerminalPaymentMobile(
       })
       .eq("id", paymentId)
       .eq("provider_id", providerId)
-      .select()
+      .select(TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT)
       .single();
     if (error) throw error;
     return successResponse(data);
@@ -538,7 +583,7 @@ export async function allocatePaystackTerminalPaymentMobile(
       })
       .eq("id", paymentId)
       .eq("provider_id", providerId)
-      .select()
+      .select(TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT)
       .single();
     if (error) throw error;
     return successResponse(data);
@@ -547,7 +592,7 @@ export async function allocatePaystackTerminalPaymentMobile(
   const requestedAmount = body.amount ?? Number(payment.paid_amount ?? 0);
   const paidAmount = Number(payment.paid_amount ?? 0);
   const allocatedAmount = Number(payment.allocated_amount ?? 0);
-  if (requestedAmount <= 0 || requestedAmount > paidAmount - allocatedAmount) {
+  if (requestedAmount <= 0 || requestedAmount > subtractMoney(paidAmount, allocatedAmount)) {
     return errorResponse(
       "Allocation amount exceeds the unallocated Paystack Terminal balance.",
       "INVALID_ALLOCATION_AMOUNT",
@@ -771,6 +816,7 @@ export async function allocatePaystackTerminalPaymentMobile(
         chargeId: entityId,
         paystackTransactionId: payment.paystack_transaction_id ?? null,
         customerId,
+        commissionMode: "provider_collected",
       });
     } catch (acSettleErr) {
       return errorResponse(
@@ -900,7 +946,7 @@ export async function allocatePaystackTerminalPaymentMobile(
     .single();
   if (allocationError) throw allocationError;
 
-  const nextAllocatedAmount = allocatedAmount + requestedAmount;
+  const nextAllocatedAmount = addMoney(allocatedAmount, requestedAmount);
   const fullyAllocated = nextAllocatedAmount >= paidAmount;
   const { data: updatedPayment, error: updateError } = await (admin
     .from("provider_paystack_terminal_payments") as any)
@@ -908,7 +954,7 @@ export async function allocatePaystackTerminalPaymentMobile(
       status: fullyAllocated ? "allocated" : "matched",
       allocation_status: fullyAllocated ? "allocated" : "split_allocated",
       allocated_amount: nextAllocatedAmount,
-      remaining_balance: Math.max(0, paidAmount - nextAllocatedAmount),
+      remaining_balance: Math.max(0, subtractMoney(paidAmount, nextAllocatedAmount)),
       provider_assigned_entity_type: entityType,
       provider_assigned_entity_id: entityId,
       provider_assignment_reason: body.reason ?? null,
@@ -921,7 +967,7 @@ export async function allocatePaystackTerminalPaymentMobile(
     })
     .eq("id", paymentId)
     .eq("provider_id", providerId)
-    .select()
+    .select(TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT)
     .single();
   if (updateError) throw updateError;
 
@@ -961,7 +1007,9 @@ export async function handlePaystackTerminalSettingsPost(request: NextRequest) {
  */
 export async function reconcilePaystackTerminalPaymentsMobile(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("process_payments", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
@@ -1029,7 +1077,9 @@ export async function reconcilePaystackTerminalPaymentsMobile(request: NextReque
  */
 export async function markPaystackTerminalPaymentSeenMobile(request: NextRequest, paymentId: string) {
   try {
-    const { supabase, providerId } = await resolveProvider(request);
+    const resolved = await resolveProvider(request);
+    if (resolved.denied) return resolved.denied;
+    const { supabase, providerId } = resolved;
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
     const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);

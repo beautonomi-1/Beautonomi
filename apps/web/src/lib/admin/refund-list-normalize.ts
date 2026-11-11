@@ -11,6 +11,7 @@ import {
   type ChargeAllocationInput,
   type RefundState,
 } from "./booking-refund-context";
+import { subtractMoney } from "@beautonomi/utils";
 
 /** Merged refund list row (PostgREST shapes vary for embeds). */
 export type RefundListRow = {
@@ -74,7 +75,7 @@ export function remainingRefundableAmount(
 ): number {
   const gross = parseRefundAmount(amount);
   const refunded = parseRefundAmount(refundAmount);
-  return Math.max(0, Math.round((gross - refunded) * 100) / 100);
+  return Math.max(0, subtractMoney(gross, refunded));
 }
 
 export function isProcessableRefundListRow(

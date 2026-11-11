@@ -1,3 +1,4 @@
+import { addMoney, roundCurrency } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -65,7 +66,7 @@ export async function GET(
     }
 
     const totalDiscount = (sumRows ?? []).reduce(
-      (acc, r) => acc + Number((r as { discount_amount?: number }).discount_amount ?? 0),
+      (acc, r) => addMoney(acc, Number((r as { discount_amount?: number }).discount_amount ?? 0)),
       0,
     );
 
@@ -128,7 +129,7 @@ export async function GET(
     });
 
     return successResponse({
-      total_discount: Math.round(totalDiscount * 100) / 100,
+      total_discount: roundCurrency(totalDiscount),
       redemptions,
     });
   } catch (error) {

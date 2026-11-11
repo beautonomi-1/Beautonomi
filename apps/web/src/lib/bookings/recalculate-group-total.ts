@@ -11,6 +11,7 @@
  * regardless of RLS context.
  */
 
+import { addMoney } from "@beautonomi/utils";
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
   groupPackageTotal,
@@ -71,12 +72,12 @@ export async function recalculateGroupBookingTotal(
   const products = Array.isArray(group?.products) ? group.products : [];
   const participantTotal = participantRows.reduce(
     (sum: number, p: { price?: unknown }) =>
-      sum + Math.max(0, Number(p.price || 0)),
+      addMoney(sum, Math.max(0, Number(p.price || 0))),
     0
   );
   const productTotal = products.reduce(
     (sum: number, p: unknown) =>
-      sum + groupProductLineTotal(p as Record<string, unknown>),
+      addMoney(sum, groupProductLineTotal(p as Record<string, unknown>)),
     0
   );
   const travelFee =

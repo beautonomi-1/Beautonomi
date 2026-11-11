@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dispatchTemplateNotification, withTenantVariable } from "@/lib/notifications/dispatch-template-notification";
 import { buildProviderTerminalOrderReceiptUrl } from "@/lib/receipts/receipt-download-token";
+import { roundCurrency } from "@beautonomi/utils";
 
 export async function notifyTerminalOrderPaidIfTransitioned(
   supabase: SupabaseClient,
@@ -46,9 +47,9 @@ export async function notifyTerminalOrderPaidIfTransitioned(
     product_name: o.terminal_products?.name ?? "Terminal device",
     order_id: o.id,
     commercial_model: String(o.commercial_model ?? "").replace(/_/g, " "),
-    total_amount: String(Number(o.total_amount ?? 0).toFixed(2)),
+    total_amount: String(roundCurrency(Number(o.total_amount ?? 0)).toFixed(2)),
     currency: o.currency ?? "ZAR",
-    amount: String(Number(o.total_amount ?? 0).toFixed(2)),
+    amount: String(roundCurrency(Number(o.total_amount ?? 0)).toFixed(2)),
     reference: o.paystack_reference ?? o.id,
     payment_date: new Date().toLocaleDateString(),
     receipt_url: receiptUrl,

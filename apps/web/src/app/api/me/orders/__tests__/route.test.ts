@@ -221,7 +221,18 @@ describe("POST /api/me/orders", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    mockGetSupabaseAdmin.mockReturnValue({});
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: (table: string) => {
+        if (table !== "product_orders") {
+          throw new Error(`Unexpected admin table ${table}`);
+        }
+        const chain: Record<string, unknown> = {};
+        chain.select = () => chain;
+        chain.eq = () => chain;
+        chain.maybeSingle = async () => ({ data: null, error: null });
+        return chain;
+      },
+    });
     mockCancelStale.mockResolvedValue(undefined);
     mockRollback.mockResolvedValue(undefined);
     mockRecordPayment.mockResolvedValue({ ok: true, duplicate: false, transitionedToPaid: true });
@@ -424,7 +435,9 @@ describe("GET /api/me/orders — cross-tenant isolation", () => {
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1", role: "customer" } });
     mockResolveTenantIdWithZaFallback.mockResolvedValue(TENANT_A);
     const capture: { providerFilter: string[] | null } = { providerFilter: null };
-    mockGetSupabaseServer.mockResolvedValue(buildIsolationSupabase(capture));
+    const fake = buildIsolationSupabase(capture);
+    mockGetSupabaseServer.mockResolvedValue(fake);
+    mockGetSupabaseAdmin.mockReturnValue(fake);
 
     const { GET } = await import("../route");
     const res = await GET(new NextRequest("https://www.beautonomi.co.za/api/me/orders"));
@@ -443,7 +456,9 @@ describe("GET /api/me/orders — cross-tenant isolation", () => {
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1", role: "customer" } });
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-unknown");
     const capture: { providerFilter: string[] | null } = { providerFilter: null };
-    mockGetSupabaseServer.mockResolvedValue(buildIsolationSupabase(capture));
+    const fake = buildIsolationSupabase(capture);
+    mockGetSupabaseServer.mockResolvedValue(fake);
+    mockGetSupabaseAdmin.mockReturnValue(fake);
 
     const { GET } = await import("../route");
     const res = await GET(new NextRequest("https://unknown.beautonomi.io/api/me/orders"));

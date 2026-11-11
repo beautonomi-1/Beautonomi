@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GatewayFeeSource } from "@/lib/payments/resolve-gateway-fees";
+import { roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 const PSP_REPORTED_SOURCES = new Set([
   "paystack",
@@ -67,7 +68,7 @@ export async function applyGatewayFeeCorrection(
     bookingId?: string | null;
   },
 ): Promise<ApplyGatewayFeeCorrectionResult> {
-  const newFee = Math.round(params.newFeeMajor * 100) / 100;
+  const newFee = roundCurrency(params.newFeeMajor);
 
   const { data: row, error } = await supabase
     .from("finance_transactions")
@@ -101,7 +102,7 @@ export async function applyGatewayFeeCorrection(
   }
 
   const journaled = journaledFeeFromRow(typed);
-  const delta = Math.round((newFee - journaled) * 100) / 100;
+  const delta = subtractMoney(newFee, journaled);
   if (Math.abs(delta) < 0.0001) {
     return { ok: true, applied: false, reason: "noop" };
   }

@@ -25,6 +25,7 @@ import {
 } from "@/lib/reports/provider-revenue-semantics";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
+import { addMoney } from "@beautonomi/utils";
 import {
   fetchProviderFinanceSummaryRpc,
   shadowCompareFinanceSummary,
@@ -81,13 +82,15 @@ export async function GET(request: NextRequest) {
     const effectiveTenantId =
       (prow as { tenant_id?: string | null } | null)?.tenant_id ??
       (await resolveTenantIdWithZaFallback(request));
-    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const [tenantRegion, reportContext] = await Promise.all([
+      getTenantRegionConfig(effectiveTenantId),
+      getProviderReportContext(db, providerId),
+    ]);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Get date range (provider timezone — aligns with reports and mobile finance)
     const range = searchParams.get("range") || "month";
     const now = new Date();
-    const reportContext = await getProviderReportContext(db, providerId);
     const tz = reportContext.timezone;
 
     const rangeBounds = resolveProviderFinanceRangeBounds(range, tz, now);
@@ -110,6 +113,100 @@ export async function GET(request: NextRequest) {
             Math.min(new Date(startIso).getTime(), rangeBounds.lastPeriodStart.getTime()),
           ).toISOString()
         : startIso;
+
+    /** Booking-level discounts (already baked into totals the customer paid; informational). */
+    const sumBookingDiscounts = async (fromIsoIn?: string, toIsoIn?: string) => {
+      let membership = 0;
+      let loyalty = 0;
+      let promo = 0;
+      const locationFilters = locationId ? dashboardBookingLocationOrFilterFallbacks(locationId) : [];
+
+      const buildDiscountQuery = (orFilter: string | null) => {
+        let bq = db
+          .from("bookings")
+          .select("id, membership_discount_amount, loyalty_discount_amount, promotion_discount_amount")
+          .eq("provider_id", providerId)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true });
+        if (orFilter) bq = bq.or(orFilter);
+        if (fromIsoIn && toIsoIn) {
+          bq = bq.gte("created_at", fromIsoIn).lte("created_at", toIsoIn);
+        }
+        return bq;
+      };
+
+      let resolvedLocationFilter: string | null = null;
+      if (locationId) {
+        let chosen: string | null | undefined;
+        for (const filter of locationFilters) {
+          const probe = await buildDiscountQuery(filter).range(0, 0);
+          if (!probe.error || isPostgrestRangeUnsatisfiable(probe.error)) {
+            chosen = filter;
+            break;
+          }
+        }
+        if (chosen === undefined) {
+          const probe = await buildDiscountQuery(null).range(0, 0);
+          if (probe.error && !isPostgrestRangeUnsatisfiable(probe.error)) {
+            console.warn("[finance] booking discount aggregate:", probe.error);
+            return { membership_discounts_applied: 0, loyalty_discounts_applied: 0, promo_discounts_applied: 0 };
+          }
+          chosen = null;
+        }
+        resolvedLocationFilter = chosen;
+      }
+
+      const rows = await fetchAllPaged(async (from, to) => {
+        const { data, error } = await buildDiscountQuery(resolvedLocationFilter).range(from, to);
+        return { data, error };
+      });
+      for (const r of rows as any[]) {
+        membership = addMoney(membership, Number(r.membership_discount_amount ?? 0));
+        loyalty = addMoney(loyalty, Number(r.loyalty_discount_amount ?? 0));
+        promo = addMoney(promo, Number(r.promotion_discount_amount ?? 0));
+      }
+      return { membership_discounts_applied: membership, loyalty_discounts_applied: loyalty, promo_discounts_applied: promo };
+    };
+
+    const providerTenantId = (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    /** Payout settings + withdrawable balance do not depend on the ledger scan below. */
+    const loadPayoutState = async () => {
+      // Resolve payout settings tenant-scoped (aligned with payouts POST and dashboard).
+      const scopedPayoutSettings = await fetchScopedSingle<Record<string, unknown>>({
+        supabase: supabase as any,
+        table: "platform_settings",
+        tenantId: providerTenantId ?? effectiveTenantId,
+        select: "settings",
+        apply: (q: any) => q.eq("is_active", true),
+        orderBy: { column: "updated_at", ascending: false },
+      });
+      const payoutSettingsData = ((scopedPayoutSettings.data as { settings?: Record<string, unknown> } | null)?.settings as any)?.payouts ?? {};
+      const holdDays = Number(payoutSettingsData.payout_hold_days ?? 0);
+      const minimumPayoutAmount = Number(payoutSettingsData.minimum_payout_amount ?? 100);
+      // Available balance and pending payouts: use ledger + payouts table (aligned with payouts API validation).
+      try {
+        const payout = await getAvailablePayoutBalance(db, providerId, {
+          holdDays,
+          tenantId: providerTenantId,
+        });
+        return { holdDays, minimumPayoutAmount, payout, payoutBalanceUnavailable: false };
+      } catch (payoutError) {
+        console.warn("[finance] payout balance failed; returning ledger totals without withdrawable balance:", payoutError);
+        return { holdDays, minimumPayoutAmount, payout: EMPTY_PAYOUT_BALANCE, payoutBalanceUnavailable: true };
+      }
+    };
+
+    // Started before the ledger scan so they overlap with it; settled wrappers keep a
+    // failure here from surfacing as an unhandled rejection if the ledger scan throws first.
+    const settle = <T,>(p: Promise<T>): Promise<{ value: T } | { failure: unknown }> =>
+      p.then(
+        (value) => ({ value }),
+        (failure: unknown) => ({ failure }),
+      );
+    const payoutStateP = settle(loadPayoutState());
+    // All-time discount totals scanned every booking the provider ever had on each
+    // finance load (no client renders them); only compute them when range=all.
+    const discountsThisPeriodP = settle(sumBookingDiscounts(startIso, nowIso));
 
     // Build finance transactions query (service role: full ledger for this provider).
     // IMPORTANT: aggregates below (earnings, fees, tips, refunds, growth, etc.) must scan
@@ -139,57 +236,69 @@ export async function GET(request: NextRequest) {
     const productOrderIds = [...new Set(rows.filter((r: any) => r.product_order_id).map((r: any) => r.product_order_id))];
     let productOrderMap: Record<string, { report_location_id: string | null; collection_location_id: string | null; fulfillment_type: string | null; order_source: string | null; payment_method: string | null }> = {};
     
-    if (bookingIds.length > 0) {
-      const bookings = await fetchInIdChunks<{
-        id: string;
-        booking_source?: string | null;
-        location_id?: string | null;
-      }>(bookingIds, (slice) =>
-        db.from("bookings").select("id, booking_source, location_id").in("id", slice),
-      );
+    const providerTenantForBp = (prow as { tenant_id?: string | null } | null)?.tenant_id;
+    const [bookings, bookingPaymentPages, productOrders, primaryLocationId] = await Promise.all([
+      bookingIds.length > 0
+        ? fetchInIdChunks<{
+            id: string;
+            booking_source?: string | null;
+            location_id?: string | null;
+          }>(bookingIds, (slice) =>
+            db.from("bookings").select("id, booking_source, location_id").in("id", slice),
+          )
+        : Promise.resolve([]),
+      Promise.all(
+        chunkIds(bookingIds, 150).map(async (slice) => {
+          let bookingPaymentsQuery = db
+            .from("booking_payments")
+            .select("booking_id, payment_provider")
+            .in("booking_id", slice)
+            .eq("status", "completed")
+            .order("created_at", { ascending: false });
+          if (providerTenantForBp) {
+            bookingPaymentsQuery = bookingPaymentsQuery.eq("tenant_id", providerTenantForBp);
+          }
+          const { data } = await bookingPaymentsQuery;
+          return (data ?? []) as Array<{ booking_id?: string; payment_provider?: string | null }>;
+        }),
+      ),
+      productOrderIds.length > 0
+        ? fetchInIdChunks<{
+            id: string;
+            collection_location_id?: string | null;
+            fulfillment_type?: string | null;
+            order_source?: string | null;
+            payment_method?: string | null;
+          }>(productOrderIds, (slice) =>
+            db
+              .from("product_orders")
+              .select("id, collection_location_id, fulfillment_type, order_source, payment_method")
+              .in("id", slice),
+          )
+        : Promise.resolve(null),
+      productOrderIds.length > 0 ? getProviderPrimaryReportLocationId(db, providerId) : Promise.resolve(null),
+    ]);
 
-      const bookingPayments: Array<{ booking_id?: string; payment_provider?: string | null }> = [];
-      const providerTenantForBp = (prow as { tenant_id?: string | null } | null)?.tenant_id;
-      for (const slice of chunkIds(bookingIds, 150)) {
-        let bookingPaymentsQuery = db
-          .from("booking_payments")
-          .select("booking_id, payment_provider")
-          .in("booking_id", slice)
-          .eq("status", "completed")
-          .order("created_at", { ascending: false });
-        if (providerTenantForBp) {
-          bookingPaymentsQuery = bookingPaymentsQuery.eq("tenant_id", providerTenantForBp);
+    if (bookingIds.length > 0) {
+      /** Latest completed payment per booking (rows are ordered newest first). */
+      const latestPaymentProvider = new Map<string, string | null>();
+      for (const p of bookingPaymentPages.flat()) {
+        if (p.booking_id && !latestPaymentProvider.has(p.booking_id)) {
+          latestPaymentProvider.set(p.booking_id, p.payment_provider ?? null);
         }
-        const { data } = await bookingPaymentsQuery;
-        bookingPayments.push(...(data ?? []));
       }
 
       bookingMap = bookings.reduce((acc: typeof bookingMap, b) => {
-        const payment = bookingPayments.find((p) => p.booking_id === b.id);
         acc[b.id] = {
           booking_source: b.booking_source || null,
           location_id: b.location_id || null,
-          payment_provider: payment?.payment_provider || null,
+          payment_provider: latestPaymentProvider.get(b.id) || null,
         };
         return acc;
       }, {});
     }
 
     if (productOrderIds.length > 0) {
-      const productOrders = await fetchInIdChunks<{
-        id: string;
-        collection_location_id?: string | null;
-        fulfillment_type?: string | null;
-        order_source?: string | null;
-        payment_method?: string | null;
-      }>(productOrderIds, (slice) =>
-        db
-          .from("product_orders")
-          .select("id, collection_location_id, fulfillment_type, order_source, payment_method")
-          .in("id", slice),
-      );
-      const primaryLocationId = await getProviderPrimaryReportLocationId(db, providerId);
-
       if (productOrders) {
         productOrderMap = productOrders.reduce((acc: any, order: any) => {
           acc[order.id] = {
@@ -250,7 +359,7 @@ export async function GET(request: NextRequest) {
           const d = new Date(r.created_at);
           return d >= within.start && d <= within.end;
         })
-        .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+        .reduce((s: number, r: any) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
 
     const sumAmount = (types: string[], within?: { start: Date; end: Date }) =>
       rows
@@ -260,7 +369,7 @@ export async function GET(request: NextRequest) {
           const d = new Date(r.created_at);
           return d >= within.start && d <= within.end;
         })
-        .reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+        .reduce((s: number, r: any) => addMoney(s, Number(r.amount || 0)), 0);
 
     const providerEarningsTotal = sumNet(["provider_earnings"]);
     const providerEarningsThis = sumNet(["provider_earnings"], { start: startDate, end: now });
@@ -269,11 +378,11 @@ export async function GET(request: NextRequest) {
     // Break down earnings by source: bookings (have booking_id) vs product orders (booking_id is null)
     const bookingEarningsTotal = rows
       .filter((r: any) => r.transaction_type === "provider_earnings" && r.booking_id)
-      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+      .reduce((s: number, r: any) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
     const bookingEarningsThisPeriod = rows
       .filter((r: any) => r.transaction_type === "provider_earnings" && r.booking_id)
       .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
-      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+      .reduce((s: number, r: any) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
     const isProductOrderEarnings = (r: { transaction_type?: string; booking_id?: string | null; product_order_id?: string | null }) =>
       r.transaction_type === "provider_earnings" && !r.booking_id && !!r.product_order_id;
     const isMembershipEarnings = (r: { transaction_type?: string; booking_id?: string | null; product_order_id?: string | null }) =>
@@ -281,18 +390,18 @@ export async function GET(request: NextRequest) {
 
     const productSalesEarningsTotal = rows
       .filter((r: any) => isProductOrderEarnings(r))
-      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+      .reduce((s: number, r: any) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
     const productSalesEarningsThisPeriod = rows
       .filter((r: any) => isProductOrderEarnings(r))
       .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
-      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+      .reduce((s: number, r: any) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
     const membershipEarningsTotal = rows
       .filter((r: any) => isMembershipEarnings(r))
-      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+      .reduce((s: number, r: any) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
     const membershipEarningsThisPeriod = rows
       .filter((r: any) => isMembershipEarnings(r))
       .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
-      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+      .reduce((s: number, r: any) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
     /** Booking ledger uses `service_fee`; ecommerce uses `platform_fee` — both are platform-retained customer fees. */
     const sumPlatformRetainedFees = (within?: { start: Date; end: Date }) =>
       rows
@@ -302,7 +411,7 @@ export async function GET(request: NextRequest) {
           const d = new Date(r.created_at);
           return d >= within.start && d <= within.end;
         })
-        .reduce((s: number, r: any) => s + Math.abs(Number(r.net ?? r.amount ?? 0)), 0);
+        .reduce((s: number, r: any) => addMoney(s, Math.abs(Number(r.net ?? r.amount ?? 0))), 0);
     const platformFeesDeducted = sumPlatformRetainedFees();
     const platformFeesDeductedThisPeriod = sumPlatformRetainedFees({ start: startDate, end: now });
 
@@ -370,11 +479,11 @@ export async function GET(request: NextRequest) {
     const refundsTotal = rows.reduce((s: number, r: any) => {
       if (r.transaction_type === "refund") {
         return isProviderEarningsRefundComponent(r.refund_component)
-          ? s + Math.abs(Number(r.net ?? r.amount ?? 0))
+          ? addMoney(s, Math.abs(Number(r.net ?? r.amount ?? 0)))
           : s;
       }
       if (r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0) {
-        return s + Math.abs(Number(r.net ?? 0));
+        return addMoney(s, Math.abs(Number(r.net ?? 0)));
       }
       return s;
     }, 0);
@@ -386,11 +495,11 @@ export async function GET(request: NextRequest) {
       .reduce((s: number, r: any) => {
         if (r.transaction_type === "refund") {
           return isProviderEarningsRefundComponent(r.refund_component)
-            ? s + Math.abs(Number(r.net ?? r.amount ?? 0))
+            ? addMoney(s, Math.abs(Number(r.net ?? r.amount ?? 0)))
             : s;
         }
         if (r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0) {
-          return s + Math.abs(Number(r.net ?? 0));
+          return addMoney(s, Math.abs(Number(r.net ?? 0)));
         }
         return s;
       }, 0);
@@ -411,43 +520,17 @@ export async function GET(request: NextRequest) {
           ? 100
           : 0;
 
-    // Resolve payout settings tenant-scoped (aligned with payouts POST and dashboard).
-    const providerTenantId = (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
-    const scopedPayoutSettings = await fetchScopedSingle<Record<string, unknown>>({
-      supabase: supabase as any,
-      table: "platform_settings",
-      tenantId: providerTenantId ?? effectiveTenantId,
-      select: "settings",
-      apply: (q: any) => q.eq("is_active", true),
-      orderBy: { column: "updated_at", ascending: false },
-    });
-    const payoutSettingsData = ((scopedPayoutSettings.data as { settings?: Record<string, unknown> } | null)?.settings as any)?.payouts ?? {};
-    const holdDays = Number(payoutSettingsData.payout_hold_days ?? 0);
-    const minimumPayoutAmount = Number(payoutSettingsData.minimum_payout_amount ?? 100);
-
-    // Available balance and pending payouts: use ledger + payouts table (aligned with payouts API validation).
-    let availableBalance = EMPTY_PAYOUT_BALANCE.availableBalance;
-    let pendingPayoutsSum = EMPTY_PAYOUT_BALANCE.pendingPayoutsSum;
-    let rawBalance = EMPTY_PAYOUT_BALANCE.rawBalance;
-    let hasNegativeBalance = EMPTY_PAYOUT_BALANCE.hasNegativeBalance;
-    let payoutBreakdown = EMPTY_PAYOUT_BALANCE.breakdown;
-    let openDisputeReserve = EMPTY_PAYOUT_BALANCE.openDisputeReserve;
-    let payoutBalanceUnavailable = false;
-    try {
-      const payout = await getAvailablePayoutBalance(db, providerId, {
-        holdDays,
-        tenantId: providerTenantId,
-      });
-      availableBalance = payout.availableBalance;
-      pendingPayoutsSum = payout.pendingPayoutsSum;
-      rawBalance = payout.rawBalance;
-      hasNegativeBalance = payout.hasNegativeBalance;
-      openDisputeReserve = payout.openDisputeReserve;
-      payoutBreakdown = payout.breakdown;
-    } catch (payoutError) {
-      payoutBalanceUnavailable = true;
-      console.warn("[finance] payout balance failed; returning ledger totals without withdrawable balance:", payoutError);
-    }
+    const payoutState = await payoutStateP;
+    if ("failure" in payoutState) throw payoutState.failure;
+    const { holdDays, minimumPayoutAmount, payout, payoutBalanceUnavailable } = payoutState.value;
+    const {
+      availableBalance,
+      pendingPayoutsSum,
+      rawBalance,
+      hasNegativeBalance,
+      openDisputeReserve,
+      breakdown: payoutBreakdown,
+    } = payout;
 
     const ledgerCurrencies = [
       ...new Set(rows.map((r: any) => (r.currency as string | null) || lastResortCurrency).filter(Boolean)),
@@ -458,62 +541,10 @@ export async function GET(request: NextRequest) {
         : null;
     const pendingPayouts = pendingPayoutsSum;
 
-    /** Booking-level discounts (already baked into totals the customer paid; informational). */
-    const sumBookingDiscounts = async (fromIsoIn?: string, toIsoIn?: string) => {
-      let membership = 0;
-      let loyalty = 0;
-      let promo = 0;
-      const locationFilters = locationId ? dashboardBookingLocationOrFilterFallbacks(locationId) : [];
-
-      const buildDiscountQuery = (orFilter: string | null) => {
-        let bq = db
-          .from("bookings")
-          .select("id, membership_discount_amount, loyalty_discount_amount, promotion_discount_amount")
-          .eq("provider_id", providerId)
-          .order("created_at", { ascending: true })
-          .order("id", { ascending: true });
-        if (orFilter) bq = bq.or(orFilter);
-        if (fromIsoIn && toIsoIn) {
-          bq = bq.gte("created_at", fromIsoIn).lte("created_at", toIsoIn);
-        }
-        return bq;
-      };
-
-      let resolvedLocationFilter: string | null = null;
-      if (locationId) {
-        let chosen: string | null | undefined;
-        for (const filter of locationFilters) {
-          const probe = await buildDiscountQuery(filter).range(0, 0);
-          if (!probe.error || isPostgrestRangeUnsatisfiable(probe.error)) {
-            chosen = filter;
-            break;
-          }
-        }
-        if (chosen === undefined) {
-          const probe = await buildDiscountQuery(null).range(0, 0);
-          if (probe.error && !isPostgrestRangeUnsatisfiable(probe.error)) {
-            console.warn("[finance] booking discount aggregate:", probe.error);
-            return { membership_discounts_applied: 0, loyalty_discounts_applied: 0, promo_discounts_applied: 0 };
-          }
-          chosen = null;
-        }
-        resolvedLocationFilter = chosen;
-      }
-
-      const rows = await fetchAllPaged(async (from, to) => {
-        const { data, error } = await buildDiscountQuery(resolvedLocationFilter).range(from, to);
-        return { data, error };
-      });
-      for (const r of rows as any[]) {
-        membership += Number(r.membership_discount_amount ?? 0);
-        loyalty += Number(r.loyalty_discount_amount ?? 0);
-        promo += Number(r.promotion_discount_amount ?? 0);
-      }
-      return { membership_discounts_applied: membership, loyalty_discounts_applied: loyalty, promo_discounts_applied: promo };
-    };
-
-    const discountsThisPeriod = await sumBookingDiscounts(startIso, nowIso);
-    const discountsAllTime = await sumBookingDiscounts();
+    const discountsSettled = await discountsThisPeriodP;
+    if ("failure" in discountsSettled) throw discountsSettled.failure;
+    const discountsThisPeriod = discountsSettled.value;
+    const discountsAllTime = isAllTimeRange ? discountsThisPeriod : null;
 
     const rowsForTransactionList =
       locationId && transactionListAllLocations ? enrichedBeforeLocationFilter : rows;
@@ -638,9 +669,10 @@ export async function GET(request: NextRequest) {
         membership_discounts_this_period: discountsThisPeriod.membership_discounts_applied,
         loyalty_discounts_this_period: discountsThisPeriod.loyalty_discounts_applied,
         promo_discounts_this_period: discountsThisPeriod.promo_discounts_applied,
-        membership_discounts_total: discountsAllTime.membership_discounts_applied,
-        loyalty_discounts_total: discountsAllTime.loyalty_discounts_applied,
-        promo_discounts_total: discountsAllTime.promo_discounts_applied,
+        /** All-time discount totals; null when a bounded range is selected (same as recognized_revenue_all_time). */
+        membership_discounts_total: discountsAllTime?.membership_discounts_applied ?? null,
+        loyalty_discounts_total: discountsAllTime?.loyalty_discounts_applied ?? null,
+        promo_discounts_total: discountsAllTime?.promo_discounts_applied ?? null,
       },
       transactions: transactions,
       transactions_total: transactionsTotal,

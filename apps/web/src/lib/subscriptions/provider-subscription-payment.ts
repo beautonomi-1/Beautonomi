@@ -33,6 +33,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { getPlatformDefaultTaxRate } from "@/lib/platform-tax-settings";
 import { computeVatInclusiveBreakdown } from "@/lib/receipts/vat-inclusive-breakdown";
 import { resolvePaystackFeeMajor } from "@/lib/payments/resolve-paystack-fee";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export type RecordProviderSubscriptionPaymentResult = {
   recorded: boolean;
@@ -186,7 +187,7 @@ export async function postSubscriptionVatLeg(
     createdAtIso: string;
   },
 ): Promise<{ posted: boolean; alreadyPosted: boolean }> {
-  const absAmount = Math.round(Math.abs(Number(params.amount) || 0) * 100) / 100;
+  const absAmount = roundCurrency(Math.abs(Number(params.amount) || 0));
   if (absAmount <= 0 || !params.sourcePaymentId) return { posted: false, alreadyPosted: false };
   const signed = params.vatSource === "provider_subscription_refund" ? -absAmount : absAmount;
 
@@ -251,8 +252,8 @@ export async function sumRecognizedForSubscriptionPayment(
       .eq("transaction_type", "subscription_recognition")
       .contains("metadata", { source_payment_id: sourcePaymentId });
     const rows = (data ?? []) as Array<{ amount?: number | string | null }>;
-    const total = rows.reduce((s, r) => s + toNumber(r.amount), 0);
-    return Math.round(Math.max(0, total) * 100) / 100;
+    const total = rows.reduce((s, r) => addMoney(s, toNumber(r.amount)), 0);
+    return roundCurrency(Math.max(0, total));
   } catch {
     return 0;
   }
@@ -266,11 +267,10 @@ export function splitSubscriptionRefundComponents(
   reversalAmount: number,
   recognizedSoFar: number,
 ): { deferred_reversed: number; recognized_reversed: number } {
-  const round = (n: number) => Math.round(n * 100) / 100;
-  const total = round(Math.max(0, toNumber(reversalAmount)));
+  const total = roundCurrency(Math.max(0, toNumber(reversalAmount)));
   // Round the recognized part first so the two components always sum to total.
-  const recognized = Math.min(total, round(Math.max(0, toNumber(recognizedSoFar))));
-  return { deferred_reversed: round(total - recognized), recognized_reversed: recognized };
+  const recognized = Math.min(total, roundCurrency(Math.max(0, toNumber(recognizedSoFar))));
+  return { deferred_reversed: subtractMoney(total, recognized), recognized_reversed: recognized };
 }
 
 /**
@@ -334,7 +334,7 @@ export async function recordProviderSubscriptionPayment(params: {
     });
     resolvedFeesMajor = resolvedFees.feesMajor;
   }
-  const netAmount = amountMajor - resolvedFeesMajor;
+  const netAmount = subtractMoney(amountMajor, resolvedFeesMajor);
 
   if (!reference || !providerId) {
     console.error("[provider_subscription] recordProviderSubscriptionPayment: missing reference/providerId", {

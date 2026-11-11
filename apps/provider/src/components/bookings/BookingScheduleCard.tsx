@@ -12,6 +12,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { twStyle } from "@/lib/twStyle";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { formatCurrency } from "@/lib/format";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { Colors, Shadows } from "@/constants/colors";
 import { buildProviderBookingActionModel, type ProviderBookingAction } from "@/lib/provider-booking-action-policy";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
@@ -175,16 +176,16 @@ export function BookingScheduleCard({
     (b: BookingScheduleCardBooking): { label: string; tone: "paid" | "partial" | "due" } | null => {
       const status = (b.payment_status || "").toLowerCase();
       const total = Number(b.total_amount ?? 0);
-      const paidAfterRefunds = Math.max(0, Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0));
-      const walletGiftCoverage = Math.max(0, Number(b.wallet_amount ?? 0) + Number(b.gift_card_amount ?? 0));
+      const paidAfterRefunds = Math.max(0, subtractMoney(Number(b.total_paid ?? 0), Number(b.total_refunded ?? 0)));
+      const walletGiftCoverage = Math.max(0, addMoney(Number(b.wallet_amount ?? 0), Number(b.gift_card_amount ?? 0)));
       const unpaidAdditionalCharges = Array.isArray(b.additional_charges)
         ? b.additional_charges
             .filter((charge) => charge?.status !== "paid" && charge?.status !== "rejected")
-            .reduce((sum, charge) => sum + Number(charge?.amount ?? 0), 0)
+            .reduce((sum, charge) => addMoney(sum, Number(charge?.amount ?? 0)), 0)
         : 0;
       const outstanding =
         b.outstanding_balance == null
-          ? Math.max(0, total - Math.max(paidAfterRefunds, walletGiftCoverage) + unpaidAdditionalCharges)
+          ? Math.max(0, addMoney(subtractMoney(total, Math.max(paidAfterRefunds, walletGiftCoverage)), unpaidAdditionalCharges))
           : Math.max(0, Number(b.outstanding_balance));
       if (status === "paid" || (total > 0 && outstanding <= 0)) return { label: sc("paid"), tone: "paid" };
       if (paidAfterRefunds > 0 || walletGiftCoverage > 0) return { label: sc("partPaid"), tone: "partial" };

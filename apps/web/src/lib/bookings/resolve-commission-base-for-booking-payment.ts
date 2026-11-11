@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 /**
  * Residual earnings allocation for booking payments when booking-level ledger legs
  * (tip/travel/platform_fee/etc.) were already posted by an earlier payment.
@@ -30,7 +31,7 @@ export function resolveCommissionBaseForBookingPayment(
   if (input.bookingLevelItemsAlreadyPosted) {
     const cumulativePaid = Math.max(0, Number(input.cumulativePaid ?? paymentAmount));
     const postedLegsSum = Math.max(0, Number(input.postedLegsSum ?? 0));
-    const residual = Math.max(0, Math.round((cumulativePaid - postedLegsSum) * 100) / 100);
+    const residual = Math.max(0, subtractMoney(cumulativePaid, postedLegsSum));
     return Math.min(paymentAmount, residual);
   }
 
@@ -40,10 +41,16 @@ export function resolveCommissionBaseForBookingPayment(
   const travel = Math.max(0, Number(input.travel || 0));
 
   const fullCommissionBase =
-    bookingTotal > 0 ? bookingTotal - tip - tax - travel - platformFee : 0;
+    bookingTotal > 0
+      ? subtractMoney(
+          subtractMoney(subtractMoney(subtractMoney(bookingTotal, tip), tax), travel),
+          platformFee,
+        )
+      : 0;
   const netRevenueRatio = bookingTotal > 0 ? Math.max(0, fullCommissionBase / bookingTotal) : 1;
 
-  return Math.max(0, Math.round(paymentAmount * netRevenueRatio * 100) / 100);
+  // F2-05: scale in minor units (multiplyMoney) so TS matches PG ROUND, not float-then-round.
+  return Math.max(0, multiplyMoney(paymentAmount, netRevenueRatio));
 }
 
 /** Transaction types counted toward posted positive legs for residual math. */
@@ -66,11 +73,11 @@ export function sumPostedPositiveLegs(
     if (!allowed.has(type)) return sum;
     if (type === "tax") {
       const amount = Number(row.amount ?? 0);
-      if (amount > 0) return sum + amount;
+      if (amount > 0) return addMoney(sum, amount);
       return sum;
     }
     const net = Number(row.net ?? 0);
-    if (net > 0) return sum + net;
+    if (net > 0) return addMoney(sum, net);
     return sum;
   }, 0);
 }
@@ -114,17 +121,17 @@ export function sumPendingBookingLevelCatchUpNet(input: {
     !existing.has("platform_fee") &&
     !existing.has("service_fee")
   ) {
-    sum += platformFee;
+    sum = addMoney(sum, platformFee);
   }
   if (tipAmount > 0 && !existing.has("tip")) {
-    sum += tipAmount;
+    sum = addMoney(sum, tipAmount);
   }
   if (travelFee > 0 && !existing.has("travel_fee")) {
-    sum += travelFee;
+    sum = addMoney(sum, travelFee);
   }
   const taxAmount = Math.max(0, Number(input.taxAmount ?? 0));
   if (taxAmount > 0 && !existing.has("tax")) {
-    sum += taxAmount;
+    sum = addMoney(sum, taxAmount);
   }
-  return Math.round(sum * 100) / 100;
+  return sum;
 }

@@ -3,10 +3,13 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
+import { addMoney } from "@beautonomi/utils";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
@@ -32,6 +35,9 @@ export async function POST(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
@@ -150,7 +156,7 @@ export async function POST(
     const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
       ? (booking as any).additional_charges
           .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+          .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
       : 0;
     const pendingWalletGift = await sumPendingWalletGiftBookingPayments(supabaseAdmin, bookingId);
     const baseOutstanding = computeBookingOutstandingDisplay({
@@ -275,22 +281,16 @@ export async function POST(
     }
 
     // Log the action for debugging
-    console.log(`Payment link sent via OneSignal`, {
-      bookingId,
-      bookingRef,
-      customerEmail,
-      customerPhone,
-      paymentLink,
-      amount: booking.total_amount,
-    });
-
-    return successResponse({ 
+    return successResponse({
       message: `Payment link sent successfully via ${delivery_method}`,
       payment_link: paymentLink,
-      sent_to: {
-        email: (delivery_method === 'email' || delivery_method === 'both') ? customerEmail : null,
-        phone: (delivery_method === 'sms' || delivery_method === 'both') ? customerPhone : null,
-      }
+      sent_to: redactBookingCustomerContact(
+        {
+          email: delivery_method === "email" || delivery_method === "both" ? customerEmail : null,
+          phone: delivery_method === "sms" || delivery_method === "both" ? customerPhone : null,
+        },
+        canViewClients,
+      ),
     });
   } catch (error) {
     return handleApiError(error, "Failed to send payment link");

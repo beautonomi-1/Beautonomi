@@ -1,6 +1,7 @@
 /**
  * Payout earnings (ledger): provider_earnings in the settlement window — not bank payouts.
  */
+import { subtractMoney } from "@beautonomi/utils";
 import { useCallback } from "react";
 import { View, Text } from "react-native";
 import { useTranslation } from "@beautonomi/i18n";
@@ -70,7 +71,7 @@ export function PayoutsReportView({ data }: { data: unknown }) {
   const booked =
     Number(data.totalBookedAmount ?? data.totalGrossAmount ?? 0);
   const bookedNet =
-    Number(data.totalBookedNetOfRefunds ?? Math.max(0, booked - Number(data.totalRefunded ?? 0)));
+    Number(data.totalBookedNetOfRefunds ?? Math.max(0, subtractMoney(booked, Number(data.totalRefunded ?? 0))));
   const feePct = Number(data.platformFeeRate ?? 0);
 
   const basisEntries = data.basis

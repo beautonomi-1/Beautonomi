@@ -23,6 +23,7 @@ import {
   yocoPaymentMatchesLocation,
 } from "@/lib/reports/card-machine-reconciliation-utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { LAST_RESORT_CURRENCY, sumMoney } from "@beautonomi/utils";
 
 const ID_CHUNK = 150;
 const PAGE = 1000;
@@ -242,8 +243,10 @@ export async function GET(request: NextRequest) {
         since: row.awaiting_machine_since ?? row.created_at,
       };
     });
-    const awaitingRefundTotal =
-      Math.round(awaitingRefunds.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+    const awaitingRefundTotal = sumMoney(
+      LAST_RESORT_CURRENCY,
+      ...awaitingRefunds.map((r) => r.amount),
+    );
 
     const yocoPending = yocoExceptionsAll.length;
     const paycloudMismatch = paycloudExceptionsAll.length;

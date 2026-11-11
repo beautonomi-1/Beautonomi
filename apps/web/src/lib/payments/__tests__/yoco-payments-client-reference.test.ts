@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { fromMinorUnits } from "@beautonomi/utils";
 
 /**
  * Documents stable client_reference precedence for Yoco Web POS idempotency
@@ -57,5 +60,17 @@ describe("Yoco client_reference precedence", () => {
         fallbackUuid: "u",
       }),
     ).toBe("g-1");
+  });
+});
+
+describe("Yoco create-payment amount_cents (F2-36)", () => {
+  it("converts integer cents with fromMinorUnits, not /100", () => {
+    expect(fromMinorUnits(11500, "ZAR")).toBe(115);
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/provider/yoco/payments/route.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/fromMinorUnits\(validationResult\.data\.amount_cents/);
+    expect(src).not.toMatch(/amount_cents \/ 100/);
   });
 });

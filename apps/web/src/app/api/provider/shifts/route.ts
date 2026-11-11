@@ -11,6 +11,10 @@ import {
 } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { resolveLocationHoursDay } from "@/lib/availability/location-hours-fallback";
+import {
+  canActOnStaffTimeRecords,
+  STAFF_TIME_RECORD_FORBIDDEN_MESSAGE,
+} from "@/lib/auth/staff-time-record-access";
 import { z } from "zod";
 
 const createShiftSchema = z.object({
@@ -334,13 +338,18 @@ export async function POST(request: NextRequest) {
     // Verify staff belongs to provider
     const { data: staff } = await supabase
       .from("provider_staff")
-      .select("id")
+      .select("id, user_id")
       .eq("id", staff_id)
       .eq("provider_id", providerId)
       .single();
 
     if (!staff) {
       return notFoundResponse("Staff member not found");
+    }
+
+    // F3-10: only own shifts unless manage_team.
+    if (!(await canActOnStaffTimeRecords(user, staff as { user_id?: string | null }, request))) {
+      return errorResponse(STAFF_TIME_RECORD_FORBIDDEN_MESSAGE, "FORBIDDEN", 403);
     }
 
     // Create shift

@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -101,8 +102,8 @@ export async function GET(request: NextRequest) {
 
     const sorted = commissionData.sort((a, b) => b.totalCommission - a.totalCommission);
 
-    const totalCommission = sorted.reduce((sum, s) => sum + s.totalCommission, 0);
-    const totalRevenue = sorted.reduce((sum, s) => sum + s.totalRevenue, 0);
+    const totalCommission = sorted.reduce((sum, s) => addMoney(sum, s.totalCommission), 0);
+    const totalRevenue = sorted.reduce((sum, s) => addMoney(sum, s.totalRevenue), 0);
     const averageCommissionRate = sorted.length > 0
       ? sorted.reduce((sum, s) => sum + s.commissionRate, 0) / sorted.length
       : 0;

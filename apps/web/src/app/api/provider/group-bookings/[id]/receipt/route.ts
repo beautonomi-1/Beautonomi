@@ -8,6 +8,7 @@ import {
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -16,7 +17,7 @@ import {
   groupPackageTotal,
   groupProductLineTotal,
 } from "@/lib/bookings/group-booking-package-pricing";
-import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { subtractMoney, addMoney, computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 
 type ParticipantRow = {
@@ -141,6 +142,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         return forbiddenResponse("You do not have permission to view group booking receipts");
       }
     }
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const { data: group, error } = await admin
       .from("group_bookings")
@@ -253,11 +257,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const childRows = [...childById.values()];
-    const participantTotal = participants.reduce((sum, p) => sum + Math.max(0, num(p.price)), 0);
+    const participantTotal = participants.reduce((sum, p) => addMoney(sum, Math.max(0, num(p.price))), 0);
     const products = Array.isArray((group as any).products)
       ? ((group as any).products as any[])
       : [];
-    const productTotal = products.reduce((sum, p) => sum + groupProductLineTotal(p), 0);
+    const productTotal = products.reduce((sum, p) => addMoney(sum, groupProductLineTotal(p)), 0);
     const travelFee =
       (group as any).location_type === "at_home" ? Math.max(0, num((group as any).travel_fee)) : 0;
     const pkg = Array.isArray((group as any).service_packages)
@@ -275,23 +279,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ? Math.max(0, num((group as any).total_price))
         : groupComputedTotal;
 
-    const childTotalAmount = childRows.reduce((sum, b) => sum + num(b.total_amount), 0);
-    const taxAmount = childRows.reduce((sum, b) => sum + num(b.tax_amount), 0);
+    const childTotalAmount = childRows.reduce((sum, b) => addMoney(sum, num(b.total_amount)), 0);
+    const taxAmount = childRows.reduce((sum, b) => addMoney(sum, num(b.tax_amount)), 0);
     const platformFeeAmount = childRows.reduce(
-      (sum, b) => sum + num(b.platform_fee_amount ?? b.service_fee_amount),
+      (sum, b) => addMoney(sum, num(b.platform_fee_amount ?? b.service_fee_amount)),
       0
     );
-    const childDiscountAmount = childRows.reduce((sum, b) => sum + num(b.discount_amount), 0);
+    const childDiscountAmount = childRows.reduce((sum, b) => addMoney(sum, num(b.discount_amount)), 0);
     const amountPaid = childRows.reduce((sum, b) => {
       const paidViaRows = (b.booking_payments || [])
         .filter((p) => isPaidBookingPaymentStatus(p.status))
-        .reduce((s, p) => s + num(p.amount), 0);
-      const legacyWalletGift = Math.max(0, num(b.wallet_amount) + num(b.gift_card_amount));
-      return sum + Math.max(paidViaRows, legacyWalletGift);
+        .reduce((s, p) => addMoney(s, num(p.amount)), 0);
+      const legacyWalletGift = Math.max(0, addMoney(num(b.wallet_amount), num(b.gift_card_amount)));
+      return addMoney(sum, Math.max(paidViaRows, legacyWalletGift));
     }, 0);
-    const totalRefunded = childRows.reduce((sum, b) => sum + num(b.total_refunded), 0);
+    const totalRefunded = childRows.reduce((sum, b) => addMoney(sum, num(b.total_refunded)), 0);
     const baseTotal = childRows.length > 0 ? Math.max(childTotalAmount, groupTotal) : groupTotal;
-    const netCollected = Math.max(0, amountPaid - totalRefunded);
+    const netCollected = Math.max(0, subtractMoney(amountPaid, totalRefunded));
     /**
      * §Group-booking-audit 2026-05: an empty/estimate-only group has no
      * invoice yet — we still want callers to see what the projected total
@@ -301,7 +305,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
      * real outstanding balance.
      */
     const isEstimateOnly = childRows.length === 0;
-    const balanceDue = isEstimateOnly ? 0 : Math.max(0, baseTotal - netCollected);
+    const balanceDue = isEstimateOnly ? 0 : Math.max(0, subtractMoney(baseTotal, netCollected));
     const estimatedSessionAmount = isEstimateOnly ? Math.max(0, baseTotal) : 0;
     const paymentStatus =
       childRows.length === 0
@@ -376,15 +380,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           ? Math.max(
               (child.booking_payments || [])
                 .filter((payment) => isPaidBookingPaymentStatus(payment.status))
-                .reduce((sum, payment) => sum + num(payment.amount), 0),
-              Math.max(0, num(child.wallet_amount) + num(child.gift_card_amount))
+                .reduce((sum, payment) => addMoney(sum, num(payment.amount)), 0),
+              Math.max(0, addMoney(num(child.wallet_amount), num(child.gift_card_amount)))
             )
           : null,
         refunded: child ? num(child.total_refunded) : null,
       };
     });
 
-    return successResponse({
+    return successResponse(redactBookingCustomerContact({
       receipt_kind: "group_booking_aggregate",
       ref_number: (group as any).ref_number || id,
       group_booking_id: id,
@@ -414,7 +418,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       items: lineItems,
       payments: paymentsAggregate,
       products,
-      subtotal: participantTotal + productTotal,
+      subtotal: addMoney(participantTotal, productTotal),
       participant_services_total: participantTotal,
       products_total: productTotal,
       package_discount_amount: packageDiscount,
@@ -433,7 +437,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       currency,
       notes: (group as any).notes || null,
       receipt_footer: provider.receipt_footer || null,
-    });
+    }, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch group receipt");
   }

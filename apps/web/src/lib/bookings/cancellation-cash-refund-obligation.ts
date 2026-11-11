@@ -8,6 +8,7 @@ import {
   finalizeCashRefund,
   notifyCustomerCashRefundConfirmation,
 } from "@/lib/bookings/cash-refund-confirmation";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { roundCurrency2 } from "@/lib/bookings/refund-processing";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -37,7 +38,7 @@ export function sumNonTerminalInPersonCollected(
   return roundCurrency2(
     payments
       .filter(isNonTerminalInPersonPayment)
-      .reduce((sum, p) => sum + Math.max(0, Number(p.amount ?? 0)), 0),
+      .reduce((sum, p) => addMoney(sum, Math.max(0, Number(p.amount ?? 0))), 0),
   );
 }
 
@@ -47,7 +48,7 @@ export function sumPlatformCollectedFromPayments(
   return roundCurrency2(
     payments
       .filter((p) => isPlatformCollected(p))
-      .reduce((sum, p) => sum + Math.max(0, Number(p.amount ?? 0)), 0),
+      .reduce((sum, p) => addMoney(sum, Math.max(0, Number(p.amount ?? 0))), 0),
   );
 }
 
@@ -71,7 +72,7 @@ export function sumCashRefundRows(
           allowed.has(String(r.status ?? "") as "pending" | "completed") &&
           String(r.refund_method ?? "").toLowerCase() === "cash",
       )
-      .reduce((sum, r) => sum + Math.max(0, Number(r.amount ?? 0)), 0),
+      .reduce((sum, r) => addMoney(sum, Math.max(0, Number(r.amount ?? 0))), 0),
   );
 }
 
@@ -93,9 +94,9 @@ export function sumReservedAgainstCashObligation(rows: CashRefundRow[]): number 
   const substituteClosed = roundCurrency2(
     rows
       .filter(cashRefundClosedByStoreCreditSubstitute)
-      .reduce((sum, r) => sum + Math.max(0, Number(r.amount ?? 0)), 0),
+      .reduce((sum, r) => addMoney(sum, Math.max(0, Number(r.amount ?? 0))), 0),
   );
-  return roundCurrency2(pendingCompleted + substituteClosed);
+  return addMoney(pendingCompleted, substituteClosed);
 }
 
 export function bookingHasDisputedCashRefund(rows: CashRefundRow[]): boolean {
@@ -114,7 +115,7 @@ export function computeNonTerminalCashObligationAmount(
   if (bookingHasDisputedCashRefund(refundRows)) return 0;
   const collected = sumNonTerminalInPersonCollected(payments);
   const reserved = sumReservedAgainstCashObligation(refundRows);
-  return roundCurrency2(Math.max(0, collected - reserved));
+  return Math.max(0, subtractMoney(collected, reserved));
 }
 
 export type EnsureCancellationCashRefundResult = {

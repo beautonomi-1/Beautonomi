@@ -10,6 +10,7 @@ import {
   PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
   paystackTerminalCollectionIntentPayload,
 } from "@/lib/paystack-terminal-api";
+import { roundCurrency } from "@beautonomi/utils";
 
 type CollectTerminal = {
   id?: string;
@@ -70,7 +71,7 @@ export function PaystackTerminalCollectSheet({
       return;
     }
     let cancelled = false;
-    const charge = Number(expectedAmount.toFixed(2));
+    const charge = roundCurrency(expectedAmount);
     if (charge <= 0) {
       setError(pt("noRemainingBalance"));
       return;

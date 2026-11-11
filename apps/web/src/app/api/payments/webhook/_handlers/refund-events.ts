@@ -10,6 +10,7 @@ import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import type { PaystackEvent, SupabaseClient } from "./shared";
 import { resolveBookingPaymentIdForRefund } from "@/lib/bookings/resolve-booking-refund-payment-id";
 import { applyNonBookingRefundFromTransaction } from "@/lib/payments/apply-non-booking-refund-from-transaction";
+import { capGatewayRefundToRemainingBalance } from "@/lib/bookings/cap-gateway-refund-to-remaining-balance";
 
 // ─── Exported Handler ────────────────────────────────────────────────────────
 
@@ -104,16 +105,34 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
       .maybeSingle();
 
     if (!existingBookingRefund) {
-      await (supabase.from("booking_refunds") as any).insert({
-        booking_id: txn.booking_id,
-        payment_id: bookingPaymentId,
-        amount: refundAmount,
-        reason: `Paystack webhook: ${reference}`,
-        refund_method: "original",
-        refund_provider_id: String(refundReference || reference),
-        status: "completed",
-        notes: `Auto-created by refund webhook handler`,
+      // F2-33: never record more against the booking than is still refundable.
+      // The gateway amount is kept on payment_transactions (fact); the capped
+      // amount drives bookings.total_refunded. Over-refunds open an exception.
+      const cap = await capGatewayRefundToRemainingBalance(supabase, {
+        bookingId: txn.booking_id,
+        requestedAmount: refundAmount,
+        psp: "paystack",
+        refundReference: refundRef,
+        currency: String(data?.currency ?? "ZAR"),
       });
+      if (cap.amount > 0) {
+        await (supabase.from("booking_refunds") as any).insert({
+          booking_id: txn.booking_id,
+          payment_id: bookingPaymentId,
+          amount: cap.amount,
+          reason: `Paystack webhook: ${reference}`,
+          refund_method: "original",
+          refund_provider_id: String(refundReference || reference),
+          status: "completed",
+          notes: cap.capped
+            ? `Auto-created by refund webhook handler; gateway amount ${refundAmount.toFixed(2)} capped to remaining balance ${cap.amount.toFixed(2)}`
+            : `Auto-created by refund webhook handler`,
+        });
+      } else {
+        console.warn(
+          `[refund-events] Paystack refund ${refundRef} for booking ${txn.booking_id} not recorded: nothing refundable (gateway ${refundAmount})`,
+        );
+      }
     }
 
     try {

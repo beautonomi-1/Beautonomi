@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
-import { getCurrencyMeta } from "@beautonomi/utils";
 import { getStripeClient } from "@/lib/payments/stripe-server";
 
 type StripeChargeLike = {
@@ -54,11 +53,6 @@ type StripeCheckoutSessionLike = {
   payment_intent?: StripePaymentIntentLike | string | null;
   setup_intent?: StripeSetupIntentLike | string | null;
 };
-
-function stripeMinorToMajor(amountMinor: number | undefined, currency: string): number {
-  const factor = 10 ** getCurrencyMeta(currency).minorUnits;
-  return Math.round((Number(amountMinor || 0) / factor) * 100) / 100;
-}
 
 function feeMinorFromCharge(charge: StripeChargeLike | null | undefined): number {
   if (!charge || typeof charge !== "object") return 0;

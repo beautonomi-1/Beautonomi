@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -136,14 +137,17 @@ export async function GET(request: NextRequest) {
         existing.sold += 1;
         const lineSum =
           ((booking.booking_services as { price?: number | null }[]) || []).reduce(
-            (sum: number, bs: { price?: number | null }) => sum + Number(bs.price || 0),
+            (sum: number, bs: { price?: number | null }) => addMoney(sum, Number(bs.price || 0)),
             0,
           ) || 0;
-        existing.revenue += packageReportBookedValue({
-          catalogPrice: pkg.price as number | null | undefined,
-          catalogDiscountPercent: pkg.discount_percentage as number | null | undefined,
-          bookingServicesLineSum: lineSum,
-        });
+        existing.revenue = addMoney(
+          existing.revenue,
+          packageReportBookedValue({
+            catalogPrice: pkg.price as number | null | undefined,
+            catalogDiscountPercent: pkg.discount_percentage as number | null | undefined,
+            bookingServicesLineSum: lineSum,
+          }),
+        );
         packageMap.set(pkg.id, existing);
       } else {
         (booking.booking_services as Array<{ price?: number | null; offerings?: unknown }> | undefined)?.forEach((bs) => {
@@ -157,7 +161,7 @@ export async function GET(request: NextRequest) {
               revenue: 0,
             };
             existing.sold += 1;
-            existing.revenue += Number(bs.price || (booking.total_amount as number) || 0);
+            existing.revenue = addMoney(existing.revenue, Number(bs.price || (booking.total_amount as number) || 0));
             packageMap.set(pid, existing);
           }
         });
@@ -181,14 +185,17 @@ export async function GET(request: NextRequest) {
       existing.sold += 1;
       const lineSum =
         ((group.booking_participants as { price?: number | null }[]) || []).reduce(
-          (sum: number, p: { price?: number | null }) => sum + Number(p.price || 0),
+          (sum: number, p: { price?: number | null }) => addMoney(sum, Number(p.price || 0)),
           0,
         ) || 0;
-      existing.revenue += packageReportBookedValue({
-        catalogPrice: pkg.price as number | null | undefined,
-        catalogDiscountPercent: pkg.discount_percentage as number | null | undefined,
-        bookingServicesLineSum: lineSum,
-      });
+      existing.revenue = addMoney(
+        existing.revenue,
+        packageReportBookedValue({
+          catalogPrice: pkg.price as number | null | undefined,
+          catalogDiscountPercent: pkg.discount_percentage as number | null | undefined,
+          bookingServicesLineSum: lineSum,
+        }),
+      );
       packageMap.set(pkg.id, existing);
     });
 
@@ -224,7 +231,7 @@ export async function GET(request: NextRequest) {
     });
 
     const total_sold = packagesList.reduce((s, p) => s + p.total_sold, 0);
-    const total_revenue = packagesList.reduce((s, p) => s + p.total_revenue, 0);
+    const total_revenue = packagesList.reduce((s, p) => addMoney(s, p.total_revenue), 0);
 
     const reportBasis =
       period === "all"

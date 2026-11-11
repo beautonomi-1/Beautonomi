@@ -37,7 +37,7 @@ import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequi
 import { useAuth } from "@/providers/AuthProvider";
 import { haptic } from "@/lib/haptics";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { formatMoney, addMoney } from "@beautonomi/utils";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { useOwnedGiftCards } from "@/features/gift-cards/useOwnedGiftCards";
 import { OwnedGiftCardPicker } from "@/features/gift-cards/OwnedGiftCardPicker";
@@ -296,7 +296,7 @@ export default function CustomOfferCheckoutScreen() {
 
   const basePrice = Number(offer?.price ?? 0);
   const travel = Number(offer?.travel_fee ?? 0);
-  const subtotalPreview = basePrice + travel;
+  const subtotalPreview = addMoney(basePrice, travel);
   const quoteTotal = Number(quote?.pricing?.totalAmount ?? subtotalPreview);
   const dueBeforeSplit =
     quote?.deposit?.required && paymentOption === "deposit"

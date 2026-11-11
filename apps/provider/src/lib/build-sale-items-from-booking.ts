@@ -1,3 +1,5 @@
+import { multiplyMoney } from "@beautonomi/utils";
+
 /**
  * Build POS sale line items from provider booking detail (multi-service + products).
  * Mirrors apps/web CalendarClient buildSaleItemsFromAppointment.
@@ -67,8 +69,8 @@ export function buildSaleItemsFromBookingDetail(b: BookingLike): BookingSaleLine
       const name = String(p.product_name ?? p.name ?? "Product");
       const qty = Math.max(1, Number(p.quantity ?? 1));
       const unit = Number(p.unit_price ?? 0);
-      const lineTotal = Number(p.total_price ?? unit * qty);
-      const unitPrice = unit > 0 ? unit : lineTotal / qty;
+      const lineTotal = Number(p.total_price ?? multiplyMoney(unit, qty));
+      const unitPrice = unit > 0 ? unit : multiplyMoney(lineTotal, 1 / qty);
       const pid = p.product_id ?? p.id;
       const pvid = p.product_variant_id;
       items.push({

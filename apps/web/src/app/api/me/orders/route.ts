@@ -41,6 +41,7 @@ import {
   reserveProductOrderGiftCard,
   voidProductOrderGiftCard,
 } from "@/lib/ecommerce/product-order-gift-card";
+import { roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 const createOrderSchema = z.object({
   provider_id: z.string().uuid(),
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    let query = (supabase.from("product_orders") as any)
+    let query = (getSupabaseAdmin().from("product_orders") as any)
       .select(
         `
         *,
@@ -174,7 +175,9 @@ export async function POST(request: NextRequest) {
     const parsed = createOrderSchema.parse(body);
     const idempotencyKey = extractIdempotencyKey(request, body);
     if (idempotencyKey) {
-      const cached = await lookupIdempotentResponse(ME_ORDERS_POST_ENDPOINT, idempotencyKey);
+      const cached = await lookupIdempotentResponse(ME_ORDERS_POST_ENDPOINT, idempotencyKey, {
+        userId: user.id,
+      });
       if (cached) return cached.toResponse();
     }
     const supabase = await getSupabaseServer(request);
@@ -363,6 +366,8 @@ export async function POST(request: NextRequest) {
       platformFee,
       totalAmount,
       items: orderItems,
+      taxInclusive,
+      providerVatNumber,
     } = totalsResult.totals;
 
     // Gift card is applied first (reserved after the order row exists), then wallet,
@@ -401,7 +406,7 @@ export async function POST(request: NextRequest) {
         return errorResponse("This gift card has no balance left.", "GIFT_CARD_INVALID", 400);
       }
     }
-    const amountAfterGift = Math.max(0, Math.round((totalAmount - giftCardAmountPlanned) * 100) / 100);
+    const amountAfterGift = Math.max(0, subtractMoney(totalAmount, giftCardAmountPlanned, orderCurrency));
 
     // Determine wallet amount to apply (debit happens after order is created so we have order id)
     let walletAmountApplied = 0;
@@ -412,11 +417,13 @@ export async function POST(request: NextRequest) {
         .eq("user_id", user.id)
         .maybeSingle();
       const balance = Number((walletRow as any)?.balance ?? 0);
-      if (balance > 0) walletAmountApplied = Math.min(balance, amountAfterGift);
+      if (balance > 0) {
+        walletAmountApplied = Math.min(roundCurrency(balance, orderCurrency), amountAfterGift);
+      }
     }
     const amountAfterWallet = Math.max(
       0,
-      Math.round((amountAfterGift - walletAmountApplied) * 100) / 100,
+      subtractMoney(amountAfterGift, walletAmountApplied, orderCurrency),
     );
     /** Fully settled in-process by wallet and/or gift card (no gateway leg). */
     const paidWithWalletOnly =
@@ -469,19 +476,22 @@ export async function POST(request: NextRequest) {
         delivery_address_id: parsed.delivery_address_id ?? null,
         delivery_instructions: parsed.delivery_instructions ?? null,
         collection_location_id: parsed.collection_location_id ?? null,
-        subtotal: subtotal.toFixed(2),
-        tax_amount: taxAmount.toFixed(2),
-        delivery_fee: deliveryFee.toFixed(2),
+        subtotal: roundCurrency(subtotal, orderCurrency),
+        tax_amount: roundCurrency(taxAmount, orderCurrency),
+        // F2-39: VAT treatment / number snapshot at time of sale (migration 10102).
+        tax_inclusive: taxInclusive,
+        provider_vat_number_snapshot: providerVatNumber,
+        delivery_fee: roundCurrency(deliveryFee, orderCurrency),
         delivery_fee_type: deliveryFeeType,
         delivery_distance_km: deliveryDistanceKm,
-        platform_fee: platformFee.toFixed(2),
-        discount_amount: promotionDiscount.toFixed(2),
+        platform_fee: roundCurrency(platformFee, orderCurrency),
+        discount_amount: roundCurrency(promotionDiscount, orderCurrency),
         promotion_id: promotionId,
         promotion_code: promotionCode,
-        promotion_discount_amount: promotionDiscount.toFixed(2),
-        gift_card_amount: giftCardAmountPlanned.toFixed(2),
-        total_amount: totalAmount.toFixed(2),
-        wallet_amount: walletAmountApplied.toFixed(2),
+        promotion_discount_amount: roundCurrency(promotionDiscount, orderCurrency),
+        gift_card_amount: roundCurrency(giftCardAmountPlanned, orderCurrency),
+        total_amount: roundCurrency(totalAmount, orderCurrency),
+        wallet_amount: roundCurrency(walletAmountApplied, orderCurrency),
         payment_method: paidWithWalletOnly
           ? walletAmountApplied > 0
             ? "wallet"
@@ -490,10 +500,17 @@ export async function POST(request: NextRequest) {
         payment_status: "pending",
         order_source: "online",
       })
-      .select()
+      .select("id, order_number, payment_status, status, total_amount, currency, provider_id, customer_id")
       .single();
 
     if (orderErr) throw orderErr;
+
+    const { data: storedOrder } = await (adminSupabase.from("product_orders") as any)
+      .select("*")
+      .eq("id", order.id)
+      .eq("customer_id", user.id)
+      .maybeSingle();
+    if (storedOrder) Object.assign(order, storedOrder);
 
     // Reserve the gift card against the order (balance is held; captured when paid,
     // voided on every failure path). Uses the caller's session — the RPC checks ownership.
@@ -568,8 +585,8 @@ export async function POST(request: NextRequest) {
       const itemsToInsert = orderItems.map((oi) => ({
         ...oi,
         order_id: order.id,
-        unit_price: oi.unit_price.toFixed(2),
-        total_price: oi.total_price.toFixed(2),
+        unit_price: roundCurrency(oi.unit_price, orderCurrency),
+        total_price: roundCurrency(oi.total_price, orderCurrency),
       }));
 
       const { error: itemsErr } = await (supabase.from("product_order_items") as any).insert(

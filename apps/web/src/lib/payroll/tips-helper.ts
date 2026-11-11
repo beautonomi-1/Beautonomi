@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -41,7 +42,7 @@ export async function getTipsByStaff(
     for (const a of (allocations ?? []) as AllocationRow[]) {
       const amt = Number(a.amount ?? 0);
       if (amt > 0 && a.staff_id) {
-        result.set(a.staff_id, (result.get(a.staff_id) || 0) + amt);
+        result.set(a.staff_id, addMoney(result.get(a.staff_id) || 0, amt));
       }
     }
   }

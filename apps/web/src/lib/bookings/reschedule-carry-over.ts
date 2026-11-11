@@ -7,7 +7,7 @@
  * takings are not moved automatically.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { addMoney, percentOf, subtractMoney } from "@beautonomi/utils";
 import { fetchBookingPaymentsForRefundCap } from "@/lib/bookings/booking-refund-limits";
 import {
   isTerminalMachinePayment,
@@ -85,7 +85,7 @@ export function classifyRescheduleCarryOver(input: {
     };
   }
   const credit = roundCurrency2(
-    Math.max(0, input.collected - Math.max(0, input.reservedGiftAmount)),
+    Math.max(0, subtractMoney(input.collected, Math.max(0, input.reservedGiftAmount))),
   );
   return { ok: true, credit, entitlementId: input.entitlementId ?? null };
 }
@@ -146,13 +146,12 @@ export async function loadRescheduleCarryOver(
     return { ok: false, code: "NOT_FOUND", message: "This booking can no longer be rescheduled." };
   }
   const payments = await fetchBookingPaymentsForRefundCap(admin, bookingId, row.tenant_id ?? null);
-  const inPerson =
-    sumNonTerminalInPersonCollected(payments) +
-    roundCurrency2(
-      payments
-        .filter((p) => isTerminalMachinePayment(p) && (p.status === "completed" || p.status === "partially_refunded"))
-        .reduce((s, p) => s + Math.max(0, Number(p.amount ?? 0)), 0),
-    );
+  const inPerson = addMoney(
+    sumNonTerminalInPersonCollected(payments),
+    payments
+      .filter((p) => isTerminalMachinePayment(p) && (p.status === "completed" || p.status === "partially_refunded"))
+      .reduce((s, p) => addMoney(s, Math.max(0, Number(p.amount ?? 0))), 0),
+  );
   const { data: reservedRows } = await admin
     .from("gift_card_redemptions")
     .select("amount")
@@ -160,7 +159,7 @@ export async function loadRescheduleCarryOver(
     .eq("status", "reserved");
   const reservedGiftAmount = roundCurrency2(
     ((reservedRows ?? []) as Array<{ amount?: number | string | null }>).reduce(
-      (s, r) => s + Math.max(0, Number(r.amount ?? 0)),
+      (s, r) => addMoney(s, Math.max(0, Number(r.amount ?? 0))),
       0,
     ),
   );
@@ -224,7 +223,7 @@ async function sumCompletedCancellationCredits(
   return roundCurrency2(
     ((data ?? []) as Array<{ amount?: number | string | null; reason?: string | null }>)
       .filter((r) => String(r.reason ?? "").startsWith("Cancellation refund"))
-      .reduce((s, r) => s + Math.max(0, Number(r.amount ?? 0)), 0),
+      .reduce((s, r) => addMoney(s, Math.max(0, Number(r.amount ?? 0))), 0),
   );
 }
 
@@ -539,7 +538,7 @@ export async function finalizeRescheduleCarryOver(
       });
       await admin
         .from("bookings")
-        .update({ wallet_amount: roundCurrency2(Number(row.wallet_amount ?? 0) + applied) })
+        .update({ wallet_amount: addMoney(Number(row.wallet_amount ?? 0), applied) })
         .eq("id", row.id);
     }
 

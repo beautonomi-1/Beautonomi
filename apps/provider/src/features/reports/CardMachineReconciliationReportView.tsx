@@ -9,6 +9,7 @@ import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { format } from "date-fns";
+import { LAST_RESORT_CURRENCY, fromMinorUnits } from "@beautonomi/utils";
 
 function isPayload(data: unknown): data is {
   yoco: Array<Record<string, unknown>>;
@@ -88,7 +89,7 @@ export function CardMachineReconciliationReportView({ data }: { data: unknown })
           {data.yoco.map((row) => (
             <Row
               key={String(row.id)}
-              title={formatCurrency(Number(row.amount ?? 0) / 100)}
+              title={formatCurrency(fromMinorUnits(Number(row.amount ?? 0), LAST_RESORT_CURRENCY))}
               subtitle={row.created_at ? format(new Date(String(row.created_at)), "PP p") : "—"}
               trailing={String(row.status ?? "")}
               onPress={

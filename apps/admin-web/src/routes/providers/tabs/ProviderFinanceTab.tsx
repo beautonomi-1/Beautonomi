@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 import { useState } from "react";
 import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -239,7 +240,7 @@ export function ProviderFinanceTab({
                           isMonthly && monthly
                             ? Number(monthly)
                             : yearly
-                              ? Number(yearly) / 12
+                              ? multiplyMoney(Number(yearly), 1 / 12)
                               : monthly
                                 ? Number(monthly)
                                 : 0;

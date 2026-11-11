@@ -16,8 +16,10 @@ import {
   futureBookingsConflictResponse,
 } from "@/lib/provider/find-future-bookings-for-staff";
 import {
+  canViewStaffPay,
   getTeamRosterDetailLevel,
   getProviderStaffIdForUser,
+  redactStaffPayFields,
   redactStaffRowForViewer,
 } from "@/lib/auth/provider-team-roster-access";
 import { z } from "zod";
@@ -93,10 +95,13 @@ async function respondWithStaffDetail(
   if (!detail) {
     return notFoundResponse("Staff member not found");
   }
+  const payVisible =
+    detail.user_id === viewerUserId || (await canViewStaffPay(viewerUserId, request));
+  const detailForViewer = redactStaffPayFields(detail, payVisible);
   const rosterDetailLevel = await getTeamRosterDetailLevel(viewerUserId, request);
   const redacted = redactStaffRowForViewer(
     {
-      ...detail,
+      ...detailForViewer,
       user_id: (detail.user_id as string | null) ?? null,
       email: detail.email as string,
       phone: detail.phone as string | null,
@@ -391,6 +396,21 @@ export async function PATCH(
     }
 
     const newRoleApi = validationResult.data.role;
+
+    // F3-14: a non-owner (even with manage_team) may not change their own
+    // role or job preset — that would let them self-assign the manager preset.
+    if (
+      editingSelf &&
+      !ownerOps &&
+      (newRoleApi !== undefined || validationResult.data.job !== undefined)
+    ) {
+      return errorResponse(
+        "You cannot change your own role. Ask the business owner.",
+        "FORBIDDEN",
+        403,
+      );
+    }
+
     if (newRoleApi === "provider_owner" && existing.role !== "owner") {
       if (!ownerOps) {
         return errorResponse(

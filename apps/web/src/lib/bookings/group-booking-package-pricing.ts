@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { subtractMoney, multiplyMoney, addMoney, computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
 
 export type GroupProductLike = Record<string, unknown>;
@@ -11,7 +11,7 @@ export function groupProductLineTotal(product: GroupProductLike): number {
     Number(
       product.total_price ??
         product.totalPrice ??
-        (Number(product.unit_price ?? product.unitPrice ?? 0) || 0) * qty,
+        multiplyMoney(Number(product.unit_price ?? product.unitPrice ?? 0) || 0, qty),
     ) || 0,
   );
 }
@@ -43,10 +43,9 @@ export function groupPackageTotal(params: {
   travelFee: number;
   packageDiscount: number;
 }) {
-  return (
-    Math.max(0, params.participantTotal - params.packageDiscount) +
-    Math.max(0, params.productTotal) +
-    Math.max(0, params.travelFee)
+  return addMoney(
+    Math.max(0, subtractMoney(params.participantTotal, params.packageDiscount)),
+    addMoney(Math.max(0, params.productTotal), Math.max(0, params.travelFee)),
   );
 }
 

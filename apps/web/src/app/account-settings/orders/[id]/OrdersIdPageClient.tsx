@@ -16,7 +16,7 @@ import {
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
-import { getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold, supportTicketQuery } from "@beautonomi/utils";
+import { getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold, supportTicketQuery, toMinorUnits } from "@beautonomi/utils";
 import { displayedProductOrderAmountStillDue } from "@/lib/orders/product-order-tender";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
@@ -460,7 +460,7 @@ export default function OrderDetailPage() {
         data: { authorization_url: string; reference: string } | null;
       }>("/api/paystack/initialize", {
         email,
-        amount: Math.round(onlineAmountDue * 100),
+        amount: toMinorUnits(onlineAmountDue, sym),
         metadata: {
           product_order_id: order.id,
           order_number: order.order_number,

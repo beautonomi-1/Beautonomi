@@ -18,6 +18,9 @@ import {
   providerTenantMismatchResponse,
 } from "@/lib/tenant/provider-matches-host";
 import type { UserRole } from "@/types/beautonomi";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
+import { redactProviderPaymentSettings } from "@/lib/provider-settings/redact-payment-settings";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { getPaystackTerminalAvailability } from "@/lib/payments/paystack-terminal-availability";
@@ -174,7 +177,20 @@ export async function GET(request: NextRequest) {
       defaultTaxRate,
     };
 
-    return successResponse(result);
+    const ownerOrAdmin =
+      user.role === "superadmin" || (await isProviderOwner(user.id, request));
+    const [canProcessPayments, canEditSettings, canViewReports, canViewSales] = await Promise.all([
+      hasPermission(user.id, "process_payments", undefined, request),
+      hasPermission(user.id, "edit_settings", undefined, request),
+      hasPermission(user.id, "view_reports", undefined, request),
+      hasPermission(user.id, "view_sales", undefined, request),
+    ]);
+    return successResponse(
+      redactProviderPaymentSettings(result, {
+        canCollectCard: ownerOrAdmin || canProcessPayments,
+        canSeeVatNumber: ownerOrAdmin || canEditSettings || canViewReports || canViewSales,
+      }),
+    );
   } catch (error) {
     return handleApiError(error, "Failed to load payment settings");
   }
@@ -195,6 +211,14 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi([...PROVIDER_SETTINGS_ROLES], request);
+    // F3-07: staff members need edit_settings to change payment settings
+    // (owners, onboarding accounts and superadmins pass the role check as before).
+    if (user.role === "provider_staff") {
+      const permissionCheck = await requirePermission("edit_settings", request);
+      if (!permissionCheck.authorized) {
+        return permissionCheck.response!;
+      }
+    }
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const body = await request.json();

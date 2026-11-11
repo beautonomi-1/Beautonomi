@@ -15,6 +15,7 @@
  * Recognition rows are inserted when credits are consumed.
  * (refund/chargeback) posts `provider_marketing_credit_refund`.
  */
+import { subtractMoney } from "@beautonomi/utils";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
@@ -78,7 +79,7 @@ export async function recordMarketingCreditTopupPayment(params: {
   }
 
   const nowIso = new Date().toISOString();
-  const netAmount = amountMajor - feesMajor;
+  const netAmount = subtractMoney(amountMajor, feesMajor);
 
   const { data: existingPaymentTx } = await supabase
     .from("payment_transactions")

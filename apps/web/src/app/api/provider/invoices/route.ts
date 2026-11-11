@@ -19,6 +19,7 @@ import {
 } from "@/lib/invoices/provider-invoices-query";
 import { isNonPayableInvoiceType } from "@/lib/invoices/provider-invoice-status";
 import { buildProviderBillingObligations } from "@/lib/invoices/provider-billing-obligations";
+import { addMoney, computeVat, multiplyMoney } from "@beautonomi/utils";
 
 const invoiceLineItemSchema = z.object({
   id: z.string().uuid().optional(),
@@ -43,11 +44,15 @@ const createInvoiceSchema = z.object({
   line_items: z.array(invoiceLineItemSchema).min(1),
 });
 
-function calculateInvoiceTotals(lineItems: z.infer<typeof invoiceLineItemSchema>[], taxRate: number) {
+function calculateInvoiceTotals(
+  lineItems: z.infer<typeof invoiceLineItemSchema>[],
+  taxRate: number,
+  currency = "ZAR",
+) {
   const normalizedItems = lineItems.map((item) => {
     const quantity = Number(item.quantity || 0);
     const unitPrice = Number(item.unit_price || 0);
-    const totalPrice = Math.round(quantity * unitPrice * 100) / 100;
+    const totalPrice = multiplyMoney(unitPrice, quantity, currency);
     return {
       line_item_type: item.line_item_type || "other",
       description: item.description,
@@ -56,10 +61,17 @@ function calculateInvoiceTotals(lineItems: z.infer<typeof invoiceLineItemSchema>
       total_price: totalPrice,
     };
   });
-  const subtotal = Math.round(normalizedItems.reduce((sum, item) => sum + item.total_price, 0) * 100) / 100;
-  const taxAmount = Math.round(subtotal * (Number(taxRate || 0) / 100) * 100) / 100;
-  const totalAmount = Math.round((subtotal + taxAmount) * 100) / 100;
-  return { normalizedItems, subtotal, taxAmount, totalAmount };
+  const subtotal = normalizedItems.reduce(
+    (sum, item) => addMoney(sum, item.total_price, currency),
+    0,
+  );
+  const { taxAmount, grossAmount } = computeVat({
+    baseAmount: subtotal,
+    ratePercent: Number(taxRate || 0),
+    inclusive: false,
+    currency,
+  });
+  return { normalizedItems, subtotal, taxAmount, totalAmount: grossAmount };
 }
 
 function currentYear() {
@@ -210,6 +222,7 @@ export async function POST(request: NextRequest) {
     const { normalizedItems, subtotal, taxAmount, totalAmount } = calculateInvoiceTotals(
       validated.line_items,
       validated.tax_rate,
+      currency,
     );
     const year = currentYear();
 

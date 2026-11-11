@@ -3,6 +3,8 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { createConversation } from "./_helpers/create-conversation";
 import { getBlockedUserIds } from "@/lib/safety/user-blocks";
 
@@ -28,6 +30,9 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     
@@ -163,7 +168,7 @@ export async function GET(request: NextRequest) {
       if (customer) {
         if (customer.full_name && customer.full_name.trim()) {
           customerName = customer.full_name.trim();
-        } else if (customer.email) {
+        } else if (canViewClients && customer.email) {
           customerName = customer.email;
         }
       }
@@ -193,7 +198,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return successResponse(transformed);
+    return successResponse(redactBookingCustomerContacts(transformed, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch conversations");
   }

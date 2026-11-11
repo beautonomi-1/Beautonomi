@@ -1,3 +1,4 @@
+import { subtractMoney } from "../money";
 export type GrowthKind = "up" | "down" | "flat" | "new";
 
 export type GrowthResult = {
@@ -15,7 +16,7 @@ export function computeGrowthPercent(current: number, previous: number): GrowthR
     if (current > 0) return { kind: "new", percent: null };
     return { kind: "flat", percent: 0 };
   }
-  const pct = ((current - previous) / previous) * 100;
+  const pct = (subtractMoney(current, previous) / previous) * 100;
   if (Math.abs(pct) < 0.05) return { kind: "flat", percent: 0 };
   return { kind: pct > 0 ? "up" : "down", percent: pct };
 }

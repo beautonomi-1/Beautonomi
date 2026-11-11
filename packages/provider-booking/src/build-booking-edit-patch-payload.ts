@@ -1,4 +1,4 @@
-import { calculateBookingTotals, safeNum } from "@beautonomi/utils";
+import { addMoney, calculateBookingTotals, multiplyMoney, safeNum } from "@beautonomi/utils";
 import type {
   BookingEditCatalogService,
   BookingEditPatchPayload,
@@ -14,7 +14,7 @@ function resolveServiceLineFields(
   const svc = catalogServices.find((s) => s.id === sel.serviceId);
   const addonPrice = (sel.addOnIds ?? []).reduce((acc, aoId) => {
     const ao = svc?.add_ons?.find((a) => a.id === aoId);
-    return acc + safeNum(ao?.price);
+    return addMoney(acc, safeNum(ao?.price));
   }, 0);
   const addonMinutes = (sel.addOnIds ?? []).reduce((acc, aoId) => {
     const ao = svc?.add_ons?.find((a) => a.id === aoId);
@@ -43,20 +43,20 @@ export function computeBookingEditLineSubtotal(
 
   for (const sel of selectedServices) {
     const line = resolveServiceLineFields(sel, catalogServices);
-    subtotal += line.price + line.addonPrice;
+    subtotal = addMoney(subtotal, addMoney(line.price, line.addonPrice));
     totalMinutes += line.durationMinutes;
   }
 
   for (const p of selectedProducts) {
     const qty = Math.max(1, Math.floor(safeNum(p.quantity)) || 1);
-    subtotal += safeNum(p.unitPrice) * qty;
+    subtotal = addMoney(subtotal, multiplyMoney(safeNum(p.unitPrice), qty));
   }
 
   return { subtotal, totalMinutes };
 }
 
 export function computeBookingEditTotals(input: BookingEditTotalsInput) {
-  const discountAmount = safeNum(input.manualDiscount) + safeNum(input.preservedDiscountTotal);
+  const discountAmount = addMoney(safeNum(input.manualDiscount), safeNum(input.preservedDiscountTotal));
   const pricing = calculateBookingTotals({
     subtotal: safeNum(input.subtotal),
     discountAmount,
@@ -71,7 +71,7 @@ export function computeBookingEditTotals(input: BookingEditTotalsInput) {
     subtotal: safeNum(input.subtotal),
     discountAmount,
     taxAmount: safeNum(pricing.taxAmount),
-    totalAmount: safeNum(pricing.totalAmount) + safeNum(input.serviceFeeAmount),
+    totalAmount: addMoney(safeNum(pricing.totalAmount), safeNum(input.serviceFeeAmount)),
   };
 }
 
@@ -141,7 +141,7 @@ export function buildBookingEditPatchPayload(args: {
       productId: p.productId,
       quantity: qty,
       unitPrice: unit,
-      totalPrice: unit * qty,
+      totalPrice: multiplyMoney(unit, qty),
       productVariantId: p.productVariantId ?? null,
     };
   });
@@ -272,7 +272,7 @@ export function resolveBookingEditServiceDisplay(
   return {
     title: line.title,
     durationMinutes: line.durationMinutes,
-    price: line.price + line.addonPrice,
+    price: addMoney(line.price, line.addonPrice),
     currency: svc?.currency,
   };
 }

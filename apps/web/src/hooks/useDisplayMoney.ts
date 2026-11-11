@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatMoney, normalizeCurrencyCode } from "@beautonomi/utils";
+import { formatMoney, normalizeCurrencyCode, multiplyMoney } from "@beautonomi/utils";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 
 type DisplayMoneyResult = {
@@ -99,7 +99,7 @@ export function useDisplayMoney(
     [amount, charge, formatLocale],
   );
 
-  const displayAmount = rate != null ? amount * rate : null;
+  const displayAmount = rate != null ? multiplyMoney(amount, rate, display) : null;
   const formattedDisplay =
     displayAmount != null ? formatMoney(displayAmount, display, formatLocale) : null;
 

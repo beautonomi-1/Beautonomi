@@ -4,6 +4,7 @@ import {
   type OnlineTenderOrder,
 } from "@/lib/ecommerce/refund-product-order-online-tender";
 import { voidProductOrderGiftCardIfNeeded } from "@/lib/orders/product-order-lifecycle";
+import { subtractMoney } from "@beautonomi/utils";
 
 export type ProductOrderRefundTenderResult = {
   onlineRefundedAmount: number;
@@ -34,9 +35,10 @@ export async function splitProductOrderRefundTender(
   const isFullRefund = refundAmount + 0.01 >= orderTotal;
   const onlineCap = Math.max(
     0,
-    orderTotal -
-      Math.max(0, Number(order.wallet_amount ?? 0)) -
+    subtractMoney(
+      subtractMoney(orderTotal, Math.max(0, Number(order.wallet_amount ?? 0))),
       Math.max(0, Number(order.gift_card_amount ?? 0)),
+    ),
   );
 
   if (!isFullRefund) {
@@ -77,7 +79,7 @@ export async function splitProductOrderRefundTender(
   if (giftCardRestored > 0) {
     await voidProductOrderGiftCardIfNeeded(admin, order);
   }
-  const afterGift = Math.round((refundAmount - giftCardRestored) * 100) / 100;
+  const afterGift = subtractMoney(refundAmount, giftCardRestored);
 
   const online = await refundProductOrderOnlineTender(admin, order, {
     reason: opts.reason,
@@ -88,7 +90,7 @@ export async function splitProductOrderRefundTender(
     onlineRefundedAmount,
     walletCreditAmount: Math.max(
       0,
-      Math.round((afterGift - onlineRefundedAmount) * 100) / 100,
+      subtractMoney(afterGift, onlineRefundedAmount),
     ),
     giftCardRestored,
     onlineRefundFailed: Boolean(online.attempted && online.error),

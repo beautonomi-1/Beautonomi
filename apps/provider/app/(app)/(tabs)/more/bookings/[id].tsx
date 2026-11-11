@@ -26,7 +26,15 @@ import { invalidateApiCacheForPath } from "@/lib/api-response-cache";
 import { useYocoIntegration } from "@/hooks/useYoco";
 import { CardMachineCollectSheet } from "@/components/payments/CardMachineCollectSheet";
 import { formatPaycloudCollectLabel, inferBookingCollectContext } from "@/lib/paycloud-collect-cta";
-import { manualCardCollectOptionLabel, MANUAL_CARD_METHOD_HELPER, formatMoney } from "@beautonomi/utils";
+import {
+  addMoney,
+  formatMoney,
+  manualCardCollectOptionLabel,
+  MANUAL_CARD_METHOD_HELPER,
+  multiplyMoney,
+  roundCurrency,
+  subtractMoney,
+} from "@beautonomi/utils";
 import {
   usePaycloudCollectAvailability,
   computePaycloudBookingChargeAmount,
@@ -50,6 +58,7 @@ import { formatCurrency } from "@/lib/format";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
+import { lookupProviderClientRating, submitProviderClientRating } from "@/lib/provider-client-rating";
 import { CompleteWithBalanceSheet } from "@/components/bookings/CompleteWithBalanceSheet";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
@@ -1497,6 +1506,7 @@ export default function BookingDetailScreen() {
   const [showCustomerProfile, setShowCustomerProfile] = useState(false);
   const [customerProfile, setCustomerProfile] = useState<CustomerProfileData | null>(null);
   const [loadingCustomerProfile, setLoadingCustomerProfile] = useState(false);
+  const [customerProfileError, setCustomerProfileError] = useState<string | null>(null);
 
   // Post-completion modal (once per booking when opening a completed booking)
   const [showProviderCompletionModal, setShowProviderCompletionModal] = useState(false);
@@ -1712,25 +1722,14 @@ export default function BookingDetailScreen() {
     let cancelled = false;
     setHasProviderClientRating(null);
     setProviderClientRatingValue(null);
-    api
-      .get<{ has_rating?: boolean; rating?: { rating?: number } | null }>(
-        `/api/provider/ratings?booking_id=${encodeURIComponent(bookingIdStr)}`
-      )
-      .then((res) => {
-        if (cancelled) return;
-        const d = res.data;
-        setHasProviderClientRating(!!d?.has_rating);
-        const ratingVal = Number(d?.rating?.rating ?? NaN);
-        setProviderClientRatingValue(
-          Number.isFinite(ratingVal) && ratingVal >= 1 && ratingVal <= 5 ? ratingVal : null
-        );
+    // A failed lookup leaves the status unknown (null) rather than "not rated".
+    lookupProviderClientRating(bookingIdStr)
+      .then((lookup) => {
+        if (cancelled || !lookup) return;
+        setHasProviderClientRating(lookup.exists);
+        setProviderClientRatingValue(lookup.rating);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setHasProviderClientRating(false);
-          setProviderClientRatingValue(null);
-        }
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -1847,17 +1846,17 @@ export default function BookingDetailScreen() {
       const bookingRow = data as BookingDetail | undefined;
       const locId =
         typeof bookingRow?.location_id === "string" && bookingRow.location_id ? bookingRow.location_id : undefined;
-      const res = await api.post<{ id?: string }>("/api/provider/ratings", {
-        booking_id: bookingIdStr,
-        rating: Math.min(5, Math.max(1, Math.floor(Number(rateClientStars)) || 0)),
-        comment: comment || undefined,
-        ...(locId ? { location_id: locId } : {}),
+      const res = await submitProviderClientRating({
+        bookingId: bookingIdStr,
+        rating: rateClientStars,
+        comment,
+        locationId: locId,
       });
-      if (res.error) {
+      if (!res.ok) {
         Alert.alert(bk("errorTitle"), res.error.message || bk("ratingFailed"));
         return;
       }
-      const submittedStars = Math.min(5, Math.max(1, Math.floor(Number(rateClientStars)) || 0));
+      const submittedStars = res.rating;
       setShowRateClientSheet(false);
       setRateClientStars(0);
       setRateClientComment("");
@@ -1885,16 +1884,39 @@ export default function BookingDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setShowCustomerProfile(true);
     setCustomerProfile(null);
+    setCustomerProfileError(null);
     setLoadingCustomerProfile(true);
+    // The booking already carries the customer's name/contact; show that when the
+    // profile request fails so the sheet never looks like there is no client.
+    const fromBooking: CustomerProfileData = {
+      customer: {
+        id: cid,
+        full_name: b?.customers?.full_name ?? null,
+        email: b?.customers?.email ?? null,
+        phone: b?.customers?.phone ?? null,
+        avatar_url: null,
+      },
+      profile: null,
+      bookings: [],
+      reviews: [],
+    };
     try {
-      const res = await api.get<CustomerProfileData>(`/api/provider/customers/${cid}/profile`);
-      if (res.data) setCustomerProfile(res.data);
-    } catch {
-      setCustomerProfile(null);
+      const res = await api.get<CustomerProfileData>(`/api/provider/customers/${cid}/profile`, {
+        timeout: 30_000,
+      });
+      if (res.data?.customer) {
+        setCustomerProfile(res.data);
+      } else {
+        setCustomerProfile(fromBooking);
+        setCustomerProfileError(res.error?.message || bk("couldNotLoadProfile"));
+      }
+    } catch (e: unknown) {
+      setCustomerProfile(fromBooking);
+      setCustomerProfileError(getApiErrorMessage(e, bk("couldNotLoadProfile")));
     } finally {
       setLoadingCustomerProfile(false);
     }
-  }, [data]);
+  }, [data, bk]);
 
   useEffect(() => {
     const fp = typeof focusPayment === "string" ? focusPayment : Array.isArray(focusPayment) ? focusPayment[0] : "";
@@ -1913,7 +1935,7 @@ export default function BookingDetailScreen() {
     () =>
       additionalCharges
         .filter((c) => c.status !== "paid" && c.status !== "rejected")
-        .reduce((sum, c) => sum + Number(c.amount ?? 0), 0),
+        .reduce((sum, c) => addMoney(sum, Number(c.amount ?? 0)), 0),
     [additionalCharges],
   );
 
@@ -1935,11 +1957,11 @@ export default function BookingDetailScreen() {
     const totalRefunded = row.total_refunded ?? 0;
     const walletAmountApplied = Number(row.wallet_amount ?? 0);
     const giftCardAmountApplied = Number(row.gift_card_amount ?? 0);
-    const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+    const effectivePaid = Math.max(0, subtractMoney(totalPaid, totalRefunded));
     const ps = (row.payment_status || "").toLowerCase();
-    const walletGiftCoverage = walletAmountApplied + giftCardAmountApplied;
+    const walletGiftCoverage = addMoney(walletAmountApplied, giftCardAmountApplied);
     const coverageLocal = Math.max(effectivePaid, walletGiftCoverage);
-    const outstandingRawLocal = totalAmount - coverageLocal;
+    const outstandingRawLocal = subtractMoney(totalAmount, coverageLocal);
     const outstanding =
       typeof row.outstanding_balance === "number"
         ? Math.max(0, row.outstanding_balance)
@@ -2109,15 +2131,15 @@ export default function BookingDetailScreen() {
   const totalRefunded = b.total_refunded ?? 0;
   const walletAmountApplied = Number(b.wallet_amount ?? 0);
   const giftCardAmountApplied = Number(b.gift_card_amount ?? 0);
-  const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+  const effectivePaid = Math.max(0, subtractMoney(totalPaid, totalRefunded));
   const ps = (b.payment_status || "").toLowerCase();
   // §Finance-truth 2026-05: see apps/web/src/lib/bookings/display-invariants.ts —
   // post-582 `total_paid` already includes wallet+gift booking_payments rows. Use
   // max(effectivePaid, wallet+gift) to never double-subtract while still covering
   // pre-582 rows that pre-date the synthetic booking_payments backfill.
-  const walletGiftCoverage = walletAmountApplied + giftCardAmountApplied;
+  const walletGiftCoverage = addMoney(walletAmountApplied, giftCardAmountApplied);
   const coverageLocal = Math.max(effectivePaid, walletGiftCoverage);
-  const outstandingRawLocal = totalAmount - coverageLocal;
+  const outstandingRawLocal = subtractMoney(totalAmount, coverageLocal);
   const outstanding =
     typeof b.outstanding_balance === "number"
       ? Math.max(0, b.outstanding_balance)
@@ -2131,8 +2153,8 @@ export default function BookingDetailScreen() {
    * collected first only when no add-on is unpaid; otherwise the charge is the full balance.
    * serviceCovered already includes a reserved wallet or gift because outstanding does.
    */
-  const serviceStillDue = Math.max(0, outstanding - unpaidAdditionalChargesTotal);
-  const serviceCovered = Math.max(0, totalAmount - serviceStillDue);
+  const serviceStillDue = Math.max(0, subtractMoney(outstanding, unpaidAdditionalChargesTotal));
+  const serviceCovered = Math.max(0, subtractMoney(totalAmount, serviceStillDue));
   const paycloudBookingCharge = computePaycloudBookingChargeAmount({
     outstanding,
     depositRequired: b.deposit_required === true && b.payment_option === "deposit",
@@ -2151,7 +2173,7 @@ export default function BookingDetailScreen() {
     unpaidAdditionalCharges: unpaidAdditionalChargesTotal,
     outstanding,
   });
-  const netPaidAfterRefunds = totalPaid - totalRefunded;
+  const netPaidAfterRefunds = subtractMoney(totalPaid, totalRefunded);
   /** Align with POST /api/provider/bookings/[id]/mark-paid — collect cash/Yoco before or during visit. */
   const statusesAllowingPayment = new Set([
     "pending",
@@ -2175,12 +2197,12 @@ export default function BookingDetailScreen() {
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
   const awaitingMachineRefunds =
     (b as { awaiting_machine_refunds?: Array<{ id: string; amount: number }> }).awaiting_machine_refunds ?? [];
-  const awaitingMachineTotal = awaitingMachineRefunds.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const awaitingMachineTotal = awaitingMachineRefunds.reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
   const pendingCashRefunds =
     (b as {
       pending_cash_refunds?: Array<{ id: string; amount: number; reason?: string | null }>;
     }).pending_cash_refunds ?? [];
-  const pendingCashTotal = pendingCashRefunds.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const pendingCashTotal = pendingCashRefunds.reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
 
   /** Show payment lines + receipt actions for paid bookings and for closed bookings that may be $0 (complimentary / settled). */
   const showPaymentAndReceiptCard =
@@ -2220,7 +2242,7 @@ export default function BookingDetailScreen() {
 
   async function openPaycloudCheckout() {
     if (!id) return;
-    const chargeAmount = Number(paycloudBookingCharge.chargeAmount.toFixed(2));
+    const chargeAmount = roundCurrency(paycloudBookingCharge.chargeAmount);
     if (chargeAmount <= 0) {
       Alert.alert(
         bk("nothingToChargeTitle"),
@@ -2272,7 +2294,7 @@ export default function BookingDetailScreen() {
     } catch {
       /* non-fatal; api client still retries on 401 */
     }
-    const chargeAmount = Number(yocoTerminalAmount.toFixed(2));
+    const chargeAmount = roundCurrency(yocoTerminalAmount);
     if (chargeAmount <= 0) {
       Alert.alert(
         bk("nothingToChargeTitle"),
@@ -2313,10 +2335,10 @@ export default function BookingDetailScreen() {
       let items = builtItems;
       let subtotal = typeof b.subtotal === "number" && b.subtotal > 0
         ? b.subtotal
-        : builtItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+        : builtItems.reduce((s, i) => addMoney(s, multiplyMoney(i.unit_price, i.quantity)), 0);
       let taxAmount = typeof b.tax_amount === "number" ? b.tax_amount : 0;
       let discountAmount = typeof b.discount_amount === "number" ? b.discount_amount : 0;
-      const bookingTotal = typeof b.total_amount === "number" ? b.total_amount : subtotal + taxAmount - discountAmount;
+      const bookingTotal = typeof b.total_amount === "number" ? b.total_amount : subtractMoney(addMoney(subtotal, taxAmount), discountAmount);
 
       // If this is a partial/remaining payment, keep sale math aligned to charged amount.
       if (Math.abs(chargeAmount - bookingTotal) > 0.01) {
@@ -2379,7 +2401,7 @@ export default function BookingDetailScreen() {
 
   async function openPaystackTerminalCollection() {
     if (!id) return;
-    const chargeAmount = Number(yocoTerminalAmount.toFixed(2));
+    const chargeAmount = roundCurrency(yocoTerminalAmount);
     if (chargeAmount <= 0) {
       Alert.alert(bk("nothingToChargeTitle"), bk("nothingToCollect"));
       return;
@@ -2465,7 +2487,7 @@ export default function BookingDetailScreen() {
       payment_provider: "yoco",
       reference: result.reference,
       idempotency_key: `yoco:${id}:${result.reference}`,
-      amount: Number(chargeForBooking.toFixed(2)),
+      amount: roundCurrency(chargeForBooking),
       settle_additional_charges: true,
     });
     if (res.error) {
@@ -2891,8 +2913,8 @@ export default function BookingDetailScreen() {
     setMarkingPaid(true);
     const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
       payment_method: markPaidMethod,
-      amount: Number(yocoTerminalAmount.toFixed(2)),
-      idempotency_key: `manual:${id}:${markPaidMethod}:${Number(yocoTerminalAmount.toFixed(2))}:${Number(b.total_paid ?? 0).toFixed(2)}`,
+      amount: roundCurrency(yocoTerminalAmount),
+      idempotency_key: `manual:${id}:${markPaidMethod}:${roundCurrency(yocoTerminalAmount)}:${roundCurrency(Number(b.total_paid ?? 0))}`,
       settle_additional_charges: true,
       ...(confirmRecollect ? { confirm_recollect: true } : {}),
     });
@@ -4775,7 +4797,7 @@ export default function BookingDetailScreen() {
             (b.payment_status ?? "").toLowerCase() === "paid" ? (
               <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>
                 Estimated due to you (paid in, after platform fee): {b.currency ?? getTenantDefaultCurrency()}{" "}
-                {Math.max(0, netPaidAfterRefunds - b.service_fee_amount).toLocaleString()}
+                {Math.max(0, subtractMoney(netPaidAfterRefunds, b.service_fee_amount)).toLocaleString()}
               </Text>
             ) : null}
             {b.deposit_required && b.payment_option === "deposit" && typeof b.deposit_amount === "number" && b.deposit_amount > 0 && (
@@ -4791,7 +4813,7 @@ export default function BookingDetailScreen() {
             {(() => {
               const walletPaid = Number((b as { wallet_amount?: number }).wallet_amount ?? 0);
               const giftPaid = Number((b as { gift_card_amount?: number }).gift_card_amount ?? 0);
-              const otherPaid = Math.max(0, totalPaid - walletPaid - giftPaid);
+              const otherPaid = Math.max(0, subtractMoney(subtractMoney(totalPaid, walletPaid), giftPaid));
               const cur = b.currency ?? getTenantDefaultCurrency();
               if (walletPaid <= 0 && giftPaid <= 0 && totalPaid <= 0) return null;
               return (
@@ -6398,7 +6420,7 @@ export default function BookingDetailScreen() {
             Math.min(
               noShowFeeAmount,
               Number(b.total_amount ?? 0),
-              Math.max(0, Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0)),
+              Math.max(0, subtractMoney(Number(b.total_paid ?? 0), Number(b.total_refunded ?? 0))),
             ) > 0 ? (
               <Text style={{ fontSize: 13, color: "#92400e", backgroundColor: "#fffbeb", borderRadius: 10, padding: 12, marginBottom: 16 }}>
                 A no-show fee of{" "}
@@ -6406,7 +6428,7 @@ export default function BookingDetailScreen() {
                   Math.min(
                     noShowFeeAmount,
                     Number(b.total_amount ?? 0),
-                    Math.max(0, Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0)),
+                    Math.max(0, subtractMoney(Number(b.total_paid ?? 0), Number(b.total_refunded ?? 0))),
                   ),
                 )}{" "}
                 will be retained (capped to the amount paid). Any remainder is refunded to their Beautonomi wallet.
@@ -6519,7 +6541,7 @@ export default function BookingDetailScreen() {
       {/* Customer profile (view from booking) */}
       <BottomSheet
         visible={showCustomerProfile}
-        onClose={() => { setShowCustomerProfile(false); setCustomerProfile(null); }}
+        onClose={() => { setShowCustomerProfile(false); setCustomerProfile(null); setCustomerProfileError(null); }}
         title={bk("customerProfileTitle")}
         snapHeight="half"
       >
@@ -6529,6 +6551,18 @@ export default function BookingDetailScreen() {
           </View>
         ) : customerProfile ? (
           <View style={twStyle("pb-4")}>
+            {customerProfileError ? (
+              <View style={twStyle("mb-4 flex-row items-center rounded-lg border border-amber-200 bg-amber-50 p-3")}>
+                <Text style={twStyle("flex-1 text-sm text-amber-800")}>{customerProfileError}</Text>
+                <TouchableOpacity
+                  onPress={() => void openCustomerProfile()}
+                  style={twStyle("ms-3 rounded-md bg-white px-3 py-1.5 border border-amber-300")}
+                  accessibilityRole="button"
+                >
+                  <Text style={twStyle("text-sm font-semibold text-amber-800")}>{t("common.retry")}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <View style={twStyle("flex-row items-center mb-4")}>
               <Avatar
                 name={customerProfile.customer.full_name ?? "Customer"}
@@ -6617,14 +6651,17 @@ export default function BookingDetailScreen() {
                 </View>
               </View>
             ) : null}
-            <Text style={twStyle("text-xs text-gray-500 mb-2")}>
-              {customerProfile.bookings?.length ?? 0} booking(s) with you
-              {(customerProfile.reviews?.length ?? 0) > 0 ? ` · ${customerProfile.reviews.length} review(s)` : ""}
-            </Text>
+            {customerProfileError ? null : (
+              <Text style={twStyle("text-xs text-gray-500 mb-2")}>
+                {customerProfile.bookings?.length ?? 0} booking(s) with you
+                {(customerProfile.reviews?.length ?? 0) > 0 ? ` · ${customerProfile.reviews.length} review(s)` : ""}
+              </Text>
+            )}
             <TouchableOpacity
               onPress={() => {
                 setShowCustomerProfile(false);
                 setCustomerProfile(null);
+                setCustomerProfileError(null);
                 if (customerId) router.push(`/(app)/(tabs)/clients/${customerId}` as never);
               }}
               style={twStyle("rounded-lg border-2 border-primary bg-primary/5 py-3 items-center")}

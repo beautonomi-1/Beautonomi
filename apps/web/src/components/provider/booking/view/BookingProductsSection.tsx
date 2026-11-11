@@ -1,4 +1,5 @@
 "use client";
+import { multiplyMoney } from "@beautonomi/utils";
 
 import { useTranslation } from "@beautonomi/i18n";
 
@@ -45,7 +46,7 @@ export function BookingProductsSection({ appointment }: BookingProductsSectionPr
           const qty = Number(line.quantity ?? 1);
           const total = Number(
             line.total_price ?? line.totalPrice ??
-              (Number(line.unit_price ?? line.unitPrice ?? 0) * qty),
+              multiplyMoney(Number(line.unit_price ?? line.unitPrice ?? 0), qty),
           );
           return (
             <li key={index} className="flex justify-between gap-2">

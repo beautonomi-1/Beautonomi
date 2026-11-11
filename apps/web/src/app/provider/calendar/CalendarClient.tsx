@@ -25,7 +25,7 @@ import {
 import "@/components/provider-portal/AppointmentDialogMobile";
 import "@/components/provider-portal/AppointmentDetailsModal";
 import { format, startOfWeek, endOfWeek, addDays, parseISO } from "date-fns";
-import { deriveGridHourWindow, formatDateKeyInTimeZone, mergeOperatingHours, type WeeklyHours } from "@beautonomi/utils";
+import { deriveGridHourWindow, formatDateKeyInTimeZone, mergeOperatingHours, multiplyMoney, type WeeklyHours } from "@beautonomi/utils";
 import { dateRangeBoundsUtc, resolveTz, nowInTz } from "@/lib/dates/provider-tz";
 import { useRoutePerformance } from "@/lib/performance/useRoutePerformance";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -502,7 +502,7 @@ function buildSaleItemsFromAppointment(apt: Appointment, fallbacks: { service: s
       const name = String(p.product_name ?? p.name ?? fallbacks.product);
       const qty = Math.max(1, Number(p.quantity ?? 1));
       const unit = Number(p.unit_price ?? 0);
-      const lineTotal = Number(p.total_price ?? unit * qty);
+      const lineTotal = Number(p.total_price ?? multiplyMoney(unit, qty));
       const pid = p.product_id ?? p.id;
       const pvid = (p as { product_variant_id?: string }).product_variant_id;
       items.push({

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { incrementBookingTipAmount } from "@/lib/bookings/increment-booking-tip";
+import { roundCurrency } from "@beautonomi/utils";
 
 /**
  * Record a till tip as its own payment.
@@ -18,7 +19,7 @@ export async function recordCheckoutTipPayment(
     providerPaymentId: string;
   },
 ): Promise<void> {
-  const tip = Math.round(Math.max(0, params.tip) * 100) / 100;
+  const tip = roundCurrency(Math.max(0, params.tip));
   if (tip <= 0) return;
 
   const { error } = await supabase.from("booking_payments").insert({

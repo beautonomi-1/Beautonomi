@@ -9,6 +9,7 @@ import {
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import {
   resolveAgeBand,
+  ageBandForLocks,
   readSafetySettingsStored,
   writeSafetySettingsStored,
   effectiveSafetySettings,
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
       resolveAgeBand(user.id, supabase),
       readSafetySettingsStored(user.id, supabase),
     ]);
-    const effective = await effectiveSafetySettings(age.band, stored, tenantId);
+    const effective = await effectiveSafetySettings(ageBandForLocks(age), stored, tenantId);
     const { settings, locked } = serializeEffective(effective);
 
     return successResponse({
@@ -87,7 +88,8 @@ export async function PATCH(request: NextRequest) {
 
     const age = await resolveAgeBand(user.id, supabase);
     const stored = await readSafetySettingsStored(user.id, supabase);
-    const effectiveBefore = await effectiveSafetySettings(age.band, stored, tenantId);
+    const lockBand = ageBandForLocks(age);
+    const effectiveBefore = await effectiveSafetySettings(lockBand, stored, tenantId);
 
     const patch: SafetySettingsStored = {};
     for (const key of PATCHABLE_KEYS) {
@@ -115,7 +117,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const updatedStored = await writeSafetySettingsStored(user.id, supabase, patch);
-    const effectiveAfter = await effectiveSafetySettings(age.band, updatedStored, tenantId);
+    const effectiveAfter = await effectiveSafetySettings(lockBand, updatedStored, tenantId);
     const { settings, locked } = serializeEffective(effectiveAfter);
 
     return successResponse({

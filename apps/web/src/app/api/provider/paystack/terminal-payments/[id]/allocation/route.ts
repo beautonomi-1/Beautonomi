@@ -1,7 +1,9 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT } from "@/lib/payments/terminal-payment-columns";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { recordPaystackBookingSettlement } from "@/lib/bookings/record-paystack-booking-settlement";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
@@ -98,7 +100,7 @@ export async function POST(
         })
         .eq("id", id)
         .eq("provider_id", providerId)
-        .select()
+        .select(TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT)
         .single();
       if (error) throw error;
       return successResponse(data);
@@ -114,7 +116,7 @@ export async function POST(
         })
         .eq("id", id)
         .eq("provider_id", providerId)
-        .select()
+        .select(TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT)
         .single();
       if (error) throw error;
       return successResponse(data);
@@ -123,7 +125,7 @@ export async function POST(
     const requestedAmount = body.amount ?? Number(payment.paid_amount ?? 0);
     const paidAmount = Number(payment.paid_amount ?? 0);
     const allocatedAmount = Number(payment.allocated_amount ?? 0);
-    if (requestedAmount <= 0 || requestedAmount > paidAmount - allocatedAmount) {
+    if (requestedAmount <= 0 || requestedAmount > subtractMoney(paidAmount, allocatedAmount)) {
       return errorResponse(
         "Allocation amount exceeds the unallocated Paystack Terminal balance.",
         "INVALID_ALLOCATION_AMOUNT",
@@ -296,6 +298,7 @@ export async function POST(
           chargeId: entityId,
           paystackTransactionId: payment.paystack_transaction_id ?? null,
           customerId,
+          commissionMode: "provider_collected",
         });
       } catch (acSettleErr) {
         return errorResponse(
@@ -480,7 +483,7 @@ export async function POST(
       .single();
     if (allocationError) throw allocationError;
 
-    const nextAllocatedAmount = allocatedAmount + requestedAmount;
+    const nextAllocatedAmount = addMoney(allocatedAmount, requestedAmount);
     const fullyAllocated = nextAllocatedAmount >= paidAmount;
     const { data: updatedPayment, error: updateError } = await (admin
       .from("provider_paystack_terminal_payments") as any)
@@ -488,7 +491,7 @@ export async function POST(
         status: fullyAllocated ? "allocated" : "matched",
         allocation_status: fullyAllocated ? "allocated" : "split_allocated",
         allocated_amount: nextAllocatedAmount,
-        remaining_balance: Math.max(0, paidAmount - nextAllocatedAmount),
+        remaining_balance: Math.max(0, subtractMoney(paidAmount, nextAllocatedAmount)),
         provider_assigned_entity_type: entityType,
         provider_assigned_entity_id: entityId,
         provider_assignment_reason: body.reason ?? null,
@@ -501,7 +504,7 @@ export async function POST(
       })
       .eq("id", id)
       .eq("provider_id", providerId)
-      .select()
+      .select(TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT)
       .single();
     if (updateError) throw updateError;
 

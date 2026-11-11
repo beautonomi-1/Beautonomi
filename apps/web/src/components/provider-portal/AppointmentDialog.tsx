@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { toast } from "sonner";
 import { formatApiErrorMessage, isLikelyUuid, subscriptionUpgradeHint } from "@/lib/http/api-error";
@@ -180,7 +181,7 @@ export function AppointmentDialog({
     (s, i) => s + (i.type === "service" ? (i.duration_minutes ?? 0) * i.quantity : 0),
     0
   );
-  const totalPrice = cart.reduce((s, i) => s + i.total, 0);
+  const totalPrice = cart.reduce((s, i) => addMoney(s, i.total), 0);
 
   /* ───────────────────────────────────────────────────── */
   /*  Initialise on open                                   */
@@ -317,7 +318,7 @@ export function AppointmentDialog({
             name: bs.offering_name || bs.service_name || t("web.provider.portal.appointmentDialog.serviceFallback"),
             quantity: bs.quantity || 1,
             unit_price: bs.price || 0,
-            total: (bs.quantity || 1) * (bs.price || 0),
+            total: multiplyMoney(bs.price || 0, bs.quantity || 1),
             service_id: bs.offering_id || bs.service_id,
             duration_minutes: bs.duration_minutes || 30,
           });
@@ -330,7 +331,7 @@ export function AppointmentDialog({
             name: bp.product_name || bp.name || t("web.provider.portal.appointmentDialog.productFallback"),
             quantity: bp.quantity || 1,
             unit_price: bp.unit_price || bp.retail_price || 0,
-            total: (bp.quantity || 1) * (bp.unit_price || bp.retail_price || 0),
+            total: multiplyMoney(bp.unit_price || bp.retail_price || 0, bp.quantity || 1),
             product_id: bp.product_id,
           });
         });
@@ -437,7 +438,7 @@ export function AppointmentDialog({
       setCart((prev) => {
         const next = [...prev];
         next[idx].quantity += 1;
-        next[idx].total = next[idx].quantity * next[idx].unit_price;
+        next[idx].total = multiplyMoney(next[idx].unit_price, next[idx].quantity);
         return next;
       });
     } else {
@@ -472,7 +473,7 @@ export function AppointmentDialog({
       setCart((prev) => {
         const next = [...prev];
         next[idx].quantity += 1;
-        next[idx].total = next[idx].quantity * next[idx].unit_price;
+        next[idx].total = multiplyMoney(next[idx].unit_price, next[idx].quantity);
         return next;
       });
     } else {
@@ -501,7 +502,7 @@ export function AppointmentDialog({
       const next = [...prev];
       next[idx].quantity += delta;
       if (next[idx].quantity <= 0) return next.filter((_, i) => i !== idx);
-      next[idx].total = next[idx].quantity * next[idx].unit_price;
+      next[idx].total = multiplyMoney(next[idx].unit_price, next[idx].quantity);
       return next;
     });
   };

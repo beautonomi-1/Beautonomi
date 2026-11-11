@@ -13,6 +13,7 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { logger } from "@/lib/utils/logger";
 import { sumCompletedStoreCreditRefunds } from "@/lib/admin/booking-refund-context";
 import { syncPaymentTransactionRefundState } from "@/lib/finance/sync-payment-transaction-refund";
+import { percentOf, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export interface RefundResult {
   success: boolean;
@@ -22,7 +23,7 @@ export interface RefundResult {
 }
 
 export function roundCurrency2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return roundCurrency(n);
 }
 
 /**
@@ -61,15 +62,15 @@ export function computeCancellationRefundAmount(
   }
 
   pct = Math.min(100, Math.max(0, pct));
-  let refund = total * (pct / 100);
+  let refund = percentOf(total, pct);
 
   const feeRaw = Number(policy.fee_amount ?? 0);
   if (refund <= 0 && feeRaw > 0) {
     const feeType = policy.fee_type === "percentage" ? "percentage" : "fixed";
     if (feeType === "percentage") {
-      refund = total * (1 - Math.min(100, Math.max(0, feeRaw)) / 100);
+      refund = subtractMoney(total, percentOf(total, Math.min(100, Math.max(0, feeRaw))));
     } else {
-      refund = Math.max(0, total - feeRaw);
+      refund = Math.max(0, subtractMoney(total, feeRaw));
     }
   }
 

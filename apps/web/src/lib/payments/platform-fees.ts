@@ -5,7 +5,7 @@
  * based on the platform settings configured by superadmin.
  */
 
-import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { addMoney, percentOf, subtractMoney } from "@beautonomi/utils";
 
 interface PlatformFeeSettings {
   platform_service_fee_type: "percentage" | "fixed";
@@ -89,7 +89,7 @@ export function calculateTotalWithPlatformFee(
   total: number;
 } {
   const platformFee = calculatePlatformFee(bookingSubtotal, settings);
-  const total = bookingSubtotal + platformFee;
+  const total = addMoney(bookingSubtotal, platformFee);
 
   return {
     subtotal: bookingSubtotal,

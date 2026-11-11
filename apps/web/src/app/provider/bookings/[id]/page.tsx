@@ -84,8 +84,12 @@ import {
   ARRIVAL_PIN_PROVIDER_SUBTEXT,
   ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE,
   getBookingPaymentDisplay,
+  addMoney,
   manualCardCollectOptionLabel,
   MANUAL_CARD_METHOD_HELPER,
+  multiplyMoney,
+  roundCurrency,
+  subtractMoney,
 } from "@beautonomi/utils";
 import CustomerRatingButton from "@/components/reviews/customer-rating-button";
 import { PostCompletionSheet } from "@/components/provider/booking/PostCompletionSheet";
@@ -618,7 +622,7 @@ export default function ProviderBookingDetail() {
     if (!booking || !noShowFeeEnabled) return 0;
     const collected = Math.max(
       0,
-      Math.max(Number(booking.total_paid ?? 0), 0) - Number(booking.total_refunded ?? 0),
+      subtractMoney(Math.max(Number(booking.total_paid ?? 0), 0), Number(booking.total_refunded ?? 0)),
     );
     return Math.min(noShowFeeAmount, Number(booking.total_amount ?? 0), collected);
   }, [booking, noShowFeeEnabled, noShowFeeAmount]);
@@ -630,7 +634,7 @@ export default function ProviderBookingDetail() {
       setConflictError(null);
       const collectedForCancel = Math.max(
         0,
-        Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0),
+        subtractMoney(Number(booking.total_paid ?? 0), Number(booking.total_refunded ?? 0)),
       );
       const offerTerminalRail = (yocoEnabled || paycloudEnabled) && collectedForCancel > 0.01;
       const response = await fetcher.patch<{
@@ -776,7 +780,7 @@ export default function ProviderBookingDetail() {
       unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: booking.payment_status,
       pendingWalletGiftAmount: heldWalletGift(booking),
     });
-    const paymentAmount = Number(outstandingAmt.toFixed(2));
+    const paymentAmount = roundCurrency(outstandingAmt);
     if (paymentAmount <= 0) {
       toast.error(
         outstandingAmt < 0
@@ -800,7 +804,7 @@ export default function ProviderBookingDetail() {
         payment_method: markPaidMethod,
         amount: paymentAmount,
         settle_additional_charges: true,
-        idempotency_key: `manual:${bookingId}:${markPaidMethod}:${paymentAmount}:${Number(tp).toFixed(2)}`,
+        idempotency_key: `manual:${bookingId}:${markPaidMethod}:${paymentAmount}:${roundCurrency(Number(tp))}`,
         ...(confirmRecollect ? { confirm_recollect: true } : {}),
       });
       toast.success(t("web.provider.bookings.detail.toast.markedPaid"));
@@ -999,7 +1003,7 @@ export default function ProviderBookingDetail() {
       unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: b.payment_status,
       pendingWalletGiftAmount: heldWalletGift(b),
     });
-    const chargeAmount = Number(outstandingLocal.toFixed(2));
+    const chargeAmount = roundCurrency(outstandingLocal);
     const isStartedLocal = ["started", "in_progress"].includes(b.status);
     const canMarkPaidLocal = chargeAmount > 0 && (b.status === "completed" || isStartedLocal);
 
@@ -1036,11 +1040,11 @@ export default function ProviderBookingDetail() {
       let subtotal =
         typeof b.subtotal === "number" && b.subtotal > 0
           ? b.subtotal
-          : builtItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+          : builtItems.reduce((s, i) => addMoney(s, multiplyMoney(i.unit_price, i.quantity)), 0);
       let taxAmount = typeof b.tax_amount === "number" ? b.tax_amount : 0;
       let discountAmount = typeof b.discount_amount === "number" ? b.discount_amount : 0;
       const bookingTotal =
-        typeof b.total_amount === "number" ? b.total_amount : subtotal + taxAmount - discountAmount;
+        typeof b.total_amount === "number" ? b.total_amount : subtractMoney(addMoney(subtotal, taxAmount), discountAmount);
 
       if (Math.abs(chargeAmount - bookingTotal) > 0.01) {
         items = [
@@ -1114,7 +1118,7 @@ export default function ProviderBookingDetail() {
     const unpaidChargesTotal = Array.isArray((b as any).additional_charges)
       ? (b as any).additional_charges
           .filter((c: any) => c?.status !== "paid" && c?.status !== "rejected")
-          .reduce((s: number, c: any) => s + Number(c?.amount || 0), 0)
+          .reduce((s: number, c: any) => addMoney(s, Number(c?.amount || 0)), 0)
       : Number((b as any).unpaid_additional_charges || 0);
     const outstanding = computeBookingOutstandingDisplay({
       totalAmount: Number(b.total_amount ?? 0),
@@ -1134,7 +1138,7 @@ export default function ProviderBookingDetail() {
       unpaidAdditionalCharges: unpaidChargesTotal,
       pendingWalletGiftAmount: heldWalletGift(b),
     });
-    const rounded = Number(chargeAmount.toFixed(2));
+    const rounded = roundCurrency(chargeAmount);
     if (rounded <= 0) {
       toast.error(t("web.provider.bookings.detail.toast.noBalanceCollect"));
       return;
@@ -1178,7 +1182,7 @@ export default function ProviderBookingDetail() {
 
     const unpaidCharges = additionalCharges
       .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
-      .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0);
+      .reduce((sum, ac) => addMoney(sum, Number(ac.amount ?? 0)), 0);
     const outstandingAmt = computeBookingOutstandingDisplay({
       totalAmount: Number(b.total_amount ?? 0),
       totalPaid: Number(b.total_paid ?? 0),
@@ -1248,7 +1252,7 @@ export default function ProviderBookingDetail() {
     const unpaidChargesTotal = Array.isArray((b as any).additional_charges)
       ? (b as any).additional_charges
           .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+          .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
       : 0;
     const outstandingLocal = computeBookingOutstandingDisplay({
       totalAmount: totalAmountLocal,
@@ -1260,7 +1264,7 @@ export default function ProviderBookingDetail() {
       paymentStatus: b.payment_status,
       pendingWalletGiftAmount: heldWalletGift(b),
     });
-    const expectedAmount = Number(outstandingLocal.toFixed(2));
+    const expectedAmount = roundCurrency(outstandingLocal);
     if (expectedAmount <= 0) {
       toast.error(t("web.provider.bookings.detail.toast.noBalanceCollect"));
       return;
@@ -1357,7 +1361,7 @@ export default function ProviderBookingDetail() {
           payment_method: "card",
           payment_provider: "yoco",
           reference,
-          amount: Number(chargeForBooking.toFixed(2)),
+          amount: roundCurrency(chargeForBooking),
           settle_additional_charges: true,
         });
       } catch (err) {
@@ -1654,7 +1658,7 @@ export default function ProviderBookingDetail() {
   const unpaidChargesTotal = useMemo(
     () => additionalCharges
       .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
-      .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0),
+      .reduce((sum, ac) => addMoney(sum, Number(ac.amount ?? 0)), 0),
     [additionalCharges],
   );
 
@@ -1717,7 +1721,7 @@ export default function ProviderBookingDetail() {
     paymentOption: (b as unknown as Record<string, unknown>).payment_option as string | null | undefined,
     depositRequired: (b as unknown as Record<string, unknown>).deposit_required as boolean | null | undefined,
   });
-  const netPaidAfterRefunds = totalPaid - totalRefunded;
+  const netPaidAfterRefunds = subtractMoney(totalPaid, totalRefunded);
   const fallbackMaxRefundable = Math.max(0, netPaidAfterRefunds);
   const maxRefundable = refundCaps?.maxRefundable ?? fallbackMaxRefundable;
   const canMarkPaid =
@@ -1736,11 +1740,11 @@ export default function ProviderBookingDetail() {
   const awaitingMachineRefunds =
     (b as unknown as { awaiting_machine_refunds?: Array<{ id: string; amount: number }> })
       .awaiting_machine_refunds ?? [];
-  const awaitingMachineTotal = awaitingMachineRefunds.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const awaitingMachineTotal = awaitingMachineRefunds.reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
   const pendingCashRefunds =
     (b as unknown as { pending_cash_refunds?: Array<{ id: string; amount: number }> })
       .pending_cash_refunds ?? [];
-  const pendingCashTotal = pendingCashRefunds.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const pendingCashTotal = pendingCashRefunds.reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
   /** Matches provider app + POST /send-payment-link (API rejects if already paid; needs email/SMS contact) */
   const canSendPaymentLink =
     canProcessPayments &&
@@ -3379,7 +3383,7 @@ export default function ProviderBookingDetail() {
                 {t("web.provider.bookings.detail.dialogs.cancelBody")}
               </p>
               {(yocoEnabled || paycloudEnabled) &&
-              Number(booking?.total_paid ?? 0) - Number(booking?.total_refunded ?? 0) > 0.01 ? (
+              subtractMoney(Number(booking?.total_paid ?? 0), Number(booking?.total_refunded ?? 0)) > 0.01 ? (
                 <div>
                   <label className="text-sm font-medium mb-1 block">
                     {t("web.provider.bookings.detail.dialogs.cancelRefundTo")}

@@ -7,6 +7,7 @@ import {
 import { buildPayRunItem, type PayRunItemDraft } from "./gross-pay-assembler";
 import { prorateMonthlySalary } from "./salary-proration";
 import type { StaffEarningsSummary } from "./staff-earnings-from-lines";
+import { addMoney, roundCurrency, multiplyMoney } from "@beautonomi/utils";
 
 export type StaffCommissionCalc = {
   totalCommission: number;
@@ -42,10 +43,6 @@ export type AssembledStaffGross = PayRunItemDraft & {
   carryForwardIn: number;
 };
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
 function hasLedgerActivity(summary: StaffEarningsSummary | null): boolean {
   if (!summary) return false;
   return (
@@ -72,9 +69,9 @@ export function assembleStaffPayRunGross(input: AssembleStaffPayRunGrossInput): 
     : input.productCalc.serviceCommission;
   const productCommission = input.productCalc.productCommission;
   let commissionAmount =
-    serviceCommission + productCommission + commissionAdjustments;
+    addMoney(addMoney(serviceCommission, productCommission), commissionAdjustments);
 
-  const commissionClawback = round2(
+  const commissionClawback = roundCurrency(
     commissionAdjustments < 0 ? Math.abs(commissionAdjustments) : 0,
   );
 
@@ -103,7 +100,7 @@ export function assembleStaffPayRunGross(input: AssembleStaffPayRunGrossInput): 
           })
         : 0;
 
-  let hourlyAmount = input.hoursWorked * hourlyRate;
+  let hourlyAmount = multiplyMoney(hourlyRate, input.hoursWorked);
   let salaryAmount = proratedSalary;
 
   if (plan) {
@@ -124,18 +121,18 @@ export function assembleStaffPayRunGross(input: AssembleStaffPayRunGrossInput): 
       hourlyAmount = 0;
       salaryAmount = 0;
       for (const line of compLines) {
-        if (line.code === "hourly") hourlyAmount += line.amount;
-        else if (line.code === "salary" || line.code === "salary_guarantee") salaryAmount += line.amount;
-        else commissionAmount += line.amount;
+        if (line.code === "hourly") hourlyAmount = addMoney(hourlyAmount, line.amount);
+        else if (line.code === "salary" || line.code === "salary_guarantee") salaryAmount = addMoney(salaryAmount, line.amount);
+        else commissionAmount = addMoney(commissionAmount, line.amount);
       }
-      commissionAmount += commissionAdjustments;
+      commissionAmount = addMoney(commissionAmount, commissionAdjustments);
     } else if (
       plan.payModel !== "hourly" &&
       plan.payModel !== "salary" &&
       plan.payModel !== "hourly_plus_commission" &&
       plan.payModel !== "base_plus_commission"
     ) {
-      commissionAmount = Math.max(0, fromPlan + commissionAdjustments);
+      commissionAmount = Math.max(0, addMoney(fromPlan, commissionAdjustments));
       hourlyAmount = 0;
       salaryAmount = 0;
     }
@@ -149,7 +146,7 @@ export function assembleStaffPayRunGross(input: AssembleStaffPayRunGrossInput): 
     commissionAmount = 0;
   }
 
-  const tipsFromLines = Math.max(0, (input.linesSummary?.tips ?? 0) + tipAdjustments);
+  const tipsFromLines = Math.max(0, addMoney(input.linesSummary?.tips ?? 0, tipAdjustments));
   const tipsAmount = input.tipsEnabled
     ? (input.linesSummary?.tips ?? 0) !== 0 || tipAdjustments !== 0
       ? tipsFromLines
@@ -157,16 +154,16 @@ export function assembleStaffPayRunGross(input: AssembleStaffPayRunGrossInput): 
     : 0;
 
   const carryForwardBalance = Number(input.carryForwardBalance) || 0;
-  const carryForwardIn = carryForwardBalance < 0 ? round2(Math.abs(carryForwardBalance)) : 0;
+  const carryForwardIn = carryForwardBalance < 0 ? roundCurrency(Math.abs(carryForwardBalance)) : 0;
 
   const draft = buildPayRunItem(
     input.staffId,
     input.staffName,
     {
-      commissionAmount: round2(commissionAmount),
-      hourlyAmount: round2(hourlyAmount),
-      salaryAmount: round2(salaryAmount),
-      tipsAmount: round2(tipsAmount),
+      commissionAmount: roundCurrency(commissionAmount),
+      hourlyAmount: roundCurrency(hourlyAmount),
+      salaryAmount: roundCurrency(salaryAmount),
+      tipsAmount: roundCurrency(tipsAmount),
     },
     { carryForwardBalance },
   );

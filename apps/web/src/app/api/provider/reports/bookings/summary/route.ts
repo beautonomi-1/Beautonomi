@@ -1,3 +1,4 @@
+import { multiplyMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
     const bookingsSampleTruncated = totalBookings > sampleBookings;
     const bookingsWithLedgerRevenue = [...revenueByBooking.values()].filter((v) => v > 0).length;
     const averageBookingValue =
-      bookingsWithLedgerRevenue > 0 ? totalRevenue / bookingsWithLedgerRevenue : 0;
+      bookingsWithLedgerRevenue > 0 ? multiplyMoney(totalRevenue, 1 / bookingsWithLedgerRevenue) : 0;
 
     // Group by status
     const statusCounts: Record<string, number> = {};
@@ -115,11 +116,11 @@ export async function GET(request: NextRequest) {
       const status = booking.status || "unknown";
       statusCounts[status] = (statusCounts[status] || 0) + 1;
       const bookingRevenue = revenueByBooking.get(booking.id) || 0;
-      statusRevenue[status] = (statusRevenue[status] || 0) + bookingRevenue;
+      statusRevenue[status] = addMoney(statusRevenue[status] || 0, bookingRevenue);
 
       const source = normalizeBookingChannel((booking as { booking_source?: string | null }).booking_source);
       sourceCounts[source] = (sourceCounts[source] || 0) + 1;
-      sourceRevenue[source] = (sourceRevenue[source] || 0) + bookingRevenue;
+      sourceRevenue[source] = addMoney(sourceRevenue[source] || 0, bookingRevenue);
     });
 
     // Group by day (use finance_transactions revenue)
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
     // Add revenue from finance_transactions
     revenueByDate.forEach((revenue, date) => {
       const existing = bookingsByDay.get(date) || { count: 0, revenue: 0 };
-      existing.revenue += revenue;
+      existing.revenue = addMoney(existing.revenue, revenue);
       bookingsByDay.set(date, existing);
     });
 
@@ -149,7 +150,7 @@ export async function GET(request: NextRequest) {
       type ServicePriceRow = { price?: number };
       type BookingServiceRow = { price?: number; offerings?: { title?: string } | Array<{ title?: string }> };
       const totalServicePrice = booking.booking_services.reduce(
-        (sum: number, s: ServicePriceRow) => sum + Number(s.price ?? 0),
+        (sum: number, s: ServicePriceRow) => addMoney(sum, Number(s.price ?? 0)),
         0
       );
       booking.booking_services.forEach((bs: BookingServiceRow) => {
@@ -164,7 +165,7 @@ export async function GET(request: NextRequest) {
         const serviceProportion = totalServicePrice > 0
           ? Number(bs.price || 0) / totalServicePrice
           : 1 / booking.booking_services.length;
-        existing.revenue += bookingRevenue * serviceProportion;
+        existing.revenue = addMoney(existing.revenue, multiplyMoney(bookingRevenue, serviceProportion));
         serviceMap.set(serviceName, existing);
       });
     });

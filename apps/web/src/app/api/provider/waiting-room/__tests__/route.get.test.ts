@@ -6,6 +6,14 @@ vi.mock("@/lib/auth/requirePermission", () => ({
   requirePermission: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/permissions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/permissions")>();
+  return {
+    ...actual,
+    hasPermission: vi.fn(async () => true),
+  };
+});
+
 vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: vi.fn(),
 }));

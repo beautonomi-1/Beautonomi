@@ -30,7 +30,7 @@ import {
 } from "@/lib/payments/providerPaystackReturn";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { fromMinorUnits, getDefaultMoneyLocale, subtractMoney } from "@beautonomi/utils";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -46,7 +46,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/api-error";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { shouldUseAppleIap } from "@/lib/iap/platform";
 import {
@@ -233,9 +233,9 @@ type TimePack = {
   apple_product_id?: string | null;
 };
 
-function adPackAmountMajor(pack: { price_zar: number; price_minor?: number | null }): number {
+function adPackAmountMajor(pack: { price_zar: number; price_minor?: number | null; currency?: string | null }): number {
   if (pack.price_minor != null && Number.isFinite(Number(pack.price_minor))) {
-    return Number(pack.price_minor) / 100;
+    return fromMinorUnits(Number(pack.price_minor), pack.currency || "ZAR");
   }
   return Number(pack.price_zar);
 }
@@ -490,7 +490,7 @@ function remainingLine(
   if (budget > 0 && Number(c.spent ?? 0) >= budget) {
     return tr("budgetFullyUsed");
   }
-  return tr("budgetRemaining", { amount: formatMoney(Math.max(0, budget - Number(c.spent || 0)), currency) });
+  return tr("budgetRemaining", { amount: formatMoney(Math.max(0, subtractMoney(budget, Number(c.spent || 0))), currency) });
 }
 
 export default function AdsSettingsScreen() {
@@ -616,7 +616,16 @@ export default function AdsSettingsScreen() {
       ]);
       const anyError = campRes.error || perfRes.error || packsRes.error;
       if (anyError) {
-        Alert.alert(ads("errorTitle"), ads("loadPartialError"));
+        const forbidden =
+          getApiErrorCode(campRes.error) === "FORBIDDEN" ||
+          getApiErrorCode(perfRes.error) === "FORBIDDEN" ||
+          getApiErrorCode(packsRes.error) === "FORBIDDEN";
+        Alert.alert(
+          ads("errorTitle"),
+          forbidden
+            ? getApiErrorMessage(anyError, ads("loadPartialError"))
+            : ads("loadPartialError"),
+        );
       }
       setCampaigns(Array.isArray(campRes.data) ? campRes.data : []);
       setPerformance(perfRes.data?.summary ?? null);

@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney } from "@beautonomi/utils";
 
 import { LEDGER_FULL_PROVIDER_NET_TYPES, MAX_FINANCE_TRANSACTIONS } from "./constants";
 import { fetchAllLedgerPages } from "./fetch-all-ledger-pages";
@@ -79,7 +80,7 @@ export async function getProviderRevenue(
 
   // Calculate total revenue
   const totalRevenue = validTransactions.reduce(
-    (sum: number, t: any) => sum + Number(t.net || t.amount || 0),
+    (sum: number, t: any) => addMoney(sum, Number(t.net || t.amount || 0)),
     0
   );
 
@@ -91,13 +92,13 @@ export async function getProviderRevenue(
       const current = revenueByBooking.get(t.booking_id) || 0;
       revenueByBooking.set(
         t.booking_id,
-        current + Number(t.net || t.amount || 0)
+        addMoney(current, Number(t.net || t.amount || 0))
       );
     } else if (t.product_order_id) {
       const current = revenueByProductOrder.get(t.product_order_id) || 0;
       revenueByProductOrder.set(
         t.product_order_id,
-        current + Number(t.net || t.amount || 0)
+        addMoney(current, Number(t.net || t.amount || 0))
       );
     }
   });
@@ -107,7 +108,7 @@ export async function getProviderRevenue(
   validTransactions.forEach((t: any) => {
     const date = reportDateKey(new Date(t.created_at), options?.timezone ?? "Africa/Johannesburg");
     const current = revenueByDate.get(date) || 0;
-    revenueByDate.set(date, current + Number(t.net || t.amount || 0));
+    revenueByDate.set(date, addMoney(current, Number(t.net || t.amount || 0)));
   });
 
   /** Latest ledger timestamp per booking/order in this query window (for settlement-date UX). */

@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useMemo, useState } from "react";
 import { BarChart3 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router";
@@ -796,7 +797,7 @@ function YocoReport({ data }: { data: Record<string, unknown> }) {
     ? (data.summary as Record<string, unknown>)
     : null) as { total?: number; with_booking?: number; synced?: number; not_synced?: number } | null;
 
-  const totalAmount = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const totalAmount = rows.reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
   const currency =
     rows.length > 0 && typeof rows[0].currency === "string" ? String(rows[0].currency) : "ZAR";
 

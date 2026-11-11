@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 /**
  * Import Apple Financial Report rows into apple_settlements + apple_settlement_lines
  * and enqueue reconciliation_exceptions when ledger proceeds diverge.
@@ -122,7 +123,7 @@ function parseMoney(value: string | undefined): number {
   if (!value) return 0;
   const normalized = value.replace(/[^\d.-]/g, "");
   const n = Number(normalized);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+  return Number.isFinite(n) ? roundCurrency(n) : 0;
 }
 
 function parseQuantity(value: string | undefined): number {
@@ -209,7 +210,7 @@ export function parseAppleFinancialReport(reportText: string): ParseAppleFinanci
     const proceeds =
       extendedPartnerShare !== 0
         ? extendedPartnerShare
-        : Math.round(partnerShare * quantity * 100) / 100;
+        : multiplyMoney(partnerShare, quantity);
 
     if (proceeds === 0 && customerPrice === 0) continue;
 
@@ -257,7 +258,7 @@ export function appleLedgerRowProceeds(row: {
   const fees = Number(row.fees ?? 0);
   const net = Number(row.net ?? 0);
   const proceeds =
-    net !== 0 ? net : Math.max(0, amount - (Number.isFinite(fees) ? fees : 0));
+    net !== 0 ? net : Math.max(0, subtractMoney(amount, Number.isFinite(fees) ? fees : 0));
   return Number.isFinite(proceeds) ? proceeds : 0;
 }
 
@@ -290,13 +291,13 @@ async function resolveExpectedProceeds(params: {
     if (provider !== "apple") continue;
     const proceeds = appleLedgerRowProceeds(row);
     if (proceeds <= 0) continue;
-    total += proceeds;
+    total = addMoney(total, proceeds);
   }
 
   if (currency !== "ZAR" && fxRate != null) {
-    return Math.round(total * fxRate * 100) / 100;
+    return multiplyMoney(total, fxRate);
   }
-  return Math.round(total * 100) / 100;
+  return roundCurrency(total);
 }
 
 async function linkFinanceTransactionId(
@@ -339,12 +340,13 @@ export async function importAppleSettlement(
       ? 1
       : await getFxRate({ base: "ZAR", quote: currency, at: new Date(`${periodEnd}T12:00:00.000Z`) });
 
-  const reportedProceeds = Math.round(
+  const reportedProceeds = roundCurrency(
     parsed.rows.reduce((sum, row) => {
       const sign = row.saleOrReturn && /return/i.test(row.saleOrReturn) ? -1 : 1;
-      return sum + sign * row.extendedPartnerShare;
-    }, 0) * 100,
-  ) / 100;
+      return addMoney(sum, multiplyMoney(row.extendedPartnerShare, sign, currency), currency);
+    }, 0),
+    currency,
+  );
 
   const expectedProceeds = await resolveExpectedProceeds({
     supabase,
@@ -354,7 +356,7 @@ export async function importAppleSettlement(
     fxRate,
   });
 
-  const variance = Math.round((reportedProceeds - expectedProceeds) * 100) / 100;
+  const variance = subtractMoney(reportedProceeds, expectedProceeds, currency);
   const nowIso = new Date().toISOString();
 
   const { data: settlementRow, error: settlementError } = await supabase
@@ -392,9 +394,9 @@ export async function importAppleSettlement(
   const lineRows = await Promise.all(
     parsed.rows.map(async (row) => {
       const sign = row.saleOrReturn && /return/i.test(row.saleOrReturn) ? -1 : 1;
-      const gross = Math.round(row.customerPrice * row.quantity * sign * 100) / 100;
-      const proceeds = Math.round(row.extendedPartnerShare * sign * 100) / 100;
-      const commission = Math.round((gross - proceeds) * 100) / 100;
+      const gross = multiplyMoney(row.customerPrice, row.quantity * sign);
+      const proceeds = multiplyMoney(row.extendedPartnerShare, sign);
+      const commission = subtractMoney(gross, proceeds);
       return {
         settlement_id: settlementId,
         apple_transaction_id: row.appleTransactionId,

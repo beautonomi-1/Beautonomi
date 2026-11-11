@@ -1,4 +1,5 @@
 import type { GroupBooking, GroupBookingParticipant } from "@/lib/provider-portal/types";
+import { addMoney, LAST_RESORT_CURRENCY, multiplyMoney, subtractMoney } from "@beautonomi/utils";
 
 export function normalizeGroupBookingId(id: string): string {
   return id.startsWith("group:") ? id.slice("group:".length) : id;
@@ -17,21 +18,25 @@ export function computeGroupFinancials(
   participants: GroupBookingParticipant[],
   booking: GroupBooking,
 ): GroupFinancials {
-  const participantRevenue = participants.reduce((sum, p) => sum + (Number(p.price) || 0), 0);
+  const participantRevenue = participants.reduce((sum, p) => addMoney(sum, Number(p.price) || 0), 0);
   const paidParticipants = participants.filter(
     (p) => (p as { payment_status?: string }).payment_status === "paid",
   ).length;
   const participantTips = participants.reduce(
-    (sum, p) => sum + (Number((p as { tip_amount?: number }).tip_amount) || 0),
+    (sum, p) => addMoney(sum, Number((p as { tip_amount?: number }).tip_amount) || 0),
     0,
   );
   const participantCollected = participants.reduce(
     (sum, p) =>
-      sum +
-      Math.max(
-        0,
-        (Number((p as { total_paid?: number }).total_paid) || 0) -
-          (Number((p as { total_refunded?: number }).total_refunded) || 0),
+      addMoney(
+        sum,
+        Math.max(
+          0,
+          subtractMoney(
+            Number((p as { total_paid?: number }).total_paid) || 0,
+            Number((p as { total_refunded?: number }).total_refunded) || 0,
+          ),
+        ),
       ),
     0,
   );
@@ -40,9 +45,9 @@ export function computeGroupFinancials(
   const groupProductTotal = groupProducts.reduce((sum, product) => {
     const quantity = Number(product?.quantity ?? 1) || 1;
     const unitPrice = Number(product?.unit_price ?? product?.unitPrice ?? 0) || 0;
-    return (
-      sum +
-      (Number(product?.total_price ?? product?.totalPrice) || unitPrice * quantity)
+    return addMoney(
+      sum,
+      Number(product?.total_price ?? product?.totalPrice) || multiplyMoney(unitPrice, quantity),
     );
   }, 0);
 
@@ -66,11 +71,11 @@ export function computeGroupOutstandingBalance(
   return participants.reduce((sum, p) => {
     const balanceDue = (p as { balance_due?: number }).balance_due;
     if (typeof balanceDue === "number" && Number.isFinite(balanceDue)) {
-      return sum + Math.max(0, balanceDue);
+      return addMoney(sum, Math.max(0, balanceDue), LAST_RESORT_CURRENCY);
     }
     const price = Number(p.price) || 0;
     const paid = Number((p as { total_paid?: number }).total_paid) || 0;
-    return sum + Math.max(0, price - paid);
+    return addMoney(sum, Math.max(0, subtractMoney(price, paid, LAST_RESORT_CURRENCY)), LAST_RESORT_CURRENCY);
   }, 0);
 }
 
@@ -80,7 +85,10 @@ export function participantShareOwed(p: {
   share_amount_paid?: number | null;
 }): number {
   if (p.share_amount_due == null) return 0;
-  return Math.max(0, Math.round((Number(p.share_amount_due) - Number(p.share_amount_paid ?? 0)) * 100) / 100);
+  return Math.max(
+    0,
+    subtractMoney(Number(p.share_amount_due), Number(p.share_amount_paid ?? 0), LAST_RESORT_CURRENCY),
+  );
 }
 
 /** Mirrors resendGroupGuestInvite: any open split share with money still owed. */

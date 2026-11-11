@@ -71,7 +71,7 @@ export async function GET(
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: order, error } = await (supabase.from("product_orders") as any)
+    const { data: order, error } = await (getSupabaseAdmin().from("product_orders") as any)
       .select(
         `
         *,

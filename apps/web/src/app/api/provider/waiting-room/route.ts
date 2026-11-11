@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact, redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { z } from "zod";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -12,6 +14,10 @@ import {
   type WaitingRoomBookingEmbedRow,
 } from "@/lib/provider-waiting-room/booking-to-waiting-room-entry";
 import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
+import {
+  resolveWaitlistProviderVat,
+  waitlistBookingMoney,
+} from "@/lib/waitlist/waitlist-booking-financials";
 
 const createWaitingRoomEntrySchema = z.object({
   client_name: z.string().min(1),
@@ -68,6 +74,9 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
@@ -111,7 +120,7 @@ export async function GET(request: NextRequest) {
     const rows = (Array.isArray(bookings) ? bookings : []) as unknown as WaitingRoomBookingEmbedRow[];
     const entries = rows.map((booking) => mapBookingEmbedToWaitingRoomEntry(booking));
 
-    return successResponse(entries);
+    return successResponse(redactBookingCustomerContacts(entries, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch waiting room entries");
   }
@@ -129,6 +138,9 @@ export async function POST(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = getSupabaseAdmin();
     const body = await request.json();
 
@@ -191,7 +203,7 @@ export async function POST(request: NextRequest) {
         estimated_wait_time: data.estimated_wait_time,
       };
 
-      return successResponse(entry);
+      return successResponse(redactBookingCustomerContact(entry, canViewClients));
     }
 
     // If no appointment_id, create a new booking for walk-in
@@ -200,6 +212,39 @@ export async function POST(request: NextRequest) {
     const walkInRef =
       globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const bookingNumber = `WI-${walkInRef.slice(0, 8).toUpperCase()}`;
+
+    let serviceRow: WaitingRoomServiceRow | null = null;
+    if (data.service_id) {
+      const { data: service } = await supabase
+        .from("offerings")
+        .select("id, duration_minutes, price, title")
+        .eq("id", data.service_id)
+        .single();
+      serviceRow = service as WaitingRoomServiceRow | null;
+    }
+    let walkInMoney: Record<string, unknown> = {
+      subtotal: 0,
+      tax_amount: 0,
+      tax_rate: 0,
+      tax_inclusive: true,
+      total_amount: 0,
+      discount_amount: 0,
+      promotion_discount_amount: 0,
+      membership_discount_amount: 0,
+      travel_fee: 0,
+      tip_amount: 0,
+      platform_fee_amount: 0,
+      service_fee_amount: 0,
+    };
+    if (serviceRow) {
+      const vat = await resolveWaitlistProviderVat(supabase, providerId);
+      walkInMoney = waitlistBookingMoney({
+        servicePrice: Number(serviceRow.price) || 0,
+        currency: bookingCurrency,
+        vat,
+      });
+    }
+
     const { data: newBooking, error: createError } = await supabase
       .from("bookings")
       .insert({
@@ -214,9 +259,8 @@ export async function POST(request: NextRequest) {
         checked_in_time: checkedInTime,
         notes: data.notes || null,
         currency: bookingCurrency,
-        subtotal: 0,
-        total_amount: 0,
         payment_status: "pending",
+        ...walkInMoney,
       })
       .select(WAITING_ROOM_BOOKING_SELECT)
       .single();
@@ -229,33 +273,22 @@ export async function POST(request: NextRequest) {
     }
     const newBookingRow = newBooking as unknown as WaitingRoomBookingEmbedRow;
 
-    // If service_id is provided, create booking_service entry
-    if (data.service_id) {
-      // Get service details
-      const { data: service } = await supabase
-        .from("offerings")
-        .select("id, duration_minutes, price, title")
-        .eq("id", data.service_id)
-        .single();
+    if (data.service_id && serviceRow) {
+      const serviceStart = new Date(checkedInTime);
+      const serviceEnd = new Date(serviceStart.getTime() + (serviceRow.duration_minutes || 60) * 60000);
 
-      const serviceRow = service as WaitingRoomServiceRow | null;
-      if (serviceRow) {
-        const serviceStart = new Date(checkedInTime);
-        const serviceEnd = new Date(serviceStart.getTime() + (serviceRow.duration_minutes || 60) * 60000);
-
-        await supabase
-          .from("booking_services")
-          .insert({
-            booking_id: newBookingRow.id,
-            offering_id: data.service_id,
-            staff_id: data.team_member_id || null,
-            scheduled_start_at: serviceStart.toISOString(),
-            scheduled_end_at: serviceEnd.toISOString(),
-            duration_minutes: serviceRow.duration_minutes || 60,
-            price: serviceRow.price || 0,
-            currency: bookingCurrency,
-          });
-      }
+      await supabase
+        .from("booking_services")
+        .insert({
+          booking_id: newBookingRow.id,
+          offering_id: data.service_id,
+          staff_id: data.team_member_id || null,
+          scheduled_start_at: serviceStart.toISOString(),
+          scheduled_end_at: serviceEnd.toISOString(),
+          duration_minutes: serviceRow.duration_minutes || 60,
+          price: serviceRow.price || 0,
+          currency: bookingCurrency,
+        });
     }
 
     const { data: refreshedWalkIn } = await supabase
@@ -271,7 +304,7 @@ export async function POST(request: NextRequest) {
       estimated_wait_time: data.estimated_wait_time,
     };
 
-    return successResponse(entry);
+    return successResponse(redactBookingCustomerContact(entry, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to add to waiting room");
   }

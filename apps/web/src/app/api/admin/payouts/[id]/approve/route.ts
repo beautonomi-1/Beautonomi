@@ -8,6 +8,7 @@ import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { validateAdminPayoutReadiness } from "@/lib/admin/validate-provider-payout-readiness";
+import { evaluatePayoutApproval, readRequestedBy } from "@/lib/finance/payout-dual-control";
 
 /**
  * POST /api/admin/payouts/[id]/approve
@@ -53,6 +54,28 @@ export async function POST(
     }
     if (payoutRow.status !== "pending") {
       return errorResponse("Payout is not pending", "INVALID_STATE", 400);
+    }
+
+    // F2-20: the requester can never approve their own payout.
+    const dualControl = evaluatePayoutApproval({
+      actorId: user.id,
+      requestedBy: readRequestedBy(payoutRow.payout_account_details),
+    });
+    if (dualControl.ok === false) {
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: user.role ?? "superadmin",
+        action: "admin.payout.approve",
+        entity_type: "payout",
+        entity_id: id,
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        status: "failed",
+        reason: dualControl.code,
+        metadata: { provider_id: payoutRow.provider_id, amount: payoutRow.amount },
+      });
+      return errorResponse(dualControl.message, dualControl.code, dualControl.status);
     }
 
     if (payoutRow.provider_id) {

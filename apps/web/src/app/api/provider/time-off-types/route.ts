@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     return errorResponse(
       "Time-off types are labels on staff time-off records and cannot be created as a catalog.",
       "NOT_SUPPORTED",
-      409,
+      501,
     );
   } catch (error) {
     return handleApiError(error, "Failed to create time off type");

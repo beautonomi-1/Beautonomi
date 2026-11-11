@@ -1,3 +1,4 @@
+import { roundCurrency } from "@beautonomi/utils";
 /**
  * Decode and verify Apple signed transaction / notification JWS payloads.
  *
@@ -65,6 +66,10 @@ export function decodeAppleJwsPayload<T = Record<string, unknown>>(signed: strin
 }
 
 export function appleJwsVerificationEnabled(): boolean {
+  // F2-52: the kill switch exists for Xcode StoreKit configuration files in
+  // development only. In production an unsigned receipt must never be trusted,
+  // whatever the environment variable says.
+  if (process.env.NODE_ENV === "production") return true;
   const raw = (process.env.APPLE_IAP_VERIFY_JWS ?? "").trim().toLowerCase();
   return raw !== "false" && raw !== "0" && raw !== "off";
 }
@@ -311,8 +316,5 @@ export function applePriceToMajor(priceMilli: number | undefined, currency?: str
   if (priceMilli == null || !Number.isFinite(priceMilli)) return 0;
   // Apple StoreKit price is in milli-units of currency
   const major = priceMilli / 1000;
-  if (currency?.toUpperCase() === "ZAR") {
-    return Math.round(major * 100) / 100;
-  }
-  return Math.round(major * 100) / 100;
+  return roundCurrency(major, currency || "ZAR");
 }

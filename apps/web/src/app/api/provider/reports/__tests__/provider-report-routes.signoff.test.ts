@@ -66,6 +66,14 @@ vi.mock("@/lib/auth/requirePermission", () => ({
   requirePermission: vi.fn(async () => ({ authorized: true, user })),
 }));
 
+vi.mock("@/lib/auth/permissions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/permissions")>();
+  return {
+    ...actual,
+    hasPermission: vi.fn(async () => true),
+  };
+});
+
 vi.mock("@/lib/reports/revenue-helpers", () => ({
   getProviderRevenue: (...args: unknown[]) => getProviderRevenueMock(...args),
   getPreviousPeriodRevenue: (...args: unknown[]) => getPreviousPeriodRevenueMock(...args),

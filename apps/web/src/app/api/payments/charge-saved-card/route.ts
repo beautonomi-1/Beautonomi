@@ -35,12 +35,16 @@ import {
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
+import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
 
 const chargeSavedCardSchema = z
   .object({
     payment_method_id: z.string().uuid(),
-    /** Ignored when metadata includes product_order_id, booking_id, or additional_charge_id — server derives amount. */
-    amount: z.number().positive().optional(),
+    /**
+     * Ignored when metadata includes product_order_id, booking_id, or additional_charge_id — server derives amount.
+     * F-07: when used (free-form), it must be positive, ≤ 2dp and capped.
+     */
+    amount: clientMajorAmountSchema.optional(),
     currency: z.string().optional(),
     email: z.string().email(),
     metadata: z.record(z.string(), z.any()).optional(),
@@ -84,10 +88,6 @@ export async function POST(request: NextRequest) {
   try {
     const idempotencyKey = extractIdempotencyKey(request);
     const idempotencyEndpoint = "payments/charge-saved-card";
-    if (idempotencyKey) {
-      const cached = await lookupIdempotentResponse(idempotencyEndpoint, idempotencyKey);
-      if (cached) return cached.toResponse();
-    }
 
     // §Customer-launch (audit 2026-04): previously both requireRoleInApi
     // and getSupabaseServer were called without `request`, so the Bearer
@@ -98,6 +98,12 @@ export async function POST(request: NextRequest) {
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request
     );
+    if (idempotencyKey) {
+      const cached = await lookupIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+        userId: user.id,
+      });
+      if (cached) return cached.toResponse();
+    }
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const marketGuard = await assertTransactionalMarketAllowedForTenantId(
       request,
@@ -666,6 +672,7 @@ export async function POST(request: NextRequest) {
             const closedMessage = "This order does not require online payment.";
             if (idempotencyKey) {
               await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+        userId: user.id,
                 status: 400,
                 body: {
                   data: null,
@@ -903,6 +910,7 @@ export async function POST(request: NextRequest) {
         "Payment was received but the order is not marked paid yet. Complete it from My Orders.";
       if (idempotencyKey) {
         await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+        userId: user.id,
           status: 409,
           body: {
             data: null,
@@ -917,6 +925,7 @@ export async function POST(request: NextRequest) {
         "Payment was received but your wallet balance was not updated. Pull to refresh or contact support.";
       if (idempotencyKey) {
         await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+        userId: user.id,
           status: 409,
           body: {
             data: null,
@@ -928,6 +937,7 @@ export async function POST(request: NextRequest) {
     }
     if (idempotencyKey) {
       await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+        userId: user.id,
         status: 200,
         body: responseBody,
       });

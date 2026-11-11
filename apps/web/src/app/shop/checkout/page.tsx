@@ -31,6 +31,7 @@ import {
 } from "@/lib/checkout/filter-usable-gift-cards";
 import { OwnedGiftCardPicker } from "@/components/checkout/OwnedGiftCardPicker";
 import { recoveredOrderAmountDue } from "@/lib/orders/recovered-order-amount-due";
+import { addMoney, multiplyMoney, percentOf, toMinorUnits } from "@beautonomi/utils";
 
 interface CartItem {
   id: string;
@@ -505,8 +506,8 @@ export default function ProductCheckoutPage() {
   ]);
 
   const linePrice = (i: CartItem) =>
-    (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
-  const localSubtotal = items.reduce((s, i) => s + linePrice(i), 0);
+    multiplyMoney(i.effective_price ?? i.product?.retail_price ?? 0, i.quantity);
+  const localSubtotal = items.reduce((s, i) => addMoney(s, linePrice(i)), 0);
   const subtotal = serverQuote?.subtotal ?? localSubtotal;
   const promotionDiscount = serverQuote?.promotionDiscount ?? 0;
   const taxAmount = serverQuote?.taxAmount ?? 0;
@@ -538,9 +539,9 @@ export default function ProductCheckoutPage() {
     : paymentMethod === "paystack"
       ? platformFeeConfig.type === "fixed"
         ? platformFeeConfig.fixed
-        : Math.round(subtotal * platformFeeConfig.percentage) / 100
+        : percentOf(subtotal, platformFeeConfig.percentage, tenantCurrency)
       : 0;
-  const total = serverQuote?.totalAmount ?? subtotal + deliveryFee + platformFee;
+  const total = serverQuote?.totalAmount ?? addMoney(addMoney(subtotal, deliveryFee), platformFee);
   const hasAnyEnabledPaymentMethod = onlineCardEnabled || cashEnabledOnPlatform;
 
   const hasOutOfStock = items.some((i) => i.in_stock === false);
@@ -793,7 +794,7 @@ export default function ProductCheckoutPage() {
         data: { authorization_url: string; reference: string };
       }>("/api/paystack/initialize", {
         email: user.email,
-        amount: Math.round(amountDue * 100),
+        amount: toMinorUnits(amountDue, tenantCurrency),
         metadata: {
           product_order_id: order.id,
           order_number: order.order_number,

@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
@@ -59,5 +60,5 @@ export async function convertFx(
 ): Promise<number | null> {
   const rate = await getFxRate(lookup);
   if (rate == null) return null;
-  return amount * rate;
+  return multiplyMoney(amount, rate, lookup.quote);
 }

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { roundCurrency } from "@beautonomi/utils";
 import type { Appointment } from "@/lib/provider-portal/types";
 import {
   Dialog,
@@ -31,7 +32,7 @@ export function PaystackTerminalCollectDialog({
   onSuccess,
 }: PaystackTerminalCollectDialogProps) {
   const { t } = useTranslation();
-  const { format: formatMoney } = useProviderMoneyFormat();
+  const { format: formatMoney, currency } = useProviderMoneyFormat();
   const [preparing, setPreparing] = useState(false);
   const [terminalCode, setTerminalCode] = useState<string | null>(null);
   const [reference, setReference] = useState<string | null>(null);
@@ -52,7 +53,7 @@ export function PaystackTerminalCollectDialog({
   });
 
   const prepareTerminal = useCallback(async () => {
-    const amount = Number(outstanding.toFixed(2));
+    const amount = roundCurrency(outstanding, currency);
     if (amount <= 0) {
       toast.error(t("web.provider.bookings.detail.paystackCollect.noBalance"));
       return;

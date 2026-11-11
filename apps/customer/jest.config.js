@@ -40,4 +40,13 @@ module.exports = {
     "!**/*.d.ts",
     "!**/node_modules/**",
   ],
+  // F-09: floor only (`pnpm test:coverage`).
+  coverageThreshold: {
+    global: {
+      statements: 1,
+      branches: 0,
+      functions: 1,
+      lines: 1,
+    },
+  },
 };

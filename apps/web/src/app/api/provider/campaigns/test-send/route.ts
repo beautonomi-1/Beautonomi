@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   handleApiError,
@@ -30,10 +30,11 @@ const bodySchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request,
-    );
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -65,8 +66,8 @@ export async function POST(request: NextRequest) {
 
     const { substituteMergeTags } = await import("@/lib/marketing/merge-tags");
     const mergeValues = {
-      customer_name: (user.user_metadata?.full_name as string) || "there",
-      first_name: (user.user_metadata?.full_name as string) || "there",
+      customer_name: (user as { user_metadata?: { full_name?: string } }).user_metadata?.full_name || "there",
+      first_name: (user as { user_metadata?: { full_name?: string } }).user_metadata?.full_name || "there",
       business_name: businessName,
     };
     const personalizedContent = substituteMergeTags(content, mergeValues);

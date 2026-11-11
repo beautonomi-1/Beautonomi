@@ -16,6 +16,7 @@ import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { appendReportDateParams } from "@/app/provider/reports/utils/report-api-url";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { fromMinorUnits } from "@beautonomi/utils";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import Link from "next/link";
@@ -113,7 +114,7 @@ export default function CardMachineReconciliationPage() {
   const { t } = useTranslation();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
-  const { format: fmt } = useReportCurrency();
+  const { format: fmt, currencyCode } = useReportCurrency();
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -331,7 +332,7 @@ export default function CardMachineReconciliationPage() {
                     {yocoExceptions.map((row) => (
                       <tr key={row.id} className="border-b border-gray-100">
                         <td className="py-2 pe-4">{row.created_at ? format(new Date(row.created_at), "PP p") : "—"}</td>
-                        <td className="py-2 pe-4">{fmt(Number(row.amount ?? 0) / 100)}</td>
+                        <td className="py-2 pe-4">{fmt(fromMinorUnits(Number(row.amount ?? 0), currencyCode))}</td>
                         <td className="py-2 pe-4">{row.status ?? "—"}</td>
                         <td className="py-2">
                           {row.appointment_id ? (

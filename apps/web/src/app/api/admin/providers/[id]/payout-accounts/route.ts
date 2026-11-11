@@ -19,6 +19,7 @@ import { resolveFlutterwaveBankAccount } from "@/lib/payments/flutterwave-banks"
 import { getEffectiveSkipPayoutAccountVerification } from "@/lib/payments/payout-account-verification-settings";
 import { resolveCoolingOffUntilForAdminAddedAccount } from "@/lib/auth/resolve-new-account-cooling-off";
 import { notifyPayoutAccountChange } from "@/lib/auth/payout-cooling-off";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYSTACK_RECIPIENT_TYPES = ["nuban", "basa", "ghipss", "mobile_money"] as const;
@@ -254,6 +255,19 @@ export async function POST(
         accountId: String(savedAccount.id),
         accountLast4: accountNumberLast4,
       });
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: user.role ?? "superadmin",
+        action: "admin.payout_account.create",
+        entity_type: "provider_payout_accounts",
+        entity_id: String(savedAccount.id),
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        status: "succeeded",
+        metadata: { provider_id: providerId, rail: "flutterwave", account_number_last4: accountNumberLast4 },
+        ...extractRequestMeta(request),
+      });
       return successResponse(savedAccount);
     }
 
@@ -329,6 +343,19 @@ export async function POST(
       accountId: String(savedAccount.id),
       accountLast4: accountNumberLast4,
       bankName: details?.bank_name ?? null,
+    });
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.payout_account.create",
+      entity_type: "provider_payout_accounts",
+      entity_id: String(savedAccount.id),
+      module: "finance",
+      risk_level: "high",
+      retention_tier: "financial",
+      status: "succeeded",
+      metadata: { provider_id: providerId, rail: "paystack", account_number_last4: accountNumberLast4 },
+      ...extractRequestMeta(request),
     });
     return successResponse(savedAccount);
   } catch (error) {

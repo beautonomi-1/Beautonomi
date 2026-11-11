@@ -1,3 +1,4 @@
+import { addMoney, roundCurrency } from "@beautonomi/utils";
 /**
  * Provider pay-run detail screen.
  *
@@ -193,7 +194,7 @@ export default function PayRunDetailScreen() {
   const parseMoneyInput = (raw: string): number => {
     const n = parseFloat(raw.replace(/,/g, "."));
     if (!Number.isFinite(n) || n < 0) return 0;
-    return Math.round(n * 100) / 100;
+    return roundCurrency(n);
   };
 
   const handleSaveItem = useCallback(async () => {
@@ -301,10 +302,10 @@ export default function PayRunDetailScreen() {
     );
   }
 
-  const totalGross = Number(data.total_gross_pay ?? items.reduce((s, i) => s + Number(i.gross_pay || 0), 0));
-  const totalNet = Number(data.total_net_pay ?? items.reduce((s, i) => s + Number(i.net_pay || 0), 0));
-  const totalTax = Number(data.total_tax_deductions ?? items.reduce((s, i) => s + Number(i.tax_deduction || 0), 0));
-  const totalUif = Number(data.total_uif ?? items.reduce((s, i) => s + Number(i.uif_contribution || 0), 0));
+  const totalGross = Number(data.total_gross_pay ?? items.reduce((s, i) => addMoney(s, Number(i.gross_pay || 0)), 0));
+  const totalNet = Number(data.total_net_pay ?? items.reduce((s, i) => addMoney(s, Number(i.net_pay || 0)), 0));
+  const totalTax = Number(data.total_tax_deductions ?? items.reduce((s, i) => addMoney(s, Number(i.tax_deduction || 0)), 0));
+  const totalUif = Number(data.total_uif ?? items.reduce((s, i) => addMoney(s, Number(i.uif_contribution || 0)), 0));
 
   return (
     <ScreenContainer scrollable={false}>

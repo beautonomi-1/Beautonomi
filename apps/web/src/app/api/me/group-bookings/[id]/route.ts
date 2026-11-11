@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { errorResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
@@ -139,7 +140,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           name: String(item.productName ?? item.name ?? "Product"),
           quantity: Number(item.quantity ?? 1),
           unit_price: num(item.unitPrice ?? item.unit_price ?? item.price),
-          total: num(item.total ?? (num(item.unitPrice ?? item.unit_price ?? item.price) * Number(item.quantity ?? 1))),
+          total: num(item.total ?? multiplyMoney(num(item.unitPrice ?? item.unit_price ?? item.price), Number(item.quantity ?? 1))),
         });
       }
     }

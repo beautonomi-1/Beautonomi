@@ -11,7 +11,7 @@
  */
 
 import { haversineDistanceKm } from "@/lib/geo/distance";
-import { roundCurrency } from "@beautonomi/utils";
+import { addMoney, multiplyMoney, subtractMoney } from "@beautonomi/utils";
 
 // ============================================================================
 // TYPES
@@ -399,8 +399,8 @@ export function computeTravelFee(
         ? rules.freeRadiusKm
         : 0;
     const chargeableDistance = Math.max(0, distanceKm - freeKm);
-    const distanceFee = chargeableDistance * perKmRate;
-    const totalFee = baseFee + distanceFee;
+    const distanceFee = multiplyMoney(perKmRate, chargeableDistance);
+    const totalFee = addMoney(baseFee, distanceFee);
 
     if (baseFee > 0) {
       breakdown.push({ label: "Base fee", amount: baseFee });
@@ -413,24 +413,24 @@ export function computeTravelFee(
       if (chargeableDistance > 0) {
         breakdown.push({
           label: `Distance fee (${chargeableDistance.toFixed(1)}km @ ${perKmRate}/km)`,
-          amount: roundCurrency(distanceFee),
+          amount: distanceFee,
         });
       }
     } else {
       breakdown.push({
         label: `Distance fee (${distanceKm.toFixed(1)}km @ ${perKmRate}/km)`,
-        amount: roundCurrency(distanceFee),
+        amount: distanceFee,
       });
     }
 
     const cappedTotal = Math.min(
-      roundCurrency(totalFee),
+      totalFee,
       rules.maximumFee ?? Infinity,
     );
     if (rules.maximumFee != null && totalFee > rules.maximumFee) {
       breakdown.push({
         label: `Capped at maximum fee`,
-        amount: cappedTotal - baseFee - roundCurrency(distanceFee),
+        amount: subtractMoney(subtractMoney(cappedTotal, baseFee), distanceFee),
       });
     }
 

@@ -39,4 +39,39 @@ describe("verifyFlutterwaveWebhookSignature", () => {
     const ok = await verifyFlutterwaveWebhookSignature(body, "secret-env");
     expect(ok).toBe(true);
   });
+
+  describe("F2-30: signature is required in every environment", () => {
+    const body = JSON.stringify({ event: "charge.completed", data: { tx_ref: "x", status: "successful" } });
+
+    it("rejects a missing verif-hash header even when NODE_ENV is not production", async () => {
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("VERCEL_ENV", "");
+      try {
+        expect(await verifyFlutterwaveWebhookSignature(body, null)).toBe(false);
+        expect(await verifyFlutterwaveWebhookSignature(body, "")).toBe(false);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("rejects when no webhook hash is configured anywhere (no unsigned bypass)", async () => {
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("VERCEL_ENV", "");
+      const { getFlutterwaveWebhookHash } = await import("@/lib/payments/flutterwave-server");
+      // One env-level lookup per verify call below (tx_ref "x" has no checkout/meta tenant).
+      vi.mocked(getFlutterwaveWebhookHash)
+        .mockResolvedValueOnce(null as never)
+        .mockResolvedValueOnce(null as never);
+      try {
+        expect(await verifyFlutterwaveWebhookSignature(body, null)).toBe(false);
+        expect(await verifyFlutterwaveWebhookSignature(body, "anything")).toBe(false);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("rejects a wrong hash", async () => {
+      expect(await verifyFlutterwaveWebhookSignature(body, "nope")).toBe(false);
+    });
+  });
 });

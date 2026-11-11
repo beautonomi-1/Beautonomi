@@ -1,4 +1,4 @@
-import { addMoney } from "@beautonomi/utils";
+import { addMoney, roundCurrency } from "@beautonomi/utils";
 import type { NetPayResult } from "./net-pay";
 import { computeNetPay } from "./net-pay";
 
@@ -62,19 +62,16 @@ export function buildPayRunItem(
   return {
     staffId,
     staffName,
-    grossPay: round2(grossPay),
-    commissionAmount: round2(parts.commissionAmount),
-    hourlyAmount: round2(parts.hourlyAmount),
-    salaryAmount: round2(parts.salaryAmount),
-    tipsAmount: round2(parts.tipsAmount),
-    manualDeductions: round2(deductions.manualDeductions ?? 0),
-    taxDeduction: round2(deductions.taxDeduction ?? 0),
-    uifContribution: round2(deductions.uifContribution ?? 0),
+    grossPay: roundCurrency(grossPay),
+    commissionAmount: roundCurrency(parts.commissionAmount),
+    hourlyAmount: roundCurrency(parts.hourlyAmount),
+    salaryAmount: roundCurrency(parts.salaryAmount),
+    tipsAmount: roundCurrency(parts.tipsAmount),
+    manualDeductions: roundCurrency(deductions.manualDeductions ?? 0),
+    taxDeduction: roundCurrency(deductions.taxDeduction ?? 0),
+    uifContribution: roundCurrency(deductions.uifContribution ?? 0),
     netPay: net.netPay,
     carryForwardOut: net.nextCarryForward !== 0 ? net.nextCarryForward : undefined,
   };
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}

@@ -1,3 +1,4 @@
+import { multiplyMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
       if (!booking.booking_services || !Array.isArray(booking.booking_services)) return;
 
       const totalServicePrice = booking.booking_services.reduce(
-        (sum: number, s: any) => sum + Number(s.price || 0),
+        (sum: number, s: any) => addMoney(sum, Number(s.price || 0)),
         0
       );
 
@@ -158,7 +159,7 @@ export async function GET(request: NextRequest) {
         const serviceProportion = totalServicePrice > 0
           ? Number(bs.price || 0) / totalServicePrice
           : 1 / booking.booking_services.length;
-        existing.revenue += bookingRevenue * serviceProportion;
+        existing.revenue = addMoney(existing.revenue, multiplyMoney(bookingRevenue, serviceProportion));
         const catSet = categoryBookingSets.get(categoryName) ?? new Set<string>();
         catSet.add(booking.id);
         categoryBookingSets.set(categoryName, catSet);
@@ -170,7 +171,7 @@ export async function GET(request: NextRequest) {
     const servicePerformance = Array.from(serviceMap.values())
       .map((service) => {
         const bc = service.bookingIds.size;
-        const avgPerBooking = bc > 0 ? service.revenue / bc : 0;
+        const avgPerBooking = bc > 0 ? multiplyMoney(service.revenue, 1 / bc) : 0;
         return {
           serviceId: service.serviceId,
           serviceName: service.serviceName,
@@ -200,7 +201,7 @@ export async function GET(request: NextRequest) {
         revenue: 0,
       };
       existing.services += 1;
-      existing.revenue += service.revenue;
+      existing.revenue = addMoney(existing.revenue, service.revenue);
       categoryPerformanceMap.set(service.category, existing);
     });
 
@@ -216,8 +217,8 @@ export async function GET(request: NextRequest) {
     // Summary metrics — all bookings in period (each booking once, all statuses)
     const totalServices = servicePerformance.length;
     const bookingsInPeriod = bookings?.length ?? 0;
-    const totalRevenue = servicePerformance.reduce((sum, s) => sum + s.revenue, 0);
-    const averageServiceRevenue = totalServices > 0 ? totalRevenue / totalServices : 0;
+    const totalRevenue = servicePerformance.reduce((sum, s) => addMoney(sum, s.revenue), 0);
+    const averageServiceRevenue = totalServices > 0 ? multiplyMoney(totalRevenue, 1 / totalServices) : 0;
 
     return successResponse({
       totalServices,

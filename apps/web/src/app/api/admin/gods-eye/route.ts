@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireSuperadmin, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
@@ -137,7 +138,7 @@ export async function GET(request: NextRequest) {
       for (const row of mergedAll) {
         const id = resolveFinanceLedgerRowProviderId(row);
         if (!id) continue;
-        providerRevenueAll[id] = (providerRevenueAll[id] || 0) + Number(row.net ?? row.amount ?? 0);
+        providerRevenueAll[id] = addMoney(providerRevenueAll[id] || 0, Number(row.net ?? row.amount ?? 0));
       }
     } catch (err) {
       console.error("[gods-eye] full-tenant provider ledger aggregation failed", err);
@@ -245,7 +246,7 @@ export async function GET(request: NextRequest) {
           if (!bid) continue;
           const cid = bookingToCustomerAll[bid];
           if (!cid) continue;
-          customerSpentAll[cid] = (customerSpentAll[cid] || 0) + Number(row.amount ?? 0);
+          customerSpentAll[cid] = addMoney(customerSpentAll[cid] || 0, Number(row.amount ?? 0));
         }
       } catch (err) {
         console.error("[gods-eye] full-tenant customer spend ledger failed", err);

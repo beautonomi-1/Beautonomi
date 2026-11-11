@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import { GET as getTerminalOrderReceiptJson } from "../route";
@@ -97,7 +98,7 @@ export async function GET(
       },
     ]);
 
-    const lineTotal = (receipt.unit_price ?? 0) * (receipt.quantity ?? 1);
+    const lineTotal = multiplyMoney(receipt.unit_price ?? 0, receipt.quantity ?? 1);
     drawPdfLineItems(doc, [
       {
         description: receipt.product_name || "Terminal device",

@@ -101,8 +101,8 @@ describe("mapCreateBookingProductLines", () => {
 });
 
 describe("resolveDepositChargeAmount", () => {
-  it("ceil-deposits percentage of total", () => {
-    expect(resolveDepositChargeAmount(199, true, 50)).toBe(100);
+  it("uses percentOf for deposit percentage of total", () => {
+    expect(resolveDepositChargeAmount(199, true, 50)).toBe(99.5);
     expect(resolveDepositChargeAmount(199, false, 50)).toBe(199);
   });
 });

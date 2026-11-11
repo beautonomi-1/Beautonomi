@@ -1,5 +1,8 @@
--- Money-path SQL tests (run manually against staging/local after migrations 10103–10105).
--- Requires psql + service role or superuser. Not wired to CI yet.
+-- Money-path SQL test sketches (run manually against staging/local after migrations 10103–10105).
+-- Requires psql + service role or superuser.
+--
+-- Executable, CI-wired versions of these invariants live in supabase/tests/audit/*.test.sql
+-- (run with `pnpm test:db` against a local DB, or the `db-tests` job in .github/workflows/ci.yml).
 
 -- ---------------------------------------------------------------------------
 -- Refund trigger (10103): tax reversal net must stay zero on tax component

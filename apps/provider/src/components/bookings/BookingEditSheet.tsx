@@ -17,7 +17,7 @@ import { formatCurrency, formatDuration } from "@/lib/format";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { safeNum } from "@beautonomi/utils";
+import { subtractMoney, safeNum } from "@beautonomi/utils";
 import {
   buildBookingEditPatchPayload,
   computeBookingEditLineSubtotal,
@@ -379,10 +379,10 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
 
   const paidAfterRefunds = Math.max(
     0,
-    safeNum(booking.total_paid) - safeNum(booking.total_refunded),
+    subtractMoney(safeNum(booking.total_paid), safeNum(booking.total_refunded)),
   );
-  const balanceAfterEdit = Math.max(0, totalsPreview.totalAmount - paidAfterRefunds);
-  const overpaymentAfterEdit = Math.max(0, paidAfterRefunds - totalsPreview.totalAmount);
+  const balanceAfterEdit = Math.max(0, subtractMoney(totalsPreview.totalAmount, paidAfterRefunds));
+  const overpaymentAfterEdit = Math.max(0, subtractMoney(paidAfterRefunds, totalsPreview.totalAmount));
 
   return (
     <>

@@ -11,19 +11,25 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission, requireAnyPermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact, redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
-import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
+import { dateRangeBoundsUtc, wallClockPartsInTz } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import {
   groupPackageTotal,
   groupProductLineTotal,
   validateAndPriceGroupPackage,
 } from "@/lib/bookings/group-booking-package-pricing";
+import {
+  resolveGroupParticipantServerPrices,
+  resolveGroupTravelFeeServerSide,
+} from "@/lib/bookings/group-participant-server-pricing";
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { sumPendingWalletGiftByBookingIds } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
-import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { subtractMoney, addMoney, computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import {
   findGroupBookingIdsByParticipantContactSearch,
   MAX_INLINE_MATCH_IDS,
@@ -43,7 +49,8 @@ import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-pa
 import { computeCompletedGroupBookingStats } from "@/lib/bookings/group-booking-completed-stats";
 import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
-export const maxDuration = 30;
+// POST creates every participant's child booking sequentially; 30s was too tight for larger groups.
+export const maxDuration = 60;
 
 async function generateGroupBookingRef(admin: ReturnType<typeof getSupabaseAdmin>) {
   const { data, error } = await admin.rpc("generate_group_booking_ref");
@@ -69,6 +76,9 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
     const searchParams = request.nextUrl.searchParams;
@@ -129,6 +139,7 @@ export async function GET(request: NextRequest) {
           admin,
           providerId,
           search,
+          { nameOnly: !canViewClients },
         );
         const orParts = [`ref_number.ilike.%${safe}%`, `title.ilike.%${safe}%`];
         if (participantGroupIds.length > 0) {
@@ -211,15 +222,15 @@ export async function GET(request: NextRequest) {
         childBookingsForRollup.map((booking: any) => {
           const paidAfterRefunds = Math.max(
             0,
-            Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0),
+            subtractMoney(Number(booking.total_paid ?? 0), Number(booking.total_refunded ?? 0)),
           );
           const walletGiftCoverage =
-            Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0);
+            addMoney(Number(booking.wallet_amount ?? 0), Number(booking.gift_card_amount ?? 0));
           const coverage = Math.max(paidAfterRefunds, walletGiftCoverage);
           const unpaidAdditionalCharges = Array.isArray(booking.additional_charges)
             ? booking.additional_charges
                 .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-                .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+                .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
             : 0;
           const balanceDue = computeBookingOutstandingDisplay({
             totalAmount: Number(booking.total_amount ?? 0),
@@ -299,15 +310,15 @@ export async function GET(request: NextRequest) {
         );
         const linkedParticipantInvoiceTotal = uniqueParticipantBookingIds.reduce(
           (sum: number, bookingId: string) =>
-            sum + (participantBookingTotalById.get(bookingId) ?? 0),
+            addMoney(sum, participantBookingTotalById.get(bookingId) ?? 0),
           0
         );
         const participantTotal = participants.reduce(
-          (sum: number, p: any) => sum + (Number(p.price) || 0),
+          (sum: number, p: any) => addMoney(sum, Number(p.price) || 0),
           0
         );
         const productTotal = Array.isArray(row.products)
-          ? row.products.reduce((sum: number, p: any) => sum + groupProductLineTotal(p), 0)
+          ? row.products.reduce((sum: number, p: any) => addMoney(sum, groupProductLineTotal(p)), 0)
           : 0;
         const pkg = Array.isArray(row.service_packages)
           ? row.service_packages[0]
@@ -346,8 +357,7 @@ export async function GET(request: NextRequest) {
           total_price: totalPrice,
           package_name: pkg?.name ?? null,
           package_discount_amount: packageDiscount,
-          scheduled_date: at ? at.toISOString().split("T")[0] : "",
-          scheduled_time: at ? at.toTimeString().slice(0, 5) : "",
+          ...wallClockPartsInTz(at, tz),
           participants,
           ...groupPayment,
         };
@@ -372,7 +382,7 @@ export async function GET(request: NextRequest) {
     }
 
     return successResponse({
-      data: groupBookings,
+      data: redactBookingCustomerContacts(groupBookings, canViewClients),
       total,
       page,
       limit,
@@ -398,6 +408,9 @@ export async function POST(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
@@ -466,22 +479,44 @@ export async function POST(request: NextRequest) {
       return errorResponse("Invalid scheduled_at", "VALIDATION_ERROR", 400);
     }
     const normalizedProducts = Array.isArray(products) ? products : [];
-    const normalizedParticipants = Array.isArray(participants) ? participants : [];
+    const rawParticipants: any[] = Array.isArray(participants) ? participants : [];
     const normalizedMaxParticipants = normalizeGroupCapacity(max_participants, 10);
     const capacityCheck = evaluateGroupCapacity({
       maxParticipants: normalizedMaxParticipants,
-      currentParticipants: normalizedParticipants.length,
+      currentParticipants: rawParticipants.length,
     });
     if (capacityCheck.ok === false) {
       return errorResponse(capacityCheck.message, capacityCheck.code, 400);
     }
-    const serverTravelFee = location_type === "at_home" ? Math.max(0, Number(travel_fee || 0)) : 0;
-    const participantTotal = normalizedParticipants.reduce(
-      (sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)),
-      0
-    );
+    // F4-04: participant prices and the at-home travel fee are derived server-side.
+    // Client-supplied `price` / `travel_fee` are ignored (a warning is logged when they differ).
+    const participantPricing = await resolveGroupParticipantServerPrices({
+      supabaseAdmin: admin,
+      providerId,
+      participants: rawParticipants,
+      fallbackServiceId: service_id ? String(service_id) : null,
+    });
+    if (participantPricing.ok === false) {
+      return errorResponse(participantPricing.message, participantPricing.code, 400);
+    }
+    const normalizedParticipants: any[] = participantPricing.participants;
+    const participantTotal = participantPricing.participantTotal;
+    const serverTravelFee = await resolveGroupTravelFeeServerSide({
+      supabaseAdmin: admin,
+      providerId,
+      locationType: location_type === "at_home" ? "at_home" : "at_salon",
+      address: {
+        latitude: address_latitude,
+        longitude: address_longitude,
+        line1: address_line1,
+        city: address_city,
+        country: address_country,
+        postal_code: address_postal_code,
+      },
+      clientTravelFee: travel_fee,
+    });
     const productTotal = normalizedProducts.reduce(
-      (sum: number, p: any) => sum + groupProductLineTotal(p),
+      (sum: number, p: any) => addMoney(sum, groupProductLineTotal(p)),
       0
     );
     const groupPackagePricing = await validateAndPriceGroupPackage({
@@ -830,7 +865,7 @@ export async function POST(request: NextRequest) {
           .from("bookings")
           .update({
             travel_fee: Number(serverTravelFee),
-            total_amount: currentTotal + Number(serverTravelFee),
+            total_amount: addMoney(currentTotal, Number(serverTravelFee)),
             updated_at: new Date().toISOString(),
           })
           .eq("id", fallbackId);
@@ -1010,16 +1045,16 @@ export async function POST(request: NextRequest) {
 
     const result = fullBooking || groupBooking;
     const at = result.scheduled_at ? new Date(result.scheduled_at) : null;
+    const { timezone: responseTz } = await getProviderReportContext(admin, providerId);
 
-    return successResponse({
+    return successResponse(redactBookingCustomerContact({
       ...result,
       package_discount_amount: groupPackagePricing.packageDiscount,
       package_name:
         (Array.isArray((result as any).service_packages)
           ? (result as any).service_packages[0]?.name
           : (result as any).service_packages?.name) ?? null,
-      scheduled_date: at ? at.toISOString().split("T")[0] : "",
-      scheduled_time: at ? at.toTimeString().slice(0, 5) : "",
+      ...wallClockPartsInTz(at, responseTz),
       participants: (result.booking_participants || []).map((p: any) => ({
         id: p.id,
         group_booking_id: result.id,
@@ -1039,7 +1074,7 @@ export async function POST(request: NextRequest) {
       })),
       // Per-participant loops can raise the same warning many times over.
       ...(groupWarnings.length > 0 ? { _warnings: Array.from(new Set(groupWarnings)) } : {}),
-    });
+    }, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to create group booking");
   }

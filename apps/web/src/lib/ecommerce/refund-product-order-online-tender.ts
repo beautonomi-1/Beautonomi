@@ -11,6 +11,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export type OnlineTenderOrder = {
   id: string;
@@ -32,7 +33,7 @@ export function computeProductOrderOnlinePortion(order: OnlineTenderOrder): numb
   const total = Math.max(0, Number(order.total_amount ?? 0));
   const wallet = Math.max(0, Number(order.wallet_amount ?? 0));
   const gift = Math.max(0, Number(order.gift_card_amount ?? 0));
-  return Math.max(0, Math.round((total - wallet - gift) * 100) / 100);
+  return Math.max(0, subtractMoney(subtractMoney(total, wallet), gift));
 }
 
 export type RefundOnlineTenderResult = {
@@ -61,8 +62,6 @@ export async function refundProductOrderOnlineTender(
 
   const currency = order.currency ?? "ZAR";
   const tenantId = order.tenant_id ?? null;
-  const round = (n: number) => Math.round(n * 100) / 100;
-
   type ChargeRow = {
     id?: string;
     amount?: number | string | null;
@@ -97,10 +96,10 @@ export async function refundProductOrderOnlineTender(
     if (String(row.status ?? "") === "refunded") return refunded > 0 ? refunded : amount;
     return refunded;
   };
-  const alreadyRefunded = round(
-    Math.min(portion, gatewayRows.reduce((sum, row) => sum + refundedOnRow(row), 0)),
+  const alreadyRefunded = roundCurrency(
+    Math.min(portion, gatewayRows.reduce((sum, row) => addMoney(sum, refundedOnRow(row)), 0)),
   );
-  let remaining = round(portion - alreadyRefunded);
+  let remaining = subtractMoney(portion, alreadyRefunded);
   if (gatewayRows.length > 0 && remaining <= 0.009) {
     return { attempted: false, refundedAmount: portion, refundId: null };
   }
@@ -140,16 +139,16 @@ export async function refundProductOrderOnlineTender(
     if (remaining <= 0.009) break;
     if (String(row.status ?? "") !== "success" || !row.id) continue;
     const chargeReference = String(row.reference ?? "").trim();
-    const available = round(Math.max(0, Number(row.amount ?? 0) - Number(row.refund_amount ?? 0)));
+    const available = Math.max(0, subtractMoney(Number(row.amount ?? 0), Number(row.refund_amount ?? 0)));
     if (!chargeReference || available <= 0.009) continue;
-    const slice = round(Math.min(available, remaining));
+    const slice = roundCurrency(Math.min(available, remaining));
     const provider = String(row.provider ?? "").toLowerCase();
     try {
       const result = await refundOne(chargeReference, slice, provider);
       refundId = result.refundId;
-      refundedNow = round(refundedNow + slice);
-      remaining = round(remaining - slice);
-      const refundAmount = round(Number(row.refund_amount ?? 0) + slice);
+      refundedNow = addMoney(refundedNow, slice);
+      remaining = subtractMoney(remaining, slice);
+      const refundAmount = addMoney(Number(row.refund_amount ?? 0), slice);
       const fullyRefunded = refundAmount + 0.009 >= Number(row.amount ?? 0);
       await (admin.from("payment_transactions") as any)
         .update({
@@ -170,7 +169,7 @@ export async function refundProductOrderOnlineTender(
 
   return {
     attempted: true,
-    refundedAmount: round(alreadyRefunded + refundedNow),
+    refundedAmount: addMoney(alreadyRefunded, refundedNow),
     refundId,
     ...(remaining > 0.009 ? { error: errorMessage ?? "Card refund did not cover the amount" } : {}),
   };

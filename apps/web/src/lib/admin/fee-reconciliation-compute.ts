@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
+import { addMoney, roundCurrency } from "@beautonomi/utils";
 
 export type FeeAutoComputeResult = {
   recorded_fees: number;
@@ -287,8 +288,8 @@ async function computeFromFinanceLedger(
     if (txType === "payout") {
       if (fees <= 0) continue;
       payoutTransferCount += 1;
-      recordedFees += fees;
-      expectedFromConfig += await rpcExpectedFee(supabase, gatewayName, amount, "transfer", asOfDate);
+      recordedFees = addMoney(recordedFees, fees);
+      expectedFromConfig = addMoney(expectedFromConfig, await rpcExpectedFee(supabase, gatewayName, amount, "transfer", asOfDate));
       continue;
     }
 
@@ -296,19 +297,22 @@ async function computeFromFinanceLedger(
     if (fees <= 0 && amount <= 0) continue;
 
     chargeCount += 1;
-    recordedFees += fees;
-    expectedFromConfig += await rpcExpectedFee(
-      supabase,
-      gatewayName,
-      amount,
-      feeScopeForLedgerType(txType),
-      asOfDate,
+    recordedFees = addMoney(recordedFees, fees);
+    expectedFromConfig = addMoney(
+      expectedFromConfig,
+      await rpcExpectedFee(
+        supabase,
+        gatewayName,
+        amount,
+        feeScopeForLedgerType(txType),
+        asOfDate,
+      ),
     );
   }
 
   return {
-    recorded_fees: Math.round(recordedFees * 100) / 100,
-    expected_fees_from_config: Math.round(expectedFromConfig * 100) / 100,
+    recorded_fees: roundCurrency(recordedFees),
+    expected_fees_from_config: roundCurrency(expectedFromConfig),
     charge_count: chargeCount,
     payout_transfer_count: payoutTransferCount,
   };
@@ -364,13 +368,16 @@ export async function computeGatewayFeeSuggestions(
   for (const row of charges) {
     const amount = Math.abs(Number((row as { amount?: number }).amount ?? 0));
     const fees = Math.abs(Number((row as { fees?: number }).fees ?? 0));
-    recordedFees += fees;
-    expectedFromConfig += await rpcExpectedFee(
-      supabase,
-      gateway,
-      amount,
-      "transaction",
-      asOfDate,
+    recordedFees = addMoney(recordedFees, fees);
+    expectedFromConfig = addMoney(
+      expectedFromConfig,
+      await rpcExpectedFee(
+        supabase,
+        gateway,
+        amount,
+        "transaction",
+        asOfDate,
+      ),
     );
   }
 
@@ -390,21 +397,24 @@ export async function computeGatewayFeeSuggestions(
       const transferFee = Math.abs(Number((row as { fees?: number }).fees ?? 0));
       if (transferFee <= 0) continue;
       payoutTransferCount += 1;
-      recordedFees += transferFee;
+      recordedFees = addMoney(recordedFees, transferFee);
       const amount = Math.abs(Number((row as { amount?: number }).amount ?? 0));
-      expectedFromConfig += await rpcExpectedFee(
-        supabase,
-        gateway,
-        amount,
-        "transfer",
-        asOfDate,
+      expectedFromConfig = addMoney(
+        expectedFromConfig,
+        await rpcExpectedFee(
+          supabase,
+          gateway,
+          amount,
+          "transfer",
+          asOfDate,
+        ),
       );
     }
   }
 
   return {
-    recorded_fees: Math.round(recordedFees * 100) / 100,
-    expected_fees_from_config: Math.round(expectedFromConfig * 100) / 100,
+    recorded_fees: roundCurrency(recordedFees),
+    expected_fees_from_config: roundCurrency(expectedFromConfig),
     charge_count: charges.length,
     payout_transfer_count: payoutTransferCount,
   };

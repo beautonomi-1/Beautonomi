@@ -24,6 +24,8 @@ import {
   CLOSE_OUT_BOOKING_SELECT,
   mirrorOfferingAliasOnCloseOutRows,
 } from "@/lib/bookings/close-out-booking-select";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 
 const OPEN_STATUSES = ["confirmed", "checked_in", "waiting", "in_progress"];
 
@@ -33,6 +35,9 @@ export async function GET(request: NextRequest) {
       ["provider_owner", "provider_staff", "superadmin"],
       request,
     );
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -85,10 +90,13 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       summary,
-      bookings: rows.map((row) => ({
-        ...row,
-        suggestedAction: row.suggested_close_out_action,
-      })),
+      bookings: redactBookingCustomerContacts(
+        rows.map((row) => ({
+          ...row,
+          suggestedAction: row.suggested_close_out_action,
+        })),
+        canViewClients,
+      ),
     });
   } catch (error) {
     return handleApiError(error, "Failed to load close-out queue");

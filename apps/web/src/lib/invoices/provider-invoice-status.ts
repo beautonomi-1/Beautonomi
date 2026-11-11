@@ -2,6 +2,8 @@
  * Effective invoice status and filters — due date drives overdue before cron runs.
  */
 
+import { subtractMoney } from "@beautonomi/utils";
+
 export type StoredInvoiceStatus =
   | "draft"
   | "sent"
@@ -24,7 +26,7 @@ export function invoiceAmountDue(row: InvoiceStatusRow): number {
   if (Number.isFinite(stored)) return Math.max(0, stored);
   return Math.max(
     0,
-    Number(row.total_amount ?? 0) - Number(row.amount_paid ?? 0),
+    subtractMoney(Number(row.total_amount ?? 0), Number(row.amount_paid ?? 0)),
   );
 }
 

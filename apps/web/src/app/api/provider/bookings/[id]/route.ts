@@ -5,6 +5,8 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { assertCalendarScopeAllowsBooking } from "@/lib/auth/calendar-scope";
 import type { Booking } from "@/types/beautonomi";
 import type { ProviderClientMemory } from "@/lib/provider/provider-client-memory";
@@ -45,6 +47,7 @@ import {
   computeBookingOutstandingDisplay,
   computePackageAppliedForDisplay,
 } from "@/lib/bookings/display-invariants";
+import { addMoney } from "@beautonomi/utils";
 import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
@@ -250,6 +253,9 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
@@ -334,7 +340,9 @@ export async function GET(
         staffName,
         locationRow,
       });
-      return successResponse(synthetic as unknown as BookingResponse);
+      return successResponse(
+        redactBookingCustomerContact(synthetic, canViewClients) as unknown as BookingResponse,
+      );
     }
 
     // Use admin client for the booking read (same as GET list) so RLS doesn't block
@@ -596,7 +604,7 @@ export async function GET(
         type AcRow = { status?: string; amount?: number };
         const unpaidCharges = ((bookingData as unknown as { additional_charges?: AcRow[] }).additional_charges ?? [])
           .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
-          .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0);
+          .reduce((sum, ac) => addMoney(sum, Number(ac.amount ?? 0)), 0);
         return computeBookingOutstandingDisplay({
           totalAmount: tot,
           totalPaid: paid,
@@ -792,7 +800,7 @@ export async function GET(
         });
     }
 
-    return successResponse(transformedBooking);
+    return successResponse(redactBookingCustomerContact(transformedBooking, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch booking");
   }
@@ -819,6 +827,9 @@ export async function PATCH(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
 
@@ -1590,8 +1601,7 @@ export async function PATCH(
       full_name?: string | null;
       email?: string | null;
     };
-    const actorName =
-      actorProfile.full_name?.trim() || actorProfile.email || "Provider";
+    const actorName = actorProfile.full_name?.trim() || "Provider";
 
     try {
       if (
@@ -2457,7 +2467,7 @@ export async function PATCH(
       try {
         const { data: userData } = await supabase
           .from("users")
-          .select("full_name, email")
+          .select("full_name")
           .eq("id", user.id)
           .single();
 
@@ -2475,7 +2485,7 @@ export async function PATCH(
               reason: body.cancellation_reason || null,
             },
             created_by: user.id,
-            created_by_name: userData?.full_name || userData?.email || "System",
+            created_by_name: userData?.full_name || "System",
           });
       } catch (auditError) {
         // Log but don't fail the request if audit logging fails
@@ -2576,7 +2586,7 @@ export async function PATCH(
     const patchUnpaidCharges = Array.isArray((bookingData as any).additional_charges)
       ? (bookingData as any).additional_charges
           .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+          .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
       : 0;
     const patchWalletAmount = Number((bookingData as any).wallet_amount ?? 0);
     const patchGiftCardAmount = Number((bookingData as any).gift_card_amount ?? 0);
@@ -2748,7 +2758,7 @@ export async function PATCH(
           }
         : null;
     return successResponse({
-      booking: transformedBooking,
+      booking: redactBookingCustomerContact(transformedBooking, canViewClients),
       ...(cardMachineRefundDue ? { card_machine_refund_due: cardMachineRefundDue } : {}),
     });
   } catch (error) {

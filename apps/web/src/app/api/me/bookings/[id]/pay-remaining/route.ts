@@ -33,7 +33,7 @@ import {
   type BookingFeeClearRow,
 } from "@/lib/bookings/provider-booking-platform-fee";
 import { z } from "zod";
-import { normalizeTipPercentPresets } from "@beautonomi/utils";
+import { subtractMoney, addMoney, normalizeTipPercentPresets, roundCurrency } from "@beautonomi/utils";
 import {
   extractIdempotencyKey,
   lookupIdempotentResponse,
@@ -47,8 +47,8 @@ const payRemainingBodySchema = z.object({
   tip_amount: z.number().nonnegative().optional(),
 });
 
-function roundMoney(n: number): number {
-  return Math.round(n * 100) / 100;
+function roundMoney(n: number, currency = "ZAR"): number {
+  return roundCurrency(n, currency);
 }
 
 async function loadProviderTipSettings(
@@ -132,7 +132,7 @@ export async function GET(
     });
     const serviceTipBase = Math.max(
       0,
-      totalAmount - Number((booking as { tip_amount?: number }).tip_amount ?? 0) - fee,
+      subtractMoney(subtractMoney(totalAmount, Number((booking as { tip_amount?: number }).tip_amount ?? 0)), fee),
     );
     const { tipsEnabled, tipPresets } = await loadProviderTipSettings(
       (booking as { provider_id?: string | null }).provider_id,
@@ -143,7 +143,7 @@ export async function GET(
       currency: booking.currency,
       tips_enabled: tipsEnabled,
       tip_presets: tipPresets,
-      service_tip_base: roundMoney(serviceTipBase),
+      service_tip_base: roundMoney(serviceTipBase, booking.currency || "ZAR"),
     });
   } catch (error) {
     return handleApiError(error, "Failed to load pay-remaining preview");
@@ -165,12 +165,13 @@ export async function POST(
     const idempotencyKey = extractIdempotencyKey(request);
     const { id: bookingId } = await params;
     const idempotencyEndpoint = `me/bookings/${bookingId}/pay-remaining`;
+    const { user } = await requireRoleInApi(["customer"], request);
     if (idempotencyKey) {
-      const cached = await lookupIdempotentResponse(idempotencyEndpoint, idempotencyKey);
+      const cached = await lookupIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
+        userId: user.id,
+      });
       if (cached) return cached.toResponse();
     }
-
-    const { user } = await requireRoleInApi(["customer"], request);
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const rawBody = await request.json().catch(() => ({}));
@@ -254,11 +255,12 @@ export async function POST(
       pendingWalletGiftAmount: pendingWalletGift,
     });
 
-    const requestedTip = roundMoney(Number(body.tip_amount ?? 0));
+    const currency = booking.currency || tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
+    const requestedTip = roundMoney(Number(body.tip_amount ?? 0), currency);
     const feeForTip = storedPlatformFeeAmount(booking as BookingFeeClearRow);
     const serviceTipBase = Math.max(
       0,
-      totalAmount - Number((booking as { tip_amount?: number }).tip_amount ?? 0) - feeForTip,
+      subtractMoney(subtractMoney(totalAmount, Number((booking as { tip_amount?: number }).tip_amount ?? 0)), feeForTip),
     );
     const tipsEnabled =
       requestedTip > 0
@@ -297,14 +299,13 @@ export async function POST(
       booking.booking_number || booking.ref_number || bookingId.slice(0, 8).toUpperCase();
     const providerId = (booking as { provider_id?: string }).provider_id ?? "";
 
-    const currency = booking.currency || tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
     const reference = generateTransactionReference("remaining", bookingId);
     const paymentLegSuffix =
       useWallet || giftCardCode ? `:remaining:${reference}` : "";
 
     let walletAmountApplied = 0;
     let giftCardAmountApplied = 0;
-    let paystackAmount = roundMoney(remaining + requestedTip);
+    let paystackAmount = addMoney(remaining, requestedTip, currency);
 
     if (useWallet || giftCardCode) {
       const applied = await applyCollectibleGiftAndWallet({
@@ -328,7 +329,7 @@ export async function POST(
       }
       walletAmountApplied = applied.walletAmountApplied;
       giftCardAmountApplied = applied.giftCardAmountApplied;
-      paystackAmount = roundMoney(applied.paystackAmount + requestedTip);
+      paystackAmount = addMoney(applied.paystackAmount, requestedTip, currency);
 
       if (applied.fullySettled && requestedTip <= 0) {
         try {
@@ -390,6 +391,7 @@ export async function POST(
             await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
               status: 200,
               body: fullySettledBody,
+              userId: user.id,
             });
           }
           return successResponse(fullySettledBody);
@@ -566,6 +568,7 @@ export async function POST(
       await rememberIdempotentResponse(idempotencyEndpoint, idempotencyKey, {
         status: 200,
         body: payRemainingBody,
+        userId: user.id,
       });
     }
     return successResponse(payRemainingBody);

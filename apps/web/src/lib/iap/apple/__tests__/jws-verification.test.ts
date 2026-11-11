@@ -1,5 +1,5 @@
 import { X509Certificate, createSign } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   APPLE_ROOT_CA_G3_PEM,
   APPLE_ROOT_CA_G3_SHA256,
@@ -149,6 +149,20 @@ describe("verification kill switch", () => {
       process.env.APPLE_IAP_VERIFY_JWS = value;
       expect(appleJwsVerificationEnabled()).toBe(false);
       expect(() => assertAppleJwsSignature(unsignedJws(SAMPLE_TX))).not.toThrow();
+    }
+  });
+
+  it("ignores the kill switch in production (F2-52)", () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    try {
+      vi.stubEnv("NODE_ENV", "production");
+      process.env.APPLE_IAP_VERIFY_JWS = "false";
+      expect(appleJwsVerificationEnabled()).toBe(true);
+      expect(() => assertAppleJwsSignature(unsignedJws(SAMPLE_TX))).toThrow();
+    } finally {
+      vi.unstubAllEnvs();
+      if (originalNodeEnv === undefined) delete (process.env as Record<string, string | undefined>).NODE_ENV;
+      else vi.stubEnv("NODE_ENV", originalNodeEnv);
     }
   });
 });

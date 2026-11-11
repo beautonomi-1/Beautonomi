@@ -96,15 +96,6 @@ export async function POST(request: NextRequest) {
         // 24h instead of double-creating a booking + charging the customer
         // twice. Silent no-op when the caller omits the key.
         const idempotencyKey = extractIdempotencyKey(request, body);
-        if (idempotencyKey) {
-          const cached = await lookupIdempotentResponse(
-            PUBLIC_BOOKINGS_ENDPOINT,
-            idempotencyKey,
-          );
-          if (cached) {
-            return cached.toResponse();
-          }
-        }
 
         // Wave 1.5 (audit 2026-04 final 100/100): CAPTCHA guard for the
         // public POST surface. Previously the helper auto-bypassed the
@@ -120,6 +111,16 @@ export async function POST(request: NextRequest) {
           captchaSkipUserId = pre?.user?.id ?? null;
         } catch {
           captchaSkipUserId = null;
+        }
+        if (idempotencyKey) {
+          const cached = await lookupIdempotentResponse(
+            PUBLIC_BOOKINGS_ENDPOINT,
+            idempotencyKey,
+            { userId: captchaSkipUserId },
+          );
+          if (cached) {
+            return cached.toResponse();
+          }
         }
         const captchaResult = await verifyPublicBookingCaptcha(request, body, {
           skipForUserId: captchaSkipUserId,

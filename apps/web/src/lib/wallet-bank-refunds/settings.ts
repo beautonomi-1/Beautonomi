@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { percentOf, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export type WalletBankRefundFeeType = "fixed" | "percentage";
 
@@ -27,9 +28,9 @@ export function computeWalletBankRefundFee(
   settings: Pick<WalletBankRefundSettings, "fee_type" | "fee_value">,
 ): { fee: number; net: number } {
   const value = Math.max(0, Number(settings.fee_value) || 0);
-  const raw = settings.fee_type === "percentage" ? (amount * value) / 100 : value;
-  const fee = Math.round(Math.min(raw, amount) * 100) / 100;
-  return { fee, net: Math.round((amount - fee) * 100) / 100 };
+  const raw = settings.fee_type === "percentage" ? percentOf(amount, value) : roundCurrency(value);
+  const fee = roundCurrency(Math.min(raw, amount));
+  return { fee, net: subtractMoney(amount, fee) };
 }
 
 function readFromPlatformSettings(settings: Record<string, unknown> | null | undefined): Partial<WalletBankRefundSettings> {

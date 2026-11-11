@@ -1,3 +1,4 @@
+import { multiplyMoney, subtractMoney } from "../money";
 import { formatPaymentMethodLabel } from "./format-payment-method-label";
 import { formatPostalAddress } from "./format-share-text";
 import type {
@@ -59,7 +60,7 @@ function bookingLineItemsFromCustomerReceipt(receipt: LooseRecord): ReceiptLineI
       const r = row as LooseRecord;
       const qty = num(r.quantity, 1);
       const unit = num(r.price ?? r.unit_price);
-      const total = num(r.total ?? r.total_price, unit * qty);
+      const total = num(r.total ?? r.total_price, multiplyMoney(unit, qty));
       const metaParts: string[] = [];
       if (str(r.staff)) metaParts.push(`Staff: ${r.staff}`);
       if (r.duration != null) metaParts.push(`${r.duration} min`);
@@ -83,7 +84,7 @@ function bookingLineItemsFromProviderReceipt(receipt: LooseRecord): ReceiptLineI
   return (receipt.items as LooseRecord[]).map((r) => {
     const qty = num(r.quantity, 1);
     const unit = num(r.unit_price ?? r.price);
-    const total = num(r.total, unit * qty);
+    const total = num(r.total, multiplyMoney(unit, qty));
     const metaParts: string[] = [];
     if (str(r.staff)) metaParts.push(`Staff: ${r.staff}`);
     if (r.duration != null) metaParts.push(`${r.duration} min`);
@@ -277,7 +278,7 @@ function orderLineItems(receipt: LooseRecord): ReceiptLineItem[] {
   return (receipt.items as LooseRecord[]).map((it) => {
     const qty = num(it.quantity, 1);
     const unit = num(it.price ?? it.unit_price);
-    const total = num(it.line_total ?? it.total ?? it.total_price, unit * qty);
+    const total = num(it.line_total ?? it.total ?? it.total_price, multiplyMoney(unit, qty));
     const variant = str(it.variant_label ?? it.variant);
     return {
       description: str(it.name ?? it.product_name) ?? "Product",
@@ -361,7 +362,7 @@ export function orderShareModelFromReceipt(
     payments.push({ label: "Wallet", amount: walletAmt });
   }
   const method = str(receipt.payment_method);
-  const nonWalletPaid = Math.max(0, amountPaid - walletAmt);
+  const nonWalletPaid = Math.max(0, subtractMoney(amountPaid, walletAmt));
   if (method && nonWalletPaid > 0.01) {
     payments.push({
       label: formatPaymentMethodLabel(method, str(receipt.payment_provider)),
@@ -485,7 +486,7 @@ export function saleShareModelFromReceipt(
             description: str(it.item_name ?? it.name ?? it.description) ?? "Item",
             quantity: qty,
             unitPrice: unit,
-            lineTotal: num(it.total_price ?? it.total, unit * qty),
+            lineTotal: num(it.total_price ?? it.total, multiplyMoney(unit, qty)),
             meta: str(it.item_type) ? `Type: ${it.item_type}` : null,
           };
         })

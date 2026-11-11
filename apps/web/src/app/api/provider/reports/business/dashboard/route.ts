@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -19,8 +20,8 @@ import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 function sumLedgerSplits(result: ProviderRevenueResult) {
-  const ledgerFromBookings = Array.from(result.revenueByBooking.values()).reduce((s, v) => s + v, 0);
-  const ledgerFromProductOrders = Array.from(result.revenueByProductOrder.values()).reduce((s, v) => s + v, 0);
+  const ledgerFromBookings = Array.from(result.revenueByBooking.values()).reduce((s, v) => addMoney(s, v), 0);
+  const ledgerFromProductOrders = Array.from(result.revenueByProductOrder.values()).reduce((s, v) => addMoney(s, v), 0);
   return { ledgerFromBookings, ledgerFromProductOrders };
 }
 

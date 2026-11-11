@@ -10,7 +10,7 @@ import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
-import { selectDefaultMachine, type CardMachine } from "@beautonomi/utils";
+import { selectDefaultMachine, toMinorUnits, type CardMachine } from "@beautonomi/utils";
 import type { PayCloudEntityType } from "@/hooks/usePayCloud";
 
 export type CardMachineCollectSheetProps = {
@@ -187,7 +187,7 @@ export function CardMachineCollectSheet({
       <YocoPaymentSheet
         visible
         onClose={closeMachine}
-        amountCents={Math.round(amount * 100)}
+        amountCents={toMinorUnits(amount, currency)}
         currency={currency}
         bookingId={bookingId}
         saleId={saleId}

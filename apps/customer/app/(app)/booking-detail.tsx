@@ -34,7 +34,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney, normalizeTipPercentPresets, percentOf } from "@beautonomi/utils";
+import { subtractMoney, addMoney, formatMoney, multiplyMoney, normalizeTipPercentPresets, percentOf, roundCurrency } from "@beautonomi/utils";
 import { showPermissionRecoveryAlert } from "@/lib/native-permissions";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
@@ -1163,7 +1163,7 @@ export default function BookingDetailScreen() {
     if (typeof ob === "number" && ob > 0) return ob;
     const total = Number((booking as any)?.total_amount ?? 0);
     const paid = Number((booking as any)?.total_paid ?? 0);
-    return Math.max(0, total - paid);
+    return Math.max(0, subtractMoney(total, paid));
   })();
 
   // World-class retry: any non-cash, non-terminal booking with money still owed
@@ -1253,7 +1253,7 @@ export default function BookingDetailScreen() {
     }
     if (payRemainingTipChoice === "custom") {
       setPayRemainingTipAmount(
-        Math.round(Math.max(0, Number(payRemainingCustomTip) || 0) * 100) / 100,
+        roundCurrency(Math.max(0, Number(payRemainingCustomTip) || 0)),
       );
       return;
     }
@@ -1958,7 +1958,7 @@ export default function BookingDetailScreen() {
         const walletPaid = Number((booking as any).wallet_amount || 0);
         const giftPaid = Number((booking as any).gift_card_amount || 0);
         const totalPaid = Number((booking as any).total_paid || 0);
-        const otherPaid = Math.max(0, totalPaid - walletPaid - giftPaid);
+        const otherPaid = Math.max(0, subtractMoney(subtractMoney(totalPaid, walletPaid), giftPaid));
         if (walletPaid <= 0 && giftPaid <= 0 && totalPaid <= 0) return null;
         return (
           <View style={{ marginTop: 8 }}>
@@ -2722,7 +2722,7 @@ export default function BookingDetailScreen() {
           if (unpaid.length === 0) return null;
           const single = unpaid.length === 1 ? unpaid[0] : null;
           const currency: string = single?.currency || booking?.currency || "ZAR";
-          const total = unpaid.reduce((s: number, c: any) => s + Number(c.amount || 0), 0);
+          const total = unpaid.reduce((s: number, c: any) => addMoney(s, Number(c.amount || 0)), 0);
           const singlePayLoading = single && additionalChargePayLoadingId === String(single.id);
           const singleApproveLoading =
             single && additionalChargeApproveLoadingId === String(single.id);
@@ -3641,7 +3641,7 @@ export default function BookingDetailScreen() {
                 <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>{addonName}{qty > 1 ? ` x${qty}` : ""}</Text>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
-                    {booking.currency} {(price * qty).toFixed(2)}
+                    {booking.currency} {multiplyMoney(price, qty).toFixed(2)}
                   </Text>
                 </View>
               );
@@ -3657,7 +3657,7 @@ export default function BookingDetailScreen() {
               const prodName = String(prod.product_name ?? bd("productFallback"));
               const qty = Number(prod.quantity ?? 1);
               const unitPrice = Number(prod.unit_price ?? 0);
-              const totalPrice = Number(prod.total_price ?? unitPrice * qty);
+              const totalPrice = Number(prod.total_price ?? multiplyMoney(unitPrice, qty));
               return (
                 <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>{prodName}{qty > 1 ? ` x${qty}` : ""}</Text>

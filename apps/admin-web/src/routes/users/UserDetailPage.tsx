@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -222,7 +223,7 @@ function ProviderFinanceSummaryCard({
 }) {
   const tiles = [
     { label: "Gross revenue", value: fmt(summary.gross), hint: "Total charged to customers" },
-    { label: "Platform fees", value: fmt(summary.fees + summary.commission), hint: "Fees + commission deducted by platform" },
+    { label: "Platform fees", value: fmt(addMoney(summary.fees, summary.commission)), hint: "Fees + commission deducted by platform" },
     { label: "Net earnings", value: fmt(summary.net), hint: "Gross minus platform fees" },
     { label: "Refunds issued", value: fmt(summary.refunds), hint: "Total refunded to customers" },
     { label: "Completed payouts", value: fmt(summary.completed_payouts), hint: "Already transferred to provider bank" },

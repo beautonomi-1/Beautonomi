@@ -10,6 +10,8 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 import { buildSaleReceiptPayload } from "@/lib/receipts/build-sale-receipt";
 import { buildWalkInProductOrderSaleReceipt } from "@/lib/provider-sales/build-walk-in-order-sale-receipt";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 
 export async function GET(
   request: NextRequest,
@@ -55,6 +57,9 @@ export async function GET(
       );
       user = { id: authed.user.id, role: authed.user.role as string };
     }
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const { data: saleRaw, error } = await admin
       .from("sales")
@@ -113,7 +118,9 @@ export async function GET(
       currency,
     });
 
-    return NextResponse.json({ receipt });
+    return NextResponse.json({
+      receipt: redactBookingCustomerContact(receipt, canViewClients),
+    });
     }
 
     const { data: orderRaw, error: orderErr } = await admin
@@ -183,7 +190,9 @@ export async function GET(
       currency,
     });
 
-    return NextResponse.json({ receipt });
+    return NextResponse.json({
+      receipt: redactBookingCustomerContact(receipt, canViewClients),
+    });
   } catch (error: unknown) {
     console.error("Error generating sale receipt:", error);
     const message =

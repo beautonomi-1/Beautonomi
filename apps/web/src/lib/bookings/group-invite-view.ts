@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import type { GroupInviteRow } from "@/lib/bookings/group-invites";
 import { checkPublicMutationRateLimit } from "@/lib/rate-limit/public-mutation";
+import { roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 const OPEN_INVITE = new Set(["pending", "accepted"]);
 const CLOSED_BOOKING = new Set(["cancelled", "completed", "no_show"]);
@@ -25,10 +26,6 @@ export type GroupInviteView = {
   can_pay: boolean;
   can_cancel: boolean;
 };
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
 
 /** Public-safe invite payload (never includes the token hash or contact details). */
 export async function buildGroupInviteView(
@@ -87,9 +84,9 @@ export async function buildGroupInviteView(
     }
   }
 
-  const amountDue = round2(Number(participant?.amount_due ?? invite.amount_due ?? 0));
-  const amountPaid = round2(Number(participant?.amount_paid ?? 0));
-  const remaining = round2(Math.max(0, amountDue - amountPaid));
+  const amountDue = roundCurrency(Number(participant?.amount_due ?? invite.amount_due ?? 0));
+  const amountPaid = roundCurrency(Number(participant?.amount_paid ?? 0));
+  const remaining = Math.max(0, subtractMoney(amountDue, amountPaid));
   const shareStatus = participant?.participant_payment_status ?? null;
   const expired = Boolean(invite.expires_at && new Date(invite.expires_at).getTime() < Date.now());
   const open =

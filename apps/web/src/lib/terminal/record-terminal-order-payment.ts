@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as Sentry from "@sentry/nextjs";
+import { subtractMoney } from "@beautonomi/utils";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
@@ -138,7 +139,7 @@ async function recordTerminalOrderPaymentInner(
     reference,
     amount: amountMajor,
     fees: feesMajor,
-    net_amount: amountMajor - feesMajor,
+    net_amount: subtractMoney(amountMajor, feesMajor),
     status: "success",
     provider,
     transaction_type: "charge",
@@ -170,7 +171,7 @@ async function recordTerminalOrderPaymentInner(
         amount: amountMajor,
         fees: feesMajor,
         commission: 0,
-        net: amountMajor - feesMajor,
+        net: subtractMoney(amountMajor, feesMajor),
         description: `Terminal order ${transactionType} — ${terminalOrderId}`,
         metadata: {
           terminal_order_id: terminalOrderId,

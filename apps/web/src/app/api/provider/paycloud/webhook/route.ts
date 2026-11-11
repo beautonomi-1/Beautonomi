@@ -7,9 +7,13 @@ import { isPaycloudRefundRow, completePaycloudRefund } from "@/lib/payments/payc
 import { handlePaycloudPostSettle } from "@/lib/payments/paycloud-post-settle";
 import { computeAmountMatchStatus } from "@/lib/payments/paycloud-amount-guards";
 import { parsePaycloudCloudCapturedAmount, mergePaycloudCapturedMetadata } from "@/lib/payments/paycloud-cloud-amount";
-import { resolvePaycloudGatewayPublicKey } from "@/lib/payments/resolve-paycloud-app-credentials";
-import type { PaycloudEnvironment } from "@/lib/payments/paycloud";
+import { resolvePaycloudWebhookGatewayPublicKeys } from "@/lib/payments/resolve-paycloud-app-credentials";
 import { PAYCLOUD_TRANS_STATUS } from "@/lib/payments/paycloud";
+import {
+  acquireWebhookEventLease,
+  markWebhookEventFailed,
+  markWebhookEventProcessed,
+} from "@/lib/payment/webhook-event-lease";
 
 export const maxDuration = 60;
 
@@ -38,42 +42,71 @@ export async function POST(request: NextRequest) {
     const payload = { ...dataObj, ...(nested ?? body) } as Record<string, any>;
     const merchantOrderNo =
       payload.merchant_order_no ?? body.merchant_order_no ?? dataObj.merchant_order_no;
+    const transStatus = String(payload.trans_status ?? "");
 
+    // F2-37: verify the RSA2 signature BEFORE any payment lookup. The gateway
+    // public key is resolved from the envelope's app_id (config only), so an
+    // unauthenticated caller cannot probe merchant_order_no values.
+    const appId =
+      (typeof body.app_id === "string" && body.app_id) ||
+      (typeof payload.app_id === "string" && payload.app_id) ||
+      null;
+    const candidateKeys = await resolvePaycloudWebhookGatewayPublicKeys(supabase, { appId });
+    const signatureValid = candidateKeys.some((key) => verifyPaycloudWebhookSignature(rawBody, key));
+
+    if (!signatureValid) {
+      console.warn("[paycloud] webhook signature invalid — rejected", {
+        merchant_order_no: merchantOrderNo,
+        has_app_id: Boolean(appId),
+        candidate_keys: candidateKeys.length,
+      });
+      await supabase.from("paycloud_webhook_events").insert({
+        merchant_order_no: merchantOrderNo,
+        event_type: String(payload.trans_status ?? "notify"),
+        signature_valid: false,
+        payload: body,
+      });
+      return new NextResponse("invalid signature", {
+        status: 401,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
+    // F-06: idempotency on a deterministic event id via the shared lease RPC.
+    // PayCloud notifies carry trans_no (gateway transaction id); fall back to
+    // merchant_order_no. Status is part of the key so a later status change for
+    // the same order is still processed.
+    const transNo =
+      (typeof payload.trans_no === "string" && payload.trans_no) ||
+      (typeof payload.order_id === "string" && payload.order_id) ||
+      null;
+    const eventKeyBase = transNo ?? (merchantOrderNo ? String(merchantOrderNo) : null);
+    if (!eventKeyBase) {
+      return new NextResponse("missing order reference", {
+        status: 400,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+    const eventId = `${eventKeyBase}:${transStatus || "notify"}`;
+    const lease = await acquireWebhookEventLease(supabase, {
+      eventId,
+      source: WEBHOOK_SOURCE,
+      eventType: `paycloud:${transStatus || "notify"}`,
+      payload: { merchant_order_no: merchantOrderNo, trans_no: transNo, trans_status: transStatus },
+    });
+    if (lease.outcome === "duplicate") {
+      return new NextResponse("success", { status: 200, headers: { "Content-Type": "text/plain" } });
+    }
+    if (lease.outcome === "in_flight") {
+      return new NextResponse("processing", { status: 503, headers: { "Content-Type": "text/plain" } });
+    }
+
+    try {
     const { data: payment } = await supabase
       .from("provider_paycloud_payments")
       .select("*")
       .eq("merchant_order_no", merchantOrderNo)
       .maybeSingle();
-
-    let signatureValid = false;
-    if (payment?.terminal_id) {
-      const { data: terminal } = await supabase
-        .from("paycloud_terminals")
-        .select("paycloud_merchant_id, tenant_id")
-        .eq("id", payment.terminal_id)
-        .maybeSingle();
-      if (terminal?.paycloud_merchant_id) {
-        const { data: merchant } = await supabase
-          .from("paycloud_merchants")
-          .select("paycloud_app_id, environment, tenant_id")
-          .eq("id", terminal.paycloud_merchant_id)
-          .maybeSingle();
-        if (merchant) {
-          const gatewayKey = await resolvePaycloudGatewayPublicKey(supabase, {
-            environment: (merchant.environment as PaycloudEnvironment) ?? "live",
-            tenantId:
-              (merchant as { tenant_id?: string | null }).tenant_id ??
-              (terminal as { tenant_id?: string | null }).tenant_id ??
-              (payment as { tenant_id?: string | null }).tenant_id ??
-              null,
-            paycloudAppId: merchant.paycloud_app_id,
-          });
-          if (gatewayKey) {
-            signatureValid = verifyPaycloudWebhookSignature(rawBody, gatewayKey);
-          }
-        }
-      }
-    }
 
     await supabase.from("paycloud_webhook_events").insert({
       tenant_id: payment?.tenant_id,
@@ -86,18 +119,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Money rule: settle only when PayCloud reports completed (trans_status=2)
-    // AND RSA2 signature verifies. Do not treat response_code alone as paid —
-    // reconcile/poll remain the backup if notify signature cannot be verified.
+    // AND RSA2 signature verifies (enforced above). Do not treat response_code
+    // alone as paid — reconcile/poll remain the backup.
     // @see https://developers.paycloud.africa/docs/public/CloudMode/
-    const transStatus = String(payload.trans_status ?? "");
     const isSuccess = transStatus === PAYCLOUD_TRANS_STATUS.COMPLETED;
-
-    if (payment && isSuccess && !signatureValid) {
-      console.warn("[paycloud] webhook signature invalid — not settling", {
-        merchant_order_no: merchantOrderNo,
-        payment_id: payment.id,
-      });
-    }
 
     if (payment && isSuccess && signatureValid) {
       const captured =
@@ -192,9 +217,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    await markWebhookEventProcessed(supabase, { eventId, source: WEBHOOK_SOURCE });
     return new NextResponse("success", { status: 200, headers: { "Content-Type": "text/plain" } });
+    } catch (handlerError) {
+      await markWebhookEventFailed(supabase, {
+        eventId,
+        source: WEBHOOK_SOURCE,
+        errorMessage: handlerError instanceof Error ? handlerError.message : String(handlerError),
+      });
+      throw handlerError;
+    }
   } catch (error: any) {
     console.error("POST /api/provider/paycloud/webhook:", error);
     return new NextResponse("fail", { status: 500, headers: { "Content-Type": "text/plain" } });
   }
 }
+
+const WEBHOOK_SOURCE = "paycloud";

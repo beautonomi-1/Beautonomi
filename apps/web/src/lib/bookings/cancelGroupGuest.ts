@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cancelGroupBookingParticipant } from "@/lib/bookings/group-booking-cancellation";
 import { repriceBookingAfterLineRemoval } from "@/lib/bookings/repriceBookingAfterLineRemoval";
 import type { CancellationPolicy } from "@/lib/bookings/cancellation-policy";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export type CancelGroupGuestResult =
   | {
@@ -28,10 +29,6 @@ export type CancelGroupGuestResult =
     };
 
 const CLOSED_BOOKING_STATUSES = new Set(["cancelled", "completed", "no_show"]);
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
 
 /**
  * Cancel a non-primary group guest.
@@ -144,7 +141,7 @@ export async function cancelGroupGuest(
   if (removeErr) throw removeErr;
   const removedRows = (removed ?? []) as Array<{ price?: number | string | null }>;
   const removedLines = removedRows.length;
-  const removedAmount = removedRows.reduce((sum, row) => sum + Number(row.price ?? 0), 0);
+  const removedAmount = removedRows.reduce((sum, row) => addMoney(sum, Number(row.price ?? 0)), 0);
 
   let newTotal: number | null = null;
   if (removedLines > 0) {
@@ -189,7 +186,7 @@ export async function cancelGroupGuest(
 
   const overpaidBefore = await computeLeadOverpaid(admin, leadBookingId, newTotal);
   // Guest money still awaiting a gateway retry is not the lead customer's to keep.
-  const leadOverpaid = round2(Math.max(0, overpaidBefore - guestOutcome.failed));
+  const leadOverpaid = Math.max(0, subtractMoney(overpaidBefore, guestOutcome.failed));
 
   let walletCredited = 0;
   if (leadOverpaid > 0.009) {
@@ -200,7 +197,7 @@ export async function cancelGroupGuest(
       .eq("id", leadBookingId)
       .maybeSingle();
     const caps = await computeRefundCaps(admin, leadBookingId, leadPayRow ?? undefined);
-    const walletTarget = round2(Math.min(leadOverpaid, caps.onlineCap));
+    const walletTarget = roundCurrency(Math.min(leadOverpaid, caps.onlineCap));
 
     const { processBookingRefund } = await import("@/lib/bookings/refund-processing");
     const policy: CancellationPolicy = {
@@ -221,11 +218,11 @@ export async function cancelGroupGuest(
         isLateCancellation: false,
         maxWalletCredit: walletTarget,
       });
-      if (credit.success) walletCredited = round2(Number(credit.amount ?? 0));
+      if (credit.success) walletCredited = roundCurrency(Number(credit.amount ?? 0));
     }
   }
 
-  const inPersonRefundDue = round2(Math.max(0, leadOverpaid - walletCredited));
+  const inPersonRefundDue = Math.max(0, subtractMoney(leadOverpaid, walletCredited));
 
   await notifyRemoved();
   return {
@@ -250,8 +247,9 @@ async function computeLeadOverpaid(
     .select("total_paid, total_refunded")
     .eq("id", leadBookingId)
     .maybeSingle();
-  const netPaid =
-    Number((lead as { total_paid?: number | null } | null)?.total_paid ?? 0) -
-    Number((lead as { total_refunded?: number | null } | null)?.total_refunded ?? 0);
-  return round2(Math.max(0, netPaid - newTotal));
+  const netPaid = subtractMoney(
+    Number((lead as { total_paid?: number | null } | null)?.total_paid ?? 0),
+    Number((lead as { total_refunded?: number | null } | null)?.total_refunded ?? 0),
+  );
+  return Math.max(0, subtractMoney(netPaid, newTotal));
 }

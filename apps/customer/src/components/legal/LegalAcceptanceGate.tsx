@@ -15,6 +15,8 @@ import {
   hasAcceptedCurrentCustomerEula,
   storeCustomerEulaAcceptance,
   CUSTOMER_EULA_VERSION,
+  isCustomerEulaSyncedForUser,
+  markCustomerEulaSyncedForUser,
 } from "@/lib/legal-acceptance";
 import { webCustomerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { api } from "@/lib/api-client";
@@ -66,11 +68,13 @@ function LegalAcceptanceGateActive({
 
   const syncServerAcceptance = useCallback(async () => {
     if (!userId) return;
+    if (await isCustomerEulaSyncedForUser(userId)) return;
     const res = await api.post("/api/me/legal-acceptance", {
       app: "customer",
       version: CUSTOMER_EULA_VERSION,
     });
     if (res.error) throw new Error(res.error.message ?? "legal acceptance sync failed");
+    await markCustomerEulaSyncedForUser(userId);
   }, [userId]);
 
   useEffect(() => {

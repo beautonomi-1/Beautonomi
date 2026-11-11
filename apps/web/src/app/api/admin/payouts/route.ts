@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, getPaginationParams  } from "@/lib/supabase/api-helpers";
@@ -239,7 +240,7 @@ export async function GET(request: NextRequest) {
         const key = String(row.status ?? "unknown");
         acc[key] = acc[key] || { count: 0, amount: 0 };
         acc[key].count += 1;
-        acc[key].amount += Number(row.amount || 0);
+        acc[key].amount = addMoney(acc[key].amount, Number(row.amount || 0));
         return acc;
       },
       {},

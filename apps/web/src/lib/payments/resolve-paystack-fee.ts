@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fromMinorUnits, roundCurrency } from "@beautonomi/utils";
 
 export type ResolvedPaystackFee = {
   feesMajor: number;
@@ -26,9 +27,9 @@ export async function resolvePaystackFeeMajor(
   const raw = Number(params.feesSmallestOrMajor ?? 0);
   const amountMajor = Math.abs(Number(params.amountMajor ?? 0));
 
-  let feesMajor = params.alreadyMajor ? Math.abs(raw) : Math.abs(raw) / 100;
+  let feesMajor = params.alreadyMajor ? Math.abs(raw) : fromMinorUnits(Math.abs(raw));
   if (feesMajor > 0.0001) {
-    return { feesMajor: Math.round(feesMajor * 100) / 100, feeSource: "paystack" };
+    return { feesMajor: roundCurrency(feesMajor), feeSource: "paystack" };
   }
 
   if (amountMajor <= 0) {
@@ -53,7 +54,7 @@ export async function resolvePaystackFeeMajor(
     return { feesMajor: 0, feeSource: "paystack" };
   }
 
-  feesMajor = Math.round(Number(data ?? 0) * 100) / 100;
+  feesMajor = roundCurrency(Number(data ?? 0));
   if (feesMajor <= 0) {
     return { feesMajor: 0, feeSource: "paystack" };
   }

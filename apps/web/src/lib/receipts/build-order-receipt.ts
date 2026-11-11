@@ -1,6 +1,7 @@
 /**
  * Canonical receipt math for product order JSON/PDF surfaces.
  */
+import { subtractMoney, addMoney, multiplyMoney, roundCurrency } from "@beautonomi/utils";
 
 export type OrderItemLike = {
   product_name?: string | null;
@@ -49,7 +50,7 @@ export function mapOrderReceiptItems(items: OrderItemLike[] | null | undefined):
         ov && typeof ov === "object" ? Object.values(ov).join(" / ") : "";
       const qty = num(it.quantity, 1);
       const unit = num(it.unit_price);
-      const lineTotal = num(it.total_price, unit * qty);
+      const lineTotal = num(it.total_price, multiplyMoney(unit, qty));
       const name = String(it.product_name || "Product");
       return {
         name,
@@ -84,7 +85,7 @@ export function computeOrderReceiptFinancials(input: {
   const totalFromRow =
     order.total_amount != null && !Number.isNaN(Number(order.total_amount))
       ? num(order.total_amount)
-      : subtotal + tax + deliveryFee + platformFee - discount;
+      : subtractMoney(addMoney(addMoney(addMoney(subtotal, tax), deliveryFee), platformFee), discount);
 
   const paymentStatus = String(order.payment_status ?? "").toLowerCase();
   const refunded = num(order.refunded_amount);
@@ -100,18 +101,18 @@ export function computeOrderReceiptFinancials(input: {
       break;
     case "partially_refunded":
       // Net collected after partial refund; order itself is still settled.
-      amountPaid = Math.max(0, totalFromRow - refunded);
+      amountPaid = Math.max(0, subtractMoney(totalFromRow, refunded));
       balanceDue = 0;
       break;
     case "refunded":
-      amountPaid = Math.max(0, totalFromRow - refunded);
+      amountPaid = Math.max(0, subtractMoney(totalFromRow, refunded));
       balanceDue = 0;
       break;
     case "pending":
     case "failed":
     default:
-      amountPaid = Math.min(totalFromRow, walletPaid + giftPaid + cardPaid);
-      balanceDue = Math.max(0, totalFromRow - amountPaid);
+      amountPaid = Math.min(totalFromRow, addMoney(addMoney(walletPaid, giftPaid), cardPaid));
+      balanceDue = Math.max(0, subtractMoney(totalFromRow, amountPaid));
       break;
   }
 
@@ -171,9 +172,9 @@ export async function loadProductOrderReceiptCardPaid(
   const total = (data ?? []).reduce((sum: number, row: { amount?: number | string | null; provider?: string | null }) => {
     const provider = String(row.provider ?? "").trim().toLowerCase();
     if (RECEIPT_CARD_EXCLUDED_PROVIDERS.has(provider)) return sum;
-    return sum + num(row.amount);
+    return addMoney(sum, num(row.amount));
   }, 0);
-  return Math.round(total * 100) / 100;
+  return roundCurrency(total);
 }
 
 export function buildOrderReceiptCore(input: {

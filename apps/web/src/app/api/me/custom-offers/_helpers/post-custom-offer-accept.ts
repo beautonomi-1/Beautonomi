@@ -476,6 +476,8 @@ export async function postCustomOfferAccept(
       tip_amount: result.tipAmount,
       tax_amount: result.taxAmount,
       tax_rate: result.taxRate,
+      tax_inclusive: result.taxInclusive,
+      provider_vat_number_snapshot: result.providerVatNumberSnapshot,
       travel_fee: result.travelFee,
       service_fee_amount: result.serviceFeeAmount,
       service_fee_percentage: result.serviceFeePercentage,

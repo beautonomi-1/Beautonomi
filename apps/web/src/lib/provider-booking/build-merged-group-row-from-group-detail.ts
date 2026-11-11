@@ -1,4 +1,5 @@
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { multiplyMoney, addMoney, subtractMoney } from "@beautonomi/utils";
 import {
   mapStatusToProvider,
   type BookingStatus,
@@ -9,7 +10,7 @@ function sumUnpaidAdditionalCharges(charges: unknown): number {
   if (!Array.isArray(charges)) return 0;
   return charges
     .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-    .reduce((sum: number, charge: any) => sum + Number(charge?.amount ?? 0), 0);
+    .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount ?? 0)), 0);
 }
 
 function mapStatusFromDatabase(dbStatus: string): string {
@@ -56,8 +57,8 @@ export function aggregateGroupChildPaymentRollup(
     if (!childGroupId || ["cancelled", "no_show"].includes(String(child?.status ?? ""))) continue;
 
     const childPaymentStatus = String(child?.payment_status ?? "");
-    const paidAfterRefunds = Math.max(0, Number(child?.total_paid ?? 0) - Number(child?.total_refunded ?? 0));
-    const walletGiftCoverage = Number(child?.wallet_amount ?? 0) + Number(child?.gift_card_amount ?? 0);
+    const paidAfterRefunds = Math.max(0, subtractMoney(Number(child?.total_paid ?? 0), Number(child?.total_refunded ?? 0)));
+    const walletGiftCoverage = addMoney(Number(child?.wallet_amount ?? 0), Number(child?.gift_card_amount ?? 0));
     const childCoverage = Math.max(paidAfterRefunds, walletGiftCoverage);
     const childUnpaidCharges = sumUnpaidAdditionalCharges(child?.additional_charges);
     const childTotal = Number(child?.total_amount ?? 0);
@@ -72,13 +73,13 @@ export function aggregateGroupChildPaymentRollup(
     });
 
     acc = {
-      totalAmount: acc.totalAmount + childTotal + childUnpaidCharges,
-      totalPaid: acc.totalPaid + Number(child?.total_paid ?? 0),
-      totalRefunded: acc.totalRefunded + Number(child?.total_refunded ?? 0),
-      walletGiftCoverage: acc.walletGiftCoverage + walletGiftCoverage,
-      coverage: acc.coverage + childCoverage,
-      balanceDue: acc.balanceDue + childBalanceDue,
-      tipAmount: acc.tipAmount + Math.max(0, Number(child?.tip_amount ?? 0)),
+      totalAmount: addMoney(addMoney(acc.totalAmount, childTotal), childUnpaidCharges),
+      totalPaid: addMoney(acc.totalPaid, Number(child?.total_paid ?? 0)),
+      totalRefunded: addMoney(acc.totalRefunded, Number(child?.total_refunded ?? 0)),
+      walletGiftCoverage: addMoney(acc.walletGiftCoverage, walletGiftCoverage),
+      coverage: addMoney(acc.coverage, childCoverage),
+      balanceDue: addMoney(acc.balanceDue, childBalanceDue),
+      tipAmount: addMoney(acc.tipAmount, Math.max(0, Number(child?.tip_amount ?? 0))),
       paymentStatus: acc.paymentStatus,
       hasRefundStatus:
         acc.hasRefundStatus ||
@@ -119,7 +120,7 @@ export function buildMergedGroupRowFromGroupDetailApi(
     group.service_name ||
     group.title ||
     "Group booking";
-  const participantTotal = participants.reduce((sum: number, p: any) => sum + (Number(p.price) || 0), 0);
+  const participantTotal = participants.reduce((sum: number, p: any) => addMoney(sum, Number(p.price) || 0), 0);
   const productRows = Array.isArray(group.products) ? group.products : [];
   const products = productRows.map((p: any, idx: number) => ({
     id: p.id ?? `${group.id}-product-${idx}`,
@@ -139,13 +140,13 @@ export function buildMergedGroupRowFromGroupDetailApi(
     unit_price: Number(p.unit_price ?? p.unitPrice ?? 0) || 0,
     total_price:
       Number(p.total_price ?? p.totalPrice ?? 0) ||
-      (Number(p.unit_price ?? p.unitPrice ?? 0) || 0) * (Number(p.quantity ?? 1) || 1),
+      multiplyMoney(Number(p.unit_price ?? p.unitPrice ?? 0) || 0, Number(p.quantity ?? 1) || 1),
   }));
-  const productTotal = products.reduce((sum: number, p: any) => sum + (Number(p.total_price) || 0), 0);
-  const total = Number(group.total_price ?? 0) || participantTotal + productTotal + (Number(group.travel_fee) || 0);
+  const productTotal = products.reduce((sum: number, p: any) => addMoney(sum, Number(p.total_price) || 0), 0);
+  const total = Number(group.total_price ?? 0) || addMoney(addMoney(participantTotal, productTotal), Number(group.travel_fee) || 0);
   const payment = aggregateGroupChildPaymentRollup(String(group.id ?? ""), group.bookings);
   const displayTotal = payment.totalAmount > 0 ? Math.max(total, payment.totalAmount) : total;
-  const balanceDue = Math.max(0, payment.totalAmount > 0 ? payment.balanceDue : total - payment.coverage);
+  const balanceDue = Math.max(0, payment.totalAmount > 0 ? payment.balanceDue : subtractMoney(total, payment.coverage));
   const groupPaymentStatus =
     payment.hasRefundStatus && payment.totalPaid > 0 && payment.totalRefunded >= payment.totalPaid - 0.01
       ? "refunded"
@@ -207,7 +208,7 @@ export function buildMergedGroupRowFromGroupDetailApi(
     addons: [],
     package_id: group.package_id || null,
     package_name: null,
-    subtotal: Math.max(0, displayTotal - (Number(group.travel_fee) || 0)),
+    subtotal: Math.max(0, subtractMoney(displayTotal, Number(group.travel_fee) || 0)),
     discount_amount: 0,
     discount_code: null,
     discount_reason: null,

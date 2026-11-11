@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 /**
  * Channel + revenue-stream taxonomy for provider/admin reporting.
  *
@@ -116,7 +117,7 @@ export function computeBookingChannelBreakdown(
     const channel = normalizeBookingChannel(booking.booking_source);
     channelCounts.set(channel, (channelCounts.get(channel) ?? 0) + 1);
     const rev = recognizedRevenueByBookingId.get(booking.id) ?? 0;
-    channelRevenue.set(channel, (channelRevenue.get(channel) ?? 0) + rev);
+    channelRevenue.set(channel, addMoney(channelRevenue.get(channel) ?? 0, rev));
   }
 
   const channels = [...new Set([...channelCounts.keys(), ...channelRevenue.keys()])];
@@ -163,10 +164,10 @@ export function computeOrderSourceBreakdown(
     const revenue = Number(order.revenue ?? 0);
     if (source === "walk_in") {
       walkInUnits += units;
-      walkInRevenue += revenue;
+      walkInRevenue = addMoney(walkInRevenue, revenue);
     } else if (source === "online") {
       onlineUnits += units;
-      onlineRevenue += revenue;
+      onlineRevenue = addMoney(onlineRevenue, revenue);
     }
   }
 

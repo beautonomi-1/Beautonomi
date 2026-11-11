@@ -35,6 +35,19 @@ export function bandFromDeviceUpperBound(upperBound: number | null | undefined):
   return "18_plus";
 }
 
+/**
+ * F3-25: self-declared DOB may tighten age locks (under_13 / 13_17) but must
+ * never lift them. A declared 18+ band is treated as unknown until KYC
+ * (`legal_date_of_birth` / `verified_dob`) confirms it. Display `band` on
+ * `ResolvedAgeBand` is unchanged; pass this result into lock/enforcement.
+ */
+export function ageBandForLocks(resolved: ResolvedAgeBand): AgeBand {
+  if (resolved.source === "declared_dob" && resolved.band === "18_plus") {
+    return "unknown";
+  }
+  return resolved.band;
+}
+
 type UserAgeRow = {
   date_of_birth: string | null;
   legal_date_of_birth: string | null;

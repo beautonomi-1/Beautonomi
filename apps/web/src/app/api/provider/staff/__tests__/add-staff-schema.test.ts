@@ -36,6 +36,12 @@ describe("addStaffSchema", () => {
     expect(parsed.avatar_url).toBe("https://cdn.example.com/avatars/staff.jpg");
   });
 
+  it("F3-21: rejects a commission_rate outside 0–100", () => {
+    expect(addStaffSchema.safeParse({ email: "a@example.com", commission_rate: 150 }).success).toBe(false);
+    expect(addStaffSchema.safeParse({ email: "a@example.com", commission_rate: -1 }).success).toBe(false);
+    expect(addStaffSchema.safeParse({ email: "a@example.com", commission_rate: 40 }).success).toBe(true);
+  });
+
   it("rejects avatar_url when not a URL", () => {
     const result = addStaffSchema.safeParse({
       email: "a@example.com",

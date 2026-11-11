@@ -8,6 +8,7 @@ import {
 } from "@/lib/invoices/provider-invoice-status";
 import { todayUtcYmd } from "@/lib/invoices/provider-invoices-query";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
+import { addMoney, roundCurrency } from "@beautonomi/utils";
 
 export type ObligationPayAction =
   | "invoice_pay"
@@ -286,11 +287,11 @@ export async function buildProviderBillingObligations(
   const dueRows = obligations.filter((o) => o.status === "due");
   const outstanding_total = dueRows
     .filter((o) => o.pay_action !== "payout_offset")
-    .reduce((sum, o) => sum + o.amount, 0);
+    .reduce((sum, o) => addMoney(sum, o.amount), 0);
 
   return {
     obligations,
-    outstanding_total: Math.round(outstanding_total * 100) / 100,
+    outstanding_total: roundCurrency(outstanding_total),
     due_count: dueRows.length,
   };
 }

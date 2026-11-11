@@ -2,6 +2,8 @@
  * At-home (house call) service price adjustment — shared by customer web, mobile, and hold snapshots.
  */
 
+import { addMoney, subtractMoney } from "../money";
+
 export type AtHomeLinePricing = {
   basePrice: number;
   displayPrice: number;
@@ -33,7 +35,7 @@ export function computeAtHomeLinePrice(
   }
   return {
     basePrice: base,
-    displayPrice: base + adj,
+    displayPrice: addMoney(base, adj),
     adjustmentApplied: adj,
   };
 }
@@ -53,12 +55,12 @@ export function sumHouseCallAdjustmentsFromSnapshot(
     const explicit = line.at_home_price_adjustment;
     if (explicit != null && Number.isFinite(Number(explicit))) {
       const n = Number(explicit);
-      return n > 0 ? sum + n : sum;
+      return n > 0 ? addMoney(sum, n) : sum;
     }
     const base = line.base_price;
     const price = line.price;
     if (base != null && price != null && Number(price) > Number(base)) {
-      return sum + (Number(price) - Number(base));
+      return addMoney(sum, subtractMoney(Number(price), Number(base)));
     }
     return sum;
   }, 0);
@@ -102,7 +104,7 @@ export function houseCallAdjustmentForSnapshotLine(line: AtHomeSnapshotLine): nu
     return Math.max(0, Number(line.at_home_price_adjustment));
   }
   if (line.base_price != null && line.price != null) {
-    return Math.max(0, Number(line.price) - Number(line.base_price));
+    return Math.max(0, subtractMoney(Number(line.price), Number(line.base_price)));
   }
   return 0;
 }

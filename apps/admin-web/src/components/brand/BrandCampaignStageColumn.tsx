@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { GripVertical } from "lucide-react";
@@ -187,7 +188,7 @@ export function BrandCampaignStageColumn({
   const dropGate =
     draggedCampaign != null ? canMoveCampaignToStage(draggedCampaign.stage, stage) : { allowed: true };
   const dimmed = draggedCampaign != null && !dropGate.allowed;
-  const budgetTotal = campaigns.reduce((sum, c) => sum + (c.budget_envelope ?? 0), 0);
+  const budgetTotal = campaigns.reduce((sum, c) => addMoney(sum, c.budget_envelope ?? 0), 0);
 
   return (
     <div

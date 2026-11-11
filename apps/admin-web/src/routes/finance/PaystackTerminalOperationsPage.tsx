@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -453,13 +454,13 @@ export function PaystackTerminalOperationsPage() {
     return payments.reduce(
       (acc, row) => {
         const amount = Number(row.paid_amount ?? 0);
-        acc.received += amount;
+        acc.received = addMoney(acc.received, amount);
         if (["allocated", "admin_resolved", "split_allocated"].includes(row.allocation_status)) {
-          acc.allocated += Number(row.allocated_amount ?? amount);
+          acc.allocated = addMoney(acc.allocated, Number(row.allocated_amount ?? amount));
         }
-        if (row.payout_eligibility_status === "held") acc.held += amount;
-        if (row.allocation_status === "provider_declined") acc.declined += amount;
-        if (row.allocation_status === "admin_review") acc.review += amount;
+        if (row.payout_eligibility_status === "held") acc.held = addMoney(acc.held, amount);
+        if (row.allocation_status === "provider_declined") acc.declined = addMoney(acc.declined, amount);
+        if (row.allocation_status === "admin_review") acc.review = addMoney(acc.review, amount);
         return acc;
       },
       { received: 0, allocated: 0, held: 0, declined: 0, review: 0 },

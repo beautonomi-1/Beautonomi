@@ -1,3 +1,4 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, handleApiError, successResponse, badRequestResponse } from "@/lib/supabase/api-helpers";
@@ -75,11 +76,11 @@ export async function GET(
     // Calculate summary
     const total_paid = payments
       ?.filter(p => p.status === 'completed' || p.status === 'partially_refunded')
-      .reduce((sum, p) => sum + parseFloat(p.amount), 0) || 0;
+      .reduce((sum, p) => addMoney(sum, parseFloat(p.amount)), 0) || 0;
 
     const total_refunded = refunds
       ?.filter(r => r.status === 'completed')
-      .reduce((sum, r) => sum + parseFloat(r.amount), 0) || 0;
+      .reduce((sum, r) => addMoney(sum, parseFloat(r.amount)), 0) || 0;
 
     return successResponse({
       payments: payments || [],
@@ -87,7 +88,7 @@ export async function GET(
       summary: {
         total_paid,
         total_refunded,
-        net_amount: total_paid - total_refunded,
+        net_amount: subtractMoney(total_paid, total_refunded),
       },
     });
 

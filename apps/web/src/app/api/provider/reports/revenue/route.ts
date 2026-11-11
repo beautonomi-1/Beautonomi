@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
     if (locationId) {
       cancelRows = await filterLedgerRowsForLocation(supabaseAdmin, providerId, cancelRows, locationId);
     }
-    const cancellationFees = cancelRows.reduce((s, r) => s + Number(r.net ?? 0), 0);
+    const cancellationFees = cancelRows.reduce((s, r) => addMoney(s, Number(r.net ?? 0)), 0);
 
     let bkQuery = supabaseAdmin
       .from("bookings")
@@ -117,14 +118,14 @@ export async function GET(request: NextRequest) {
     (bookingsRes || []).forEach((b: any) => {
       const bRev = revenueByBooking.get(b.id) || 0;
       const services = b.booking_services || [];
-      const total = services.reduce((s: number, sv: any) => s + Number(sv.price || 0), 0);
+      const total = services.reduce((s: number, sv: any) => addMoney(s, Number(sv.price || 0)), 0);
       services.forEach((sv: any) => {
         const name = sv.offerings?.title || "Unknown";
         const proportion = total > 0 ? Number(sv.price || 0) / total : 1 / Math.max(services.length, 1);
-        const allocatedRevenue = bRev * proportion;
-        serviceMap.set(name, (serviceMap.get(name) ?? 0) + allocatedRevenue);
+        const allocatedRevenue = multiplyMoney(bRev, proportion);
+        serviceMap.set(name, addMoney(serviceMap.get(name) ?? 0, allocatedRevenue));
         const staffName = sv.staff_id ? staffNameById.get(sv.staff_id) || "Unassigned" : "Unassigned";
-        staffMap.set(staffName, (staffMap.get(staffName) ?? 0) + allocatedRevenue);
+        staffMap.set(staffName, addMoney(staffMap.get(staffName) ?? 0, allocatedRevenue));
       });
     });
 
@@ -140,11 +141,11 @@ export async function GET(request: NextRequest) {
       if (v > 0) bookingCountWithRevenue += 1;
     });
 
-    const ledgerFromBookings = Array.from(revenueByBooking.values()).reduce((s, v) => s + v, 0);
-    const ledgerFromProductOrders = Array.from(revenueByProductOrder.values()).reduce((s, v) => s + v, 0);
+    const ledgerFromBookings = Array.from(revenueByBooking.values()).reduce((s, v) => addMoney(s, v), 0);
+    const ledgerFromProductOrders = Array.from(revenueByProductOrder.values()).reduce((s, v) => addMoney(s, v), 0);
 
     const avgLedgerPerBookingWithEarnings =
-      bookingCountWithRevenue > 0 ? ledgerFromBookings / bookingCountWithRevenue : 0;
+      bookingCountWithRevenue > 0 ? multiplyMoney(ledgerFromBookings, 1 / bookingCountWithRevenue) : 0;
 
     const reportBasis =
       `Window ${fromYmd}–${toYmd} (${reportContext.timezone}). ` +

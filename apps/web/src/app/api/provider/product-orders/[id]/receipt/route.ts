@@ -11,6 +11,7 @@ import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 import { buildOrderReceiptCore, loadProductOrderReceiptCardPaid } from "@/lib/receipts/build-order-receipt";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 
 type OrderItemRow = {
   product_name?: string | null;
@@ -126,6 +127,9 @@ export async function GET(
         return forbiddenResponse("You do not have permission to view product order receipts");
       }
     }
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const { data: orderRaw, error } = await (admin.from("product_orders") as any)
       .select(
@@ -255,7 +259,9 @@ export async function GET(
       refund_reason: core.refund_reason,
     };
 
-    return NextResponse.json({ receipt });
+    return NextResponse.json({
+      receipt: redactBookingCustomerContact(receipt, canViewClients),
+    });
   } catch (error: unknown) {
     console.error("Error generating provider product order receipt:", error);
     const message =

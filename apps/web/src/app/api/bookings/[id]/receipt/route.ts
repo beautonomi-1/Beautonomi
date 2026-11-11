@@ -5,6 +5,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeBookingReceiptFinancials } from "@/lib/receipts/build-booking-receipt";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
+import { addMoney, multiplyMoney, sumMoney } from "@beautonomi/utils";
 
 type BookingServiceRow = {
   price?: number | null;
@@ -334,17 +335,19 @@ export async function GET(
     // Calculate totals (booking_services stores price per service line, no quantity)
     const servicesTotal =
       booking.booking_services?.reduce(
-        (sum: number, bs: BookingServiceRow) => sum + Number(bs.price || 0),
+        (sum: number, bs: BookingServiceRow) => addMoney(sum, Number(bs.price || 0)),
         0
       ) || 0;
 
     const productsTotal =
       booking.booking_products?.reduce(
         (sum: number, bp: BookingProductRow) =>
-          sum +
-          Number(
-            bp.total_price ||
-              (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1)
+          addMoney(
+            sum,
+            Number(
+              bp.total_price ||
+                multiplyMoney(bp.unit_price || bp.products?.retail_price || 0, bp.quantity || 1),
+            ),
           ),
         0
       ) || 0;
@@ -352,11 +355,11 @@ export async function GET(
     const addonsTotal =
       booking.booking_addons?.reduce(
         (sum: number, ba: BookingAddonRow) =>
-          sum + Number(ba.price || 0) * Number(ba.quantity || 1),
+          addMoney(sum, multiplyMoney(Number(ba.price || 0), Number(ba.quantity || 1))),
         0
       ) || 0;
 
-    const linesSubtotal = servicesTotal + productsTotal + addonsTotal;
+    const linesSubtotal = sumMoney(servicesTotal, productsTotal, addonsTotal);
     const finances = computeBookingReceiptFinancials({
       row: bookingRaw as unknown as Record<string, unknown>,
       linesSubtotal,
@@ -503,7 +506,7 @@ export async function GET(
           name: (ba as Record<string, unknown>).addon_name as string || "Add-on",
           quantity: ba.quantity || 1,
           price: Number(ba.price || 0),
-          total: Number(ba.price || 0) * Number(ba.quantity || 1),
+          total: multiplyMoney(Number(ba.price || 0), Number(ba.quantity || 1)),
         })) || [],
       products: booking.booking_products?.map((bp: BookingProductRow) => {
         const ov = bp.product_variant?.option_values;
@@ -517,7 +520,7 @@ export async function GET(
           price: bp.unit_price || bp.products?.retail_price || 0,
           total:
             bp.total_price ||
-            (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
+            multiplyMoney(bp.unit_price || bp.products?.retail_price || 0, bp.quantity || 1),
         };
       }) || [],
       subtotal: Math.max(0, subtotal),

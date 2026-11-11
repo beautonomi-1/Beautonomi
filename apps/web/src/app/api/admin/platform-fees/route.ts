@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { fetchScopedSingle, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 import { z } from 'zod';
 
@@ -127,6 +128,20 @@ export async function PATCH(request: NextRequest) {
         throw updateError || new Error('Failed to update platform fee settings');
       }
 
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: user.role ?? "superadmin",
+        action: "admin.platform_fees.update",
+        entity_type: "platform_settings",
+        entity_id: existingRow.id,
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        status: "succeeded",
+        metadata: { tenant_id: currentTenantId, payouts },
+        ...extractRequestMeta(request),
+      });
+
       const outPayouts = (updated?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
       return successResponse({
         platform_service_fee_type: (outPayouts?.platform_service_fee_type as string) || 'fixed',
@@ -154,6 +169,19 @@ export async function PATCH(request: NextRequest) {
     if (insertError || !inserted) {
       throw insertError || new Error('Failed to create platform fee settings');
     }
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.platform_fees.update",
+      entity_type: "platform_settings",
+      module: "finance",
+      risk_level: "high",
+      retention_tier: "financial",
+      status: "succeeded",
+      metadata: { tenant_id: currentTenantId, payouts },
+      ...extractRequestMeta(request),
+    });
 
     const outPayouts = (inserted?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
     return successResponse({

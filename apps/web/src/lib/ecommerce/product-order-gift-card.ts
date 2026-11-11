@@ -6,6 +6,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { roundCurrency } from "@beautonomi/utils";
 
 /** Use as much of the gift card as it can cover. A short card does not fail the order. */
 export function plannedProductOrderGiftAmount(input: {
@@ -17,7 +18,7 @@ export function plannedProductOrderGiftAmount(input: {
   const requested =
     input.requested == null ? total : Math.max(0, Number(input.requested) || 0);
   const balance = Math.max(0, Number(input.cardBalance) || 0);
-  return Math.round(Math.min(requested, total, balance) * 100) / 100;
+  return roundCurrency(Math.min(requested, total, balance));
 }
 
 export type ReserveProductOrderGiftCardResult =
@@ -29,7 +30,7 @@ export async function reserveProductOrderGiftCard(
   params: { code: string; amount: number; productOrderId: string; currency: string },
 ): Promise<ReserveProductOrderGiftCardResult> {
   const code = params.code.trim().toUpperCase();
-  const amount = Math.round(Number(params.amount) * 100) / 100;
+  const amount = roundCurrency(Number(params.amount));
   if (!code) return { ok: false, message: "Gift card code is required" };
   if (!(amount > 0)) return { ok: false, message: "Gift card amount must be greater than zero" };
 

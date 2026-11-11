@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveLedgerCurrency } from "@/lib/ledger/resolve-ledger-currency";
+import { subtractMoney, addMoney, LAST_RESORT_CURRENCY, roundCurrency } from "@beautonomi/utils";
 
 export type CreditReason =
   | "monthly_grant"
@@ -72,7 +73,7 @@ export async function recognizeMarketingCreditConsumption(
     metadata?: Record<string, unknown>;
   },
 ): Promise<RecognizeMarketingCreditConsumptionResult> {
-  const amountZar = Math.round((Number(input.consumedPurchasedZar) || 0) * 100) / 100;
+  const amountZar = roundCurrency(Number(input.consumedPurchasedZar) || 0, input.currency || LAST_RESORT_CURRENCY);
   if (amountZar <= 0 || !input.providerId || !input.idempotencyKey) {
     return { recorded: false, alreadyRecorded: false, amountZar: 0 };
   }
@@ -147,7 +148,7 @@ function purchasedPortionOfDebit(
   const fromRpc = obj ? Number(obj.from_purchased) : NaN;
   if (Number.isFinite(fromRpc) && fromRpc >= 0) return Math.min(fromRpc, amountZar);
   if (includedBefore == null || !Number.isFinite(includedBefore)) return amountZar;
-  return Math.max(0, amountZar - Math.max(0, includedBefore));
+  return Math.max(0, subtractMoney(amountZar, Math.max(0, includedBefore)));
 }
 
 export interface MarketingBalance {
@@ -187,7 +188,7 @@ export async function getMarketingBalance(
   return {
     included_balance_zar: included,
     purchased_balance_zar: purchased,
-    total_zar: included + purchased,
+    total_zar: addMoney(included, purchased),
   };
 }
 
@@ -295,8 +296,8 @@ async function creditMarketingBalanceFallback(
   }
 
   const bal = await getMarketingBalance(supabase, input.providerId);
-  const newPurchased = bal.purchased_balance_zar + input.amountZar;
-  const balanceAfter = bal.included_balance_zar + newPurchased;
+  const newPurchased = addMoney(bal.purchased_balance_zar, input.amountZar);
+  const balanceAfter = addMoney(bal.included_balance_zar, newPurchased);
 
   const { error: updErr } = await supabase
     .from("provider_marketing_credits")
@@ -422,19 +423,19 @@ async function debitMarketingBalanceFallback(
   let purchased = Number(row.purchased_balance_zar);
   let remaining = input.amountZar;
 
-  if (included + purchased < remaining) {
+  if (addMoney(included, purchased) < remaining) {
     return { ok: false, reason: "insufficient" };
   }
 
   const fromIncluded = Math.min(included, remaining);
-  included -= fromIncluded;
-  remaining -= fromIncluded;
+  included = subtractMoney(included, fromIncluded);
+  remaining = subtractMoney(remaining, fromIncluded);
 
   if (remaining > 0) {
-    purchased -= remaining;
+    purchased = subtractMoney(purchased, remaining);
   }
 
-  const balanceAfter = included + purchased;
+  const balanceAfter = addMoney(included, purchased);
 
   const { error: updErr } = await supabase
     .from("provider_marketing_credits")
@@ -503,8 +504,8 @@ export async function clawbackPurchasedMarketingBalance(input: {
   const included = Number(row.included_balance_zar);
   const purchased = Number(row.purchased_balance_zar);
   const clawed = Math.min(purchased, input.amountZar);
-  const newPurchased = purchased - clawed;
-  const balanceAfter = included + newPurchased;
+  const newPurchased = subtractMoney(purchased, clawed);
+  const balanceAfter = addMoney(included, newPurchased);
 
   const { error: updErr } = await supabase
     .from("provider_marketing_credits")
@@ -568,7 +569,7 @@ export async function grantMonthlyIncludedCredits(
     delta_zar: grantZar,
     reason: "monthly_grant",
     idempotency_key: idempotencyKey,
-    balance_after: grantZar + purchased,
+    balance_after: addMoney(grantZar, purchased),
     metadata: { period: periodKey },
   });
 }

@@ -1,0 +1,12 @@
+# F-09: assertion-only login smoke (no screenshots). Requires a device/emulator.
+# Run from repo root: pnpm e2e:maestro:customer-login
+appId: com.beautonomi
+---
+- launchApp:
+    clearState: false
+    stopApp: false
+- openLink: customer://screenshot/auth/login
+- extendedWaitUntil:
+    visible: "Welcome to Beautonomi"
+    timeout: 60000
+- assertVisible: "Welcome to Beautonomi"

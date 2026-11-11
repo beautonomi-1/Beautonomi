@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     if (!targetUserId) {
       // If user not found, we can still send via OneSignal using email as external user ID
       // But OneSignal requires external user IDs to be registered
-      console.warn(`User not found for email ${to}, attempting direct email send`);
+      console.warn("User not found for email send; attempting direct email send");
     }
 
     // Send via OneSignal

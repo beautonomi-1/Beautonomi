@@ -1,3 +1,4 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import type { FinanceLedgerAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
 import { gatewayFeesTotalFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
 
@@ -20,13 +21,18 @@ export type PlatformCashPositionParams = {
 
 export function computePlatformCashCollected(params: PlatformCashPositionParams): number {
   const { agg, walletTopupCashCollected } = params;
-  return (
-    agg.service_collected_gross +
-    walletTopupCashCollected +
-    agg.gift_card_sales +
-    agg.subscription_gross +
-    agg.ads_gross +
-    agg.marketing_credit_gross
+  return addMoney(
+    addMoney(
+      addMoney(
+        addMoney(
+          addMoney(agg.service_collected_gross, walletTopupCashCollected),
+          agg.gift_card_sales,
+        ),
+        agg.subscription_gross,
+      ),
+      agg.ads_gross,
+    ),
+    agg.marketing_credit_gross,
   );
 }
 
@@ -39,8 +45,9 @@ export function computeNetPlatformCash(params: PlatformCashPositionParams): numb
   const gatewayFees =
     params.gatewayFeesTotal ?? gatewayFeesTotalFromAggregate(params.agg as FinanceLedgerAggregate);
   const { agg } = params;
-  return (
-    collected - agg.payouts_paid_total - agg.refunds_abs_gross - gatewayFees
+  return subtractMoney(
+    subtractMoney(subtractMoney(collected, agg.payouts_paid_total), agg.refunds_abs_gross),
+    gatewayFees,
   );
 }
 
@@ -55,6 +62,6 @@ export function buildPlatformCashPosition(params: PlatformCashPositionParams) {
     refunds_gross: agg.refunds_abs_gross,
     gateway_fees: gatewayFees,
     payout_transfer_fees: agg.payout_transfer_fees,
-    net_platform_cash: collected - agg.payouts_paid_total - agg.refunds_abs_gross - gatewayFees,
+    net_platform_cash: subtractMoney(subtractMoney(subtractMoney(collected, agg.payouts_paid_total), agg.refunds_abs_gross), gatewayFees),
   };
 }

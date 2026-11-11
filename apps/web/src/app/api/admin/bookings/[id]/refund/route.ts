@@ -1,13 +1,15 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { issueAdminWalletRefund } from "@/lib/finance/issue-admin-wallet-refund";
+import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
 
 /**
  * POST /api/admin/bookings/[id]/refund
@@ -21,7 +23,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     if (!user) throw new Error("Authentication required");
     const { id } = await params;
     const supabase = getSupabaseAdmin();
@@ -34,9 +36,11 @@ export async function POST(
       substitute_reason?: string | null;
     };
 
-    if (!amount || amount <= 0) {
+    const parsedAmount = clientMajorAmountSchema.safeParse(Number(amount));
+    if (!parsedAmount.success) {
       return errorResponse("Invalid refund amount", "VALIDATION_ERROR", 400);
     }
+    const refundAmount = parsedAmount.data;
 
     const tenantId = await resolveAdminApiTenantId(request);
     const loaded = await fetchBookingInAdminTenant(
@@ -74,10 +78,10 @@ export async function POST(
     // larger coverage estimate so legacy rows still refund correctly without double-counting.
     const totalCollected = Math.max(
       Number(b.total_paid ?? 0),
-      Number(b.wallet_amount ?? 0) + Number(b.gift_card_amount ?? 0),
+      addMoney(Number(b.wallet_amount ?? 0), Number(b.gift_card_amount ?? 0)),
     );
-    const availableForRefund = totalCollected - (b.total_refunded ?? 0);
-    if (amount > availableForRefund) {
+    const availableForRefund = subtractMoney(totalCollected, b.total_refunded ?? 0);
+    if (refundAmount > availableForRefund) {
       const displayCurrency = b.currency || lastResortCurrency;
       const fmtAvail = new Intl.NumberFormat(adminRefundLocale, {
         style: "currency",
@@ -109,7 +113,7 @@ export async function POST(
       supabase,
       tenantId: effectiveTenantId ?? tenantId,
       bookingId: id,
-      amount,
+      amount: refundAmount,
       reason: reason || "Admin refund",
       actorUserId: user.id,
       actorRole: (user as { role?: string }).role || "superadmin",
@@ -133,7 +137,7 @@ export async function POST(
 
     const refundId = outcome.refundId;
 
-    if (amount >= b.total_amount) {
+    if (refundAmount >= b.total_amount) {
       await supabase
         .from("bookings")
         .update({

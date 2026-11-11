@@ -2,7 +2,33 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { isSyntheticProviderShiftId } from "@/lib/provider/staff-shift-ids";
+import {
+  canActOnStaffTimeRecords,
+  STAFF_TIME_RECORD_FORBIDDEN_MESSAGE,
+} from "@/lib/auth/staff-time-record-access";
 import { z } from "zod";
+
+/** F3-10: editing/deleting a colleague's shift requires manage_team. Returns a 403 response or null. */
+async function shiftAccessDenied(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  user: { id: string; role?: string },
+  staffId: string | null | undefined,
+  providerId: string,
+  request: NextRequest,
+) {
+  let targetUserId: string | null = null;
+  if (staffId) {
+    const { data: staffRow } = await supabase
+      .from("provider_staff")
+      .select("id, user_id")
+      .eq("id", staffId)
+      .eq("provider_id", providerId)
+      .single();
+    targetUserId = (staffRow as { user_id?: string | null } | null)?.user_id ?? null;
+  }
+  const allowed = await canActOnStaffTimeRecords(user, { user_id: targetUserId }, request);
+  return allowed ? null : errorResponse(STAFF_TIME_RECORD_FORBIDDEN_MESSAGE, "FORBIDDEN", 403);
+}
 
 const updateShiftSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -128,7 +154,7 @@ export async function PATCH(
     // Verify shift belongs to provider
     const { data: existingShift } = await supabase
       .from("staff_shifts")
-      .select("id")
+      .select("id, staff_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -136,6 +162,9 @@ export async function PATCH(
     if (!existingShift) {
       return notFoundResponse("Shift not found");
     }
+
+    const forbidden = await shiftAccessDenied(supabase, user, existingShift.staff_id, providerId, request);
+    if (forbidden) return forbidden;
 
     // Build update data
     const updateData: Record<string, any> = {};
@@ -219,7 +248,7 @@ export async function DELETE(
     // Verify shift belongs to provider
     const { data: existingShift } = await supabase
       .from("staff_shifts")
-      .select("id")
+      .select("id, staff_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -227,6 +256,9 @@ export async function DELETE(
     if (!existingShift) {
       return notFoundResponse("Shift not found");
     }
+
+    const forbidden = await shiftAccessDenied(supabase, user, existingShift.staff_id, providerId, request);
+    if (forbidden) return forbidden;
 
     // Delete shift
     const { error: deleteError } = await supabase

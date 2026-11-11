@@ -3,6 +3,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 import { z } from "zod";
+import {
+  canActOnStaffTimeRecords,
+  STAFF_TIME_RECORD_FORBIDDEN_MESSAGE,
+} from "@/lib/auth/staff-time-record-access";
 
 const updateTimeCardSchema = z.object({
   clock_in_time: z.string().datetime().optional(),
@@ -33,13 +37,17 @@ export async function GET(
     // Verify staff belongs to provider
     const { data: staff } = await supabase
       .from("provider_staff")
-      .select("id, name")
+      .select("id, name, user_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
     if (!staff) {
       return notFoundResponse("Staff member not found");
+    }
+
+    if (!(await canActOnStaffTimeRecords(user, staff, request))) {
+      return errorResponse(STAFF_TIME_RECORD_FORBIDDEN_MESSAGE, "FORBIDDEN", 403);
     }
 
     // Get time card

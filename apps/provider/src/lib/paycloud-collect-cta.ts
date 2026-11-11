@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import { formatCurrency } from "@/lib/format";
 
 export type PaycloudCollectContext =
@@ -77,7 +78,7 @@ export function inferBookingCollectContext(params: {
   unpaidAdditionalCharges: number;
   outstanding: number;
 }): "booking" | "booking_addons" {
-  const baseOutstanding = Math.max(0, params.totalAmount - params.totalPaid);
+  const baseOutstanding = Math.max(0, subtractMoney(params.totalAmount, params.totalPaid));
   if (
     baseOutstanding <= 0.01 &&
     params.unpaidAdditionalCharges > 0 &&

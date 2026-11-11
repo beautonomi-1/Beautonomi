@@ -4,6 +4,7 @@ import {
   getActiveGroupInviteForParticipant,
   rotateGroupBookingInviteToken,
 } from "@/lib/bookings/group-invites";
+import { subtractMoney } from "@beautonomi/utils";
 
 const RESEND_COOLDOWN_MS = 60_000;
 
@@ -74,7 +75,7 @@ export async function resendGroupGuestInvite(
   }
 
   const amountDue = Number(p.amount_due ?? 0);
-  const remaining = Math.round(Math.max(0, amountDue - Number(p.amount_paid ?? 0)) * 100) / 100;
+  const remaining = Math.max(0, subtractMoney(amountDue, Number(p.amount_paid ?? 0)));
   const currency = existing?.currency ?? leadRow?.currency ?? null;
   const minted = existing
     ? await rotateGroupBookingInviteToken(admin, existing.id)

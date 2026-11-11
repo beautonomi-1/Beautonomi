@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
 import { computePaycloudReadiness } from "@/lib/payments/paycloud-readiness";
 import { z } from "zod";
@@ -13,7 +14,9 @@ const patchSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireAnyPermission(["process_payments", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {
@@ -56,7 +59,9 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) {

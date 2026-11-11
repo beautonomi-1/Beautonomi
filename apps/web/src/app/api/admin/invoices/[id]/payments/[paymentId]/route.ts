@@ -7,6 +7,7 @@ import {
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const bodySchema = z.object({
   action: z.enum(["confirm", "refund"]),
@@ -22,7 +23,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; paymentId: string }> },
 ) {
   try {
-    await requireSuperadmin(request);
+    const { user } = await requireSuperadmin(request);
     const { id: invoiceId, paymentId } = await params;
     const { action } = bodySchema.parse(await request.json());
     const admin = getSupabaseAdmin();
@@ -69,6 +70,20 @@ export async function PATCH(
       .maybeSingle();
 
     if (refundErr) throw refundErr;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.invoice_payment.refund",
+      entity_type: "provider_invoice_payments",
+      entity_id: paymentId,
+      module: "finance",
+      risk_level: "high",
+      retention_tier: "financial",
+      status: "succeeded",
+      metadata: { invoice_id: invoiceId, amount: row.amount },
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({ payment: refunded });
   } catch (error) {

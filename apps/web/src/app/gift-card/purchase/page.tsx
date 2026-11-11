@@ -1,4 +1,5 @@
 "use client";
+import { multiplyMoney } from "@beautonomi/utils";
 
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
@@ -202,7 +203,7 @@ export default function GiftCardPurchasePage() {
   // post-login effect never calls stale state.
   submitRef.current = submit;
 
-  const totalAmount = Number(amount) * Number(quantity) || 0;
+  const totalAmount = multiplyMoney(Number(amount) || 0, Number(quantity) || 0);
 
   if (giftCardsKnownOff || paymentsKnownOff) {
     return (

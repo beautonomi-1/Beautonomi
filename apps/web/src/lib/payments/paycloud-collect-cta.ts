@@ -2,7 +2,7 @@
  * Collect-or-setup rule: when `payment_paycloud` is on, surfaces must show
  * PaycloudCollectButton (collect when ready/in-flight, else setup link) — never hide.
  */
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { subtractMoney, getDefaultMoneyLocale } from "@beautonomi/utils";
 
 export type PaycloudCollectContext =
   | "booking"
@@ -86,7 +86,7 @@ export function inferBookingCollectContext(params: {
   unpaidAdditionalCharges: number;
   outstanding: number;
 }): "booking" | "booking_addons" {
-  const baseOutstanding = Math.max(0, params.totalAmount - params.totalPaid);
+  const baseOutstanding = Math.max(0, subtractMoney(params.totalAmount, params.totalPaid));
   if (
     baseOutstanding <= 0.01 &&
     params.unpaidAdditionalCharges > 0 &&

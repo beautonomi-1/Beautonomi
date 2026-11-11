@@ -20,6 +20,8 @@ jest.mock("@beautonomi/i18n", () => ({
 jest.mock("@/lib/legal-acceptance", () => ({
   hasAcceptedCurrentCustomerEula: jest.fn(() => Promise.resolve(true)),
   storeCustomerEulaAcceptance: jest.fn(() => Promise.resolve()),
+  isCustomerEulaSyncedForUser: jest.fn(() => Promise.resolve(false)),
+  markCustomerEulaSyncedForUser: jest.fn(() => Promise.resolve()),
   CUSTOMER_EULA_VERSION: "v1",
 }));
 
@@ -35,7 +37,7 @@ jest.mock("expo-router", () => ({
 }));
 
 import { LegalAcceptanceGate } from "@/components/legal/LegalAcceptanceGate";
-import { hasAcceptedCurrentCustomerEula } from "@/lib/legal-acceptance";
+import { hasAcceptedCurrentCustomerEula, isCustomerEulaSyncedForUser } from "@/lib/legal-acceptance";
 
 let mountCount = 0;
 function MountCounter() {
@@ -52,6 +54,7 @@ describe("LegalAcceptanceGate", () => {
     mountCount = 0;
     jest.clearAllMocks();
     (hasAcceptedCurrentCustomerEula as jest.Mock).mockResolvedValue(true);
+    (isCustomerEulaSyncedForUser as jest.Mock).mockResolvedValue(false);
     mockUseAuth.mockReturnValue({ session: { user: { id: "u1" } } });
     mockApiPost.mockResolvedValue({ data: {} });
   });
@@ -114,5 +117,17 @@ describe("LegalAcceptanceGate", () => {
     );
     await new Promise((r) => setTimeout(r, 50));
     expect(mockApiPost).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips the server sync when this user already synced the current version", async () => {
+    (isCustomerEulaSyncedForUser as jest.Mock).mockResolvedValue(true);
+    const screen = render(
+      <LegalAcceptanceGate enabled>
+        <Text>App shell</Text>
+      </LegalAcceptanceGate>,
+    );
+    await waitFor(() => expect(screen.getByText("App shell")).toBeTruthy());
+    await waitFor(() => expect(isCustomerEulaSyncedForUser).toHaveBeenCalledWith("u1"));
+    expect(mockApiPost).not.toHaveBeenCalled();
   });
 });

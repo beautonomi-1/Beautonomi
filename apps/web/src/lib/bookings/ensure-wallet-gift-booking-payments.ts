@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney, roundCurrency } from "@beautonomi/utils";
 
 /** Synthetic provider id; optional leg suffix enables multiple wallet/gift legs per booking (pay-remaining, additional charge). */
 export function buildSyntheticWalletGiftProviderId(
@@ -31,8 +32,8 @@ export async function ensureWalletGiftBookingPayments(
   },
 ): Promise<void> {
   const { bookingId, tenantId, paymentLegSuffix = "" } = input;
-  const walletAmount = Math.round(Math.max(0, Number(input.walletAmount) || 0) * 100) / 100;
-  const giftCardAmount = Math.round(Math.max(0, Number(input.giftCardAmount) || 0) * 100) / 100;
+  const walletAmount = roundCurrency(Math.max(0, Number(input.walletAmount) || 0));
+  const giftCardAmount = roundCurrency(Math.max(0, Number(input.giftCardAmount) || 0));
   const initialStatus = input.initialStatus ?? "completed";
 
   const insertOne = async (kind: "wallet" | "gift_card", amount: number) => {
@@ -94,12 +95,12 @@ export async function sumAdditionalChargeTenderLegs(
     if (!providerId.endsWith(suffix)) continue;
     const amount = Math.max(0, Number((row as { amount?: number | null }).amount ?? 0));
     const provider = String((row as { payment_provider?: string | null }).payment_provider ?? "");
-    if (provider === "gift_card") gift += amount;
-    else wallet += amount;
+    if (provider === "gift_card") gift = addMoney(gift, amount);
+    else wallet = addMoney(wallet, amount);
   }
   return {
-    wallet: Math.round(wallet * 100) / 100,
-    gift: Math.round(gift * 100) / 100,
+    wallet: roundCurrency(wallet),
+    gift: roundCurrency(gift),
   };
 }
 
@@ -120,10 +121,10 @@ export async function sumPendingWalletGiftBookingPayments(
     );
   }
   const sum = (data ?? []).reduce(
-    (total, row) => total + Number((row as { amount?: number | null }).amount ?? 0),
+    (total, row) => addMoney(total, Number((row as { amount?: number | null }).amount ?? 0)),
     0,
   );
-  return Math.round(Math.max(0, sum) * 100) / 100;
+  return roundCurrency(Math.max(0, sum));
 }
 
 /** Pending wallet and gift totals for many bookings. A read error throws so a charge is not sent without this hold. */
@@ -148,11 +149,11 @@ export async function sumPendingWalletGiftByBookingIds(
       const bookingId = String((row as { booking_id?: string }).booking_id ?? "");
       if (!bookingId) continue;
       const amount = Math.max(0, Number((row as { amount?: number | null }).amount ?? 0));
-      totals.set(bookingId, (totals.get(bookingId) ?? 0) + amount);
+      totals.set(bookingId, addMoney(totals.get(bookingId) ?? 0, amount));
     }
   }
   for (const [bookingId, sum] of totals) {
-    totals.set(bookingId, Math.round(sum * 100) / 100);
+    totals.set(bookingId, roundCurrency(sum));
   }
   return totals;
 }

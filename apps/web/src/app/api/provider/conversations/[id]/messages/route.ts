@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
 import { checkMessageLimit } from "@/lib/subscriptions/limit-checker";
 import { formatChatLimitUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { signMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
@@ -31,6 +32,9 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
@@ -123,7 +127,7 @@ export async function GET(
       if (sender) {
         if (sender.full_name && sender.full_name.trim()) {
           senderName = sender.full_name.trim();
-        } else if (sender.email) {
+        } else if (canViewClients && sender.email) {
           senderName = sender.email;
         }
       }

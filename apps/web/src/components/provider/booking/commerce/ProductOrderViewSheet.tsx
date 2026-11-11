@@ -34,7 +34,7 @@ import {
   allowsInPersonProductOrderRefund,
   displayedProductOrderAmountStillDue,
 } from "@/lib/orders/product-order-tender";
-import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { subtractMoney, isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
 import {
   productOrderDisplayCustomerEmail,
   productOrderDisplayCustomerName,
@@ -333,7 +333,7 @@ export function ProductOrderViewSheet({
   const actions = order ? PRODUCT_ORDER_STATUS_ACTIONS[order.status] ?? [] : [];
   const totalAmount = Number(order?.total_amount ?? 0);
   const platformFee = Number(order?.platform_fee ?? 0);
-  const providerEarnings = Math.max(0, totalAmount - platformFee);
+  const providerEarnings = Math.max(0, subtractMoney(totalAmount, platformFee));
 
   const header = (
     <div className="flex items-center gap-2">

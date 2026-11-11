@@ -13,6 +13,7 @@ import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { PayableOrdersBanner } from "@/components/shop/PayableOrdersBanner";
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 
 function csrfHeaders(): HeadersInit {
   const h: Record<string, string> = {};
@@ -210,7 +211,7 @@ export default function CartPage() {
     }
   };
 
-  const linePrice = (item: CartItem) => (item.effective_price ?? item.product?.retail_price ?? 0) * item.quantity;
+  const linePrice = (item: CartItem) => multiplyMoney(item.effective_price ?? item.product?.retail_price ?? 0, item.quantity);
 
   // Group by provider
   const groups: Record<string, { provider: CartItem["provider"]; items: CartItem[]; subtotal: number }> = {};
@@ -218,10 +219,10 @@ export default function CartPage() {
     const pid = item.provider?.id ?? "unknown";
     if (!groups[pid]) groups[pid] = { provider: item.provider, items: [], subtotal: 0 };
     groups[pid].items.push(item);
-    groups[pid].subtotal += linePrice(item);
+    groups[pid].subtotal = addMoney(groups[pid].subtotal, linePrice(item));
   });
 
-  const total = items.reduce((s, i) => s + linePrice(i), 0);
+  const total = items.reduce((s, i) => addMoney(s, linePrice(i)), 0);
   const totalCount = items.reduce((s, i) => s + i.quantity, 0);
 
   const providerIds = useMemo(

@@ -3,6 +3,7 @@ import {
   bookingLevelItemsAlreadyPosted,
   sumPostedPositiveLegs,
 } from "./resolve-commission-base-for-booking-payment";
+import { addMoney } from "@beautonomi/utils";
 
 export type BookingCommissionContextInput = {
   /** Funds applied by the charge being posted (card + wallet + gift card). */
@@ -61,7 +62,7 @@ export async function fetchBookingCommissionContext(
       if (excludeProviderIdSuffix && providerId.endsWith(excludeProviderIdSuffix)) return false;
       return true;
     })
-    .reduce((sum, row) => sum + Number((row as { amount?: number }).amount ?? 0), 0);
+    .reduce((sum, row) => addMoney(sum, Number((row as { amount?: number }).amount ?? 0)), 0);
 
   const rows = (ledgerRows ?? []) as Array<{ transaction_type?: string | null; net?: number | null }>;
   const existingBookingLevelTypes = new Set(
@@ -73,7 +74,7 @@ export async function fetchBookingCommissionContext(
   );
 
   return {
-    cumulativePaid: priorPaid + Math.max(0, Number(input.chargeAmount || 0)),
+    cumulativePaid: addMoney(priorPaid, Math.max(0, Number(input.chargeAmount || 0))),
     postedLegsSum: sumPostedPositiveLegs(rows),
     bookingLevelItemsAlreadyPosted: bookingLevelItemsAlreadyPosted(rows),
     existingBookingLevelTypes,

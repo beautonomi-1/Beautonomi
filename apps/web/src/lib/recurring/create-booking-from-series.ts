@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { computeVat } from "@beautonomi/utils";
-import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import { addMoney, computeVat, multiplyMoney, percentOf, subtractMoney, sumMoney } from "@beautonomi/utils";
+import { providerVatSnapshotColumns, resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 import { resolveTz, fromBusinessTime } from "@/lib/dates/provider-tz";
@@ -68,7 +68,7 @@ function resolveProductLines(row: SeriesRow): ProductLine[] {
       const quantity = Math.max(1, Math.floor(Number(item.quantity || 1)) || 1);
       const unitPrice = Number(item.unit_price ?? item.unitPrice ?? 0) || 0;
       const totalPrice =
-        Number(item.total ?? item.total_price ?? item.totalPrice ?? unitPrice * quantity) || 0;
+        Number(item.total ?? item.total_price ?? item.totalPrice ?? multiplyMoney(unitPrice, quantity)) || 0;
       return {
         product_id: String(item.product_id),
         product_variant_id:
@@ -207,12 +207,18 @@ export async function createBookingFromRecurringSeries(
   for (const line of lines) {
     const o = offeringMap.get(line.offering_id) as { price?: number } | undefined;
     if (!o) return { error: `unknown_offering:${line.offering_id}` };
-    subtotal += Number(o.price || 0);
+    subtotal = addMoney(subtotal, Number(o.price || 0));
   }
-  subtotal += productLines.reduce((sum, p) => sum + Number(p.total_price || 0), 0);
-  subtotal += addonLines.reduce(
-    (sum, a) => sum + Number(a.price || 0) * Number(a.quantity || 1),
-    0
+  subtotal = addMoney(
+    subtotal,
+    productLines.reduce((sum, p) => addMoney(sum, Number(p.total_price || 0)), 0),
+  );
+  subtotal = addMoney(
+    subtotal,
+    addonLines.reduce(
+      (sum, a) => addMoney(sum, multiplyMoney(Number(a.price || 0), Number(a.quantity || 1))),
+      0,
+    ),
   );
 
   const providerVat = await resolveProviderVat(admin, providerRow ?? {});
@@ -240,7 +246,7 @@ export async function createBookingFromRecurringSeries(
     if (feeConfig) {
       if ((feeConfig as any).fee_type === "percentage") {
         serviceFeePercentage = Number((feeConfig as any).fee_percentage || 0);
-        serviceFeeAmount = Math.round(subtotal * (serviceFeePercentage / 100) * 100) / 100;
+        serviceFeeAmount = percentOf(subtotal, serviceFeePercentage);
       } else {
         serviceFeeAmount = Number((feeConfig as any).fee_fixed_amount || 0);
       }
@@ -262,7 +268,7 @@ export async function createBookingFromRecurringSeries(
       const feeType = (payoutSettings.platform_service_fee_type as string) || "fixed";
       if (feeType === "percentage") {
         serviceFeePercentage = Number(payoutSettings.platform_service_fee_percentage ?? 0);
-        serviceFeeAmount = Math.round(subtotal * (serviceFeePercentage / 100) * 100) / 100;
+        serviceFeeAmount = percentOf(subtotal, serviceFeePercentage);
       } else {
         serviceFeeAmount = Number(payoutSettings.platform_service_fee_fixed ?? 0);
       }
@@ -399,10 +405,15 @@ export async function createBookingFromRecurringSeries(
   const effectiveRecurringTravelFee = locationType === "at_home" ? recurringTravelFee : 0;
   const netAfterRecurringDiscounts = Math.max(
     0,
-    recurringSubtotal -
-      recurringDiscountAmount -
-      recurringPromotionDiscount -
+    subtractMoney(
+      subtractMoney(
+        subtractMoney(recurringSubtotal, recurringDiscountAmount, currency),
+        recurringPromotionDiscount,
+        currency,
+      ),
       recurringMembershipDiscount,
+      currency,
+    ),
   );
   recurringServiceFeePercentage = normalizePersistedServiceFeePercentage(
     recurringServiceFeeAmount,
@@ -410,28 +421,31 @@ export async function createBookingFromRecurringSeries(
     [
       recurringSubtotal,
       netAfterRecurringDiscounts,
-      netAfterRecurringDiscounts + effectiveRecurringTravelFee,
+      addMoney(netAfterRecurringDiscounts, effectiveRecurringTravelFee, currency),
     ],
   );
   const recurringTotalAmount = zeroPortalPlatformFee
     ? Math.max(
         0,
-        netAfterRecurringDiscounts +
-          effectiveRecurringTravelFee +
-          recurringTaxAmount +
+        sumMoney(
+          currency,
+          netAfterRecurringDiscounts,
+          effectiveRecurringTravelFee,
+          recurringTaxAmount,
           recurringTipAmount,
+        ),
       )
     : Math.max(
         0,
         Number(pricingSource.total_amount ?? 0) ||
-          recurringSubtotal -
-            recurringDiscountAmount -
-            recurringPromotionDiscount -
-            recurringMembershipDiscount +
-            effectiveRecurringTravelFee +
-            recurringTaxAmount +
-            recurringServiceFeeAmount +
+          sumMoney(
+            currency,
+            netAfterRecurringDiscounts,
+            effectiveRecurringTravelFee,
+            recurringTaxAmount,
+            recurringServiceFeeAmount,
             recurringTipAmount,
+          ),
       );
   const bookingData: Record<string, unknown> = {
     customer_id: row.customer_id,
@@ -475,6 +489,8 @@ export async function createBookingFromRecurringSeries(
     membership_discount_amount: recurringMembershipDiscount,
     tax_amount: recurringTaxAmount,
     tax_rate: recurringTaxRate,
+    // F2-39: VAT treatment / number snapshot at time of sale.
+    ...providerVatSnapshotColumns(providerVat),
     tip_amount: recurringTipAmount,
     total_amount: recurringTotalAmount,
     currency,
@@ -543,6 +559,8 @@ export async function createBookingFromRecurringSeries(
         referral_source_id: referralSourceId,
         tenant_id: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
         ...(bookingData.payment_provider ? { payment_provider: bookingData.payment_provider } : {}),
+        // 10143 persists VAT on RPC insert; keep the patch so older DBs still snapshot.
+        ...providerVatSnapshotColumns(providerVat),
       })
       .eq("id", bookingId as string);
 

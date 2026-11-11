@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
@@ -46,7 +47,7 @@ export async function sumNetByTypes(
   range?: LedgerRange
 ): Promise<number> {
   const rows = await fetchAllNetRows(db, providerId, types, range);
-  return rows.reduce((s, r) => s + num(r.net ?? r.amount), 0);
+  return rows.reduce((s, r) => addMoney(s, num(r.net ?? r.amount)), 0);
 }
 
 /**
@@ -59,7 +60,7 @@ export async function sumPlatformRetainedFees(
   range?: LedgerRange
 ): Promise<number> {
   const rows = await fetchAllNetRows(db, providerId, ["platform_fee", "service_fee"], range);
-  return rows.reduce((s, r) => s + Math.abs(num(r.net ?? r.amount)), 0);
+  return rows.reduce((s, r) => addMoney(s, Math.abs(num(r.net ?? r.amount))), 0);
 }
 
 /**
@@ -104,11 +105,11 @@ export async function sumRefundsLikeFinance(
   // Only provider-affecting refund components reduce provider earnings; platform
   // fee/commission, tax, discount contras and wallet/gift tender legs are excluded.
   const fromRefunds = refundRows.reduce(
-    (s, r) => (isProviderEarningsRefundComponent(r.refund_component) ? s + Math.abs(num(r.net ?? r.amount)) : s),
+    (s, r) => (isProviderEarningsRefundComponent(r.refund_component) ? addMoney(s, Math.abs(num(r.net ?? r.amount))) : s),
     0,
   );
-  const fromNeg = negEarnings.reduce((s, r) => s + Math.abs(num(r.net)), 0);
-  return fromRefunds + fromNeg;
+  const fromNeg = negEarnings.reduce((s, r) => addMoney(s, Math.abs(num(r.net))), 0);
+  return addMoney(fromRefunds, fromNeg);
 }
 
 export async function sumSubscriptionAndAdsExpenses(
@@ -117,8 +118,8 @@ export async function sumSubscriptionAndAdsExpenses(
   range?: LedgerRange
 ): Promise<{ total: number; asAbs: number }> {
   const rows = await fetchAllNetRows(db, providerId, [...EXPENSE_TYPES], range);
-  const total = rows.reduce((s, r) => s + num(r.net ?? r.amount), 0);
-  const asAbs = rows.reduce((s, r) => s + Math.abs(num(r.net ?? r.amount)), 0);
+  const total = rows.reduce((s, r) => addMoney(s, num(r.net ?? r.amount)), 0);
+  const asAbs = rows.reduce((s, r) => addMoney(s, Math.abs(num(r.net ?? r.amount))), 0);
   return { total, asAbs };
 }
 

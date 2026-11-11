@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LEDGER_FEE_TYPES } from "@/lib/admin/fee-reconciliation-compute";
+import { roundCurrency, addMoney } from "@beautonomi/utils";
 
 const PAYSTACK_CARD_TYPES = new Set<string>([...LEDGER_FEE_TYPES, "payout"]);
 
@@ -105,11 +106,11 @@ export async function countGatewayFeeCaptureAnomalies(
     if (est <= 0) continue;
 
     rowCount += 1;
-    expectedTotal += est;
+    expectedTotal = addMoney(expectedTotal, est);
   }
 
   return {
     row_count: rowCount,
-    expected_fees_total: Math.round(expectedTotal * 100) / 100,
+    expected_fees_total: roundCurrency(expectedTotal),
   };
 }

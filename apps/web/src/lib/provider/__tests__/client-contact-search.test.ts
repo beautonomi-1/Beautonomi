@@ -38,6 +38,18 @@ describe("buildUserContactSearchOrClauses", () => {
       "phone.ilike.%821%",
     ]);
   });
+
+  it("matches the name only when contact fields are hidden", () => {
+    expect(buildUserContactSearchOrClauses(["ada@example.com"], ["0821"], { nameOnly: true })).toEqual([
+      "full_name.ilike.%ada@example.com%",
+    ]);
+    expect(
+      contactMatchesSearchQuery("ada@example.com", { full_name: "Ada", email: "ada@example.com" }, { nameOnly: true }),
+    ).toBe(false);
+    expect(contactMatchesSearchQuery("Ada", { full_name: "Ada", email: "ada@example.com" }, { nameOnly: true })).toBe(
+      true,
+    );
+  });
 });
 
 /**

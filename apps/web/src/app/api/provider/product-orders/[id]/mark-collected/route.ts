@@ -13,6 +13,7 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { productOrderCardAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
 import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { assertYocoMarkPaidReference } from "@/lib/payments/assert-yoco-mark-paid-reference";
 
 const markCollectedSchema = z.object({
   payment_method: z.enum(["cash", "card_on_delivery", "yoco", "paycloud", "paystack_terminal"]),
@@ -116,6 +117,19 @@ export async function POST(
         "NOTHING_TO_COLLECT",
         400,
       );
+    }
+
+    if (body.payment_method === "yoco") {
+      const yocoCheck = await assertYocoMarkPaidReference(getSupabaseAdmin(), {
+        providerId,
+        reference: explicitReference!,
+        expectedEntityType: "product_order",
+        expectedEntityId: id,
+        expectedAmountMajor: amountMajor,
+      });
+      if (yocoCheck.ok === false) {
+        return errorResponse(yocoCheck.message, yocoCheck.code, 400);
+      }
     }
 
     const result = await recordProductOrderPayment({

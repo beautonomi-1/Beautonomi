@@ -19,6 +19,7 @@ import {
 } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
+import { LAST_RESORT_CURRENCY, subtractMoney } from "@beautonomi/utils";
 
 const bodySchema = z.object({
   callback_url: z.string().url().optional(),
@@ -70,7 +71,10 @@ export async function POST(
 
     const due = Number((participant as { amount_due?: number }).amount_due ?? invite.amount_due ?? 0);
     const paid = Number((participant as { amount_paid?: number }).amount_paid ?? 0);
-    const remaining = Math.round(Math.max(0, due - paid) * 100) / 100;
+    const remaining = Math.max(
+      0,
+      subtractMoney(due, paid, String(invite.currency ?? LAST_RESORT_CURRENCY)),
+    );
     if (remaining <= 0) {
       return errorResponse("Nothing left to pay for this guest.", "ALREADY_PAID", 409);
     }

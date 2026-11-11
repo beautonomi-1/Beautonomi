@@ -10,6 +10,7 @@ import {
   sumSuccessfulSaleCardTakenBySaleIds,
 } from "@/lib/gift-cards/sale-gift-card";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 export async function computeExpectedAmountForEntity(
   supabase: SupabaseClient,
@@ -39,7 +40,7 @@ export async function computeExpectedAmountForEntity(
       const unpaidAdditional = Array.isArray((booking as any).additional_charges)
         ? (booking as any).additional_charges
             .filter((c: any) => c?.status !== "paid" && c?.status !== "rejected")
-            .reduce((s: number, c: any) => s + Number(c?.amount || 0), 0)
+            .reduce((s: number, c: any) => addMoney(s, Number(c?.amount || 0)), 0)
         : 0;
       const pendingWalletGift = await sumPendingWalletGiftBookingPayments(supabase, entityId);
       const remaining = computeWalletGiftCoverageOutstanding({
@@ -60,7 +61,7 @@ export async function computeExpectedAmountForEntity(
         pendingWalletGiftAmount: pendingWalletGift,
       });
       const depositAmount = depositQuote.depositAmount;
-      const serviceOutstanding = Math.max(0, Math.round((remaining - unpaidAdditional) * 100) / 100);
+      const serviceOutstanding = Math.max(0, subtractMoney(remaining, unpaidAdditional));
       return {
         amount: remaining,
         currency: booking.currency ?? "ZAR",
@@ -86,13 +87,13 @@ export async function computeExpectedAmountForEntity(
         const unpaidAdditional = Array.isArray((booking as any).additional_charges)
           ? (booking as any).additional_charges
               .filter((c: any) => c?.status !== "paid" && c?.status !== "rejected")
-              .reduce((s: number, c: any) => s + Number(c?.amount || 0), 0)
+              .reduce((s: number, c: any) => addMoney(s, Number(c?.amount || 0)), 0)
           : 0;
         const bookingId = String((booking as { id?: string }).id ?? "");
         const pendingWalletGift = bookingId
           ? await sumPendingWalletGiftBookingPayments(supabase, bookingId)
           : 0;
-        total += computeWalletGiftCoverageOutstanding({
+        total = addMoney(total, computeWalletGiftCoverageOutstanding({
           totalAmount: Number(booking.total_amount ?? 0),
           totalPaid: Number(booking.total_paid ?? 0),
           totalRefunded: Number(booking.total_refunded ?? 0),
@@ -100,7 +101,7 @@ export async function computeExpectedAmountForEntity(
           giftCardAmount: Number(booking.gift_card_amount ?? 0),
           unpaidAdditionalCharges: unpaidAdditional,
           pendingWalletGiftAmount: pendingWalletGift,
-        });
+        }));
       }
       return { amount: total, currency, bookingLocationId: null };
     }
@@ -154,7 +155,7 @@ export async function computeExpectedAmountForEntity(
         : { wallet: 0, gift: 0 };
       const stillDue = additionalChargeAmountStillDue(
         Number(charge.amount ?? 0),
-        held.wallet + held.gift,
+        addMoney(held.wallet, held.gift),
       );
       return {
         amount: stillDue,
@@ -199,9 +200,9 @@ export function computeAmountMatchStatus(
   // expected ± authorized extras is an exact capture — not an exception.
   const tip = Math.max(0, Number(extras?.tipAmount ?? 0));
   const cashback = Math.max(0, Number(extras?.cashbackAmount ?? 0));
-  const acceptable = [expected, expected + tip, expected + cashback, expected + tip + cashback];
+  const acceptable = [expected, addMoney(expected, tip), addMoney(expected, cashback), addMoney(addMoney(expected, tip), cashback)];
   if (acceptable.some((value) => Math.abs(captured - value) < 0.01)) return "exact";
-  if (captured > expected + tip + cashback) return "over";
+  if (captured > addMoney(addMoney(expected, tip), cashback)) return "over";
   if (captured < expected * 0.99) return "under";
   return "mismatch";
 }
@@ -218,7 +219,7 @@ export function yocoChargeMatchesExpected(input: {
   serviceOutstanding?: number | null;
 }): boolean {
   const tip = Math.max(0, Number(input.tipAmount) || 0);
-  const base = Math.max(0, Math.round((Number(input.amount) - tip) * 100) / 100);
+  const base = Math.max(0, subtractMoney(Number(input.amount), tip));
   const acceptable = [Math.max(0, Number(input.expectedAmount) || 0)];
   const deposit = Number(input.depositAmount ?? 0);
   if (deposit > 0.01) acceptable.push(deposit);

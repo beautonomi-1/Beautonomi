@@ -18,7 +18,7 @@ import { EmptyReportState } from "../../components/EmptyReportState";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { appendReportDateParams } from "@/app/provider/reports/utils/report-api-url";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { getDefaultMoneyLocale, subtractMoney } from "@beautonomi/utils";
 
 interface PayoutsData {
   timezone?: string;
@@ -177,7 +177,7 @@ export default function PayoutsReport() {
   const totalBookedAmount = data.totalBookedAmount ?? data.totalGrossAmount;
   const totalBookedNetOfRefunds =
     data.totalBookedNetOfRefunds ??
-    Math.max(0, totalBookedAmount - (data.totalRefunded ?? 0));
+    Math.max(0, subtractMoney(totalBookedAmount, (data.totalRefunded ?? 0)));
   const feeRatePct = Number(data.platformFeeRate ?? 0);
   const tz = data.timezone ?? "";
   const rangeLabel = data.fromYmd && data.toYmd ? `${data.fromYmd} → ${data.toYmd}` : "";

@@ -4,7 +4,8 @@
  */
 
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, errorResponse, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
@@ -18,6 +19,7 @@ import {
 } from "@/lib/subscriptions/feature-access";
 import { reverseAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
 import { resolveAdPackAmountMajor } from "@/lib/ads/resolve-ad-pack-price";
+import { adsCpcBudgetError } from "@/lib/payments/client-amount-bounds";
 
 async function getProviderId(userId: string, request: NextRequest): Promise<string | null> {
   const supabase = getSupabaseAdmin();
@@ -172,7 +174,9 @@ async function expireStalePendingOrders(
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const providerId = await getProviderId(user.id, request);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
@@ -267,7 +271,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderId(user.id, request);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
@@ -357,6 +363,8 @@ export async function POST(request: NextRequest) {
       }
       budget = Number(body.budget) || 0;
       billingModel = "cpc_budget";
+      const budgetErr = adsCpcBudgetError(budget);
+      if (budgetErr) return errorResponse(budgetErr, "VALIDATION_ERROR", 400);
     }
 
     const dailyBudget = body.daily_budget != null ? Number(body.daily_budget) : null;
@@ -487,7 +495,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: userRow } = await supabase.from("users").select("email").eq("id", user.id).single();
-    const email = (userRow as any)?.email || user.email;
+    const email = (userRow as { email?: string | null } | null)?.email || (user as { email?: string | null }).email;
     if (!email) return errorResponse("User email required for payment", "VALIDATION", 400);
 
     const reference = generateTransactionReference("ads_budget", order.id);

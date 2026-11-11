@@ -1,3 +1,4 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAppointmentSettingsFromDB } from "@/lib/provider-portal/appointment-settings";
 
@@ -73,8 +74,8 @@ export async function syncBookingAfterPaystackSuccess(
   const walletAmount = Number((row as Record<string, unknown>).wallet_amount ?? 0);
   const giftCardAmount = Number((row as Record<string, unknown>).gift_card_amount ?? 0);
   const totalAmount = Number((row as Record<string, unknown>).total_amount ?? 0);
-  const effectivePaid = Math.max(0, totalPaid - totalRefunded);
-  const walletGiftCoverage = walletAmount + giftCardAmount;
+  const effectivePaid = Math.max(0, subtractMoney(totalPaid, totalRefunded));
+  const walletGiftCoverage = addMoney(walletAmount, giftCardAmount);
   const coverage = Math.max(effectivePaid, walletGiftCoverage);
   const isFullyCovered = totalAmount > 0 && coverage >= totalAmount - 0.01; // 1-cent tolerance for rounding
 

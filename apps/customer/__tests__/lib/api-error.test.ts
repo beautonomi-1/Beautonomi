@@ -14,6 +14,22 @@ describe("getApiErrorMessage", () => {
     expect(getApiErrorMessage("  Network error  ")).toBe("Network error");
   });
 
+  it("hides a raw SQL string when no code is attached", () => {
+    expect(
+      getApiErrorMessage(
+        "Refund amount validation failed. Total refunded for booking (400.00) exceeds total paid (333.33)",
+      ),
+    ).toBe("Something went wrong. Please try again.");
+  });
+
+  it("hides raw SQL on an object that has no code", () => {
+    expect(
+      getApiErrorMessage({
+        message: "finance ledger posting failed for booking abc payment def: boom",
+      }),
+    ).toBe("Something went wrong. Please try again.");
+  });
+
   it("uses Error message", () => {
     expect(getApiErrorMessage(new Error("Bad request"))).toBe("Bad request");
   });
@@ -24,6 +40,25 @@ describe("getApiErrorMessage", () => {
 
   it("reads message from plain object", () => {
     expect(getApiErrorMessage({ message: "  x  " })).toBe("x");
+  });
+
+  it("maps IDEMPOTENCY_KEY_CONFLICT when the API omits a message", () => {
+    expect(getApiErrorMessage({ code: "IDEMPOTENCY_KEY_CONFLICT" })).toMatch(
+      /already processed/i,
+    );
+  });
+
+  it("replaces a raw refund SQL error with the OVER_REFUND sentence", () => {
+    expect(
+      getApiErrorMessage({
+        code: "OVER_REFUND",
+        message: "Refund amount validation failed. Total refunded for booking (400.00) exceeds total paid (333.33)",
+      }),
+    ).toBe("Refund exceeds the amount collected.");
+  });
+
+  it("maps INSUFFICIENT_BALANCE when the API omits a message", () => {
+    expect(getApiErrorMessage({ code: "INSUFFICIENT_BALANCE" })).toMatch(/not enough balance/i);
   });
 });
 

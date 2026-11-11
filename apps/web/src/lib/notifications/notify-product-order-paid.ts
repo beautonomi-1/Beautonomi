@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
@@ -20,7 +21,7 @@ function formatPaidOrderMessage(
     typeof itemCount === "number" && itemCount > 0 ? ` (${itemCount} item${itemCount === 1 ? "" : "s"})` : "";
   const total = formatMoney(totalAmount);
   if (walletAmount > 0.009) {
-    const cardPaid = Math.max(0, totalAmount - walletAmount);
+    const cardPaid = Math.max(0, subtractMoney(totalAmount, walletAmount));
     if (cardPaid > 0.009) {
       return `New order ${orderNumber} received${itemsSuffix} — ${total} (${formatMoney(walletAmount)} wallet, ${formatMoney(cardPaid)} card)`;
     }

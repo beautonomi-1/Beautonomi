@@ -6,8 +6,10 @@ import {
   handleApiError,
   getProviderIdForUser,
   notFoundResponse,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getStaffPermissions, isProviderOwner } from "@/lib/auth/permissions";
 
 /**
  * GET /api/provider/settings/team/commissions
@@ -31,14 +33,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const staffId = searchParams.get("staff_id");
 
+    const owner = await isProviderOwner(user.id, request);
+    let canViewAll = owner;
+    if (!canViewAll) {
+      const perms = await getStaffPermissions(user.id, undefined, request);
+      canViewAll = Boolean(perms.manage_payroll || perms.manage_team);
+    }
+
     // Get staff with their base commission percentage
     let staffQuery = supabase
       .from("provider_staff")
       .select(
-        "id, name, email, role, commission_percentage, service_commission_rate, product_commission_rate, commission_rate, is_active",
+        "id, user_id, name, email, role, commission_percentage, service_commission_rate, product_commission_rate, commission_rate, is_active",
       )
       .eq("provider_id", providerId)
       .eq("is_active", true);
+    if (!canViewAll) {
+      staffQuery = staffQuery.eq("user_id", user.id);
+    }
 
     if (staffId) {
       staffQuery = staffQuery.eq("id", staffId);
@@ -107,12 +119,16 @@ export async function GET(request: NextRequest) {
     const view = searchParams.get("view");
     if (view === "setup") {
       const [{ data: staffFull }, { data: offerings }, { data: settings }] = await Promise.all([
-        supabase
-          .from("provider_staff")
-          .select("id, name, commission_enabled, service_commission_rate, product_commission_rate")
-          .eq("provider_id", providerId)
-          .eq("is_active", true)
-          .is("deleted_at", null),
+        (() => {
+          let setupStaff = supabase
+            .from("provider_staff")
+            .select("id, name, commission_enabled, service_commission_rate, product_commission_rate")
+            .eq("provider_id", providerId)
+            .eq("is_active", true)
+            .is("deleted_at", null);
+          if (!canViewAll) setupStaff = setupStaff.eq("user_id", user.id);
+          return setupStaff;
+        })(),
         supabase
           .from("offerings")
           .select("id, team_member_commission_enabled")
@@ -230,14 +246,26 @@ export async function PATCH(request: NextRequest) {
     }
 
     const rateUpdate: Record<string, number> = {};
+    const parsePct = (raw: unknown, field: string): number | Response => {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0 || n > 100) {
+        return errorResponse(`${field} must be between 0 and 100`, "VALIDATION_ERROR", 400);
+      }
+      return n;
+    };
     if (serviceCommissionRate !== undefined) {
-      rateUpdate.service_commission_rate = Number(serviceCommissionRate);
+      const n = parsePct(serviceCommissionRate, "service_commission_rate");
+      if (n instanceof Response) return n;
+      rateUpdate.service_commission_rate = n;
     }
     if (productCommissionRate !== undefined) {
-      rateUpdate.product_commission_rate = Number(productCommissionRate);
+      const n = parsePct(productCommissionRate, "product_commission_rate");
+      if (n instanceof Response) return n;
+      rateUpdate.product_commission_rate = n;
     }
     if (commissionPercentage !== undefined) {
-      const pct = Number(commissionPercentage);
+      const pct = parsePct(commissionPercentage, "commission_percentage");
+      if (pct instanceof Response) return pct;
       if (serviceCommissionRate === undefined) {
         rateUpdate.service_commission_rate = pct;
       }
@@ -259,7 +287,23 @@ export async function PATCH(request: NextRequest) {
 
     // Update tiered commissions if provided
     if (Array.isArray(tiers)) {
-      // Delete existing tiers for this staff member
+      const tierRows = [];
+      for (let index = 0; index < tiers.length; index++) {
+        const tier = tiers[index] as { minRevenue?: unknown; commissionRate?: unknown; tierOrder?: number };
+        const minRevenue = Number(tier.minRevenue);
+        if (!Number.isFinite(minRevenue) || minRevenue < 0) {
+          return errorResponse("min_revenue must be 0 or greater", "VALIDATION_ERROR", 400);
+        }
+        const rate = parsePct(tier.commissionRate, "commission_rate");
+        if (rate instanceof Response) return rate;
+        tierRows.push({
+          staff_id: staffId,
+          min_revenue: minRevenue,
+          commission_rate: rate,
+          tier_order: tier.tierOrder ?? index,
+        });
+      }
+
       const { error: deleteError } = await supabase
         .from("provider_staff_commission_tiers")
         .delete()
@@ -269,17 +313,7 @@ export async function PATCH(request: NextRequest) {
         throw deleteError;
       }
 
-      // Insert new tiers
-      if (tiers.length > 0) {
-        const tierRows = tiers.map(
-          (tier: any, index: number) => ({
-            staff_id: staffId,
-            min_revenue: Number(tier.minRevenue),
-            commission_rate: Number(tier.commissionRate),
-            tier_order: tier.tierOrder ?? index,
-          })
-        );
-
+      if (tierRows.length > 0) {
         const { error: insertError } = await supabase
           .from("provider_staff_commission_tiers")
           .insert(tierRows);

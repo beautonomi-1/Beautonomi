@@ -887,7 +887,7 @@ sequenceDiagram
 
 ### 13.4 Secrets
 
-- **CRITICAL**: `supabase/migrations/403_seed_za_paystack_test_keys.sql` (and its duplicate under `apps/web/supabase/migrations/`) embeds the literal test secret `sk_test_04da914ae5a19f51dd7e23f96686a6cd7da1b024` and test public `pk_test_69dc6b286a888b3dfe62765229a5d43b7b0c75df` (L11–12). The file comment says "Replace with live keys before production; do not rely on this migration in prod without review." Even as **test** keys, this is a credential-hygiene red flag (git history is permanent, Paystack test credentials can still abuse the sandbox). **Must rotate and move to env-only seeding.**
+- **CRITICAL**: `supabase/migrations/403_seed_za_paystack_test_keys.sql` (and its duplicate under `apps/web/supabase/migrations/`) embeds the literal test secret `sk_test_[REDACTED — rotated; see audit/05-findings.md F-01]` and test public `pk_test_[REDACTED]` (L11–12). The file comment says "Replace with live keys before production; do not rely on this migration in prod without review." Even as **test** keys, this is a credential-hygiene red flag (git history is permanent, Paystack test credentials can still abuse the sandbox). **Must rotate and move to env-only seeding.**
 - `docs/REGION_SECRETS_KMS_RUNBOOK.md` acknowledges: `region_secrets` currently treats DB values as plaintext; KMS/envelope encryption is an aspiration.
 - `apps/web/.env.example` is placeholder-only; production env mandate mismatch vs `instrumentation.ts`.
 

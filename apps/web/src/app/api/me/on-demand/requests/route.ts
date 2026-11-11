@@ -9,6 +9,7 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
+import { stripStoredOnDemandContact } from "@/lib/provider/redact-booking-customer-contact";
 import { z } from "zod";
 
 const createRequestSchema = z.object({
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
         customer_id: user.id,
         status: "requested",
         expires_at: expiresAt.toISOString(),
-        request_payload: request_payload ?? {},
+        request_payload: stripStoredOnDemandContact(request_payload ?? {}),
         idempotency_key: key,
       })
       .select()

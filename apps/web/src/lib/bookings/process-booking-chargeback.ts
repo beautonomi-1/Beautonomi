@@ -8,6 +8,7 @@ import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { resolveBookingPaymentIdForRefund } from "@/lib/bookings/resolve-booking-refund-payment-id";
 import { syncPaymentTransactionRefundState } from "@/lib/finance/sync-payment-transaction-refund";
 import { logger } from "@/lib/utils/logger";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 /** Payment kinds handled by dedicated dispute reversal helpers — not booking chargebacks. */
 export const PLATFORM_BILLING_PAYMENT_KINDS = new Set([
@@ -76,7 +77,7 @@ export type ProcessBookingChargebackResult = {
 };
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return roundCurrency(n);
 }
 
 function chargebackRefundProviderId(
@@ -151,7 +152,7 @@ export async function processBookingChargeback(
 
   const totalPaid = Number((booking as { total_paid?: number } | null)?.total_paid ?? 0);
   const totalRefunded = Number((booking as { total_refunded?: number } | null)?.total_refunded ?? 0);
-  const remaining = round2(Math.max(0, totalPaid - totalRefunded));
+  const remaining = Math.max(0, subtractMoney(totalPaid, totalRefunded));
   refundAmount = round2(Math.min(refundAmount, remaining > 0 ? remaining : refundAmount));
 
   const bookingPaymentId = await resolveBookingPaymentIdForRefund(
@@ -199,7 +200,7 @@ export async function processBookingChargeback(
         const st = String((r as { status?: string }).status ?? "").toLowerCase();
         return st === "completed" || st === "pending";
       })
-      .reduce((sum, r) => sum + Number((r as { amount?: number }).amount ?? 0), 0);
+      .reduce((sum, r) => addMoney(sum, Number((r as { amount?: number }).amount ?? 0)), 0);
 
     await syncPaymentTransactionRefundState({
       supabase: params.supabase,

@@ -7,6 +7,8 @@ import { initiatePaycloudRefund } from "@/lib/payments/initiate-paycloud-refund"
 import { getPaycloudNotifyUrl } from "@/lib/payments/paycloud-credentials";
 import { computeRefundCaps } from "@/lib/bookings/booking-refund-limits";
 import { isPlatformCollected } from "@/lib/bookings/payment-collected-classifier";
+import { addMoney } from "@beautonomi/utils";
+import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
 
 /**
  * POST /api/provider/additional-charges/[id]/refund
@@ -27,7 +29,7 @@ export async function POST(
     if (!providerId) return notFoundResponse("Provider not found");
 
     const body = await request.json().catch(() => ({}));
-    const amount = Number(body?.amount);
+    let amount = Number(body?.amount);
     const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
     const rawMethod =
       typeof body?.refund_method === "string" ? body.refund_method.trim().toLowerCase() : "original";
@@ -47,9 +49,11 @@ export async function POST(
       );
     }
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const parsedAmount = clientMajorAmountSchema.safeParse(amount);
+    if (!parsedAmount.success) {
       return errorResponse("Refund amount must be greater than 0", "VALIDATION_ERROR", 400);
     }
+    amount = parsedAmount.data;
     if (!reason) {
       return errorResponse("Refund reason is required", "VALIDATION_ERROR", 400);
     }
@@ -171,7 +175,7 @@ export async function POST(
       });
       const linkedOnline = linked
         .filter((p) => isPlatformCollected(p))
-        .reduce((s, p) => s + Number(p.amount ?? 0), 0);
+        .reduce((s, p) => addMoney(s, Number(p.amount ?? 0)), 0);
       chargeOnlineCap =
         linked.length > 0 ? Math.min(linkedOnline, bookingCaps.onlineCap) : bookingCaps.onlineCap;
       if (amount > chargeOnlineCap + 0.01) {

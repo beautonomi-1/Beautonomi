@@ -1,4 +1,4 @@
-import { addMoney } from "@beautonomi/utils";
+import { addMoney, roundCurrency, subtractMoney, sumMoney } from "@beautonomi/utils";
 
 export type NetPayInput = {
   grossPay: number;
@@ -23,19 +23,18 @@ export type NetPayResult = {
 export function computeNetPay(input: NetPayInput): NetPayResult {
   const currency = input.currency ?? "ZAR";
   const gross = Number(input.grossPay) || 0;
-  const deductions =
-    (Number(input.manualDeductions) || 0) +
-    (Number(input.taxDeduction) || 0) +
-    (Number(input.uifContribution) || 0);
+  const deductions = sumMoney(
+    currency,
+    Number(input.manualDeductions) || 0,
+    Number(input.taxDeduction) || 0,
+    Number(input.uifContribution) || 0,
+  );
   const carry = Number(input.carryForwardBalance) || 0;
 
-  const raw = addMoney(addMoney(gross, -deductions, currency), carry, currency);
+  const raw = addMoney(subtractMoney(gross, deductions, currency), carry, currency);
   if (raw >= 0) {
-    return { netPay: round2(raw), nextCarryForward: 0 };
+    return { netPay: roundCurrency(raw), nextCarryForward: 0 };
   }
-  return { netPay: 0, nextCarryForward: round2(raw) };
+  return { netPay: 0, nextCarryForward: roundCurrency(raw) };
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}

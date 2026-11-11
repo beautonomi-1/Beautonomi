@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { resolveProviderCredentialMode } from "@/lib/payments/yoco-oauth";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 
@@ -14,10 +15,9 @@ import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-featu
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff"],
-      request,
-    );
+    const permissionCheck = await requireAnyPermission(["process_payments", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
     const providerId = await getProviderIdForUser(user.id, supabase, { request });

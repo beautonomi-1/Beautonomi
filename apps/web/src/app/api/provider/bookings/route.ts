@@ -11,6 +11,7 @@ import {
   normalizePhoneToE164,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
 import { getCalendarScopeForUser, filterBookingsByCalendarScope } from "@/lib/auth/calendar-scope";
 import { checkBookingLimitsFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { formatLimitUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
@@ -24,7 +25,7 @@ import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { startOfDay, startOfMonth } from "date-fns";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
-import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import { providerVatSnapshotColumns, resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 
 import {
   dashboardBookingLocationOrFilter,
@@ -53,11 +54,8 @@ import {
   invalidateProviderBookingsReadCache,
   setCachedProviderBookingsList,
 } from "@/lib/bookings/provider-bookings-read-cache";
-import {
-  computeCatalogPackageServiceDiscount,
-  getMissingRequiredProviderFormField,
-  TILL_PAYMENT_LABEL_EN,
-} from "@beautonomi/utils";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
+import { subtractMoney, multiplyMoney, addMoney, computeCatalogPackageServiceDiscount, computeVat, getMissingRequiredProviderFormField, roundCurrency, TILL_PAYMENT_LABEL_EN, sumMoney } from "@beautonomi/utils";
 import { validateProviderCatalogPackageMatch } from "@/lib/bookings/validate-provider-package-booking";
 import { resolveMembershipDiscount } from "@/lib/provider/salon-membership-entitlement";
 import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promotion-discount";
@@ -81,7 +79,57 @@ function sumUnpaidAdditionalCharges(charges: unknown): number {
   if (!Array.isArray(charges)) return 0;
   return charges
     .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-    .reduce((sum: number, charge: any) => sum + Number(charge?.amount ?? 0), 0);
+    .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount ?? 0)), 0);
+}
+
+/** Inline `id.in.(…)` lists beyond this risk exceeding the PostgREST URL limit. */
+const MAX_SCOPED_BOOKING_IDS = 400;
+
+/**
+ * Booking ids (non-group) where the staff member is the booking-level staff or on
+ * any service line, within the optional scheduled_at window. Returns null when the
+ * set is too large to inline or the lookup fails, so callers keep post-filtering.
+ */
+async function loadScopedStaffBookingIds(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  opts: { providerId: string; staffId: string; fromIso: string | null; toIso: string | null },
+): Promise<string[] | null> {
+  let lineQuery = admin
+    .from("booking_services")
+    .select("booking_id, booking:bookings!inner(id)")
+    .eq("staff_id", opts.staffId)
+    .eq("booking.provider_id", opts.providerId)
+    .is("booking.group_booking_id", null);
+  if (opts.fromIso) lineQuery = lineQuery.gte("booking.scheduled_at", opts.fromIso);
+  if (opts.toIso) lineQuery = lineQuery.lte("booking.scheduled_at", opts.toIso);
+
+  let headerQuery = admin
+    .from("bookings")
+    .select("id")
+    .eq("provider_id", opts.providerId)
+    .eq("staff_id", opts.staffId)
+    .is("group_booking_id", null);
+  if (opts.fromIso) headerQuery = headerQuery.gte("scheduled_at", opts.fromIso);
+  if (opts.toIso) headerQuery = headerQuery.lte("scheduled_at", opts.toIso);
+
+  const [lines, headers] = await Promise.all([
+    lineQuery.range(0, MAX_SCOPED_BOOKING_IDS * 4),
+    headerQuery.range(0, MAX_SCOPED_BOOKING_IDS),
+  ]);
+  if (lines.error) return null;
+  // bookings.staff_id is absent on some schemas (42703); service lines still scope correctly.
+  if (headers.error && headers.error.code !== "42703") return null;
+
+  const ids = new Set<string>();
+  for (const row of lines.data ?? []) {
+    if ((row as { booking_id?: string }).booking_id) ids.add(String((row as { booking_id: string }).booking_id));
+  }
+  for (const row of headers.error ? [] : headers.data ?? []) {
+    if ((row as { id?: string }).id) ids.add(String((row as { id: string }).id));
+  }
+  if (ids.size > MAX_SCOPED_BOOKING_IDS) return null;
+  if ((lines.data?.length ?? 0) > MAX_SCOPED_BOOKING_IDS * 4) return null;
+  return [...ids];
 }
 
 // Map frontend status to database enum values
@@ -139,6 +187,9 @@ async function handleGetProviderBookings(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     // NOTE: We use the admin client for provider booking reads.
     // RLS for bookings is intentionally strict and depends on provider<->user links.
@@ -174,10 +225,18 @@ async function handleGetProviderBookings(request: NextRequest) {
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    const cacheKey = createBookingsReadCacheKey(providerId, new URL(request.url).search);
+    const cacheKey = createBookingsReadCacheKey(
+      providerId,
+      calendarScope !== "all" && scopeStaffId
+        ? `${new URL(request.url).search}#own:${scopeStaffId}`
+        : new URL(request.url).search,
+    );
     const cachedList = getCachedProviderBookingsList(cacheKey);
     if (cachedList) {
-      const scopedCached = applyCalendarScope(cachedList as Booking[]);
+      const scopedCached = redactBookingCustomerContacts(
+        applyCalendarScope(cachedList as Booking[]),
+        canViewClients,
+      );
       const cachedResponse = successResponse(scopedCached as Booking[]);
       cachedResponse.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=10");
       return cachedResponse;
@@ -330,6 +389,8 @@ async function handleGetProviderBookings(request: NextRequest) {
         supabaseAdmin,
         bookingCustomerIds,
         trimmed,
+        [],
+        { nameOnly: !canViewClients },
       );
 
       const orClauses: string[] = [`booking_number.ilike.%${safe}%`];
@@ -341,22 +402,49 @@ async function handleGetProviderBookings(request: NextRequest) {
       query = query.or(orClauses.join(","));
     }
 
+    // calendar_scope=own must narrow rows before the page is cut: clients stop
+    // walking pages on a short page, so post-filtering a full page dropped bookings.
+    if (calendarScope !== "all" && scopeStaffId) {
+      const scopedIds = await loadScopedStaffBookingIds(supabaseAdmin, {
+        providerId,
+        staffId: scopeStaffId,
+        fromIso:
+          startDate && ymdParam.test(startDate.slice(0, 10))
+            ? dateRangeBoundsUtc(startDate.slice(0, 10), startDate.slice(0, 10), tz).fromIso
+            : fromNow
+              ? new Date().toISOString()
+              : null,
+        toIso:
+          endDate && ymdParam.test(endDate.slice(0, 10))
+            ? dateRangeBoundsUtc(endDate.slice(0, 10), endDate.slice(0, 10), tz).toIso
+            : null,
+      });
+      if (scopedIds) {
+        query = query.in("id", scopedIds.length > 0 ? scopedIds : ["00000000-0000-0000-0000-000000000000"]);
+      }
+    }
+
     // Pagination: `limit` (max 1000 per request) + `offset` for stable server-side pages.
     // Mobile/provider apps merge multiple pages for the same date/sort filters when needed.
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
+    let pageOffset = 0;
     if (limitParam) {
       const parsedLimit = Number(limitParam);
       if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
         const capped = Math.min(parsedLimit, 1000);
         const parsedOffset = Number(offsetParam ?? NaN);
         if (Number.isFinite(parsedOffset) && parsedOffset >= 0) {
-          query = query.range(Math.floor(parsedOffset), Math.floor(parsedOffset) + capped - 1);
+          pageOffset = Math.floor(parsedOffset);
+          query = query.range(pageOffset, pageOffset + capped - 1);
         } else {
           query = query.limit(capped);
         }
       }
     }
+    // Group rows are not offset-paginated; merging them into every page duplicated
+    // each group across the client's page walk and repeated the payment rollup.
+    const includeGroupRows = pageOffset === 0;
 
     // Note: team_member_id filtering is done client-side in the API client
     // because staff_id is stored in booking_services (child table), not directly in bookings
@@ -397,16 +485,12 @@ async function handleGetProviderBookings(request: NextRequest) {
       throw error;
     }
 
-    const pendingWalletGiftByBooking = await sumPendingWalletGiftByBookingIds(
-      supabaseAdmin,
-      (bookings || []).map((row: { id?: string }) => String(row.id ?? "")),
-    );
-
+    const pageBookingIds = (bookings || []).map((row: { id?: string }) => String(row.id ?? ""));
     const { fetchTillPaymentKindsByBookingId } = await import("@/lib/payments/till-labels-for-bookings");
-    const tillKindsByBooking = await fetchTillPaymentKindsByBookingId(
-      supabaseAdmin,
-      (bookings || []).map((row: { id?: string }) => String(row.id ?? "")),
-    );
+    const [pendingWalletGiftByBooking, tillKindsByBooking] = await Promise.all([
+      sumPendingWalletGiftByBookingIds(supabaseAdmin, pageBookingIds),
+      fetchTillPaymentKindsByBookingId(supabaseAdmin, pageBookingIds),
+    ]);
 
     // Transform to match Booking type
     const transformedBookings = (bookings || []).map((booking: any) => {
@@ -432,7 +516,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         quantity: bp.quantity || 1,
         unit_price: bp.unit_price || bp.products?.retail_price || 0,
         total_price:
-          bp.total_price || (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
+          bp.total_price || multiplyMoney(bp.unit_price || bp.products?.retail_price || 0, bp.quantity || 1),
       }));
       const recurringSeries = Array.isArray(booking.recurring_appointments)
         ? booking.recurring_appointments[0]
@@ -655,7 +739,7 @@ async function handleGetProviderBookings(request: NextRequest) {
       groupQuery = groupQuery.gte("scheduled_at", new Date().toISOString());
     }
     if (locationId) groupQuery = groupQuery.or(dashboardGroupBookingLocationOrFilter(locationId));
-    if (searchRaw && searchRaw.trim().length > 0) {
+    if (includeGroupRows && searchRaw && searchRaw.trim().length > 0) {
       const safe = searchRaw.trim().replace(/[%_,()]/g, "");
       const participantGroupIds = await findGroupBookingIdsByParticipantContactSearch(
         supabaseAdmin,
@@ -670,9 +754,9 @@ async function handleGetProviderBookings(request: NextRequest) {
       }
       groupQuery = groupQuery.or(orParts.join(","));
     }
-    const { data: groupRows, error: groupErr } = await groupQuery
-      .order(orderColumn, { ascending })
-      .limit(500);
+    const { data: groupRows, error: groupErr } = includeGroupRows
+      ? await groupQuery.order(orderColumn, { ascending }).limit(500)
+      : { data: [] as any[], error: null as { code?: string } | null };
     if (groupErr && !["42P01", "42703"].includes(groupErr.code ?? "")) {
       console.warn("[GET /api/provider/bookings] Failed to merge group bookings:", groupErr);
     }
@@ -743,10 +827,10 @@ async function handleGetProviderBookings(request: NextRequest) {
       const childPaymentStatus = String(child.payment_status ?? "");
       const paidAfterRefunds = Math.max(
         0,
-        Number(child.total_paid ?? 0) - Number(child.total_refunded ?? 0)
+        subtractMoney(Number(child.total_paid ?? 0), Number(child.total_refunded ?? 0))
       );
       const walletGiftCoverage =
-        Number(child.wallet_amount ?? 0) + Number(child.gift_card_amount ?? 0);
+        addMoney(Number(child.wallet_amount ?? 0), Number(child.gift_card_amount ?? 0));
       const childCoverage = Math.max(paidAfterRefunds, walletGiftCoverage);
       const childUnpaidCharges = sumUnpaidAdditionalCharges(child.additional_charges);
       const childTotal = Number(child.total_amount ?? 0);
@@ -761,13 +845,13 @@ async function handleGetProviderBookings(request: NextRequest) {
         pendingWalletGiftAmount: pendingWalletGiftByChild.get(String(child.id ?? "")) ?? 0,
       });
       groupPaymentById.set(child.group_booking_id, {
-        totalAmount: prev.totalAmount + childTotal + childUnpaidCharges,
-        totalPaid: prev.totalPaid + Number(child.total_paid ?? 0),
-        totalRefunded: prev.totalRefunded + Number(child.total_refunded ?? 0),
-        walletGiftCoverage: prev.walletGiftCoverage + walletGiftCoverage,
-        coverage: prev.coverage + childCoverage,
-        balanceDue: prev.balanceDue + childBalanceDue,
-        tipAmount: prev.tipAmount + Math.max(0, Number(child.tip_amount ?? 0)),
+        totalAmount: addMoney(addMoney(prev.totalAmount, childTotal), childUnpaidCharges),
+        totalPaid: addMoney(prev.totalPaid, Number(child.total_paid ?? 0)),
+        totalRefunded: addMoney(prev.totalRefunded, Number(child.total_refunded ?? 0)),
+        walletGiftCoverage: addMoney(prev.walletGiftCoverage, walletGiftCoverage),
+        coverage: addMoney(prev.coverage, childCoverage),
+        balanceDue: addMoney(prev.balanceDue, childBalanceDue),
+        tipAmount: addMoney(prev.tipAmount, Math.max(0, Number(child.tip_amount ?? 0))),
         paymentStatus: prev.paymentStatus,
         hasRefundStatus:
           prev.hasRefundStatus ||
@@ -791,7 +875,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         group.title ||
         "Group booking";
       const participantTotal = participants.reduce(
-        (sum: number, p: any) => sum + (Number(p.price) || 0),
+        (sum: number, p: any) => addMoney(sum, Number(p.price) || 0),
         0
       );
       const productRows = Array.isArray(group.products) ? group.products : [];
@@ -813,15 +897,15 @@ async function handleGetProviderBookings(request: NextRequest) {
         unit_price: Number(p.unit_price ?? p.unitPrice ?? 0) || 0,
         total_price:
           Number(p.total_price ?? p.totalPrice ?? 0) ||
-          (Number(p.unit_price ?? p.unitPrice ?? 0) || 0) * (Number(p.quantity ?? 1) || 1),
+          multiplyMoney(Number(p.unit_price ?? p.unitPrice ?? 0) || 0, Number(p.quantity ?? 1) || 1),
       }));
       const productTotal = products.reduce(
-        (sum: number, p: any) => sum + (Number(p.total_price) || 0),
+        (sum: number, p: any) => addMoney(sum, Number(p.total_price) || 0),
         0
       );
       const total =
         Number(group.total_price ?? 0) ||
-        participantTotal + productTotal + (Number(group.travel_fee) || 0);
+        addMoney(addMoney(participantTotal, productTotal), Number(group.travel_fee) || 0);
       const payment = groupPaymentById.get(group.id) ?? {
         totalAmount: 0,
         totalPaid: 0,
@@ -835,7 +919,7 @@ async function handleGetProviderBookings(request: NextRequest) {
       };
       const balanceDue = Math.max(
         0,
-        payment.totalAmount > 0 ? payment.balanceDue : total - payment.coverage
+        payment.totalAmount > 0 ? payment.balanceDue : subtractMoney(total, payment.coverage)
       );
       const displayTotal = payment.totalAmount > 0 ? Math.max(total, payment.totalAmount) : total;
       const groupPaymentStatus =
@@ -928,7 +1012,7 @@ async function handleGetProviderBookings(request: NextRequest) {
         addons: [],
         package_id: group.package_id || null,
         package_name: null,
-        subtotal: Math.max(0, displayTotal - (Number(group.travel_fee) || 0)),
+        subtotal: Math.max(0, subtractMoney(displayTotal, Number(group.travel_fee) || 0)),
         discount_amount: 0,
         discount_code: null,
         discount_reason: null,
@@ -990,7 +1074,9 @@ async function handleGetProviderBookings(request: NextRequest) {
 
     setCachedProviderBookingsList(cacheKey, mergedBookings as unknown as Booking[]);
 
-    const response = successResponse(scopedBookings as unknown as Booking[]);
+    const response = successResponse(
+      redactBookingCustomerContacts(scopedBookings, canViewClients) as unknown as Booking[],
+    );
 
     // Add cache headers for faster subsequent requests (5 seconds)
     response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=10");
@@ -1307,7 +1393,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
     // Server-side pricing recomputation to prevent client-trusted totals from causing incorrect records.
     // Handles both tax-inclusive (SA VAT model: prices already include tax) and tax-exclusive modes.
     const servicesSubtotal = Array.isArray(body.services)
-      ? body.services.reduce((sum: number, svc: any) => sum + (Number(svc.price) || 0), 0)
+      ? body.services.reduce((sum: number, svc: any) => addMoney(sum, Number(svc.price) || 0), 0)
       : 0;
     const explicitAddonsSubtotal = sumExplicitProviderAddonsSubtotal(body.addons);
     const addOnIdsFromServices = Array.isArray(body.services)
@@ -1337,7 +1423,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         );
       }
       serviceAddOnsSubtotal = (addOnPriceRows ?? []).reduce(
-        (sum: number, row: any) => sum + (Number(row.price) || 0),
+        (sum: number, row: any) => addMoney(sum, Number(row.price) || 0),
         0
       );
     }
@@ -1365,10 +1451,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
     }
     const validatedProducts = productValidation.products;
     const productsSubtotal = validatedProducts.reduce(
-      (sum, product) => sum + product.totalPrice,
+      (sum, product) => addMoney(sum, product.totalPrice),
       0
     );
-    const computedLineSubtotal = servicesSubtotal + addonsSubtotal + productsSubtotal;
+    const computedLineSubtotal = addMoney(addMoney(servicesSubtotal, addonsSubtotal), productsSubtotal);
     const serverSubtotal =
       computedLineSubtotal > 0 ? computedLineSubtotal : Number(body.subtotal) || 0;
     const explicitMembershipDiscount = Math.max(
@@ -1447,7 +1533,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       .trim()
       .toUpperCase();
     if (providerPromoCode) {
-      const prePromoBase = Math.max(0, serverSubtotal - serverDiscountAmount) + serverTravelFee;
+      const prePromoBase = addMoney(Math.max(0, subtractMoney(serverSubtotal, serverDiscountAmount)), serverTravelFee);
       const promoResolved = await resolveCheckoutPromotionDiscount(supabaseAdmin, {
         promoCode: providerPromoCode,
         providerId,
@@ -1466,7 +1552,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     const subtotalForMembership = Math.max(
       0,
-      serverSubtotal + serverTravelFee - serverDiscountAmount
+      subtractMoney(addMoney(serverSubtotal, serverTravelFee), serverDiscountAmount)
     );
     const membershipResult = await resolveMembershipDiscount({
       supabase: supabaseAdmin,
@@ -1474,10 +1560,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
       providerId,
       subtotal: subtotalForMembership,
     });
-    let membershipDiscountAmount = membershipResult.membershipDiscountAmount;
-    if (explicitMembershipDiscount > 0.001) {
-      membershipDiscountAmount = explicitMembershipDiscount;
-    }
+    // F2-34: membership discount is always recomputed server-side.
+    // `membership_discount_amount` from the client is only used to un-fold a
+    // legacy combined `discount_amount`; it never becomes the applied discount.
+    const membershipDiscountAmount = membershipResult.membershipDiscountAmount;
     const serverTipAmount = Number(body.tip_amount) || 0;
     const groupBookingIdRaw = (body as { group_booking_id?: unknown }).group_booking_id;
     const normalizedGroupBookingId =
@@ -1509,24 +1595,25 @@ async function handleCreateProviderBooking(request: NextRequest) {
       promotionDiscountAmount: serverPromotionDiscountAmount,
       membershipDiscountAmount,
     });
-    const taxRateDecimal = effectiveTaxRate / 100;
-
-    const recomputedTaxAmount = taxInclusive
-      ? Math.round((taxableAmount - taxableAmount / (1 + taxRateDecimal)) * 100) / 100
-      : Math.round(taxableAmount * taxRateDecimal * 100) / 100;
-
+    const bookingCurrency =
+      (typeof body.currency === "string" && body.currency.trim()) || lastResortCurrency;
+    const vatSplit = computeVat({
+      baseAmount: taxableAmount,
+      ratePercent: effectiveTaxRate,
+      inclusive: taxInclusive,
+      currency: bookingCurrency,
+    });
+    const recomputedTaxAmount = vatSplit.taxAmount;
     const recomputedTotalAmount = taxInclusive
-      ? Math.round(
-          (taxableAmount + serverTipAmount + serverTravelFee + serverPlatformFeeAmount) * 100
-        ) / 100
-      : Math.round(
-          (taxableAmount +
-            recomputedTaxAmount +
-            serverTipAmount +
-            serverTravelFee +
-            serverPlatformFeeAmount) *
-            100
-        ) / 100;
+      ? sumMoney(bookingCurrency, taxableAmount, serverTipAmount, serverTravelFee, serverPlatformFeeAmount)
+      : sumMoney(
+          bookingCurrency,
+          taxableAmount,
+          recomputedTaxAmount,
+          serverTipAmount,
+          serverTravelFee,
+          serverPlatformFeeAmount,
+        );
 
     const finalTaxAmount = recomputedTaxAmount;
     const finalTotalAmount = recomputedTotalAmount;
@@ -1595,6 +1682,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       membership_discount_amount: membershipDiscountAmount,
       tax_amount: finalTaxAmount,
       tax_rate: effectiveTaxRate,
+      ...providerVatSnapshotColumns(resolvedVat),
       tip_amount: serverTipAmount,
       total_amount: finalTotalAmount,
       currency: body.currency || lastResortCurrency,
@@ -1942,10 +2030,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
       // Set provider-only fields not handled by the locking RPC. Keep this
       // separate from the reload so an embedded-select/schema issue cannot
       // turn a successfully-created booking into a partial failure.
-      // §Provider-audit 2026-07: `create_booking_with_locking` (718) only
-      // inserts a fixed column list, so anything in bookingData outside it is
-      // silently dropped on the RPC path — patch those columns in here to keep
-      // parity with the direct-insert path (tenant_id is trigger-backfilled).
+      // 10143 persists tax_inclusive / tax_rate / VAT snapshot / platform_fee /
+      // booking_source on insert. Patch remaining provider-only columns
+      // (referral, membership_id, discount_reason, group_booking_id, forms).
       const { error: postRpcUpdateErr } = await supabaseAdmin
         .from("bookings")
         .update({
@@ -1955,6 +2042,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
           discount_code: bookingData.discount_code,
           membership_id: bookingData.membership_id,
           tax_rate: bookingData.tax_rate,
+          ...providerVatSnapshotColumns(resolvedVat),
           platform_fee_percentage: bookingData.platform_fee_percentage,
           platform_fee_amount: bookingData.platform_fee_amount,
           platform_fee_paid_by: bookingData.platform_fee_paid_by,

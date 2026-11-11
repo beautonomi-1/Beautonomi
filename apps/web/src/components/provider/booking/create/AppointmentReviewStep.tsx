@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import type { TeamMember, Salon } from "@/lib/provider-portal/types";
 import type { AppointmentService } from "@/components/appointments/types";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { percentOf } from "@beautonomi/utils";
 import type { AppointmentKindValue } from "./AppointmentKindSelector";
 import type { CreatePaymentMethod } from "./CreatePaymentSection";
 import { MembershipPreviewPill } from "./MembershipPreviewPill";
@@ -79,10 +80,10 @@ export function AppointmentReviewStep({
 }: AppointmentReviewStepProps) {
   const { t } = useTranslation();
   const prefix = "web.provider.appointmentReview";
-  const { format: formatMoney } = useProviderMoneyFormat();
+  const { format: formatMoney, currency } = useProviderMoneyFormat();
   const staffName = teamMembers.find((m) => m.id === staffId)?.name ?? t(`${prefix}.unassigned`);
   const locationName = locations.find((l) => l.id === locationId)?.name;
-  const depositAmount = collectDeposit ? (totalAmount * depositPercentage) / 100 : 0;
+  const depositAmount = collectDeposit ? percentOf(totalAmount, depositPercentage, currency) : 0;
   const totalDuration =
     durationMinutes ||
     services.reduce((sum, s) => {

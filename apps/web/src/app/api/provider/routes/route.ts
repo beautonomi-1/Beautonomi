@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, handleApiError, successResponse, badRequestResponse } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, handleApiError, successResponse, badRequestResponse } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 
 /**
  * GET /api/provider/routes?date=YYYY-MM-DD
@@ -8,7 +11,13 @@ import { requireRoleInApi, getProviderIdForUser, handleApiError, successResponse
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff'], request);
+    const permissionCheck = await requirePermission("view_calendar", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
+
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -109,7 +118,7 @@ export async function GET(request: NextRequest) {
         starting_location: route.starting_address,
         ending_location: route.ending_address,
       },
-      segments: segments?.map(s => ({
+      segments: redactBookingCustomerContacts((segments ?? []).map(s => ({
         id: s.id,
         order: s.segment_order,
         distance_km: s.distance_km,
@@ -126,7 +135,7 @@ export async function GET(request: NextRequest) {
           status: s.to_booking.status,
           customer: s.to_booking.customer,
         } : null,
-      })) || [],
+      })), canViewClients),
       savings,
     });
 

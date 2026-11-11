@@ -5,6 +5,7 @@ import { KeyboardDoneAccessory } from "@/features/provider-onboarding/KeyboardDo
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { percentOf } from "@beautonomi/utils";
 import { twStyle } from "@/lib/twStyle";
 import { PricingOptionsEditor } from "@/features/catalogue/PricingOptionsEditor";
 import {
@@ -190,7 +191,7 @@ export function ServiceFormFields({
   const primaryPrice = form.pricingOptions[0]?.price ?? 0;
   const serviceCostAmount = useMemo(() => {
     const pct = parseFloat(form.serviceCostPercentage) || 0;
-    return ((primaryPrice * pct) / 100).toFixed(2);
+    return percentOf(primaryPrice, pct, getTenantDefaultCurrency()).toFixed(2);
   }, [form.serviceCostPercentage, primaryPrice]);
 
   const showResourceEditor =

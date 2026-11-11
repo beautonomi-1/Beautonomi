@@ -1,3 +1,4 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
@@ -86,7 +87,7 @@ export async function processProductReturnRefund(
 
   const orderTotal = Number(orderRow.total_amount ?? 0);
   const priorRefunded = Number(orderRow.refunded_amount ?? 0);
-  const remainingRefundable = orderTotal - priorRefunded;
+  const remainingRefundable = subtractMoney(orderTotal, priorRefunded);
   if (refundAmount > remainingRefundable + 0.005) {
     throw new ProductReturnRefundError(
       `Refund amount cannot exceed ${Math.max(0, remainingRefundable).toFixed(2)}.`,
@@ -148,7 +149,7 @@ export async function processProductReturnRefund(
     storeCreditClawbackKey: `product_return_refund:${returnId}`,
   });
 
-  const newRefundedTotal = priorRefunded + refundAmount;
+  const newRefundedTotal = addMoney(priorRefunded, refundAmount);
   const fullyRefunded = newRefundedTotal >= orderTotal - 0.005;
   const orderUpdate: Record<string, unknown> = {
     refunded_amount: newRefundedTotal,

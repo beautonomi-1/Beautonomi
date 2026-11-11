@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -153,7 +154,7 @@ export async function GET(request: NextRequest) {
     staff.sort((a, b) => b.revenue - a.revenue);
 
     const uniqueBookings = new Set((bookings || []).map((b) => b.id)).size;
-    const totalLedgerNet = staff.reduce((sum, x) => sum + x.revenue, 0);
+    const totalLedgerNet = staff.reduce((sum, x) => addMoney(sum, x.revenue), 0);
 
     return successResponse({
       staff,

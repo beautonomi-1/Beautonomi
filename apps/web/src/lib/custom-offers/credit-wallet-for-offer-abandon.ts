@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { addMoney, roundCurrency, subtractMoney, toMinorUnits } from "@beautonomi/utils";
 
 /**
  * Reference types that reverse a custom-offer wallet debit.
@@ -50,15 +51,15 @@ export async function getCustomOfferWalletOutstanding(
   }>) {
     const amount = Number(row.amount ?? 0);
     if (row.type === "debit" && String(row.reference_type ?? "") === "custom_offer") {
-      debitTotal += amount;
+      debitTotal = addMoney(debitTotal, amount, currency);
       continue;
     }
     if (row.type === "credit" && isCustomOfferWalletCreditReferenceType(row.reference_type)) {
-      creditTotal += amount;
+      creditTotal = addMoney(creditTotal, amount, currency);
     }
   }
 
-  return { outstanding: Math.round((debitTotal - creditTotal) * 100) / 100, currency };
+  return { outstanding: subtractMoney(debitTotal, creditTotal, currency), currency };
 }
 
 export async function creditWalletForCustomOfferAbandon(
@@ -88,7 +89,7 @@ export async function creditWalletForCustomOfferAbandon(
 
   // Fingerprint outstanding so a later attempt with a new debit can credit again,
   // while an exact replay of this credit remains idempotent.
-  const outstandingCents = Math.round(outstanding * 100);
+  const outstandingCents = toMinorUnits(outstanding, currency);
   const { error: creditError } = await (supabase.rpc as any)("wallet_credit_admin", {
     p_user_id: customerId,
     p_amount: outstanding,

@@ -15,6 +15,8 @@
  * charge-success.ts (handleChargeFailed → subscription renewal branch), not here, to avoid
  * double-processing with invoice.* events.
  */
+import { subtractMoney } from "@beautonomi/utils";
+
 import { NextResponse } from "next/server";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import type { PaystackEvent, SupabaseClient } from "./shared";
@@ -399,7 +401,7 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
   const payloadCurrency = String(payload.currency || "ZAR");
   const amountInCurrency = convertFromSmallestUnit(Number(amount || 0), payloadCurrency);
   const feesInCurrency = convertFromSmallestUnit(Number(fees || 0), payloadCurrency);
-  const netAmount = amountInCurrency - feesInCurrency;
+  const netAmount = subtractMoney(amountInCurrency, feesInCurrency);
 
   const { data: subscriptionDetails } = await supabase
     .from("provider_subscriptions")

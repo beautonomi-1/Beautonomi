@@ -14,7 +14,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
-import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
+import { getBookingLifecycleDisplay, getBookingPaymentDisplay, addMoney } from "@beautonomi/utils";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
@@ -462,10 +462,7 @@ export default function ReceiptPage() {
                 </div>
               )}
               {receipt.discount > 0 &&
-                Number(receipt.package_discount_amount || 0) +
-                  Number(receipt.promotion_discount_amount || 0) +
-                  Number(receipt.membership_discount_amount || 0) +
-                  Number(receipt.loyalty_discount_amount || 0) === 0 && (
+                addMoney(addMoney(addMoney(Number(receipt.package_discount_amount || 0), Number(receipt.promotion_discount_amount || 0)), Number(receipt.membership_discount_amount || 0)), Number(receipt.loyalty_discount_amount || 0)) === 0 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>{receipt.discount_reason ? t("web.accountSettings.bookingReceipt.discountWithReason", { reason: receipt.discount_reason }) : t("web.accountSettings.bookingReceipt.discount")}</span>
                   <span>-{formatCurrency(receipt.discount)}</span>

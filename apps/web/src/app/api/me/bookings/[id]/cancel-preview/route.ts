@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
@@ -49,9 +50,9 @@ async function loadGroupCancelPreview(
     if (other.customer_id !== customerId) continue;
     const { outcome } = await loadCancellationOutcomeForBooking(supabase, other.id, "customer");
     if (!outcome) continue;
-    walletRefund += outcome.leadWalletRefund ?? outcome.walletRefund;
-    fee += outcome.leadFeeRetained ?? outcome.feeRetained;
-    inPersonRefundDue += outcome.inPersonRefundDue;
+    walletRefund = addMoney(walletRefund, outcome.leadWalletRefund ?? outcome.walletRefund);
+    fee = addMoney(fee, outcome.leadFeeRetained ?? outcome.feeRetained);
+    inPersonRefundDue = addMoney(inPersonRefundDue, outcome.inPersonRefundDue);
   }
   return {
     group_booking_id: group.id,

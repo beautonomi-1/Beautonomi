@@ -3,6 +3,7 @@ import { z } from "zod";
 import { normalizePublicStaffIdForDatabase } from "@beautonomi/utils";
 import { zPublicBookingStaffIdOptional } from "@/lib/public-booking/zod-public-staff-id";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { WAITLIST_COLUMNS_WITHOUT_CONTACT } from "@/lib/waitlist/waitlist-columns";
 import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 import { checkPublicMutationRateLimit } from "@/lib/rate-limit/public-mutation";
 
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
     if (provider.waitlist_max_size) {
       const { count } = await supabase
         .from('waitlist_entries')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('provider_id', data.provider_id)
         .eq('status', 'waiting');
 
@@ -117,15 +118,22 @@ export async function POST(request: NextRequest) {
         status: 'waiting',
         priority: 0,
       })
-      .select()
+      .select(WAITLIST_COLUMNS_WITHOUT_CONTACT)
       .single();
 
     if (insertError) {
       throw insertError;
     }
 
+    const created = entry as unknown as Record<string, unknown> | null;
     return successResponse({
-      entry,
+      entry: created
+        ? {
+            ...created,
+            customer_email: data.customer_email ?? null,
+            customer_phone: data.customer_phone ?? null,
+          }
+        : created,
       message: "Added to waitlist successfully",
     });
   } catch (error) {

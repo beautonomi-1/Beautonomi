@@ -2,12 +2,14 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactOnDemandRequest } from "@/lib/provider/redact-booking-customer-contact";
 import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 import { validateBooking } from "@/app/api/public/bookings/_helpers/validate-booking";
 import { createBookingRecord } from "@/app/api/public/bookings/_helpers/create-booking-record";
@@ -24,10 +26,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
+    const permissionCheck = await requireAnyPermission(
+      ["create_appointments", "edit_appointments"],
+      request,
     );
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -85,24 +92,34 @@ export async function POST(
     }
 
     const customerId = requestRow.customer_id as string;
-    const requestPayload = (requestRow.request_payload ?? {}) as Record<string, unknown>;
+    const requestPayload = {
+      ...((requestRow.request_payload ?? {}) as Record<string, unknown>),
+    };
     const admin = getSupabaseAdmin();
 
-    // Enrich client_info from users if missing so booking gets guest_name
-    const existingClientInfo = requestPayload.client_info as { firstName?: string; lastName?: string } | undefined;
-    if (!existingClientInfo?.firstName && !existingClientInfo?.lastName) {
-      const { data: userRow } = await admin
-        .from("users")
-        .select("full_name")
-        .eq("id", customerId)
-        .single();
-      const fullName = (userRow?.full_name as string)?.trim() || "";
-      if (fullName) {
-        const parts = fullName.split(/\s+/);
-        const firstName = parts[0] ?? "";
-        const lastName = parts.slice(1).join(" ") ?? "";
-        requestPayload.client_info = { firstName, lastName };
-      }
+    // Name, email, and phone for the booking draft come from the user row.
+    // The stored request keeps the name and address only, because staff can select that row directly.
+    const existingClientInfo =
+      requestPayload.client_info &&
+      typeof requestPayload.client_info === "object" &&
+      !Array.isArray(requestPayload.client_info)
+        ? { ...(requestPayload.client_info as Record<string, unknown>) }
+        : {};
+    const { data: userRow } = await admin
+      .from("users")
+      .select("full_name, email, phone")
+      .eq("id", customerId)
+      .maybeSingle();
+    const fullName = (userRow?.full_name as string | undefined)?.trim() || "";
+    if (!existingClientInfo.firstName && !existingClientInfo.lastName && fullName) {
+      const parts = fullName.split(/\s+/);
+      existingClientInfo.firstName = parts[0] ?? "";
+      existingClientInfo.lastName = parts.slice(1).join(" ") ?? "";
+    }
+    if (!existingClientInfo.email && userRow?.email) existingClientInfo.email = userRow.email;
+    if (!existingClientInfo.phone && userRow?.phone) existingClientInfo.phone = userRow.phone;
+    if (Object.keys(existingClientInfo).length > 0) {
+      requestPayload.client_info = existingClientInfo;
     }
 
     // Build draft from request_payload (same shape as booking create body)
@@ -261,7 +278,7 @@ export async function POST(
     }
 
     return successResponse({
-      request: updatedRow,
+      request: redactOnDemandRequest(updatedRow, canViewClients),
       booking_id: booking.id,
     });
   } catch (error) {

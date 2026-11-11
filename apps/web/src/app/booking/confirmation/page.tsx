@@ -11,7 +11,7 @@ import { getGoogleCalendarUrl, getOutlookCalendarUrl, downloadICS } from "@/lib/
 import { formatCurrency } from "@/lib/utils";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
-import { getBookingLifecycleDisplay, getBookingPaymentDisplay } from "@beautonomi/utils";
+import { subtractMoney, getBookingLifecycleDisplay, getBookingPaymentDisplay, multiplyMoney } from "@beautonomi/utils";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
@@ -377,7 +377,7 @@ export default function BookingConfirmationPage() {
   const walletPaid = Math.max(0, Number(booking.wallet_amount || 0));
   const giftCardPaid = Math.max(0, Number(booking.gift_card_amount || 0));
   const totalPaid = Math.max(0, Number(booking.total_paid || 0));
-  const otherPaid = Math.max(0, totalPaid - walletPaid - giftCardPaid);
+  const otherPaid = Math.max(0, subtractMoney(subtractMoney(totalPaid, walletPaid), giftCardPaid));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -520,7 +520,7 @@ export default function BookingConfirmationPage() {
                           <p className="text-gray-600">+ {addon.title || addon.offering_name || t("web.booking.confirmation.addonFallback")}{(addon.quantity ?? 1) > 1 ? ` ×${addon.quantity}` : ""}</p>
                         </div>
                         <p className="font-semibold text-gray-900">
-                          {formatCurrency(addon.price * (addon.quantity ?? 1), booking.currency)}
+                          {formatCurrency(multiplyMoney(addon.price, addon.quantity ?? 1), booking.currency)}
                         </p>
                       </div>
                     ))}

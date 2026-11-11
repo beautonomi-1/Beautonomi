@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { computeVat, percentOf } from "@beautonomi/utils";
 
 /**
  * Documents ordering expected from validate-booking + mobile/web checkout:
@@ -15,7 +16,7 @@ describe("membership before loyalty (web/server parity)", () => {
 
     const baseForMembership = Math.max(0, subtotal - couponDiscount);
     const membershipDiscount = Math.min(
-      (baseForMembership * membershipPct) / 100,
+      percentOf(baseForMembership, membershipPct),
       baseForMembership,
     );
     expect(membershipDiscount).toBeCloseTo(19.9, 2);
@@ -36,9 +37,9 @@ describe("membership before loyalty (web/server parity)", () => {
     const taxPct = 15;
 
     const afterCoupon = subtotal - couponDiscount;
-    const membershipDiscount = (afterCoupon * membershipPct) / 100;
+    const membershipDiscount = percentOf(afterCoupon, membershipPct);
     const taxableBase = afterCoupon - membershipDiscount;
-    const taxAmount = (taxableBase * taxPct) / 100;
+    const taxAmount = computeVat({ baseAmount: taxableBase, ratePercent: taxPct, inclusive: false }).taxAmount;
     const bookingTotal = taxableBase + taxAmount;
     const dueFromCardAfterGift = Math.max(0, bookingTotal - giftCardTender);
 

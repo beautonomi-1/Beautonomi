@@ -26,7 +26,7 @@ import {
   computeProviderRevenueBreakdown,
   type ProviderRevenueBreakdown,
 } from "@/lib/reports/provider-revenue-semantics";
-import { computeGrowthPercent } from "@beautonomi/utils";
+import { addMoney, computeGrowthPercent, multiplyMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const maxDuration = 60;
@@ -184,8 +184,8 @@ export async function GET(request: NextRequest) {
       locationId,
       dashOpts,
     );
-    const ledgerEarningsFromBookings = Array.from(revenueByBooking.values()).reduce((s, v) => s + v, 0);
-    const ledgerEarningsFromProductOrders = Array.from(revenueByProductOrder.values()).reduce((s, v) => s + v, 0);
+    const ledgerEarningsFromBookings = Array.from(revenueByBooking.values()).reduce((s, v) => addMoney(s, v), 0);
+    const ledgerEarningsFromProductOrders = Array.from(revenueByProductOrder.values()).reduce((s, v) => addMoney(s, v), 0);
 
     // Single source of truth: recognized provider revenue (provider_earnings + tips +
     // travel + cancellation fees + walk-in add-ons) net of provider refund clawbacks.
@@ -259,7 +259,7 @@ export async function GET(request: NextRequest) {
     ).length;
 
     const bookingsWithEarnings = revenueByBooking.size;
-    const averageBookingValue = bookingsWithEarnings > 0 ? ledgerEarningsFromBookings / bookingsWithEarnings : 0;
+    const averageBookingValue = bookingsWithEarnings > 0 ? multiplyMoney(ledgerEarningsFromBookings, 1 / bookingsWithEarnings) : 0;
     const completionRate = totalBookings > 0 ? (completedBookings / totalBookings) * 100 : 0;
     const cancellationRate = totalBookings > 0 ? (cancelledBookings / totalBookings) * 100 : 0;
     const noShowRate = totalBookings > 0 ? (noShows / totalBookings) * 100 : 0;

@@ -1,3 +1,4 @@
+import { subtractMoney, addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -147,10 +148,10 @@ export async function GET(request: NextRequest) {
       if (!objectKey) continue;
       const existing = feeMap.get(objectKey) ?? { platformFee: 0, refundNetSum: 0 };
       if (row.transaction_type === "platform_fee" || row.transaction_type === "service_fee") {
-        existing.platformFee += Math.abs(Number(row.amount ?? 0));
+        existing.platformFee = addMoney(existing.platformFee, Math.abs(Number(row.amount ?? 0)));
       } else if (row.transaction_type === "refund") {
         if (isCashRefundComponent((row as { refund_component: string | null }).refund_component)) {
-          existing.refundNetSum += Number(row.net ?? row.amount ?? 0);
+          existing.refundNetSum = addMoney(existing.refundNetSum, Number(row.net ?? row.amount ?? 0));
         }
       }
       feeMap.set(objectKey, existing);
@@ -180,7 +181,7 @@ export async function GET(request: NextRequest) {
       const bookedAmount = Number(booking?.total_amount ?? 0);
       const refundedAmount = Math.abs(fees?.refundNetSum ?? 0);
       const platformFee = fees?.platformFee ?? 0;
-      const bookedNetOfRefunds = Math.max(0, bookedAmount - refundedAmount);
+      const bookedNetOfRefunds = Math.max(0, subtractMoney(bookedAmount, refundedAmount));
       const ledgerSettlementAt =
         latestSettlementAtByBooking.get(bookingId) ??
         booking?.scheduled_at ??
@@ -206,7 +207,7 @@ export async function GET(request: NextRequest) {
       const bookedAmount = Number(order?.total_amount ?? 0);
       const refundedAmount = Math.abs(fees?.refundNetSum ?? 0);
       const platformFee = fees?.platformFee ?? 0;
-      const bookedNetOfRefunds = Math.max(0, bookedAmount - refundedAmount);
+      const bookedNetOfRefunds = Math.max(0, subtractMoney(bookedAmount, refundedAmount));
       const ledgerSettlementAt =
         latestSettlementAtByProductOrder.get(productOrderId) ??
         order?.created_at ??
@@ -230,19 +231,19 @@ export async function GET(request: NextRequest) {
     payouts.sort((a, b) => new Date(b.ledgerSettlementAt).getTime() - new Date(a.ledgerSettlementAt).getTime());
 
     const totalPayouts = payouts.length;
-    const totalPayoutAmount = payouts.reduce((sum, p) => sum + p.payoutAmount, 0);
-    const totalBookedAmount = payouts.reduce((sum, p) => sum + p.bookedAmount, 0);
-    const totalBookedNetOfRefunds = payouts.reduce((sum, p) => sum + p.bookedNetOfRefunds, 0);
-    const totalPlatformFees = payouts.reduce((sum, p) => sum + p.platformFee, 0);
-    const totalRefunded = payouts.reduce((sum, p) => sum + p.refundedAmount, 0);
-    const averagePayout = totalPayouts > 0 ? totalPayoutAmount / totalPayouts : 0;
+    const totalPayoutAmount = payouts.reduce((sum, p) => addMoney(sum, p.payoutAmount), 0);
+    const totalBookedAmount = payouts.reduce((sum, p) => addMoney(sum, p.bookedAmount), 0);
+    const totalBookedNetOfRefunds = payouts.reduce((sum, p) => addMoney(sum, p.bookedNetOfRefunds), 0);
+    const totalPlatformFees = payouts.reduce((sum, p) => addMoney(sum, p.platformFee), 0);
+    const totalRefunded = payouts.reduce((sum, p) => addMoney(sum, p.refundedAmount), 0);
+    const averagePayout = totalPayouts > 0 ? multiplyMoney(totalPayoutAmount, 1 / totalPayouts) : 0;
 
     /** Ledger earnings totals by calendar month (provider timezone), from daily sums — matches headline totals. */
     const monthlyFromLedger = new Map<string, { amount: number }>();
     for (const [dayKey, amount] of revenueByDate.entries()) {
       const monthKey = dayKey.slice(0, 7);
       const cur = monthlyFromLedger.get(monthKey) ?? { amount: 0 };
-      cur.amount += amount;
+      cur.amount = addMoney(cur.amount, amount);
       monthlyFromLedger.set(monthKey, cur);
     }
 

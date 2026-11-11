@@ -9,6 +9,7 @@ import { ADMIN_SECTION_FINANCE, ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { parseRefundAmount } from "@/lib/admin/booking-refund-context";
 import { netPaymentTransactionAmount } from "@/lib/finance/payment-transaction-net";
+import { LAST_RESORT_CURRENCY, subtractMoney } from "@beautonomi/utils";
 
 type StaleCaptureRow = {
   transaction_id: string;
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
       const grossAmount = parseRefundAmount((row as { amount?: unknown }).amount);
       const txnRefunded = parseRefundAmount((row as { refund_amount?: unknown }).refund_amount);
       const expected = Math.min(grossAmount, bookingRefunded);
-      const gap = Math.round((expected - txnRefunded) * 100) / 100;
+      const gap = subtractMoney(expected, txnRefunded, LAST_RESORT_CURRENCY);
 
       if (gap > 0.01) {
         stale.push({

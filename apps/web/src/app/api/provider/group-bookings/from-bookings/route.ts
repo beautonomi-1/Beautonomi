@@ -10,6 +10,8 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -33,6 +35,9 @@ export async function POST(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -155,7 +160,7 @@ export async function POST(request: NextRequest) {
       .eq("id", group.id)
       .single();
 
-    return successResponse({
+    return successResponse(redactBookingCustomerContact({
       ...(full || group),
       ...(divergentIds.length > 0
         ? {
@@ -169,7 +174,7 @@ export async function POST(request: NextRequest) {
             ],
           }
         : {}),
-    });
+    }, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to create group from bookings");
   }

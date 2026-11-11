@@ -5,6 +5,7 @@ import { resolvePaycloudContextForProvider, paycloudContextFailureToApiError } f
 import { buildMerchantOrderNo } from "@/lib/payments/paycloud";
 import { humanizePaycloudResponse } from "@/lib/payments/paycloud-scenarios";
 import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
+import { addMoney, subtractMoney, sumMoney } from "@beautonomi/utils";
 
 export type InitiatePaycloudRefundResult =
   | { ok: true; refundPayment: Record<string, unknown>; reused?: boolean }
@@ -81,12 +82,15 @@ export async function initiatePaycloudRefund(params: {
       const meta = (r.metadata ?? {}) as Record<string, unknown>;
       return meta.refund_of_payment_id === payment.id;
     })
-    .reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
-  const maxRefundable =
-    Number(payment.amount) +
-    Math.max(0, Number(payment.tip_amount ?? 0)) +
-    Math.max(0, Number(payment.cashback_amount ?? 0)) -
-    alreadyRefunded;
+    .reduce((sum, r) => addMoney(sum, Number(r.amount ?? 0)), 0);
+  const maxRefundable = subtractMoney(
+    sumMoney(
+      Number(payment.amount),
+      Math.max(0, Number(payment.tip_amount ?? 0)),
+      Math.max(0, Number(payment.cashback_amount ?? 0)),
+    ),
+    alreadyRefunded,
+  );
 
   if (requestedAmount > maxRefundable + 0.02) {
     return {

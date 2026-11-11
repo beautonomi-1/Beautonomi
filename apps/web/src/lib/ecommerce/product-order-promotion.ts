@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validatePromoCode, type PromoValidationResult } from "@/lib/promotions/validate";
+import { roundCurrency } from "@beautonomi/utils";
 
 export type ProductPromotionResult =
   | { ok: true; promotionId: string; code: string; discountAmount: number }
@@ -42,7 +43,7 @@ export async function applyProductOrderPromotion(
   if (!result.valid || !result.promotion) {
     return { ok: false, message: result.message || "Invalid or expired promo code" };
   }
-  const discountAmount = Math.round(Math.max(0, Number(result.discount.amount) || 0) * 100) / 100;
+  const discountAmount = roundCurrency(Math.max(0, Number(result.discount.amount) || 0));
   return { ok: true, promotionId: result.promotion.id, code: result.promotion.code, discountAmount };
 }
 

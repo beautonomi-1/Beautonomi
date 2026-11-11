@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY, roundCurrency, addMoney, multiplyMoney } from "@beautonomi/utils";
+
 export type DeliveryFeeType = "flat" | "weight_based" | "distance_based";
 
 export type DeliveryFeeConfig = {
@@ -31,13 +33,13 @@ export function calculateProductDeliveryFee(params: {
   if (feeType === "weight_based") {
     const weightKg = totalWeightKg(items);
     const rate = Number(config?.weight_rate_per_kg ?? 0) || 0;
-    return { fee: money(baseFee + weightKg * rate), feeType, totalWeightKg: weightKg, distanceKm };
+    return { fee: money(addMoney(baseFee, multiplyMoney(rate, weightKg))), feeType, totalWeightKg: weightKg, distanceKm };
   }
 
   if (feeType === "distance_based") {
     const rate = Number(config?.distance_rate_per_km ?? 0) || 0;
-    const distanceCharge = distanceKm != null && Number.isFinite(distanceKm) ? distanceKm * rate : 0;
-    return { fee: money(baseFee + distanceCharge), feeType, totalWeightKg: totalWeightKg(items), distanceKm };
+    const distanceCharge = distanceKm != null && Number.isFinite(distanceKm) ? multiplyMoney(rate, distanceKm) : 0;
+    return { fee: money(addMoney(baseFee, distanceCharge)), feeType, totalWeightKg: totalWeightKg(items), distanceKm };
   }
 
   return { fee: baseFee, feeType: "flat", totalWeightKg: totalWeightKg(items), distanceKm };
@@ -76,5 +78,5 @@ function totalWeightKg(items: DeliveryFeeItem[]): number {
 }
 
 function money(value: number): number {
-  return Math.round(Math.max(0, value) * 100) / 100;
+  return roundCurrency(Math.max(0, value), LAST_RESORT_CURRENCY);
 }

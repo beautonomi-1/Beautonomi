@@ -10,6 +10,7 @@
  * (`net + fees`), robust for new rows (amount=gross) and legacy rows (amount=net).
  */
 
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
 import PDFDocument from "pdfkit";
@@ -17,7 +18,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getPlatformDefaultTaxRate } from "@/lib/platform-tax-settings";
-import { computeVatInclusiveBreakdown } from "@/lib/receipts/vat-inclusive-breakdown";
+import { resolveSubscriptionReceiptVat } from "@/lib/receipts/subscription-receipt-vat";
 import {
   drawPdfFooter,
   drawPdfHeader,
@@ -129,9 +130,18 @@ export async function generateSubscriptionReceiptPdf(opts: {
   const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
   const currency = tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
   // GROSS the provider actually paid (net + gateway fees).
-  const amount = Number(tx.net ?? 0) + Number(tx.fees ?? 0);
-  const vatRate = await getPlatformDefaultTaxRate();
-  const vatBreakdown = computeVatInclusiveBreakdown(amount, vatRate);
+  const amount = addMoney(Number(tx.net ?? 0), Number(tx.fees ?? 0));
+  // F2-41: prefer the VAT snapshot written with the payment; the current
+  // platform rate is only a fallback for legacy rows without one.
+  const storedVat = tx.metadata as Record<string, unknown> | null;
+  const fallbackVatRate =
+    storedVat && storedVat.vat_rate_percent != null ? 0 : await getPlatformDefaultTaxRate();
+  const vatBreakdown = resolveSubscriptionReceiptVat({
+    grossAmount: amount,
+    storedMetadata: storedVat,
+    fallbackRatePercent: fallbackVatRate,
+    currency,
+  });
 
   const isRenewal = metadata.kind === "subscription_renewal";
   const productLabel = isRenewal

@@ -8,7 +8,7 @@ import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
-import { manualCardCollectOptionLabel } from "@beautonomi/utils";
+import { manualCardCollectOptionLabel, roundCurrency } from "@beautonomi/utils";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { usePermissions } from "@/hooks/usePermissions";
 import { inferBookingCollectContext } from "@/lib/payments/paycloud-collect-cta";
@@ -120,7 +120,7 @@ export function BookingPaymentCollectSection({
       });
       return {
         outstanding: outstandingDisplay,
-        chargeAmount: Number(charge.chargeAmount.toFixed(2)),
+        chargeAmount: roundCurrency(charge.chargeAmount),
         depositAmount: charge.depositAmount,
         fullOutstanding: charge.fullOutstanding,
         paycloudContext: context,
@@ -143,7 +143,7 @@ export function BookingPaymentCollectSection({
   }, [onUpdated]);
 
   const handleMarkPaid = async (method: "cash" | "card") => {
-    const amount = chargeAmount > 0 ? chargeAmount : Number(outstanding.toFixed(2));
+    const amount = chargeAmount > 0 ? chargeAmount : roundCurrency(outstanding);
     if (amount <= 0) {
       toast.error(t("web.provider.bookings.detail.toast.noBalance"));
       return;

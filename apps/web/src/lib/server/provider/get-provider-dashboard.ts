@@ -1,7 +1,13 @@
 import "server-only";
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 
 import { NextRequest } from 'next/server';
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
+import {
+  redactDashboardCustomerContact,
+  redactDashboardSalonMoney,
+} from "@/lib/server/provider/redact-dashboard-salon-money";
 import { createClient } from '@supabase/supabase-js';
 import { format, subDays } from "date-fns";
 import { checkBookingLimit, providerBookingEligibilityFromLimit } from "@/lib/subscriptions/limit-checker";
@@ -64,6 +70,31 @@ const MAX_DASHBOARD_CACHE_ENTRIES = 400;
 /** Safety bound for dashboard booking status / schedule aggregates (paginated, not a silent 5k cap). */
 const MAX_DASHBOARD_BOOKINGS = 50_000;
 const dashboardResponseCache = new Map<string, { expiresAt: number; data: any }>();
+
+async function viewerCanSeeSalonMoney(
+  user: { id: string; role?: string },
+  request: NextRequest,
+): Promise<boolean> {
+  if (user.role === "superadmin") return true;
+  if (await isProviderOwner(user.id, request)) return true;
+  const [reports, sales, payments] = await Promise.all([
+    hasPermission(user.id, "view_reports", undefined, request),
+    hasPermission(user.id, "view_sales", undefined, request),
+    hasPermission(user.id, "process_payments", undefined, request),
+  ]);
+  return reports || sales || payments;
+}
+
+function dashboardResponse(
+  data: Record<string, unknown>,
+  canSeeMoney: boolean,
+  canViewClients: boolean,
+) {
+  const visible = canViewClients ? data : redactDashboardCustomerContact(data);
+  const response = successResponse(canSeeMoney ? visible : redactDashboardSalonMoney(visible));
+  response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=10");
+  return response;
+}
 
 const EMPTY_RETAIL_TAKINGS = {
   today: { amount: 0, count: 0 },
@@ -157,12 +188,14 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const canSeeMoney = await viewerCanSeeSalonMoney(user, request);
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const cacheKey = `${providerId}:${locationId || "all"}:${includeInsights ? "insights" : "base"}`;
     const cached = dashboardResponseCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      const cachedResponse = successResponse(cached.data);
-      cachedResponse.headers.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=10');
-      return cachedResponse;
+      return dashboardResponse(cached.data, canSeeMoney, canViewClients);
     }
 
     const { data: providerData, error: providerError } = await supabaseAdmin
@@ -517,7 +550,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         if (!types.includes(r.transaction_type)) continue;
         if (start && r.createdDate < start) continue;
         if (end && r.createdDate > end) continue;
-        sum += r.netValue;
+        sum = addMoney(sum, r.netValue);
       }
       return sum;
     };
@@ -528,7 +561,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         if (!types.includes(r.transaction_type)) continue;
         if (start && r.createdDate < start) continue;
         if (end && r.createdDate > end) continue;
-        sum += r.amountValue;
+        sum = addMoney(sum, r.amountValue);
       }
       return sum;
     };
@@ -551,7 +584,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       otherEarningsTotal,
     } = earningsMix;
     const providerEarningsRows = parsedRows.filter((r) => r.transaction_type === "provider_earnings");
-    const providerEarningsTotal = providerEarningsRows.reduce((sum, r) => sum + r.netValue, 0);
+    const providerEarningsTotal = providerEarningsRows.reduce((sum, r) => addMoney(sum, r.netValue), 0);
 
     // Recognized revenue (single source of truth): provider_earnings + tips + travel +
     // cancellation fees + walk-in add-ons. See lib/reports/provider-revenue-semantics.ts.
@@ -591,12 +624,12 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     for (const r of parsedRows) {
       if (r.transaction_type === "refund") {
         if (isProviderEarningsRefundComponent(r.refund_component)) {
-          refundsTotal += Math.abs(r.netValue);
+          refundsTotal = addMoney(refundsTotal, Math.abs(r.netValue));
         }
         continue;
       }
       if (r.transaction_type === "provider_earnings" && r.netValue < 0) {
-        refundsTotal += Math.abs(r.netValue);
+        refundsTotal = addMoney(refundsTotal, Math.abs(r.netValue));
       }
     }
 
@@ -611,9 +644,9 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     let platformCommissionPaid = 0;
     for (const r of parsedRows) {
       if (r.transaction_type === "platform_fee" || r.transaction_type === "service_fee") {
-        platformFeesDeducted += Math.abs(r.netValue);
+        platformFeesDeducted = addMoney(platformFeesDeducted, Math.abs(r.netValue));
       } else if (r.transaction_type === "payment") {
-        platformCommissionPaid += Math.abs(r.netValue);
+        platformCommissionPaid = addMoney(platformCommissionPaid, Math.abs(r.netValue));
       }
     }
 
@@ -661,7 +694,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
 
     const revenueGrowth =
       revenueLastMonth !== 0
-        ? Math.round(((revenueThisMonth - revenueLastMonth) / Math.abs(revenueLastMonth)) * 100)
+        ? Math.round((subtractMoney(revenueThisMonth, revenueLastMonth) / Math.abs(revenueLastMonth)) * 100)
         : 0;
 
     const revenueYesterday = snapshot
@@ -784,9 +817,9 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         const refunded = Number((b as { total_refunded?: number }).total_refunded ?? 0);
         const wallet = Number((b as { wallet_amount?: number }).wallet_amount ?? 0);
         const gift = Number((b as { gift_card_amount?: number }).gift_card_amount ?? 0);
-        const effectivePaid = Math.max(0, paid - refunded);
-        const outstanding = Math.max(0, total - effectivePaid - wallet - gift);
-        return sum + outstanding;
+        const effectivePaid = Math.max(0, subtractMoney(paid, refunded));
+        const outstanding = Math.max(0, subtractMoney(subtractMoney(subtractMoney(total, effectivePaid), wallet), gift));
+        return addMoney(sum, outstanding);
       }, 0) || 0;
     const pendingPaymentsCount = unpaidBookings?.length || 0;
 
@@ -888,7 +921,8 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         if (!revenueByDay.has(key)) continue;
         revenueByDay.set(
           key,
-          (revenueByDay.get(key) ?? 0) +
+          addMoney(
+            revenueByDay.get(key) ?? 0,
             recognizedRevenueInRange(
               [
                 {
@@ -899,6 +933,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
               ],
               {},
             ),
+          ),
         );
       }
       const weeklyRevenue = Array.from(revenueByDay.entries()).map(([day, revenue]) => ({ day, revenue }));
@@ -1188,12 +1223,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     });
     pruneDashboardResponseCache(Date.now());
 
-    const response = successResponse(payload);
-
-    // Add cache headers for faster subsequent requests (5 seconds)
-    response.headers.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=10');
-    
-    return response;
+    return dashboardResponse(payload, canSeeMoney, canViewClients);
   } catch (error) {
     // Log the full error object for better debugging
     console.error('Error loading dashboard:', error);

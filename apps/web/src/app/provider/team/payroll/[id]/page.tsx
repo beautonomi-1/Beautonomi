@@ -18,6 +18,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { addMoney, subtractMoney, roundCurrency } from "@beautonomi/utils";
 
 interface PayRunItem {
   id: string;
@@ -65,7 +66,7 @@ function ManualEntryHint() {
 
 function parseMoney(s: string): number {
   const n = parseFloat(String(s).replace(",", ".").trim());
-  return Number.isFinite(n) ? Math.max(0, n) : 0;
+  return Number.isFinite(n) ? Math.max(0, roundCurrency(n)) : 0;
 }
 
 function computeNetPreview(item: PayRunItem, manualInput: string | undefined): number {
@@ -73,7 +74,7 @@ function computeNetPreview(item: PayRunItem, manualInput: string | undefined): n
   const manual = parseMoney(manualInput ?? String(item.manual_deductions ?? 0));
   const tax = Number(item.tax_deduction || 0);
   const uif = Number(item.uif_contribution || 0);
-  return Math.max(0, gross - manual - tax - uif);
+  return Math.max(0, subtractMoney(subtractMoney(subtractMoney(gross, manual), tax), uif));
 }
 
 export default function PayrollDetailPage() {
@@ -203,14 +204,14 @@ export default function PayrollDetailPage() {
     return "bg-gray-100 text-gray-800";
   };
 
-  const totalGross = payRun?.items?.reduce((s, i) => s + Number(i.gross_pay || 0), 0) ?? 0;
+  const totalGross = payRun?.items?.reduce((s, i) => addMoney(s, Number(i.gross_pay || 0)), 0) ?? 0;
 
   const totalNet = useMemo(() => {
     if (!payRun?.items?.length) return 0;
     if (canEditDraft) {
-      return payRun.items.reduce((s, i) => s + computeNetPreview(i, lineEdits[i.id]?.manual_deductions), 0);
+      return payRun.items.reduce((s, i) => addMoney(s, computeNetPreview(i, lineEdits[i.id]?.manual_deductions)), 0);
     }
-    return payRun.items.reduce((s, i) => s + Number(i.net_pay || 0), 0);
+    return payRun.items.reduce((s, i) => addMoney(s, Number(i.net_pay || 0)), 0);
   }, [payRun, canEditDraft, lineEdits]);
 
   const handleExportCSV = () => {
@@ -352,7 +353,7 @@ export default function PayrollDetailPage() {
             const previewNet = computeNetPreview(item, manualStr);
             const tax = Number(item.tax_deduction || 0);
             const uif = Number(item.uif_contribution || 0);
-            const deductionsTotal = parseMoney(manualStr) + tax + uif;
+            const deductionsTotal = addMoney(addMoney(parseMoney(manualStr), tax), uif);
             return (
               <div key={item.id} className="rounded-lg border bg-white p-4 space-y-3">
                 <p className="font-semibold text-gray-900">{item.staff_name}</p>

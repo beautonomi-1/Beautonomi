@@ -35,7 +35,7 @@ import {
   allowsInPersonProductRefund,
   productOrderInPersonDue,
 } from "@/lib/product-order-in-person";
-import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { subtractMoney, isUnpaidOnlinePaystackHold, roundCurrency } from "@beautonomi/utils";
 
 type TranslateFn = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -333,8 +333,8 @@ function isRefundablePaymentStatus(paymentStatus?: string | null): boolean {
 }
 
 function remainingRefundable(order: Pick<Order, "total_amount" | "refunded_amount">): number {
-  const remaining = numOrZero(order.total_amount) - Math.max(0, numOrZero(order.refunded_amount));
-  return Math.max(0, Math.round(remaining * 100) / 100);
+  const remaining = subtractMoney(numOrZero(order.total_amount), Math.max(0, numOrZero(order.refunded_amount)));
+  return Math.max(0, roundCurrency(remaining));
 }
 
 function formatOrderDateLabel(value: unknown): string | null {
@@ -676,7 +676,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     (refundMethod: "cash" | "store_credit") => {
       if (!refundSheetOrder) return;
       const remaining = remainingRefundable(refundSheetOrder);
-      const amount = Math.round(parseFloat(refundAmountInput.replace(",", ".")) * 100) / 100;
+      const amount = roundCurrency(parseFloat(refundAmountInput.replace(",", ".")));
       if (!Number.isFinite(amount) || amount <= 0 || amount > remaining + 0.01) {
         Alert.alert(po("refundOrderTitle"), po("refundAmountInvalid", { max: remaining.toFixed(2) }));
         return;
@@ -1433,7 +1433,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 const platformFee = numOrZero(activeOrder.platform_fee);
                 const providerEarnings = activeOrder.provider_earnings != null
                   ? numOrZero(activeOrder.provider_earnings)
-                  : Math.max(0, Number(activeOrder.total_amount) - platformFee);
+                  : Math.max(0, subtractMoney(Number(activeOrder.total_amount), platformFee));
                 const showLines =
                   activeOrder.subtotal != null ||
                   tax > 0 ||
@@ -2021,6 +2021,8 @@ export default function ProductOrdersScreen() {
     </ScreenContainer>
   );
 }
+
+
 
 
 

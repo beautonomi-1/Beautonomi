@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import { GET as getGroupReceiptJson } from "../route";
@@ -191,7 +192,7 @@ export async function GET(
         r.products.map((product) => {
           const qty = Math.max(1, Number(product.quantity || 1));
           const unit = Number(product.unit_price || 0);
-          const total = Number(product.total_price || unit * qty);
+          const total = Number(product.total_price || multiplyMoney(unit, qty));
           return {
             description: `${product.product_name || "Product"}${product.product_variant_name ? ` · ${product.product_variant_name}` : ""}`,
             detail: `Qty ${qty} × ${money(unit)}`,

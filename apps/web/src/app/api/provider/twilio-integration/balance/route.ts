@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 
 /**
  * GET /api/provider/twilio-integration/balance
@@ -9,7 +11,9 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requireAnyPermission(["manage_marketing", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     
@@ -18,7 +22,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Get Twilio integration
-    const { data: integration, error: integrationError } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: integration, error: integrationError } = await admin
       .from("provider_twilio_integrations")
       .select("*")
       .eq("provider_id", providerId)
@@ -37,10 +42,20 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const { revealIntegrationSecret } = await import("@/lib/security/integration-secrets");
+    const authToken = revealIntegrationSecret(integration.auth_token);
+    if (!authToken) {
+      return successResponse({
+        balance: null,
+        currency: null,
+        hasIntegration: false,
+        message: "Twilio integration not configured",
+      });
+    }
+
     // Fetch balance from Twilio API
     try {
       const accountSid = integration.account_sid;
-      const authToken = integration.auth_token;
       
       const response = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`,

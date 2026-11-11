@@ -161,4 +161,32 @@ describe("POST /api/paystack/initialize", () => {
     const arg = mockInitializeOnlinePayment.mock.calls[0][0] as Record<string, unknown>;
     expect(arg.channels).toEqual(["card"]);
   });
+
+  // F-07: free-form `amount` (no booking / product order) must be bounded and
+  // an integer number of minor units.
+  it("rejects an absurdly large free-form amount with 400 and never calls the gateway", async () => {
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/paystack/initialize", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "u@test.com",
+        amount: 1_000_000_000_000,
+        metadata: { type: "wallet_topup" },
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(mockInitializeOnlinePayment).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-integer free-form minor-unit amount", async () => {
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/paystack/initialize", {
+      method: "POST",
+      body: JSON.stringify({ email: "u@test.com", amount: 1050.5 }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(mockInitializeOnlinePayment).not.toHaveBeenCalled();
+  });
 });

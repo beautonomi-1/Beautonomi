@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -8,6 +9,8 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
@@ -69,6 +72,10 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
+
 
     const supabaseAdmin = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;
@@ -126,7 +133,7 @@ export async function GET(request: NextRequest) {
 
     let lostRevenue = 0;
     for (const bookingId of cancelledIds) {
-      lostRevenue += netByBooking.get(bookingId) || 0;
+      lostRevenue = addMoney(lostRevenue, netByBooking.get(bookingId) || 0);
     }
 
     const reasonMap = new Map<string, number>();
@@ -245,7 +252,7 @@ export async function GET(request: NextRequest) {
       lostRevenue,
       cancellationReasons,
       dailyBreakdown,
-      recentCancellations,
+      recentCancellations: redactBookingCustomerContacts(recentCancellations, canViewClients),
       reportBasis,
       basisNote,
       ledgerTransactionTypes: [...RECOGNIZED_REVENUE_TYPES, "refund"],

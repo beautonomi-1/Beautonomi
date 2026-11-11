@@ -6,6 +6,7 @@
  * downloads and pays them — it does not create or edit them. The matching write
  * endpoints are superadmin-only and would 403 here.
  */
+import { subtractMoney } from "@beautonomi/utils";
 import { useState, useCallback, useMemo, useEffect, type ReactNode } from "react";
 import {
   View,
@@ -189,7 +190,7 @@ function getInvoicePeriodRange(period: string): { from?: string; to?: string } {
 function amountDue(inv: Invoice): number {
   const stored = Number(inv.amount_due ?? NaN);
   if (Number.isFinite(stored)) return stored;
-  return Number(inv.total_amount ?? 0) - Number(inv.amount_paid ?? 0);
+  return subtractMoney(Number(inv.total_amount ?? 0), Number(inv.amount_paid ?? 0));
 }
 
 export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {}) {

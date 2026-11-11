@@ -21,6 +21,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { requireVendorIntegrationEnabled } from "@/lib/payments/terminal-integration-feature-gate";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
@@ -42,7 +43,9 @@ export async function GET(
   { params }: { params: { vendor: string } },
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireAnyPermission(["process_payments", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
     const vendor = params.vendor.toLowerCase();

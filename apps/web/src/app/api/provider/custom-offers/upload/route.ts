@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
+import { handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { uploadCustomRequestAttachments } from "@/lib/uploads/custom-request-attachments";
 
 /**
@@ -11,10 +12,9 @@ import { uploadCustomRequestAttachments } from "@/lib/uploads/custom-request-att
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request,
-    );
+    const permissionCheck = await requirePermission("send_messages", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const formData = await request.formData();
     return uploadCustomRequestAttachments(user.id, supabase, formData);

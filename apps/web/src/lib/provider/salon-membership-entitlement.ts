@@ -1,3 +1,4 @@
+import { percentOf } from "@beautonomi/utils";
 /**
  * Whether a salon `user_memberships` row qualifies for membership pricing,
  * matching `validate-booking.ts` membership discount logic:
@@ -74,9 +75,6 @@ export async function resolveMembershipDiscount(params: {
     membershipPlanName: null,
   };
   if (!params.customerId || params.subtotal <= 0) return result;
-
-  const percentOf = (value: number, pct: number) =>
-    Math.round(value * (pct / 100) * 100) / 100;
 
   try {
     // Salon membership (per-provider): take the most recent qualifying row.

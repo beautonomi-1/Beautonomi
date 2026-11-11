@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { findWaitlistMatches } from "@/lib/waitlist/matching";
 
 /**
@@ -17,6 +19,9 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get('providerId');
     const date = searchParams.get('date') || undefined;
@@ -52,7 +57,7 @@ export async function GET(request: NextRequest) {
     });
 
     return successResponse({
-      matches,
+      matches: redactBookingCustomerContacts(matches, canViewClients),
       count: matches.length,
     });
   } catch (error) {

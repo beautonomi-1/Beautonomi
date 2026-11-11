@@ -4,6 +4,10 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  mergeWaitlistContact,
+  WAITLIST_COLUMNS_WITHOUT_CONTACT,
+} from "@/lib/waitlist/waitlist-columns";
 
 export interface WaitlistMatch {
   entry: {
@@ -152,7 +156,7 @@ export async function findWaitlistMatches(
   let query = supabase
     .from("waitlist_entries")
     .select(`
-      *,
+      ${WAITLIST_COLUMNS_WITHOUT_CONTACT},
       customer:users(id, email, full_name)
     `)
     .eq("provider_id", providerId)
@@ -170,7 +174,7 @@ export async function findWaitlistMatches(
 
   const { data, error } = await query;
   if (error) throw error;
-  return data ?? [];
+  return mergeWaitlistContact(data ?? [], true);
 }
 
 /**

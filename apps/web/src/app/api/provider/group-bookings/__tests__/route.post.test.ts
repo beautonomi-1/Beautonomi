@@ -40,6 +40,14 @@ vi.mock("@/lib/auth/requirePermission", () => ({
   requireAnyPermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
+vi.mock("@/lib/auth/permissions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/permissions")>();
+  return {
+    ...actual,
+    hasPermission: vi.fn(async () => true),
+  };
+});
+
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
   resolveTenantIdWithZaFallback: (...args: unknown[]) => mockResolveTenantIdWithZaFallback(...args),
 }));
@@ -119,6 +127,28 @@ function buildCreateAdmin() {
             return Promise.resolve({ error: participantInsertError });
           }),
         };
+      }
+      if (table === "providers") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi
+                .fn()
+                .mockResolvedValue({ data: { timezone: "Africa/Johannesburg" }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "offerings") {
+        // F4-04: participant prices are resolved from the catalogue server-side.
+        const c: Record<string, unknown> = {};
+        c.select = vi.fn(() => c);
+        c.in = vi.fn(() => c);
+        c.eq = vi.fn(async () => ({
+          data: [{ id: "svc-1", price: 100, provider_id: PROVIDER_ID }],
+          error: null,
+        }));
+        return c;
       }
       if (table === "bookings") {
         return {
@@ -231,6 +261,8 @@ describe("POST /api/provider/group-bookings", () => {
     const body = await res.json();
     expect(body.data?.ref_number ?? body.ref_number).toBe("GB-TEST-CREATE");
     expect(body.data?.status ?? body.status).toBe("confirmed");
+    expect(body.data?.scheduled_date).toBe("2026-06-01");
+    expect(body.data?.scheduled_time).toBe("12:00");
     expect(mockCreateGroupParticipantChildBooking).toHaveBeenCalledTimes(2);
 
     const primaryRows = capturedParticipantRows.filter((p) => p.is_primary_contact === true);

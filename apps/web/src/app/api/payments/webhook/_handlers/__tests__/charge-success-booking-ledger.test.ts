@@ -146,14 +146,16 @@ function makeProcessPaymentSupabase(options: {
         };
       }
       if (table === "payment_transactions") {
+        const maybeSingle = vi.fn(async () => ({
+          data: options.existingPaymentTx ? { id: "pt-1" } : null,
+          error: null,
+        }));
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
               eq: vi.fn(() => ({
-                maybeSingle: vi.fn(async () => ({
-                  data: options.existingPaymentTx ? { id: "pt-1" } : null,
-                  error: null,
-                })),
+                maybeSingle,
+                in: vi.fn(() => ({ maybeSingle })),
               })),
             })),
           })),

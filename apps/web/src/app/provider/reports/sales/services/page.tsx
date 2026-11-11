@@ -1,4 +1,5 @@
 "use client";
+import { multiplyMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
@@ -300,7 +301,7 @@ export default function ServicePerformanceReport() {
                 const avg =
                   service.averageRevenuePerBooking ??
                   service.averagePrice ??
-                  (service.bookings > 0 ? service.revenue / service.bookings : 0);
+                  (service.bookings > 0 ? multiplyMoney(service.revenue, 1 / service.bookings) : 0);
                 return (
                   <div
                     key={service.serviceId}

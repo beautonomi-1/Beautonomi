@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -199,7 +200,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const gift = Math.max(0, Number(order.gift_card_amount ?? 0));
       refund = {
         online_refunded: released.onlineRefunded ?? 0,
-        wallet_credited: released.amount + (released.cardWalletFallback ?? 0),
+        wallet_credited: addMoney(released.amount, released.cardWalletFallback ?? 0),
         gift_card_restored: gift,
         in_person_refund_due: 0,
       };

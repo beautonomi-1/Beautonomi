@@ -1,3 +1,4 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 /**
  * Cash-register style aggregates: booking_payments, wallet portions on bookings,
  * legacy sales, walk-in product_orders, plus ledger tips/cancellation fees for the range.
@@ -197,8 +198,8 @@ export async function getRecordedTakingsForRange(
     if (isCardMachineCashbackBookingPayment(row)) continue;
     const amount = Number(row.amount ?? 0);
     const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
-    byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
-    bookingPaymentsTotal += amount;
+    byPaymentMethod[method] = addMoney(byPaymentMethod[method] || 0, amount);
+    bookingPaymentsTotal = addMoney(bookingPaymentsTotal, amount);
     bpBookingIds.add(row.booking_id);
     const provider = String(row.payment_provider ?? "").toLowerCase();
     if (provider === "paystack" || provider === "stripe" || provider === "flutterwave") {
@@ -213,7 +214,7 @@ export async function getRecordedTakingsForRange(
     if (isCardMachineTipBookingPayment(row)) continue;
     if (isCardMachineCashbackBookingPayment(row)) continue;
     const a = Number(row.amount ?? 0);
-    bpAmountByBooking.set(row.booking_id, (bpAmountByBooking.get(row.booking_id) ?? 0) + a);
+    bpAmountByBooking.set(row.booking_id, addMoney(bpAmountByBooking.get(row.booking_id) ?? 0, a));
   }
 
   let walletTotal = 0;
@@ -257,14 +258,14 @@ export async function getRecordedTakingsForRange(
       if (collected <= 0 && hasSettledWalletStatus) {
         collected = Math.max(Number(wb.total_amount ?? 0), walletAmt, bpSum);
       }
-      const uncaptured = Math.max(0, collected - bpSum);
+      const uncaptured = Math.max(0, subtractMoney(collected, bpSum));
       let walletPortion = Math.min(walletAmt, uncaptured);
       if (walletPortion <= 0 && walletAmt > 0 && bpSum === 0 && hasSettledWalletStatus) {
         walletPortion = walletAmt;
       }
       if (walletPortion <= 0) continue;
-      byPaymentMethod.wallet = (byPaymentMethod.wallet || 0) + walletPortion;
-      walletTotal += walletPortion;
+      byPaymentMethod.wallet = addMoney(byPaymentMethod.wallet || 0, walletPortion);
+      walletTotal = addMoney(walletTotal, walletPortion);
       bookingIdsWithWalletTakings.add(wb.id);
     }
   }
@@ -305,8 +306,8 @@ export async function getRecordedTakingsForRange(
     if (!posSaleCountsAsRevenue(row)) continue;
     const amount = Number(row.total_amount ?? 0);
     const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
-    byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
-    salesTotal += amount;
+    byPaymentMethod[method] = addMoney(byPaymentMethod[method] || 0, amount);
+    salesTotal = addMoney(salesTotal, amount);
     salesCount += 1;
   }
 
@@ -354,15 +355,15 @@ export async function getRecordedTakingsForRange(
       const split = productOrderTenderSplit(row);
       const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
       if (split.remainder > 0) {
-        byPaymentMethod[method] = (byPaymentMethod[method] || 0) + split.remainder;
+        byPaymentMethod[method] = addMoney(byPaymentMethod[method] || 0, split.remainder);
       }
       if (split.wallet > 0) {
-        byPaymentMethod.wallet = (byPaymentMethod.wallet || 0) + split.wallet;
+        byPaymentMethod.wallet = addMoney(byPaymentMethod.wallet || 0, split.wallet);
       }
       if (split.gift > 0) {
-        byPaymentMethod.gift_card = (byPaymentMethod.gift_card || 0) + split.gift;
+        byPaymentMethod.gift_card = addMoney(byPaymentMethod.gift_card || 0, split.gift);
       }
-      salesTotal += split.total;
+      salesTotal = addMoney(salesTotal, split.total);
     }
   }
 
@@ -420,11 +421,11 @@ export async function getRecordedTakingsForRange(
         if (row.booking_id && onlineGatewayTipAlreadyInPayments.has(row.booking_id)) {
           continue;
         }
-        tipsTotal += Math.abs(Number(row.amount ?? row.net ?? 0));
+        tipsTotal = addMoney(tipsTotal, Math.abs(Number(row.amount ?? row.net ?? 0)));
       } else if (row.transaction_type === "cashback") {
-        cashbackTotal += Math.abs(Number(row.amount ?? row.net ?? 0));
+        cashbackTotal = addMoney(cashbackTotal, Math.abs(Number(row.amount ?? row.net ?? 0)));
       } else if (row.transaction_type === "cancellation_fee") {
-        cancellationFeesTotal += Number(row.net ?? row.amount ?? 0);
+        cancellationFeesTotal = addMoney(cancellationFeesTotal, Number(row.net ?? row.amount ?? 0));
       }
     }
   } catch {
@@ -433,7 +434,10 @@ export async function getRecordedTakingsForRange(
 
   // Cashback is till cash-out, not recorded takings income — excluded from totalRecorded.
   const totalRecorded =
-    bookingPaymentsTotal + walletTotal + salesTotal + tipsTotal + cancellationFeesTotal;
+    addMoney(
+      addMoney(addMoney(bookingPaymentsTotal, walletTotal), addMoney(salesTotal, tipsTotal)),
+      cancellationFeesTotal,
+    );
 
   return {
     byPaymentMethod,

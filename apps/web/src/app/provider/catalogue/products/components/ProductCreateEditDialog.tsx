@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { ChipCombobox } from "@/components/ui/chip-combobox";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { addMoney, percentOf, roundCurrency } from "@beautonomi/utils";
 
 interface ProductCreateEditDialogProps {
   open: boolean;
@@ -663,7 +664,7 @@ export function ProductCreateEditDialog({
   const updateMarkup = (retail: number, supply: number) => {
     if (supply > 0) {
       const markupVal = ((retail - supply) / supply) * 100;
-      return parseFloat(markupVal.toFixed(2));
+      return roundCurrency(markupVal);
     }
     return 0;
   };
@@ -1248,8 +1249,8 @@ export function ProductCreateEditDialog({
                              // Reverse calc retail price if markup changes? Or just store markup?
                              // Usually markup is derived, but user might want to set target markup
                              const val = parseFloat(e.target.value) || 0;
-                             const newRetail = formData.supplyPrice * (1 + val / 100);
-                             setFormData({ ...formData, markup: val, retailPrice: parseFloat(newRetail.toFixed(2)) });
+                             const newRetail = addMoney(formData.supplyPrice, percentOf(formData.supplyPrice, val, currencyCode), currencyCode);
+                             setFormData({ ...formData, markup: val, retailPrice: newRetail });
                           }}
                           placeholder="0.00"
                         />

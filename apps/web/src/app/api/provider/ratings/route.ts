@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
@@ -56,15 +56,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if rating already exists
-    const { data: existing } = await supabase
-      .from("provider_client_ratings")
-      .select("id")
-      .eq("booking_id", booking_id)
-      .single();
+    // Mobile clients retry after a timeout even when the first attempt was
+    // committed, so an existing rating from this provider is returned as success
+    // (idempotent) instead of a 400 the user can never get past.
+    const findExisting = async () => {
+      const { data } = await supabase
+        .from("provider_client_ratings")
+        .select("id, rating, comment, created_at, provider_id")
+        .eq("booking_id", booking_id)
+        .maybeSingle();
+      return data;
+    };
 
+    const existing = await findExisting();
     if (existing) {
-      return handleApiError(new Error("Rating already exists"), "A rating already exists for this booking", 400);
+      if (existing.provider_id !== providerId) {
+        return handleApiError(new Error("Rating already exists"), "A rating already exists for this booking", 400);
+      }
+      const { provider_id: _ignored, ...existingRating } = existing;
+      return successResponse({ ...existingRating, already_existed: true });
     }
 
     // Create rating
@@ -82,27 +92,37 @@ export async function POST(request: NextRequest) {
       .select("id, rating, comment, created_at")
       .single();
 
-    if (createError) throw createError;
-
-    // Notify customer that provider left a rating.
-    try {
-      const { insertNotification } = await import("@/lib/notifications/insert-notification");
-      await insertNotification({
-        user_id: booking.customer_id,
-        type: "review_response",
-        title: "New feedback from your provider",
-        message: `Your provider rated this appointment ${rating}/5${comment ? `: "${comment.slice(0, 140)}"` : "."}`,
-        data: {
-          booking_id,
-          rating,
-          comment: comment || null,
-          provider_id: providerId,
-        },
-        action_url: `/account-settings/bookings/${booking_id}`,
-      });
-    } catch (notifErr) {
-      console.warn("Failed to notify customer after provider rating:", notifErr);
+    if (createError) {
+      if ((createError as { code?: string }).code === "23505") {
+        const raced = await findExisting();
+        if (raced && raced.provider_id === providerId) {
+          const { provider_id: _ignored, ...racedRating } = raced;
+          return successResponse({ ...racedRating, already_existed: true });
+        }
+      }
+      throw createError;
     }
+
+    after(async () => {
+      try {
+        const { insertNotification } = await import("@/lib/notifications/insert-notification");
+        await insertNotification({
+          user_id: booking.customer_id,
+          type: "review_response",
+          title: "New feedback from your provider",
+          message: `Your provider rated this appointment ${rating}/5${comment ? `: "${comment.slice(0, 140)}"` : "."}`,
+          data: {
+            booking_id,
+            rating,
+            comment: comment || null,
+            provider_id: providerId,
+          },
+          action_url: `/account-settings/bookings/${booking_id}`,
+        });
+      } catch (notifErr) {
+        console.warn("Failed to notify customer after provider rating:", notifErr);
+      }
+    });
 
     return successResponse(newRating);
   } catch (error) {

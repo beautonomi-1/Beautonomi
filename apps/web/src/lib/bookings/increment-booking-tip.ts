@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 /**
  * Applies a tip charged with a booking_payments row exactly once (migration 9991).
@@ -13,7 +14,7 @@ export async function applyBookingPaymentTip(
 ): Promise<{ bookingLevelTip: number }> {
   const { error } = await supabase.rpc("apply_booking_payment_tip", {
     p_booking_payment_id: bookingPaymentId,
-    p_tip_amount: Math.round(Math.max(0, tip) * 100) / 100,
+    p_tip_amount: roundCurrency(Math.max(0, tip)),
   });
   if (error) {
     throw new Error(`apply_booking_payment_tip failed for booking ${bookingId}: ${error.message}`);
@@ -40,11 +41,11 @@ export async function applyBookingPaymentTip(
     );
   }
   const perPaymentTips = ((applications ?? []) as Array<{ tip_amount?: number | null }>).reduce(
-    (sum, row) => sum + Number(row.tip_amount ?? 0),
+    (sum, row) => addMoney(sum, Number(row.tip_amount ?? 0)),
     0,
   );
   const bookingTip = Number((booking as { tip_amount?: number | null }).tip_amount ?? 0);
-  return { bookingLevelTip: Math.max(0, Math.round((bookingTip - perPaymentTips) * 100) / 100) };
+  return { bookingLevelTip: Math.max(0, subtractMoney(bookingTip, perPaymentTips)) };
 }
 
 /** Adds tip to a booking's tip_amount and total_amount (idempotent callers must guard). */
@@ -53,7 +54,7 @@ export async function incrementBookingTipAmount(
   bookingId: string,
   tip: number,
 ): Promise<void> {
-  const rounded = Math.round(Math.max(0, tip) * 100) / 100;
+  const rounded = roundCurrency(Math.max(0, tip));
   if (rounded <= 0) return;
 
   const { data: booking } = await supabase
@@ -66,8 +67,8 @@ export async function incrementBookingTipAmount(
   await supabase
     .from("bookings")
     .update({
-      tip_amount: Number(booking.tip_amount ?? 0) + rounded,
-      total_amount: Number(booking.total_amount ?? 0) + rounded,
+      tip_amount: addMoney(Number(booking.tip_amount ?? 0), rounded),
+      total_amount: addMoney(Number(booking.total_amount ?? 0), rounded),
       updated_at: new Date().toISOString(),
     })
     .eq("id", bookingId);

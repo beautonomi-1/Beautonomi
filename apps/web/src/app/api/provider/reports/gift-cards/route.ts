@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   getProviderIdForUser,
@@ -62,8 +63,8 @@ export async function GET(request: NextRequest) {
     }
 
     const total_redeemed = rows.length;
-    const total_revenue = rows.reduce((s, r) => s + r.amount, 0);
-    const avg_value = total_redeemed > 0 ? total_revenue / total_redeemed : 0;
+    const total_revenue = rows.reduce((s, r) => addMoney(s, r.amount), 0);
+    const avg_value = total_redeemed > 0 ? multiplyMoney(total_revenue, 1 / total_redeemed) : 0;
 
     const reportBasis = giftCardRedemptionReportBasis(
       fromYmd,

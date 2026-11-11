@@ -30,6 +30,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ["text", "json", "html"],
+      // F-09: floors only (run via `pnpm test:coverage`). Not CI-blocking on `vitest run`.
+      thresholds: {
+        lines: 2,
+        functions: 2,
+        statements: 2,
+        branches: 1,
+      },
       exclude: [
         "node_modules/",
         "src/**/*.test.ts",

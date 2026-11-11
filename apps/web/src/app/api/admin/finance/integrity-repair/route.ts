@@ -6,6 +6,7 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { manualAdjustmentSchema, postManualFinanceAdjustment } from "@/lib/finance/post-manual-adjustment";
 import { checkPeriodLock } from "@/lib/finance/period-lock";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const bodySchema = z.object({
   repair_key: z.string().min(1).max(128),
@@ -99,14 +100,28 @@ export async function POST(request: NextRequest) {
     }
 
     await supabase.from("finance_integrity_repairs").insert({
-      repair_key: body.repair_key,
-      idempotency_key: body.idempotency_key,
-      tenant_id: tenantId,
-      payload: body.payload ?? {},
-      dry_run: false,
-      status: "applied",
-      result: applied.result,
-      created_by: user?.id ?? null,
+        repair_key: body.repair_key,
+        idempotency_key: body.idempotency_key,
+        tenant_id: tenantId,
+        payload: body.payload ?? {},
+        dry_run: false,
+        status: "applied",
+        result: applied.result,
+        created_by: user?.id ?? null,
+    });
+
+    await writeAuditLog({
+      actor_user_id: user?.id ?? null,
+      actor_role: user?.role ?? "superadmin",
+      action: "admin.finance.integrity_repair",
+      entity_type: "finance_integrity_repair",
+      entity_id: body.repair_key,
+      module: "finance",
+      risk_level: "high",
+      retention_tier: "financial",
+      status: "succeeded",
+      metadata: { idempotency_key: body.idempotency_key, tenant_id: tenantId },
+      ...extractRequestMeta(request),
     });
 
     return NextResponse.json({

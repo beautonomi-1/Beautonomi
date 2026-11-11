@@ -10,7 +10,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { subtractMoney, formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import { getTenantLocaleTag } from "@/lib/locale";
@@ -94,7 +94,7 @@ function shareIsOpen(p: Participant): boolean {
   if (p.share_amount_due == null) return false;
   const status = String(p.share_status ?? "").toLowerCase();
   if (status === "paid" || status === "cancelled" || status === "waived") return false;
-  return Number(p.share_amount_due) - Number(p.share_amount_paid ?? 0) > 0.005;
+  return subtractMoney(Number(p.share_amount_due), Number(p.share_amount_paid ?? 0)) > 0.005;
 }
 
 function formatDate(value: string | null | undefined, translate: (key: string) => string) {
@@ -596,7 +596,7 @@ export default function GroupBookingDetailScreen() {
                               ? gbd("shareStatusCancelled")
                               : gbd("shareStatusPending", {
                                   amount: formatGroupMoney(
-                                    Math.max(0, Number(p.share_amount_due ?? 0) - Number(p.share_amount_paid ?? 0)),
+                                    Math.max(0, subtractMoney(Number(p.share_amount_due ?? 0), Number(p.share_amount_paid ?? 0))),
                                     data.currency,
                                   ),
                                 })}

@@ -1,4 +1,5 @@
 import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { multiplyMoney } from "@beautonomi/utils";
 
 export type ProviderBookingProductInput = {
   productId?: string | null;
@@ -203,7 +204,7 @@ export async function validateProviderBookingProducts(
       productVariantId: variantId || null,
       quantity,
       unitPrice,
-      totalPrice: unitPrice * quantity,
+      totalPrice: multiplyMoney(unitPrice, quantity),
       currency: productData.currency ?? null,
       name: productData.name ?? "Product",
       trackStock,

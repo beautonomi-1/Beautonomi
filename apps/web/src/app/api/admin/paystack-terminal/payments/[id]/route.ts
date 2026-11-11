@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -8,6 +9,7 @@ import {
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { recordPaystackBookingSettlement } from "@/lib/bookings/record-paystack-booking-settlement";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
@@ -103,7 +105,7 @@ export async function PATCH(
 
       const paidAmount = Number(payment.paid_amount ?? 0);
       const allocatedAmount = Number(payment.allocated_amount ?? 0);
-      const allocationAmount = Math.max(0, paidAmount - allocatedAmount);
+      const allocationAmount = Math.max(0, subtractMoney(paidAmount, allocatedAmount));
       if (allocationAmount <= 0) {
         return errorResponse("Terminal payment is already fully allocated.", "ALREADY_ALLOCATED", 409);
       }
@@ -413,6 +415,7 @@ export async function PATCH(
             chargeId: body.entity_id,
             paystackTransactionId: payment.paystack_transaction_id ?? null,
             customerId,
+            commissionMode: "provider_collected",
           });
         } catch (acSettleErr) {
           return errorResponse(
@@ -502,6 +505,20 @@ export async function PATCH(
       .select()
       .single();
     if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: `admin.paystack_terminal.${body.action}`,
+      entity_type: "provider_paystack_terminal_payments",
+      entity_id: id,
+      module: "finance",
+      risk_level: "high",
+      retention_tier: "financial",
+      status: "succeeded",
+      metadata: { reason: body.reason ?? null, provider_id: scopedPayment.provider_id },
+      ...extractRequestMeta(request),
+    });
 
     return successResponse(data);
   } catch (error) {

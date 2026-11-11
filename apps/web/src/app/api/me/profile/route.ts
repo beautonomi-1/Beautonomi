@@ -15,6 +15,7 @@ import { bootstrapPreferredHomeTenantForAuthedUser } from "@/lib/tenant/assign-p
 import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
 import type { User } from "@/types/beautonomi";
 import { isSupportedLanguageCode, normalizeLanguageCode } from "@/lib/i18n/config";
+import { phoneVerifiedResetPatch } from "@/lib/account/phone-verified-reset";
 
 /**
  * §Release-audit 2026-04: PATCH /api/me/profile updates the customer's
@@ -384,7 +385,20 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Handle other user fields
-    if (body.phone !== undefined) updates.phone = body.phone;
+    if (body.phone !== undefined) {
+      const { data: currentPhoneRow } = await supabase
+        .from("users")
+        .select("phone")
+        .eq("id", user.id)
+        .maybeSingle();
+      Object.assign(
+        updates,
+        phoneVerifiedResetPatch(
+          (currentPhoneRow as { phone?: string | null } | null)?.phone,
+          body.phone,
+        ),
+      );
+    }
     if (body.avatar_url !== undefined) updates.avatar_url = body.avatar_url;
     if (body.date_of_birth !== undefined) {
       // Server-side minimum age check (13+, POPIA / GDPR requirement)

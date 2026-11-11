@@ -4,6 +4,7 @@ import {
   type ChargeAllocationInput,
 } from "@/lib/admin/booking-refund-context";
 import { isPrimaryChargeRow } from "@/lib/finance/payment-transaction-net";
+import { roundCurrency } from "@beautonomi/utils";
 
 export type SyncPaymentTransactionRefundOptions = {
   supabase: SupabaseClient;
@@ -62,7 +63,7 @@ async function syncOneChargeRow(
 ): Promise<boolean> {
   const chargeAmount = parseAmount(row.amount);
   const prior = parseAmount(row.refund_amount);
-  const target = Math.round(Math.min(chargeAmount, Math.max(prior, targetRefund)) * 100) / 100;
+  const target = roundCurrency(Math.min(chargeAmount, Math.max(prior, targetRefund)));
 
   if (target <= prior + 0.001) {
     return false;

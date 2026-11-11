@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PaycloudEnvironment } from "@/lib/payments/paycloud";
+import { LAST_RESORT_CURRENCY, toMinorUnits } from "@beautonomi/utils";
 
 /** Official WiseCashier same-terminal Intent contract per PayCloud SameTerminalAppIntegration. */
 export const PAYCLOUD_INTENT_VERSION = "A01";
@@ -51,7 +52,7 @@ export type PaycloudIntentPayload = {
 
 /** Convert major currency units (e.g. ZAR rands) to zero-padded cents string (12 chars). */
 export function formatPaycloudIntentAmountCents(amountMajor: number): string {
-  const cents = Math.round(amountMajor * 100);
+  const cents = toMinorUnits(amountMajor, LAST_RESORT_CURRENCY);
   return Math.max(0, cents).toString().padStart(12, "0");
 }
 

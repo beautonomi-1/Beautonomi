@@ -10,6 +10,7 @@ import {
   resolveAdPackCurrency,
   type AdPackPriceRow,
 } from "@/lib/ads/resolve-ad-pack-price";
+import { toMinorUnits } from "@beautonomi/utils";
 
 function mapPackRow(row: Record<string, unknown>) {
   const amountMajor = resolveAdPackAmountMajor(row as AdPackPriceRow);
@@ -17,7 +18,7 @@ function mapPackRow(row: Record<string, unknown>) {
   return {
     ...row,
     price_minor:
-      row.price_minor != null ? Number(row.price_minor) : Math.round(amountMajor * 100),
+      row.price_minor != null ? Number(row.price_minor) : toMinorUnits(amountMajor, currency),
     currency,
     /** Major units for display + legacy clients (derived from price_minor when set). */
     price_zar: amountMajor,

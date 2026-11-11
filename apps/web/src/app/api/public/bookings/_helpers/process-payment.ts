@@ -26,7 +26,7 @@ import type { ValidatedBookingData } from "./validate-booking";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { recordPromotionUsage } from "@/lib/promotions/record-promotion-usage";
 import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
-import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { addMoney, percentOf, roundCurrency, subtractMoney } from "@beautonomi/utils";
 import { fetchBookingCommissionContext } from "@/lib/bookings/fetch-booking-commission-context";
 import {
   resolveCommissionBaseForBookingPayment,
@@ -177,12 +177,13 @@ export async function processPayment(
   // Only the part of the credit this checkout uses is moved onto the new
   // booking; any surplus stays in the customer's wallet.
   const rescheduleCreditApplied = isReschedule
-    ? Math.round(
-        Math.min(Math.max(0, Number(input.rescheduleCredit ?? 0)), Math.max(0, amountToCollect)) * 100,
-      ) / 100
+    ? roundCurrency(
+        Math.min(Math.max(0, Number(input.rescheduleCredit ?? 0)), Math.max(0, amountToCollect)),
+        v.currency,
+      )
     : 0;
   if (isReschedule) {
-    amountToCollect = Math.max(0, amountToCollect - rescheduleCreditApplied);
+    amountToCollect = Math.max(0, subtractMoney(amountToCollect, rescheduleCreditApplied, v.currency));
     await supabaseAdmin
       .from("bookings")
       .update({ reschedule_credit_pending: rescheduleCreditApplied })
@@ -300,7 +301,7 @@ export async function processPayment(
         .eq("id", booking.id)
         .eq("customer_id", v.customerId);
 
-      amountToCollect = Math.max(0, amountToCollect - giftCardAmountApplied);
+      amountToCollect = Math.max(0, subtractMoney(amountToCollect, giftCardAmountApplied));
     }
   }
 
@@ -384,7 +385,7 @@ export async function processPayment(
           initialStatus: paymentMethod === "card" && amountToCollect > 0 ? "pending" : "completed",
         });
 
-        amountToCollect = Math.max(0, amountToCollect - walletAmountApplied);
+        amountToCollect = Math.max(0, subtractMoney(amountToCollect, walletAmountApplied));
       }
     } catch (e: any) {
       return handleApiError(e, e?.message || "Wallet payment failed", "WALLET_ERROR", 400);
@@ -442,7 +443,7 @@ export async function processPayment(
     // leg in finalizeRescheduleCarryOver; posting a zero-tender row here would
     // book the full total before that money moves.
     const creditOnly =
-      rescheduleCreditApplied > 0 && walletAmountApplied + giftCardAmountApplied <= 0;
+      rescheduleCreditApplied > 0 && addMoney(walletAmountApplied, giftCardAmountApplied) <= 0;
     if (!creditOnly) {
       await insertNoGatewayLedger(supabase, {
         booking,
@@ -1218,7 +1219,7 @@ async function insertNoGatewayLedger(
     providerId: draft.provider_id,
   });
 
-  const amountCollected = walletAmountApplied + giftCardAmountApplied;
+  const amountCollected = addMoney(walletAmountApplied, giftCardAmountApplied);
   const effectiveAmount = amountCollected > 0 ? amountCollected : v.totalAmount;
 
   const settlementMethod =

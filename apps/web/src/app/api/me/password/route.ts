@@ -99,8 +99,13 @@ export async function PUT(request: NextRequest) {
           { status: 400 },
         );
       }
-    } else if (policy.require_current_password) {
-      if (!currentPassword) {
+    } else {
+      // F3-19: always require the current password unless a provider step-up
+      // just succeeded (requireStepUp above). The tenant policy flag may no
+      // longer disable this check.
+      const stepUpJustCompleted =
+        user.role === "provider_owner" || user.role === "provider_staff";
+      if (!currentPassword && !stepUpJustCompleted) {
         return NextResponse.json(
           { error: "Current password is required" },
           { status: 400 }

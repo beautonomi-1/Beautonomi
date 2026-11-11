@@ -10,6 +10,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { isProviderOwner, hasPermission, normalizeStaffPermissions } from "@/lib/auth/permissions";
 import { staffPermissionsToStoredJson } from "@/lib/auth/staff-permissions-payload";
+import { findRolePermissionsAboveCeiling } from "@/lib/auth/role-permission-ceiling";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -84,6 +85,20 @@ export async function PATCH(
       validationResult.data.permissions !== undefined ||
       validationResult.data.calendar_scope !== undefined
     ) {
+      const disallowed = await findRolePermissionsAboveCeiling(
+        user,
+        validationResult.data.permissions,
+        validationResult.data.calendar_scope,
+        request,
+      );
+      if (disallowed.length > 0) {
+        return errorResponse(
+          `You cannot grant permissions you do not have: ${disallowed.join(", ")}`,
+          "FORBIDDEN",
+          403,
+          { disallowed_permissions: disallowed },
+        );
+      }
       updateData.permissions = staffPermissionsToStoredJson(
         validationResult.data.permissions ?? {},
         validationResult.data.calendar_scope,

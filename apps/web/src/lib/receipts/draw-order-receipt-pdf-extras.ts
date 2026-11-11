@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import type PDFDocument from "pdfkit";
 import {
   drawPdfPayments,
@@ -66,7 +67,7 @@ export function drawOrderReceiptPdfExtras(doc: PdfDoc, receipt: OrderReceiptPdfE
   }
 
   const method = receipt.payment_method;
-  const nonWalletPaid = Math.max(0, amountPaid - walletAmt - giftAmt);
+  const nonWalletPaid = Math.max(0, subtractMoney(subtractMoney(amountPaid, walletAmt), giftAmt));
   if (method && nonWalletPaid > 0.01) {
     paymentLines.push({
       label: formatPaymentMethodLabel(method, receipt.payment_provider ?? null),
@@ -103,7 +104,7 @@ export function drawOrderReceiptPdfExtras(doc: PdfDoc, receipt: OrderReceiptPdfE
           ? [{ label: "Refund method", value: receipt.refund_method }]
           : []),
       ],
-      { label: "Net after refunds", value: moneyPdf(Math.max(0, Number(receipt.total || 0) - Number(receipt.refunded_amount || 0)), currency) },
+      { label: "Net after refunds", value: moneyPdf(Math.max(0, subtractMoney(Number(receipt.total || 0), Number(receipt.refunded_amount || 0))), currency) },
     );
   }
 

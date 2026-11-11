@@ -31,7 +31,7 @@ import {
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 import { recordPromotionUsage } from "@/lib/promotions/record-promotion-usage";
 import { getTenantRegionConfig } from "@/lib/regions/config";
-import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { multiplyMoney, addMoney, percentOf, subtractMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
@@ -274,6 +274,143 @@ type ChargeBookingRow = Record<string, unknown> & {
   promotion_discount_amount?: number;
   tenant_id?: string | null;
 };
+
+/** payment_transactions statuses that mean the charge was actually captured. */
+const SETTLED_PAYMENT_TX_STATUSES = ["success", "refunded", "partially_refunded"] as const;
+
+/**
+ * Booking statuses after which incoming money must not be applied (F2-08).
+ * `completed` is terminal for the lifecycle but a late charge for a completed
+ * booking is still legitimately owed, so it is deliberately excluded here.
+ */
+const MONEY_TERMINAL_BOOKING_STATUSES = new Set(["cancelled", "no_show", "declined"]);
+
+function isMoneyTerminalBookingStatus(status: unknown): boolean {
+  return typeof status === "string" && MONEY_TERMINAL_BOOKING_STATUSES.has(status.toLowerCase());
+}
+
+/**
+ * F2-08 / F2-16: late `charge.success` for a cancelled / no_show / declined
+ * booking. Refund the gateway charge (idempotent key per booking+reference),
+ * flag the existing payment_transactions row (if any — e.g. the `failed` row
+ * from an earlier charge.failed) and open a reconciliation exception so ops
+ * can see the money movement. Never throws: the webhook must ack 200 so the
+ * gateway does not keep replaying an event we have already dealt with.
+ */
+async function handleLateChargeSuccessOnTerminalBooking(
+  supabase: SupabaseClient,
+  input: {
+    bookingId: string;
+    bookingStatus: string;
+    tenantId: string | null;
+    reference: string;
+    paymentProvider: string;
+    amountMajor: number;
+    currency: string;
+  },
+): Promise<void> {
+  const { bookingId, reference, paymentProvider, amountMajor, currency } = input;
+  let refundId: string | null = null;
+  let refundError: string | null = null;
+  if (amountMajor > 0) {
+    try {
+      const { refundGatewayCharge } = await import("@/lib/payments/refund-gateway-charge");
+      const result = await refundGatewayCharge({
+        reference,
+        amountMajor,
+        currency,
+        tenantId: input.tenantId,
+        reason: `Late ${paymentProvider} charge.success after booking was ${input.bookingStatus}`,
+        idempotencyKey: `booking_late_success_refund:${bookingId}:${reference}`,
+        fallbackProvider:
+          paymentProvider === "stripe" || paymentProvider === "flutterwave"
+            ? paymentProvider
+            : "paystack",
+      });
+      refundId = result.refundId ?? null;
+    } catch (e) {
+      refundError = e instanceof Error ? e.message : String(e);
+      console.error("[charge-success] late success auto-refund failed:", {
+        bookingId,
+        reference,
+        paymentProvider,
+        error: refundError,
+      });
+    }
+  }
+  const requiresRefund = refundError !== null;
+
+  try {
+    const { data: existingTx } = await supabase
+      .from("payment_transactions")
+      .select("id, status, metadata")
+      .eq("provider", paymentProvider)
+      .eq("reference", reference)
+      .maybeSingle();
+    if (existingTx?.id) {
+      const prevMeta =
+        existingTx.metadata && typeof existingTx.metadata === "object" && !Array.isArray(existingTx.metadata)
+          ? (existingTx.metadata as Record<string, unknown>)
+          : {};
+      await supabase
+        .from("payment_transactions")
+        .update({
+          ...(requiresRefund ? {} : { status: "refunded" }),
+          metadata: {
+            ...prevMeta,
+            late_success_on_terminal_booking: true,
+            terminal_booking_status: input.bookingStatus,
+            requires_refund: requiresRefund,
+            auto_refund_id: refundId,
+            auto_refund_error: refundError,
+          },
+        })
+        .eq("provider", paymentProvider)
+        .eq("reference", reference);
+    }
+  } catch (e) {
+    console.error("[charge-success] late success payment_transactions flag failed:", e);
+  }
+
+  if (input.tenantId) {
+    try {
+      const { recordReconciliationException } = await import(
+        "@/lib/finance/record-reconciliation-exception"
+      );
+      await recordReconciliationException({
+        supabase,
+        tenantId: input.tenantId,
+        currency,
+        psp: paymentProvider,
+        externalId: reference,
+        internalId: bookingId,
+        amount: amountMajor,
+        mismatchReason: requiresRefund
+          ? `Late ${paymentProvider} charge.success on ${input.bookingStatus} booking; automatic refund FAILED (${refundError}) — manual refund required`
+          : `Late ${paymentProvider} charge.success on ${input.bookingStatus} booking; charge auto-refunded`,
+        metadata: {
+          kind: "late_charge_success_terminal_booking",
+          booking_id: bookingId,
+          booking_status: input.bookingStatus,
+          requires_refund: requiresRefund,
+          auto_refund_id: refundId,
+        },
+      });
+    } catch (e) {
+      console.error("[charge-success] late success reconciliation exception insert failed:", e);
+    }
+  }
+
+  slackNotifyUnrecognizedPayments({
+    tenantId: input.tenantId,
+    count: 1,
+    amountMajor,
+    currency,
+    source: requiresRefund
+      ? `${paymentProvider}_webhook:late_success_terminal_booking_refund_failed`
+      : `${paymentProvider}_webhook:late_success_terminal_booking_refunded`,
+  });
+}
 
 function emitPaystackPaymentFailedSlack(
   data: PaystackChargeData,
@@ -909,17 +1046,45 @@ export async function processSuccessfulPayment(
     provider_id: bookingData.provider_id as string | null | undefined,
   });
 
+  // F2-16: only a *settled* row counts as "already settled". A `failed` row for
+  // the same reference (charge.failed delivered first) must not short-circuit
+  // into the idempotent-repair path, which would mark the booking paid.
   const { data: alreadySettledPaymentTx } = await supabase
     .from("payment_transactions")
     .select("id")
     .eq("provider", paymentProvider)
     .eq("reference", reference)
+    .in("status", SETTLED_PAYMENT_TX_STATUSES)
     .maybeSingle();
 
   const bookingMetaRecord =
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
       ? (metadata as Record<string, unknown>)
       : null;
+
+  // F2-08: a late charge.success for a booking that is already cancelled /
+  // no_show / declined must never mark it paid or post ledger. If the charge was
+  // settled before the booking closed, the cancellation flow owns the refund and
+  // this retry is a no-op. Otherwise auto-refund the gateway charge, flag any
+  // payment_transactions row and open a reconciliation exception, then ack.
+  if (isMoneyTerminalBookingStatus(bookingData.status)) {
+    if (alreadySettledPaymentTx) {
+      console.log(
+        `[charge-success] ${paymentProvider} ref ${reference} already settled on terminal booking ${metadata.booking_id} — no-op.`,
+      );
+      return;
+    }
+    await handleLateChargeSuccessOnTerminalBooking(supabase, {
+      bookingId: metadata.booking_id,
+      bookingStatus: String(bookingData.status),
+      tenantId: (bookingData.tenant_id as string | null | undefined) ?? financeTenantId ?? null,
+      reference: String(reference),
+      paymentProvider,
+      amountMajor: convertFromSmallestUnit(amount || 0, bookingPaystackCurrency),
+      currency: bookingPaystackCurrency,
+    });
+    return;
+  }
 
   let verifiedPendingPayment: Record<string, unknown> | null = null;
   if (!alreadySettledPaymentTx && ONLINE_VERIFY_PROVIDERS.has(paymentProvider)) {
@@ -2557,7 +2722,7 @@ async function handleGiftCardOrderSuccess(
     orderData.currency || (await lastResortCurrencyFromTenantId(giftOrderFinanceTenantId));
   const value = Number(orderData.amount || 0);
   const quantity = Number(orderData.quantity || metadata.quantity || 1);
-  const totalAmount = Number(orderData.total_amount || value * quantity);
+  const totalAmount = Number(orderData.total_amount || multiplyMoney(value, quantity));
 
   // §Gift-purchase (audit 2026-06): validate that Paystack actually charged the
   // order total before issuing cards. Issuing full value on an underpayment would
@@ -4637,7 +4802,7 @@ async function handleAdditionalChargeSuccess(
   const totalEconomicAmount =
     chargeAmountMajor > 0
       ? chargeAmountMajor
-      : amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
+      : addMoney(addMoney(amountInCurrency, walletAmountFromMeta), giftCardAmountFromMeta);
 
   const commissionRate = await resolveCommissionPercentageForBooking(supabase, {
     bookingId,
@@ -4689,7 +4854,7 @@ async function handleAdditionalChargeSuccess(
 
   await supabase.from("bookings")
     .update({
-      total_amount: Number(bookingData.total_amount ?? 0) + Number((charge as { amount?: number }).amount ?? 0),
+      total_amount: addMoney(Number(bookingData.total_amount ?? 0), Number((charge as { amount?: number }).amount ?? 0)),
       updated_at: new Date().toISOString(),
     })
     .eq("id", bookingId);

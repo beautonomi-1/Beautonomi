@@ -15,6 +15,7 @@
  * reached. A campaign serves IFF status='active' AND funded_at IS NOT NULL, so
  * a reversed/never-paid campaign can never be served by the auction.
  */
+import { subtractMoney } from "@beautonomi/utils";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
@@ -145,7 +146,7 @@ export async function recordAdsBudgetOrderPayment(params: {
   }
 
   const nowIso = new Date().toISOString();
-  const netAmount = amountMajor - feesMajor;
+  const netAmount = subtractMoney(amountMajor, feesMajor);
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,

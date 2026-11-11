@@ -6,7 +6,7 @@ import {
   sumCashRefundRows,
   sumNonTerminalInPersonCollected,
 } from "@/lib/bookings/cancellation-cash-refund-obligation";
-import { roundCurrency2 } from "@/lib/bookings/refund-processing";
+import { addMoney } from "@beautonomi/utils";
 
 export const WALLET_SUBSTITUTE_REASONS = new Set([
   "provider_cannot_return_cash",
@@ -46,7 +46,7 @@ export async function assertAdminWalletInPersonSubstituteAllowed(
   );
   const pendingCashTotal = sumCashRefundRows(rows, ["pending"]);
   const inPersonUncovered = computeNonTerminalCashObligationAmount(payments, rows);
-  const stillOwedInPerson = roundCurrency2(inPersonUncovered + pendingCashTotal);
+  const stillOwedInPerson = addMoney(inPersonUncovered, pendingCashTotal);
 
   if (completedCash > 0.01 && stillOwedInPerson <= 0.01 && params.amount > 0.01) {
     return {

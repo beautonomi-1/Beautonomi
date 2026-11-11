@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 
@@ -53,7 +54,8 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       // Update existing schedule
-      const { data: schedule, error } = await supabase
+      const admin = getSupabaseAdmin();
+      const { data: schedule, error } = await admin
         .from("report_schedules")
         .update(scheduleData)
         .eq("id", existing.id)
@@ -67,7 +69,8 @@ export async function POST(request: NextRequest) {
       return successResponse(schedule);
     } else {
       // Create new schedule
-      const { data: schedule, error } = await supabase
+      const admin = getSupabaseAdmin();
+      const { data: schedule, error } = await admin
         .from("report_schedules")
         .insert(scheduleData)
         .select()
@@ -104,7 +107,8 @@ export async function GET(request: NextRequest) {
       return errorResponse("Provider not found", "NOT_FOUND", 404);
     }
 
-    const { data: schedules, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: schedules, error } = await admin
       .from("report_schedules")
       .select("*")
       .eq("provider_id", providerId)

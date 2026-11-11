@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -85,7 +86,7 @@ export async function GET(
         const held = await sumAdditionalChargeTenderLegs(supabaseAdminCharges, id, charge.id);
         return {
           ...charge,
-          amount_due: additionalChargeAmountStillDue(Number(charge.amount ?? 0), held.wallet + held.gift),
+          amount_due: additionalChargeAmountStillDue(Number(charge.amount ?? 0), addMoney(held.wallet, held.gift)),
         };
       }),
     );

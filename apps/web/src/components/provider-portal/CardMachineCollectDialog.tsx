@@ -7,6 +7,8 @@ import {
   beautonomiCardMachineLabel,
   yocoCardMachineLabel,
   type CardMachine,
+  LAST_RESORT_CURRENCY,
+  subtractMoney,
 } from "@beautonomi/utils";
 import { YocoPaymentDialog } from "./YocoPaymentDialog";
 import type { YocoPayment } from "@/lib/provider-portal/types";
@@ -254,7 +256,7 @@ export function CardMachineCollectDialog({
           amount={(() => {
             if (tipIncludedInAmount) return amount;
             const tillTip = Math.max(0, tipAmount);
-            const base = Math.max(0, Math.round((amount - tillTip) * 100) / 100);
+            const base = Math.max(0, subtractMoney(amount, tillTip, LAST_RESORT_CURRENCY));
             return base <= 0.01 && tillTip > 0.01 ? tillTip : base;
           })()}
           fixedTipAmount={tipIncludedInAmount ? 0 : tipAmount}

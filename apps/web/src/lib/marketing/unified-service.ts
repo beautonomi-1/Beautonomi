@@ -11,6 +11,7 @@
  */
 
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type MessagingChannel = "email" | "sms" | "whatsapp" | "notification";
@@ -65,10 +66,10 @@ export interface TwilioIntegration {
  * Get provider's email integration
  */
 export async function getEmailIntegration(
-  supabase: SupabaseClient<any>,
+  _supabase: SupabaseClient<any>,
   providerId: string
 ): Promise<EmailIntegration | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseAdmin()
     .from("provider_email_integrations")
     .select("*")
     .eq("provider_id", providerId)
@@ -79,17 +80,23 @@ export async function getEmailIntegration(
     return null;
   }
 
-  return data as EmailIntegration;
+  const row = data as EmailIntegration;
+  const { revealIntegrationSecret } = await import("@/lib/security/integration-secrets");
+  return {
+    ...row,
+    api_key: revealIntegrationSecret(row.api_key),
+    api_secret: row.api_secret ? revealIntegrationSecret(row.api_secret) : row.api_secret,
+  };
 }
 
 /**
  * Get provider's Twilio integration
  */
 export async function getTwilioIntegration(
-  supabase: SupabaseClient<any>,
+  _supabase: SupabaseClient<any>,
   providerId: string
 ): Promise<TwilioIntegration | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseAdmin()
     .from("provider_twilio_integrations")
     .select("*")
     .eq("provider_id", providerId)
@@ -99,7 +106,12 @@ export async function getTwilioIntegration(
     return null;
   }
 
-  return data as TwilioIntegration;
+  const row = data as TwilioIntegration;
+  const { revealIntegrationSecret } = await import("@/lib/security/integration-secrets");
+  return {
+    ...row,
+    auth_token: revealIntegrationSecret(row.auth_token),
+  };
 }
 
 /**

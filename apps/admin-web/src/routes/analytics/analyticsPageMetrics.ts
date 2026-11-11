@@ -1,3 +1,5 @@
+import { addMoney } from "@beautonomi/utils";
+
 /** Keep in sync with apps/web booking-status enum contract. */
 export const BOOKING_STATUS_ORDER = [
   "pending",
@@ -29,7 +31,7 @@ export function sumTimeSeriesCount(points: TimeSeriesPoint[]): number {
 }
 
 export function sumTimeSeriesRevenue(points: Array<{ revenue?: number }>): number {
-  return points.reduce((s, p) => s + (p.revenue ?? 0), 0);
+  return points.reduce((s, p) => addMoney(s, p.revenue ?? 0), 0);
 }
 
 export function periodDaysLabel(period: AnalyticsPeriod): string {
@@ -82,7 +84,7 @@ export function buildRevenueMixSegments(streams: RevenueStreamsPayload | undefin
 }
 
 export function mixTotal(segments: { value: number }[]): number {
-  return segments.reduce((s, x) => s + Math.max(0, x.value), 0);
+  return segments.reduce((s, x) => addMoney(s, Math.max(0, x.value)), 0);
 }
 
 export function shareOfTotal(value: number, total: number): number | null {

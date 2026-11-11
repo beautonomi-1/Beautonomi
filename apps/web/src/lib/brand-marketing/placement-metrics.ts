@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Latest non-void metric per placement/key within optional as-of window. */
@@ -41,7 +42,7 @@ export async function sumEnteredPlacementMetrics(
     if (mk === "impressions") impressions += val;
     if (mk === "clicks") clicks += val;
     if (mk === "reach" || mk === "estimated_reach") reach += val;
-    if (mk === "spend") spend += val;
+    if (mk === "spend") spend = addMoney(spend, val);
   }
   return { impressions, clicks, reach: reach || impressions, spend };
 }
@@ -59,7 +60,7 @@ export async function sumKnownSpendForCampaign(
     .eq("tenant_id", tenantId);
 
   const ids = (placements ?? []).map((p) => p.id);
-  const allocated = (placements ?? []).reduce((s, p) => s + Number(p.budget ?? 0), 0);
+  const allocated = (placements ?? []).reduce((s, p) => addMoney(s, Number(p.budget ?? 0)), 0);
   const enteredMetrics = await sumEnteredPlacementMetrics(supabase, ids, window);
 
   const { data: pricebook } = await supabase.from("marketing_channel_pricebook").select("channel, unit_cost_zar");
@@ -79,9 +80,9 @@ export async function sumKnownSpendForCampaign(
       .maybeSingle();
     const sends = Number(sendRow?.value ?? 0);
     const ch = String(pl.channel_key).replace(/^owned_/, "");
-    estimated_owned += sends * (rateByChannel.get(ch) ?? rateByChannel.get("email") ?? 0);
+    estimated_owned = addMoney(estimated_owned, multiplyMoney(rateByChannel.get(ch) ?? rateByChannel.get("email") ?? 0, sends));
   }
 
   const entered = enteredMetrics.spend;
-  return { entered, estimated_owned, known: entered + estimated_owned, allocated };
+  return { entered, estimated_owned, known: addMoney(entered, estimated_owned), allocated };
 }

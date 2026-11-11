@@ -10,6 +10,7 @@ const mockCheckMessageLimit = vi.fn();
 const mockInsertNotification = vi.fn();
 const mockSendTemplateNotification = vi.fn();
 const mockGetNotificationTemplate = vi.fn();
+const mockHasPermission = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", () => ({
   requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
@@ -36,6 +37,10 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/auth/requirePermission", () => ({
   requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
+}));
+
+vi.mock("@/lib/auth/permissions", () => ({
+  hasPermission: (...args: unknown[]) => mockHasPermission(...args),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -97,6 +102,7 @@ describe("POST /api/provider/conversations/[id]/messages", () => {
       authorized: true,
       user: { id: "provider-user-1", role: "provider_owner" },
     });
+    mockHasPermission.mockResolvedValue(false);
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
     mockGetSupabaseServer.mockResolvedValue({});
     mockCheckMessageLimit.mockResolvedValue({
@@ -220,5 +226,80 @@ describe("POST /api/provider/conversations/[id]/messages", () => {
 
     expect(res.status).toBe(400);
     expect(body.error?.message).toContain("Reply target");
+  });
+});
+
+describe("GET /api/provider/conversations/[id]/messages", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mockRequirePermission.mockResolvedValue({
+      authorized: true,
+      user: { id: "provider-user-1", role: "provider_staff" },
+    });
+    mockHasPermission.mockResolvedValue(false);
+    mockGetProviderIdForUser.mockResolvedValue("provider-1");
+    mockGetSupabaseServer.mockResolvedValue({});
+  });
+
+  it("does not use the customer email as the sender name without view_clients", async () => {
+    const message = {
+      id: "message-1",
+      conversation_id: "conversation-1",
+      sender_id: "customer-1",
+      sender_role: "customer",
+      content: "Hello",
+      attachments: [],
+      is_read: false,
+      read_at: null,
+      created_at: "2026-04-29T09:00:00.000Z",
+      reply_to_message_id: null,
+    };
+    const chain = (resolved: unknown) => {
+      const query: Record<string, unknown> = {};
+      const done = Promise.resolve(resolved);
+      query.select = vi.fn(() => query);
+      query.update = vi.fn(() => query);
+      query.eq = vi.fn(() => query);
+      query.neq = vi.fn(() => done);
+      query.order = vi.fn(() => done);
+      query.in = vi.fn(() => done);
+      query.single = vi.fn(async () => resolved);
+      query.maybeSingle = vi.fn(async () => resolved);
+      query.then = (onFulfilled: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) =>
+        done.then(onFulfilled, onRejected);
+      return query;
+    };
+    const admin = {
+      from: vi.fn((table: string) => {
+        if (table === "conversations") {
+          return chain({ data: { id: "conversation-1", provider_id: "provider-1", customer_id: "customer-1" }, error: null });
+        }
+        if (table === "messages") {
+          return chain({ data: [message], error: null });
+        }
+        if (table === "users") {
+          return chain({
+            data: [{ id: "customer-1", full_name: "", email: "ada@example.com", avatar_url: null }],
+            error: null,
+          });
+        }
+        if (table === "providers") {
+          return chain({ data: { business_name: "Glow Studio" }, error: null });
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    };
+    mockGetSupabaseAdmin.mockReturnValue(admin);
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/provider/conversations/conversation-1/messages"), {
+      params: Promise.resolve({ id: "conversation-1" }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data[0].sender_name).toBe("Unknown");
+    expect(JSON.stringify(body)).not.toContain("ada@example.com");
   });
 });

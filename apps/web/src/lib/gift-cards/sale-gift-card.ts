@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { LAST_RESORT_CURRENCY, addMoney, fromMinorUnits, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 type GiftCardRow = {
   id: string;
@@ -27,12 +28,10 @@ export function saleGiftTenderMismatch(input: {
   saleTotal: number;
   legs: Array<{ method?: string | null; amount?: number | string | null }> | null;
 }): string | null {
-  const giftLegTotal = roundMoney(
-    (input.legs ?? [])
-      .filter((leg) => String(leg.method ?? "").trim().toLowerCase() === "gift_card")
-      .reduce((sum, leg) => sum + Number(leg.amount ?? 0), 0),
-  );
-  const giftAmount = roundMoney(Number(input.giftAmount) || 0);
+  const giftLegTotal = (input.legs ?? [])
+    .filter((leg) => String(leg.method ?? "").trim().toLowerCase() === "gift_card")
+    .reduce((sum, leg) => addMoney(sum, Number(leg.amount ?? 0)), 0);
+  const giftAmount = roundCurrency(Number(input.giftAmount) || 0);
   const hasCode = input.giftCode.trim().length > 0;
   const hasLegs = (input.legs ?? []).length > 0;
 
@@ -40,7 +39,7 @@ export function saleGiftTenderMismatch(input: {
     return "Gift card amount does not match the gift card payment";
   }
   if (hasCode && giftAmount > 0.009 && giftLegTotal <= 0.009) {
-    if (!hasLegs && Math.abs(giftAmount - roundMoney(input.saleTotal)) <= 0.02) return null;
+    if (!hasLegs && Math.abs(giftAmount - roundCurrency(input.saleTotal)) <= 0.02) return null;
     return "Gift card amount does not match the gift card payment";
   }
   return null;
@@ -64,17 +63,13 @@ export function saleGiftCardRejectReason(
   return null;
 }
 
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
 /** A gift payment counts only while the redemption is still reserved or captured. */
 export function heldSaleGiftAmount(
   giftPaid: number,
   redemptionStatus: string | null | undefined,
 ): number {
   if (redemptionStatus !== "reserved" && redemptionStatus !== "captured") return 0;
-  return roundMoney(Math.max(0, Number(giftPaid) || 0));
+  return roundCurrency(Math.max(0, Number(giftPaid) || 0));
 }
 
 /**
@@ -91,10 +86,10 @@ export function saleCardAmountStillDue(
   giftCardPaid: number,
   cardAlreadyTaken = 0,
 ): number {
-  return roundMoney(
+  return roundCurrency(
     Math.max(
       0,
-      Number(saleTotal) - Math.max(0, Number(giftCardPaid) || 0) - Math.max(0, Number(cardAlreadyTaken) || 0),
+      subtractMoney(subtractMoney(Number(saleTotal), Math.max(0, Number(giftCardPaid) || 0)), Math.max(0, Number(cardAlreadyTaken) || 0)),
     ),
   );
 }
@@ -123,7 +118,7 @@ export async function sumSaleGiftCardPaidBySaleIds(
   for (const row of (data ?? []) as Array<{ sale_id?: string; amount?: number | string | null }>) {
     const saleId = String(row.sale_id ?? "");
     if (!saleId) continue;
-    totals.set(saleId, roundMoney((totals.get(saleId) ?? 0) + Number(row.amount ?? 0)));
+    totals.set(saleId, addMoney(totals.get(saleId) ?? 0, Number(row.amount ?? 0)));
   }
   if (totals.size === 0) return totals;
   const { data: redemptions, error: redemptionError } = await supabase
@@ -154,7 +149,7 @@ export async function sumSuccessfulSaleCardTakenBySaleIds(
   if (ids.length === 0) return totals;
   const add = (saleId: string, amount: number) => {
     if (!saleId || amount <= 0) return;
-    totals.set(saleId, roundMoney((totals.get(saleId) ?? 0) + amount));
+    totals.set(saleId, addMoney(totals.get(saleId) ?? 0, amount));
   };
   const { data: yocoRows, error: yocoError } = await supabase
     .from("provider_yoco_payments")
@@ -169,9 +164,12 @@ export async function sumSuccessfulSaleCardTakenBySaleIds(
     refund_status?: string | null;
   }>) {
     if (String(row.refund_status ?? "") === "fully_refunded") continue;
-    const gross = Number(row.amount ?? 0) / 100;
-    const refunded = Number(row.refund_amount ?? 0) / 100;
-    add(String(row.sale_id ?? ""), roundMoney(Math.max(0, gross - Math.max(0, refunded))));
+    const gross = fromMinorUnits(Number(row.amount ?? 0), LAST_RESORT_CURRENCY);
+    const refunded = fromMinorUnits(Number(row.refund_amount ?? 0), LAST_RESORT_CURRENCY);
+    add(
+      String(row.sale_id ?? ""),
+      Math.max(0, subtractMoney(gross, Math.max(0, refunded), LAST_RESORT_CURRENCY)),
+    );
   }
   const { data: paycloudRows, error: paycloudError } = await supabase
     .from("provider_paycloud_payments")
@@ -233,7 +231,7 @@ export async function reserveSaleGiftCard(
   supabase: SupabaseClient,
   input: { code: string; amount: number; saleId: string; currency: string; userId: string },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const amount = roundMoney(input.amount);
+  const amount = roundCurrency(input.amount);
   if (!(amount > 0)) return { ok: false, message: "Gift card amount is invalid" };
 
   const { data: existing, error: existingError } = await supabase
@@ -252,8 +250,8 @@ export async function reserveSaleGiftCard(
   const rejected = saleGiftCardRejectReason(found.card, amount, input.currency);
   if (rejected) return { ok: false, message: rejected };
 
-  const previousBalance = roundMoney(Number(found.card.balance ?? 0));
-  const nextBalance = roundMoney(previousBalance - amount);
+  const previousBalance = roundCurrency(Number(found.card.balance ?? 0));
+  const nextBalance = subtractMoney(previousBalance, amount);
   const { data: held, error: holdError } = await supabase
     .from("gift_cards")
     .update({ balance: nextBalance, updated_at: new Date().toISOString() })
@@ -376,7 +374,7 @@ export async function settleReservedSaleGiftCard(
     }
     const covered = options?.cardAmountAlreadyRecorded
       ? recorded
-      : roundMoney(recorded + cardAmount);
+      : addMoney(recorded, cardAmount);
     const total = Number((sale as { total_amount?: number | string | null }).total_amount ?? 0);
     if (covered + 0.02 < total) {
       return { ok: false, message: "Gift card was not held for this sale" };
@@ -412,8 +410,8 @@ export async function restoreSaleGiftCard(supabase: SupabaseClient, saleId: stri
     .maybeSingle();
   const giftCard = card as GiftCardRow | null;
   if (!giftCard) return;
-  const currentBalance = roundMoney(Number(giftCard.balance ?? 0));
-  const restored = roundMoney(currentBalance + Number(row.amount ?? 0));
+  const currentBalance = roundCurrency(Number(giftCard.balance ?? 0));
+  const restored = addMoney(currentBalance, Number(row.amount ?? 0));
   const { data: restoredRow } = await supabase
     .from("gift_cards")
     .update({ balance: restored, updated_at: new Date().toISOString() })
@@ -455,12 +453,12 @@ export async function voidSaleGiftCard(supabase: SupabaseClient, saleId: string)
     .maybeSingle();
   const giftCard = card as GiftCardRow | null;
   if (!giftCard) return;
-  const restored = roundMoney(Number(giftCard.balance ?? 0) + Number(row.amount ?? 0));
+  const restored = addMoney(Number(giftCard.balance ?? 0), Number(row.amount ?? 0));
   const { data: restoredRow } = await supabase
     .from("gift_cards")
     .update({ balance: restored, updated_at: new Date().toISOString() })
     .eq("id", giftCard.id)
-    .eq("balance", roundMoney(Number(giftCard.balance ?? 0)))
+    .eq("balance", roundCurrency(Number(giftCard.balance ?? 0)))
     .select("id")
     .maybeSingle();
   if (!restoredRow) return;

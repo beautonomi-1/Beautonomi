@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { subtractMoney } from "@beautonomi/utils";
 import { verifyTransaction } from "@/lib/payments/paystack-complete";
 import {
   buildExplicitTerminalSuggestion,
@@ -265,7 +266,7 @@ async function suggestFromOpenEntities(
       .order("scheduled_at", { ascending: false })
       .limit(30);
     for (const booking of (bookings ?? []) as any[]) {
-      const outstanding = Math.max(0, Number(booking.total_amount ?? 0) - Number(booking.total_paid ?? 0));
+      const outstanding = Math.max(0, subtractMoney(Number(booking.total_amount ?? 0), Number(booking.total_paid ?? 0)));
       if (outstanding <= 0) continue;
       rawCandidates.push({
         entityType: "booking",
@@ -344,7 +345,7 @@ async function suggestTerminalPaymentTargets(
         paidAmount,
         expectedAmount: Math.max(
           0,
-          Number((booking as any).total_amount ?? 0) - Number((booking as any).total_paid ?? 0),
+          subtractMoney(Number((booking as any).total_amount ?? 0), Number((booking as any).total_paid ?? 0)),
         ),
         currency,
         expectedCurrency: (booking as any).currency ?? currency,
@@ -388,7 +389,7 @@ async function suggestTerminalPaymentTargets(
           paidAmount,
           expectedAmount: Math.max(
             0,
-            Number((booking as any).total_amount ?? 0) - Number((booking as any).total_paid ?? 0),
+            subtractMoney(Number((booking as any).total_amount ?? 0), Number((booking as any).total_paid ?? 0)),
           ),
           currency,
           expectedCurrency: (booking as any).currency ?? currency,
@@ -480,7 +481,7 @@ export async function recordPaystackTerminalCharge(
     amount_due_at_match_time: suggestion.amountDueAtMatchTime,
     amount_difference: suggestion.amountDifference,
     gateway_fee_amount: feeAmount,
-    net_amount: Math.max(0, paidAmount - feeAmount),
+    net_amount: Math.max(0, subtractMoney(paidAmount, feeAmount)),
     currency,
     payer_name: payerName || null,
     payer_email: data.customer?.email ?? null,

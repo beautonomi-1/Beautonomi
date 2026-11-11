@@ -54,11 +54,17 @@ import {
   formatMoney,
   getHoldTimeRemaining,
   getMissingRequiredProviderFormField,
+  addMoney,
+  computeVat,
+  multiplyMoney,
   percentOf,
   normalizeTipPercentPresets,
   serverNowToClockOffsetMs,
   lineHasHouseCallAdjustment,
   checkoutCatalogPackageMatchesCart,
+  roundCurrency,
+  subtractMoney,
+  sumMoney,
 } from "@beautonomi/utils";
 import { HouseCallLineFootnote, toHouseCallTranslate } from "@/components/booking/HouseCallPricingNotes";
 import { ContextualHint } from "@/components/hints/ContextualHint";
@@ -1742,7 +1748,7 @@ export default function BookCheckoutScreen() {
         price: pkg.price,
         discount_percentage: pkg.discount_percentage ?? null,
       },
-      servicesSubtotal: snapshotServiceLines.reduce((sum, s) => sum + s.price, 0),
+      servicesSubtotal: snapshotServiceLines.reduce((sum, s) => addMoney(sum, s.price), 0),
     }),
     [snapshotServiceLines, selectedProducts, groupParticipantsForPackageGate]
   );
@@ -1820,11 +1826,11 @@ export default function BookCheckoutScreen() {
     return m;
   }, [hold?.booking_services_snapshot]);
 
-  const primarySubtotal = snapshotServiceLines.reduce((s, line) => s + line.price, 0);
+  const primarySubtotal = snapshotServiceLines.reduce((s, line) => addMoney(s, line.price), 0);
   const groupParticipantsSubtotal = isGroupBooking
     ? groupGuestsServiceSubtotal(groupParticipants, snapshotOfferingIds, offeringPriceMap)
     : 0;
-  const servicesSubtotal = primarySubtotal + groupParticipantsSubtotal;
+  const servicesSubtotal = addMoney(primarySubtotal, groupParticipantsSubtotal);
   const currency = hold?.booking_services_snapshot[0]?.currency || getTenantDefaultCurrency();
   const travelFee = hold?.travel_fee ?? 0;
   const houseCallFeeTotal =
@@ -1833,8 +1839,8 @@ export default function BookCheckoutScreen() {
       : 0;
   const addonsSubtotal = addonsList
     .filter((a) => selectedAddonIds.includes(a.id))
-    .reduce((s, a) => s + (Number(a.price) || 0), 0);
-  const productsSubtotal = selectedProducts.reduce((s, p) => s + p.price * p.quantity, 0);
+    .reduce((s, a) => addMoney(s, Number(a.price) || 0), 0);
+  const productsSubtotal = selectedProducts.reduce((s, p) => addMoney(s, multiplyMoney(p.price, p.quantity)), 0);
   const packageCheckoutResult = useMemo(() => {
     if (!selectedPackageId) {
       return { effectivePackageId: null as string | null, packageDiscount: 0 };
@@ -1897,11 +1903,13 @@ export default function BookCheckoutScreen() {
     if (!effectivePackageId) setSelectedEntitlementId(null);
   }, [effectivePackageId]);
 
-  const prePromoTotal =
-    Math.max(0, servicesSubtotal - packageDiscount) +
-    addonsSubtotal +
-    travelFee +
-    productsSubtotal;
+  const prePromoTotal = addMoney(
+    addMoney(
+      addMoney(Math.max(0, subtractMoney(servicesSubtotal, packageDiscount)), addonsSubtotal),
+      travelFee,
+    ),
+    productsSubtotal,
+  );
 
   const checkoutCartFingerprint = useMemo(
     () =>
@@ -1954,27 +1962,26 @@ export default function BookCheckoutScreen() {
   }, [checkoutCartFingerprint]);
 
   const effectivePromoDiscount = Math.min(appliedPromoDiscount, prePromoTotal);
-  const subtotalAfterPromo = Math.max(0, prePromoTotal - effectivePromoDiscount);
+  const subtotalAfterPromo = Math.max(0, subtractMoney(prePromoTotal, effectivePromoDiscount));
   // Wave 4.2: membership discount applies after coupon/gift, before
   // loyalty & tax. Mirrors web booking-flow.tsx calc.
   const membershipDiscountAmount =
     membershipDiscountPercent > 0
-      ? Math.min(
-          Math.round(((subtotalAfterPromo * membershipDiscountPercent) / 100) * 100) / 100,
-          subtotalAfterPromo
-        )
+      ? Math.min(percentOf(subtotalAfterPromo, membershipDiscountPercent), subtotalAfterPromo)
       : 0;
-  const subtotalAfterMembership = Math.max(0, subtotalAfterPromo - membershipDiscountAmount);
-  const subtotalAfterLoyalty = Math.max(0, subtotalAfterMembership - loyaltyDiscountAmount);
+  const subtotalAfterMembership = Math.max(0, subtractMoney(subtotalAfterPromo, membershipDiscountAmount));
+  const subtotalAfterLoyalty = Math.max(0, subtractMoney(subtotalAfterMembership, loyaltyDiscountAmount));
 
   // Tax from hold.tax_rate_percent (provider override or platform default from GET hold), after promo + loyalty
   const taxRatePercent = hold?.tax_rate_percent ?? 0;
   const isTaxInclusive = hold?.tax_inclusive ?? false;
   const taxAmount =
     taxRatePercent > 0
-      ? isTaxInclusive
-        ? subtotalAfterLoyalty - subtotalAfterLoyalty / (1 + taxRatePercent / 100)
-        : Math.round(((subtotalAfterLoyalty * taxRatePercent) / 100) * 100) / 100
+      ? computeVat({
+          baseAmount: subtotalAfterLoyalty,
+          ratePercent: taxRatePercent,
+          inclusive: isTaxInclusive,
+        }).taxAmount
       : 0;
 
   // Platform Fee: only when configured and visible to customer
@@ -1983,8 +1990,7 @@ export default function BookCheckoutScreen() {
   let serviceFeeAmount = 0;
   if (sfConfig && sfConfig.show && subtotalAfterLoyalty >= minBookingForFee) {
     if (sfConfig.type === "percentage") {
-      serviceFeeAmount =
-        Math.round(((subtotalAfterLoyalty * sfConfig.percentage) / 100) * 100) / 100;
+      serviceFeeAmount = percentOf(subtotalAfterLoyalty, sfConfig.percentage);
       if (sfConfig.max_fee_amount != null) {
         serviceFeeAmount = Math.min(serviceFeeAmount, Number(sfConfig.max_fee_amount));
       }
@@ -1994,8 +2000,8 @@ export default function BookCheckoutScreen() {
   }
 
   const total = isTaxInclusive
-    ? Math.max(0, subtotalAfterLoyalty + tipAmount + serviceFeeAmount)
-    : Math.max(0, subtotalAfterLoyalty + taxAmount + tipAmount + serviceFeeAmount);
+    ? Math.max(0, sumMoney(currency, subtotalAfterLoyalty, tipAmount, serviceFeeAmount))
+    : Math.max(0, sumMoney(currency, subtotalAfterLoyalty, taxAmount, tipAmount, serviceFeeAmount));
 
   const checkoutTipPresets = useMemo(
     () => normalizeTipPercentPresets(hold?.tip_presets),
@@ -2019,9 +2025,9 @@ export default function BookCheckoutScreen() {
   const bookingSubtotalForLoyalty = subtotalAfterMembership;
   const maxRedeemablePointsOnBooking = useMemo(() => {
     if (bookingSubtotalForLoyalty <= 0) return 0;
-    const maxDiscount = (bookingSubtotalForLoyalty * maxRedemptionPercentage) / 100;
+    const maxDiscount = percentOf(bookingSubtotalForLoyalty, maxRedemptionPercentage, currency);
     return Math.floor(maxDiscount * redemptionRate);
-  }, [bookingSubtotalForLoyalty, maxRedemptionPercentage, redemptionRate]);
+  }, [bookingSubtotalForLoyalty, maxRedemptionPercentage, redemptionRate, currency]);
 
   useEffect(() => {
     if (hold && hold_id && total != null && !checkoutTrackedRef.current) {
@@ -2076,7 +2082,7 @@ export default function BookCheckoutScreen() {
         offeringPriceMap
       )
     : 0;
-  const checkoutBaseTotal = Math.max(0, total - groupGuestShareTotal);
+  const checkoutBaseTotal = Math.max(0, subtractMoney(total, groupGuestShareTotal, currency));
   const depositAmountComputed = groupSplitActive
     ? depositPctEffective > 0
       ? percentOf(checkoutBaseTotal, depositPctEffective)
@@ -2097,25 +2103,25 @@ export default function BookCheckoutScreen() {
   // Matches processPayment: the reschedule credit comes off the amount due now
   // before gift card and wallet; anything above it stays in the wallet.
   const rescheduleCreditApplied =
-    Math.round(Math.min(rescheduleCredit, Math.max(0, checkoutAmountDueBeforeCredit)) * 100) / 100;
+    roundCurrency(Math.min(rescheduleCredit, Math.max(0, checkoutAmountDueBeforeCredit)));
   const rescheduleCreditLeftInWallet = Math.max(
     0,
-    Math.round((rescheduleCredit - rescheduleCreditApplied) * 100) / 100,
+    subtractMoney(rescheduleCredit, rescheduleCreditApplied, currency),
   );
-  const checkoutAmountDueByPolicy = Math.max(0, checkoutAmountDueBeforeCredit - rescheduleCreditApplied);
+  const checkoutAmountDueByPolicy = Math.max(0, subtractMoney(checkoutAmountDueBeforeCredit, rescheduleCreditApplied, currency));
   const giftCardAppliedToCheckout =
     (paymentMethod === "giftcard" || paymentMethod === "card") && giftCardValid
       ? Math.min(Number(giftCardValid.balance || 0), checkoutAmountDueByPolicy)
       : 0;
   const amountAfterGiftOnCheckout = Math.max(
     0,
-    checkoutAmountDueByPolicy - giftCardAppliedToCheckout
+    subtractMoney(checkoutAmountDueByPolicy, giftCardAppliedToCheckout, currency),
   );
   const walletAppliesToCheckout = paymentMethod === "card" && useWallet && walletBalance > 0;
   const walletAppliedToCheckout = walletAppliesToCheckout
     ? Math.min(walletBalance, amountAfterGiftOnCheckout)
     : 0;
-  const cardAmountDueNow = Math.max(0, amountAfterGiftOnCheckout - walletAppliedToCheckout);
+  const cardAmountDueNow = Math.max(0, subtractMoney(amountAfterGiftOnCheckout, walletAppliedToCheckout, currency));
   const bottomAmountShown =
     paymentMethod === "cash"
       ? checkoutAmountDueByPolicy
@@ -2370,7 +2376,7 @@ export default function BookCheckoutScreen() {
         return;
       }
       setLoyaltyPointsApplied(points_to_redeem);
-      setLoyaltyDiscountAmount(Math.round(Number(discount_amount) * 100) / 100);
+      setLoyaltyDiscountAmount(roundCurrency(Number(discount_amount)));
       setLoyaltyPointsInput(String(points_to_redeem));
       haptic.success();
       const errs = payload.errors as string[] | undefined;
@@ -2779,7 +2785,7 @@ export default function BookCheckoutScreen() {
           productVariantId: p.productVariantId ?? null,
           quantity: p.quantity,
           unitPrice: p.price,
-          totalPrice: p.price * p.quantity,
+          totalPrice: multiplyMoney(p.price, p.quantity),
         }));
       }
       payload.package_id = effectivePackageId;
@@ -4545,7 +4551,7 @@ export default function BookCheckoutScreen() {
                       : ""}
                   </Text>
                   <Text style={{ fontSize: 13, color: "#111827" }}>
-                    {formatCurrency(p.price * p.quantity, p.currency)}
+                    {formatCurrency(multiplyMoney(p.price, p.quantity), p.currency)}
                   </Text>
                 </View>
               ))}
@@ -4740,7 +4746,7 @@ export default function BookCheckoutScreen() {
                     </Text>
                   </View>
                   <Text style={{ fontSize: 11, color: "#92400E", marginTop: 6 }}>
-                    {`Remainder of ${formatCurrency(Math.max(0, total - depositAmount), currency)} is due later per the provider's policy.`}
+                    {`Remainder of ${formatCurrency(Math.max(0, subtractMoney(total, depositAmount)), currency)} is due later per the provider's policy.`}
                   </Text>
                 </View>
               )}
@@ -4975,7 +4981,7 @@ export default function BookCheckoutScreen() {
                       setTipPercentSelection(null);
                       const parsed = parseFloat(v);
                       setTipAmount(
-                        Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) / 100 : 0
+                        Number.isFinite(parsed) && parsed >= 0 ? roundCurrency(parsed) : 0
                       );
                     }}
                     keyboardType="decimal-pad"
@@ -5453,11 +5459,11 @@ export default function BookCheckoutScreen() {
                     hold && cancellationPolicyRequiresCustomerAck(hold.cancellation_policy)
                       ? `${t("checkout.contextualHints.depositPayNow", {
                           deposit: formatCurrency(depositAmount, currency),
-                          balance: formatCurrency(checkoutBaseTotal - depositAmount, currency),
+                          balance: formatCurrency(subtractMoney(checkoutBaseTotal, depositAmount, currency), currency),
                         })} ${t("checkout.contextualHints.depositLateCancel")}`
                       : t("checkout.contextualHints.depositPayNow", {
                           deposit: formatCurrency(depositAmount, currency),
-                          balance: formatCurrency(checkoutBaseTotal - depositAmount, currency),
+                          balance: formatCurrency(subtractMoney(checkoutBaseTotal, depositAmount, currency), currency),
                         })
                   }
                 />

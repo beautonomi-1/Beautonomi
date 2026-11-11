@@ -1,3 +1,4 @@
+import { roundCurrency, subtractMoney } from "@beautonomi/utils";
 import { useMemo } from "react";
 import { usePaycloudFeatureEnabled } from "@/hooks/usePaycloudFeatureEnabled";
 import {
@@ -63,12 +64,12 @@ export function computePaycloudBookingChargeAmount(params: {
     configuredDeposit > 0 &&
     totalPaid + 0.01 < configuredDeposit &&
     unpaidAdditional <= 0.01
-      ? Math.min(configuredDeposit - totalPaid, fullOutstanding)
+      ? Math.min(subtractMoney(configuredDeposit, totalPaid), fullOutstanding)
       : null;
 
   const depositAmount =
     depositStillDue != null && depositStillDue > 0.01
-      ? Math.round(depositStillDue * 100) / 100
+      ? roundCurrency(depositStillDue)
       : null;
 
   const chargeAmount =

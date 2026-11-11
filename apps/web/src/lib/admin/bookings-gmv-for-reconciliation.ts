@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
+import { subtractMoney, addMoney, roundCurrency } from "@beautonomi/utils";
 
 export type BookingsGmvReconciliationResult = {
   /** Sum of total_amount for paid/partially_paid confirmed/completed bookings. */
@@ -43,7 +44,7 @@ export async function computeAlignedBookingsGmv(
   }
 
   const grossBookingsGmv = bookingRows.reduce(
-    (s, row) => s + Number((row as { total_amount?: number }).total_amount ?? 0),
+    (s, row) => addMoney(s, Number((row as { total_amount?: number }).total_amount ?? 0)),
     0,
   );
 
@@ -72,15 +73,15 @@ export async function computeAlignedBookingsGmv(
         typeof pd.additional_charge_id === "string" &&
         pd.additional_charge_id.length > 0;
       if (!isWalkIn) return s;
-      return s + Number((row as { amount?: number }).amount ?? 0);
+      return addMoney(s, Number((row as { amount?: number }).amount ?? 0));
     }, 0);
   }
 
-  const alignedBookingsGmv = Math.max(0, grossBookingsGmv - walkInAddOnDeduction);
+  const alignedBookingsGmv = Math.max(0, subtractMoney(grossBookingsGmv, walkInAddOnDeduction));
 
   return {
-    grossBookingsGmv: Math.round(grossBookingsGmv * 100) / 100,
-    walkInAddOnDeduction: Math.round(walkInAddOnDeduction * 100) / 100,
-    alignedBookingsGmv: Math.round(alignedBookingsGmv * 100) / 100,
+    grossBookingsGmv: roundCurrency(grossBookingsGmv),
+    walkInAddOnDeduction: roundCurrency(walkInAddOnDeduction),
+    alignedBookingsGmv: roundCurrency(alignedBookingsGmv),
   };
 }

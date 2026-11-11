@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
@@ -90,25 +91,25 @@ export async function GET(request: NextRequest) {
       .gt("balance", 0);
 
     const totalSalesValue = (salesTransactions || []).reduce(
-      (sum, t) => sum + Number(t.amount || 0),
+      (sum, t) => addMoney(sum, Number(t.amount || 0)),
       0
     );
     const totalSalesNet = (salesTransactions || []).reduce(
-      (sum, t) => sum + Number(t.net || 0),
+      (sum, t) => addMoney(sum, Number(t.net || 0)),
       0
     );
     const totalSold = (orders || []).length;
     const totalRedemptionCount = (redemptions || []).length;
     const totalRedemptionValue = (redemptions || []).reduce(
-      (sum, r) => sum + Number(r.amount || 0),
+      (sum, r) => addMoney(sum, Number(r.amount || 0)),
       0
     );
     const outstandingLiability = (activeGiftCards || []).reduce(
-      (sum, g) => sum + Number(g.balance || 0),
+      (sum, g) => addMoney(sum, Number(g.balance || 0)),
       0
     );
     const totalIssued = (activeGiftCards || []).reduce(
-      (sum, g) => sum + Number(g.initial_balance || 0),
+      (sum, g) => addMoney(sum, Number(g.initial_balance || 0)),
       0
     );
     const activeCards = (activeGiftCards || []).length;
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
       if (!t.created_at) return;
       const date = new Date(t.created_at).toISOString().split("T")[0];
       if (!salesByDayMap[date]) salesByDayMap[date] = { sales: 0, count: 0 };
-      salesByDayMap[date].sales += Number(t.amount || 0);
+      salesByDayMap[date].sales = addMoney(salesByDayMap[date].sales, Number(t.amount || 0));
       salesByDayMap[date].count += 1;
     });
     const salesByDay = Object.entries(salesByDayMap)
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
       if (!stamp) return;
       const date = new Date(stamp).toISOString().split("T")[0];
       if (!redemptionsByDayMap[date]) redemptionsByDayMap[date] = { value: 0, count: 0 };
-      redemptionsByDayMap[date].value += Number(r.amount || 0);
+      redemptionsByDayMap[date].value = addMoney(redemptionsByDayMap[date].value, Number(r.amount || 0));
       redemptionsByDayMap[date].count += 1;
     });
     const redemptionsByDay = Object.entries(redemptionsByDayMap)

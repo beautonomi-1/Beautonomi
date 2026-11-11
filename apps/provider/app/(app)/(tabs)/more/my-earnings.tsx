@@ -2,6 +2,7 @@
  * Native My Earnings – pay stubs and earnings history for staff.
  * Full parity with web: list of pay stubs, expand for details.
  */
+import { addMoney } from "@beautonomi/utils";
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { useRouter, Redirect } from "expo-router";
@@ -129,9 +130,7 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
           payStubs.map((stub) => {
             const isExpanded = expandedId === stub.pay_run_id;
             const deductions =
-              Number(stub.manual_deductions) +
-              Number(stub.tax_deduction) +
-              Number(stub.uif_contribution);
+              addMoney(addMoney(Number(stub.manual_deductions), Number(stub.tax_deduction)), Number(stub.uif_contribution));
 
             return (
               <View

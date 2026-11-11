@@ -4,6 +4,8 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, errorResponse,
 import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
+import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
+import { getProviderStaffIdForUser } from "@/lib/auth/provider-team-roster-access";
 
 type StaffTimeCardRow = {
   id: string;
@@ -36,15 +38,28 @@ export async function GET(request: NextRequest) {
     }
 
     // Build query
+    const canSeeAll =
+      user.role === "superadmin" ||
+      (await isProviderOwner(user.id, request)) ||
+      (await hasPermission(user.id, "manage_team", undefined, request));
+    let ownStaffId: string | null = null;
+    if (!canSeeAll) {
+      ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+      if (!ownStaffId) return successResponse([]);
+    }
+
     let query = supabase
       .from("staff_time_cards")
       .select(`
         *,
-        staff:staff_id(id, name, email)
+        staff:staff_id(id, name)
       `)
       .eq("provider_id", providerId)
       .order("date", { ascending: false })
       .order("clock_in_time", { ascending: false });
+    if (ownStaffId) {
+      query = query.eq("staff_id", ownStaffId);
+    }
 
     if (dateFrom) {
       query = query.gte("date", dateFrom);

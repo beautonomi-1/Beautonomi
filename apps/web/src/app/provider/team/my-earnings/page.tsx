@@ -1,5 +1,7 @@
 "use client";
 
+import { addMoney } from "@beautonomi/utils";
+
 import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -189,9 +191,7 @@ export default function MyEarningsPage() {
                       <span>{t("web.provider.pages.team/my-earnings.deductions")}</span>
                       <span>
                         -{fmtMoney(
-                          Number(stub.manual_deductions) +
-                          Number(stub.tax_deduction) +
-                          Number(stub.uif_contribution)
+                          addMoney(addMoney(Number(stub.manual_deductions), Number(stub.tax_deduction)), Number(stub.uif_contribution))
                         )}
                       </span>
                     </div>

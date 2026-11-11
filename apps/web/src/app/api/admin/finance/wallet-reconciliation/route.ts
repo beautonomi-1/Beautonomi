@@ -5,6 +5,7 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
 import { WALLET_BANK_REFUND_TX_LABELS } from "@/lib/wallet-bank-refunds/labels";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 interface WalletReconciliationRow {
   user_id: string;
@@ -87,8 +88,8 @@ function buildReconciliationRow(
     user_id: w.user_id,
     wallet_id: w.id,
     wallet_balance: storedBalance,
-    transaction_sum: Number(computedSum.toFixed(2)),
-    difference: Number(signedDiff.toFixed(2)),
+    transaction_sum: roundCurrency(computedSum, w.currency ?? "ZAR"),
+    difference: roundCurrency(signedDiff, w.currency ?? "ZAR"),
     currency: w.currency ?? "ZAR",
     user_email: u?.email ?? null,
     user_full_name: u?.full_name ?? null,
@@ -227,6 +228,7 @@ export async function GET(request: NextRequest) {
     // Sum wallet_transactions per wallet_id in chunks.
     // wallet_transactions uses `type` ('credit'|'debit') with positive `amount`.
     const chunkSize = 200;
+    const currencyByWallet = new Map(walletRows.map((w) => [w.id, w.currency ?? "ZAR"]));
     const txSumMap = new Map<string, number>();
     for (let i = 0; i < walletIds.length; i += chunkSize) {
       const chunk = walletIds.slice(i, i + chunkSize);
@@ -237,8 +239,12 @@ export async function GET(request: NextRequest) {
 
       for (const tx of (txRows ?? []) as { wallet_id: string; type?: string; amount?: number }[]) {
         const amt = Number(tx.amount ?? 0);
-        const signed = tx.type === "debit" ? -amt : amt;
-        txSumMap.set(tx.wallet_id, (txSumMap.get(tx.wallet_id) ?? 0) + signed);
+        const currency = currencyByWallet.get(tx.wallet_id) ?? "ZAR";
+        const prev = txSumMap.get(tx.wallet_id) ?? 0;
+        txSumMap.set(
+          tx.wallet_id,
+          tx.type === "debit" ? subtractMoney(prev, amt, currency) : addMoney(prev, amt, currency),
+        );
       }
     }
 
@@ -248,9 +254,10 @@ export async function GET(request: NextRequest) {
     const TOLERANCE = 0.01;
 
     for (const w of walletRows) {
-      const storedBalance = Number(w.balance ?? 0);
-      const computedSum = txSumMap.get(w.id) ?? 0;
-      const signedDiff = storedBalance - computedSum;
+      const currency = w.currency ?? "ZAR";
+      const storedBalance = roundCurrency(Number(w.balance ?? 0), currency);
+      const computedSum = roundCurrency(txSumMap.get(w.id) ?? 0, currency);
+      const signedDiff = subtractMoney(storedBalance, computedSum, currency);
       const row = buildReconciliationRow(w, computedSum, storedBalance, signedDiff, userMap, providerMap);
       checked_wallets.push(row);
       if (Math.abs(signedDiff) > TOLERANCE) {
@@ -301,7 +308,7 @@ export async function PATCH(request: NextRequest) {
 
     const { data: wallet, error: wErr } = await supabase
       .from("user_wallets")
-      .select("id, user_id, balance")
+      .select("id, user_id, balance, currency")
       .eq("id", walletId)
       .single();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -331,12 +338,16 @@ export async function PATCH(request: NextRequest) {
       .select("type, amount")
       .eq("wallet_id", walletId);
 
+    const currency = (wallet as { currency?: string }).currency ?? "ZAR";
     let computedBalance = 0;
     for (const tx of (txRows ?? []) as { type?: string; amount?: number }[]) {
       const amt = Number(tx.amount ?? 0);
-      computedBalance += tx.type === "debit" ? -amt : amt;
+      computedBalance =
+        tx.type === "debit"
+          ? subtractMoney(computedBalance, amt, currency)
+          : addMoney(computedBalance, amt, currency);
     }
-    computedBalance = Math.max(0, Number(computedBalance.toFixed(2)));
+    computedBalance = Math.max(0, roundCurrency(computedBalance, currency));
 
     const { error: updateErr } = await supabase
       .from("user_wallets")
@@ -347,7 +358,7 @@ export async function PATCH(request: NextRequest) {
 
     return successResponse({
       wallet_id: walletId,
-      previous_balance: Number((wallet as { balance?: number }).balance ?? 0),
+      previous_balance: roundCurrency(Number((wallet as { balance?: number }).balance ?? 0), currency),
       corrected_balance: computedBalance,
     });
   } catch (error) {

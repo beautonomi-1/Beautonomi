@@ -5,7 +5,7 @@
 
 import { format as formatDate } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
-import { buildZonedIsoForWallClock } from "@beautonomi/utils";
+import { buildZonedIsoForWallClock, addMoney } from "@beautonomi/utils";
 import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -1252,7 +1252,7 @@ export class ProviderApiClient implements ProviderApi {
       // Price changes
       if (data.price !== undefined) {
         updateData.subtotal = data.price;
-        updateData.total_amount = data.price + (data.travel_fee || 0);
+        updateData.total_amount = addMoney(data.price, data.travel_fee || 0);
       }
       
       // Build service_customization object safely
@@ -1309,7 +1309,7 @@ export class ProviderApiClient implements ProviderApi {
         updateData.travel_fee = data.travel_fee;
         // Recalculate total if we have a subtotal
         if (updateData.subtotal !== undefined) {
-          updateData.total_amount = updateData.subtotal + data.travel_fee;
+          updateData.total_amount = addMoney(updateData.subtotal, data.travel_fee);
         }
       }
       

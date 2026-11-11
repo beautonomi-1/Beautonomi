@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   loadPublishedRuleSets,
@@ -52,7 +53,7 @@ async function loadYtdTaxableByStaff(
       (row as { taxable_income?: number | null }).taxable_income != null
         ? Number((row as { taxable_income?: number }).taxable_income)
         : Math.max(0, Number((row as { gross_pay?: number }).gross_pay ?? 0));
-    out.set(sid, (out.get(sid) ?? 0) + taxable);
+    out.set(sid, addMoney(out.get(sid) ?? 0, taxable));
   }
   return out;
 }
@@ -135,8 +136,8 @@ export async function applyStatutoryToPayRunItems(
     let uif = 0;
     let taxableIncome: number | undefined;
     for (const line of statutory.lines) {
-      if (line.code.startsWith("paye")) tax += line.amount;
-      if (line.code.startsWith("uif")) uif += line.amount;
+      if (line.code.startsWith("paye")) tax = addMoney(tax, line.amount);
+      if (line.code.startsWith("uif")) uif = addMoney(uif, line.amount);
       if (line.code === "taxable_income") taxableIncome = line.amount;
     }
     if (taxableIncome == null) {

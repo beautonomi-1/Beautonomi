@@ -1,6 +1,8 @@
+import { addMoney } from "@beautonomi/utils";
 import { SupabaseClient } from "@supabase/supabase-js";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import { handleApiError } from "@/lib/supabase/api-helpers";
+import { providerVatSnapshotColumns } from "@/lib/tax/resolve-provider-vat";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
@@ -18,9 +20,9 @@ export function discountAmountForBookingRpcInsert(v: {
   loyaltyDiscountAmount: number;
   loyaltyPointsRedeemed: number;
 }): number {
-  return (
-    v.packageDiscountAmount +
-    (v.loyaltyPointsRedeemed > 0 ? v.loyaltyDiscountAmount : 0)
+  return addMoney(
+    v.packageDiscountAmount,
+    v.loyaltyPointsRedeemed > 0 ? v.loyaltyDiscountAmount : 0,
   );
 }
 
@@ -61,7 +63,7 @@ export async function createBookingRecord(
      * was post-package while `discount_amount` ALSO carried the package amount, which
      * double-subtracted the package discount on every reconciliation surface.
      */
-    subtotal: v.subtotal + v.packageDiscountAmount,
+    subtotal: addMoney(v.subtotal, v.packageDiscountAmount),
     travel_fee: v.travelFee,
     platform_fee_config_id: v.serviceFeeConfigId,
     platform_fee_percentage: v.serviceFeePercentage,
@@ -75,6 +77,7 @@ export async function createBookingRecord(
     tip_amount: v.tipAmount,
     tax_amount: v.taxAmount,
     tax_rate: v.taxRate ?? null,
+    ...providerVatSnapshotColumns(v.providerVat),
     // Package/manual catalog discount only; promo is promotion_discount_amount.
     // Loyalty is folded in for RPC insert so validate_booking_total balances; split after redeem.
     discount_amount: discountAmountForBookingRpcInsert({
@@ -209,8 +212,10 @@ export async function createBookingRecord(
     );
   }
 
-  // At-home columns not included in create_booking_with_locking() INSERT (see migration 187 + RPC).
-  const atHomePatch: Record<string, unknown> = {};
+  // At-home / ads columns are still outside the RPC INSERT list (10143 persists VAT).
+  const atHomePatch: Record<string, unknown> = {
+    ...providerVatSnapshotColumns(v.providerVat),
+  };
   if (draft.location_type === "at_home" && draft.address) {
     const a = draft.address;
     atHomePatch.apartment_unit = a.apartment_unit ?? null;
@@ -361,7 +366,7 @@ export async function createBookingRecord(
 
       const primaryServiceTotal = primaryServiceIds.reduce((sum: number, id: string) => {
         const svc = servicesMap.get(id);
-        return sum + (svc ? Number(svc.price) : 0);
+        return addMoney(sum, svc ? Number(svc.price) : 0);
       }, 0);
       const primaryDurationMinutes = primaryServiceIds.reduce((sum: number, id: string) => {
         const svc = servicesMap.get(id);
@@ -396,7 +401,7 @@ export async function createBookingRecord(
             assigned.filter((a) => !a.isPrimary)[guestIdx]?.id;
           const guestPrice = guestServiceIds.reduce((sum: number, id: string) => {
             const svc = servicesMap.get(id);
-            return sum + (svc ? Number(svc.price) : 0);
+            return addMoney(sum, svc ? Number(svc.price) : 0);
           }, 0);
           const guestDuration = guestServiceIds.reduce((sum: number, id: string) => {
             const svc = servicesMap.get(id);

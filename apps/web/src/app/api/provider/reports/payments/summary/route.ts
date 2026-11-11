@@ -13,6 +13,7 @@ import {
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 import { providerNetAfterRefunds } from "@/lib/reports/provider-revenue-semantics";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { subtractMoney, addMoney, multiplyMoney } from "@beautonomi/utils";
 
 export const maxDuration = 60;
 
@@ -66,15 +67,15 @@ function computeCustomerFundsSettledFromLedger(
     if (!r.booking_id) continue;
     const cur = map.get(r.booking_id) ?? { payment: 0, wallet: 0, gift: 0, additional: 0 };
     const amt = Number(r.amount ?? 0);
-    if (r.transaction_type === "payment") cur.payment += amt;
-    else if (r.transaction_type === "wallet_payment") cur.wallet += amt;
-    else if (r.transaction_type === "gift_card_payment") cur.gift += amt;
-    else if (r.transaction_type === "additional_charge_payment") cur.additional += amt;
+    if (r.transaction_type === "payment") cur.payment = addMoney(cur.payment, amt);
+    else if (r.transaction_type === "wallet_payment") cur.wallet = addMoney(cur.wallet, amt);
+    else if (r.transaction_type === "gift_card_payment") cur.gift = addMoney(cur.gift, amt);
+    else if (r.transaction_type === "additional_charge_payment") cur.additional = addMoney(cur.additional, amt);
     map.set(r.booking_id, cur);
   }
   let total = 0;
   for (const [bid, parts] of map) {
-    total += sumBookingCustomerFunds(parts, bookingIdsWithGatewayCardCapture.has(bid));
+    total = addMoney(total, sumBookingCustomerFunds(parts, bookingIdsWithGatewayCardCapture.has(bid)));
   }
   for (const r of financeRows) {
     if (r.booking_id) continue;
@@ -85,7 +86,7 @@ function computeCustomerFundsSettledFromLedger(
       r.transaction_type === "gift_card_payment" ||
       r.transaction_type === "additional_charge_payment"
     ) {
-      total += amt;
+      total = addMoney(total, amt);
     }
   }
   return total;
@@ -202,21 +203,21 @@ export async function GET(request: NextRequest) {
     const rows = (bookings ?? []) as BookingRow[];
 
     // GMV = total booking value (all non-cancelled bookings regardless of payment status)
-    const gmv = rows.reduce((s, b) => s + Number(b.total_amount ?? 0), 0);
+    const gmv = rows.reduce((s, b) => addMoney(s, Number(b.total_amount ?? 0)), 0);
 
     // Raw ledger-type sums (audit / reconciliation — not always additive; see settledLedgerAmount).
     const totalPaidFromGateway = financeRows
       .filter((r) => r.transaction_type === "payment")
-      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
     const totalWalletApplied = financeRows
       .filter((r) => r.transaction_type === "wallet_payment")
-      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
     const totalGiftCardApplied = financeRows
       .filter((r) => r.transaction_type === "gift_card_payment")
-      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
     const totalAdditionalChargePayments = financeRows
       .filter((r) => r.transaction_type === "additional_charge_payment")
-      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
 
     const settledLedgerAmount = computeCustomerFundsSettledFromLedger(
       financeRows,
@@ -230,11 +231,11 @@ export async function GET(request: NextRequest) {
       if (!byMethod[method]) byMethod[method] = { count: 0, amount: 0 };
       const net = Math.max(
         0,
-        Number(pt.amount ?? 0) - Number(pt.refund_amount ?? 0),
+        subtractMoney(Number(pt.amount ?? 0), Number(pt.refund_amount ?? 0)),
       );
       if (net <= 0) return;
       byMethod[method].count += 1;
-      byMethod[method].amount += net;
+      byMethod[method].amount = addMoney(byMethod[method].amount, net);
     });
     // Booking.wallet_amount: split Paystack+wallet has no separate PT row for wallet — add from booking.
     // Wallet/gift-only settlements already have a payment_transactions row (internal ref); do not add twice.
@@ -255,10 +256,10 @@ export async function GET(request: NextRequest) {
         if (Number(b.total_paid ?? 0) === 0) {
           byMethod["wallet"].count += 1;
         }
-        byMethod["wallet"].amount += Number(b.wallet_amount ?? 0);
+        byMethod["wallet"].amount = addMoney(byMethod["wallet"].amount, Number(b.wallet_amount ?? 0));
       });
     }
-    const customerPaymentsByMethodTotal = Object.values(byMethod).reduce((sum, d) => sum + d.amount, 0);
+    const customerPaymentsByMethodTotal = Object.values(byMethod).reduce((sum, d) => addMoney(sum, d.amount), 0);
     const paymentsByMethod = Object.entries(byMethod)
       .map(([method, d]) => ({
         method,
@@ -274,7 +275,7 @@ export async function GET(request: NextRequest) {
       const st = b.payment_status || "unknown";
       if (!byStatus[st]) byStatus[st] = { count: 0, amount: 0 };
       byStatus[st].count += 1;
-      byStatus[st].amount += Number(b.total_amount ?? 0);
+      byStatus[st].amount = addMoney(byStatus[st].amount, Number(b.total_amount ?? 0));
     });
     const paymentsByStatus = Object.entries(byStatus)
       .map(([status, d]) => ({ status, count: d.count, amount: d.amount }))
@@ -283,41 +284,41 @@ export async function GET(request: NextRequest) {
     // Provider earnings from ledger
     const providerEarnings = financeRows
       .filter((r) => r.transaction_type === "provider_earnings")
-      .reduce((s, r) => s + Number(r.net ?? r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
 
     const membershipProviderEarnings = financeRows
       .filter((r) => r.transaction_type === "membership_provider_earnings")
-      .reduce((s, r) => s + Number(r.net ?? r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
 
     // Platform Fee (platform revenue; legacy rows may still be transaction_type=service_fee)
     const serviceFeeCollected = financeRows
       .filter((r) => r.transaction_type === "platform_fee" || r.transaction_type === "service_fee")
-      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
 
     // Tips collected
     const tipsCollected = financeRows
       .filter((r) => r.transaction_type === "tip")
-      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
 
     // Travel fees collected
     const travelFeesCollected = financeRows
       .filter((r) => r.transaction_type === "travel_fee")
-      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
 
     // Tax collected
     const taxCollected = financeRows
       .filter((r) => r.transaction_type === "tax")
-      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
 
     // Cancellation fees retained (provider keeps the fee when customer cancels late)
     const cancellationFeesRetained = financeRows
       .filter((r) => r.transaction_type === "cancellation_fee")
-      .reduce((s, r) => s + Number(r.net ?? r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.net ?? r.amount ?? 0)), 0);
 
     // Promotion discounts given (reduce net revenue — helps track promo ROI)
     const promotionDiscountsGiven = financeRows
       .filter((r) => r.transaction_type === "promotion_discount")
-      .reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
 
     // Successful vs failed (from payment_transactions)
     const gatewayChargeCount = paymentTxRows.filter((pt) => isGatewayCardCaptureProvider(pt.provider)).length;
@@ -332,16 +333,16 @@ export async function GET(request: NextRequest) {
     // legs are excluded so providerNetActivity is not over-clawed.
     const refundedAmount = financeRows
       .filter((r) => r.transaction_type === "refund" && isProviderEarningsRefundComponent(r.refund_component))
-      .reduce((s, r) => s + Math.abs(Number(r.net ?? r.amount ?? 0)), 0);
+      .reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? r.amount ?? 0))), 0);
     const providerEarningsReversals = financeRows
       .filter((r) => r.transaction_type === "provider_earnings" && Number(r.net ?? r.amount ?? 0) < 0)
-      .reduce((s, r) => s + Math.abs(Number(r.net ?? r.amount ?? 0)), 0);
+      .reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? r.amount ?? 0))), 0);
     // Single source of truth: recognized provider revenue (incl. walk-in add-ons) net of
     // provider refund clawbacks. Keeps this report reconciled with the dashboard,
     // business overview and sales history. See provider-revenue-semantics.ts.
     const providerNetActivity = providerNetAfterRefunds(financeRows);
 
-    const averageTransactionValue = totalPayments > 0 ? gmv / totalPayments : 0;
+    const averageTransactionValue = totalPayments > 0 ? multiplyMoney(gmv, 1 / totalPayments) : 0;
     const averageBookedValueNonPending = averageTransactionValue;
     const refundRate = settledLedgerAmount > 0 ? (refundedAmount / settledLedgerAmount) * 100 : 0;
 
@@ -399,7 +400,7 @@ export async function GET(request: NextRequest) {
           for (const row of scopedBp) {
             if (!withLedger.has(row.booking_id)) {
               cashStylePaymentsWithoutLedgerCount += 1;
-              cashStylePaymentsWithoutLedgerAmount += Number(row.amount ?? 0);
+              cashStylePaymentsWithoutLedgerAmount = addMoney(cashStylePaymentsWithoutLedgerAmount, Number(row.amount ?? 0));
             }
           }
         }
@@ -446,12 +447,12 @@ export async function GET(request: NextRequest) {
             providerCollectedByMethodMap[method] = { count: 0, amount: 0 };
           }
           providerCollectedByMethodMap[method].count += 1;
-          providerCollectedByMethodMap[method].amount += Number(row.amount ?? 0);
+          providerCollectedByMethodMap[method].amount = addMoney(providerCollectedByMethodMap[method].amount, Number(row.amount ?? 0));
         }
       }
     }
     const providerCollectedTotal = Object.values(providerCollectedByMethodMap).reduce(
-      (sum, d) => sum + d.amount,
+      (sum, d) => addMoney(sum, d.amount),
       0,
     );
     const providerCollectedByMethod = Object.entries(providerCollectedByMethodMap)

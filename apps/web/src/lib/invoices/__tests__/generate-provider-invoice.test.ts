@@ -16,6 +16,9 @@ function makeSupabase(options: {
   lastInvoiceNumber?: string | null;
   /** Number of leading inserts that should fail with a unique violation. */
   invoiceNumberCollisions?: number;
+  ledgerRows?: Row[];
+  bookingPayments?: Row[];
+  taxRate?: number;
 }) {
   const inserted: Row[] = [];
   let collisionsLeft = options.invoiceNumberCollisions ?? 0;
@@ -39,7 +42,17 @@ function makeSupabase(options: {
         eq: () => chain,
         gte: () => chain,
         lte: () => chain,
+        in: async () => ({ data: options.bookings ?? [], error: null }),
         order: async () => ({ data: options.bookings ?? [], error: null }),
+      };
+      return chain;
+    }
+
+    if (table === "booking_payments") {
+      const chain: any = {
+        select: () => chain,
+        in: () => chain,
+        eq: async () => ({ data: options.bookingPayments ?? [], error: null }),
       };
       return chain;
     }
@@ -50,7 +63,13 @@ function makeSupabase(options: {
         eq: () => chain,
         limit: () => chain,
         single: async () => ({ data: null, error: null }),
-        maybeSingle: async () => ({ data: null, error: null }),
+        maybeSingle: async () => ({
+          data:
+            table === "platform_settings" && options.taxRate != null
+              ? { settings: { taxes: { default_tax_rate: options.taxRate } } }
+              : null,
+          error: null,
+        }),
       };
       return chain;
     }
@@ -98,9 +117,11 @@ function makeSupabase(options: {
       const chain: any = {
         select: () => chain,
         eq: () => chain,
+        in: () => chain,
         gte: () => chain,
+        lt: () => chain,
         lte: () => chain,
-        order: async () => ({ data: [], error: null }),
+        order: async () => ({ data: options.ledgerRows ?? [], error: null }),
       };
       return chain;
     }
@@ -108,7 +129,10 @@ function makeSupabase(options: {
     throw new Error(`unexpected table ${table}`);
   });
 
-  return { supabase: { from } as unknown as SupabaseClient, inserted };
+  // `next_document_number` RPC not deployed → helper falls back to high-water read.
+  const rpc = vi.fn(async () => ({ data: null, error: { code: "42883", message: "function does not exist" } }));
+
+  return { supabase: { from, rpc } as unknown as SupabaseClient, inserted };
 }
 
 const PERIOD = { periodStart: "2026-08-01", periodEnd: "2026-08-31" };
@@ -199,6 +223,37 @@ describe("generateProviderInvoice", () => {
 
     // Sequence 5 and 6 collided; 7 is the first free slot.
     expect(inserted[0].invoice_number).toBe("INV-2026-000007");
+  });
+
+  it("populates line items from period ledger rows and computes totals from them (F2-42)", async () => {
+    const { supabase, inserted } = makeSupabase({
+      ledgerRows: [
+        { id: "ft-1", transaction_type: "platform_fee", amount: 15, booking_id: "b-cash", created_at: "2026-08-02T10:00:00Z", metadata: {} },
+        { id: "ft-2", transaction_type: "commission", amount: 30, booking_id: "b-cash", created_at: "2026-08-02T10:00:00Z", metadata: {} },
+        { id: "ft-3", transaction_type: "platform_fee", amount: 15, booking_id: "b-online", created_at: "2026-08-03T10:00:00Z", metadata: {} },
+      ],
+      bookingPayments: [
+        { booking_id: "b-cash", payment_provider: "cash" },
+        { booking_id: "b-online", payment_provider: "paystack" },
+      ],
+      bookings: [{ id: "b-cash", booking_number: "BK-7" }],
+      taxRate: 15,
+    });
+
+    const result = await generateProviderInvoice(supabase, {
+      providerId: "p1",
+      ...PERIOD,
+      invoiceType: "transaction_fee",
+      skipIfEmpty: true,
+    });
+
+    expect(result.skipped).toBeUndefined();
+    expect(inserted).toHaveLength(1);
+    const row = inserted[0]!;
+    expect((row.line_items as unknown[]).length).toBe(2);
+    expect(row.subtotal).toBe(45);
+    expect(row.tax_amount).toBe(6.75);
+    expect(row.total_amount).toBe(51.75);
   });
 
   it("rejects an unknown provider", async () => {

@@ -1,4 +1,5 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { addMoney } from "@beautonomi/utils";
 
 import { NextRequest } from "next/server";
 import {
@@ -479,7 +480,7 @@ export async function GET(request: NextRequest) {
       const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
         ? (booking as any).additional_charges
             .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-            .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+            .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
         : 0;
       const pendingWalletGift = await sumPendingWalletGiftBookingPayments(admin, bookingIdParam);
       const remaining = computeBookingOutstandingDisplay({

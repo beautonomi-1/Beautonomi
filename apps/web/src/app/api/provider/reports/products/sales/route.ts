@@ -1,3 +1,4 @@
+import { subtractMoney, multiplyMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -156,14 +157,14 @@ export async function GET(request: NextRequest) {
       const quantity = Number(bp.quantity || 0);
       const unitPrice = Number(bp.unit_price || 0);
       const totalPrice = Number(bp.total_price || 0);
-      const revenue = totalPrice > 0 ? totalPrice : quantity * unitPrice;
+      const revenue = totalPrice > 0 ? totalPrice : multiplyMoney(unitPrice, quantity);
       const supplyPrice = Number(bp.products?.supply_price || 0);
-      const cost = quantity * supplyPrice;
-      const profit = revenue - cost;
+      const cost = multiplyMoney(supplyPrice, quantity);
+      const profit = subtractMoney(revenue, cost);
 
       unitsFromBookings += quantity;
-      revenueFromBookings += revenue;
-      costFromBookings += cost;
+      revenueFromBookings = addMoney(revenueFromBookings, revenue);
+      costFromBookings = addMoney(costFromBookings, cost);
 
       const existing = productSalesMap.get(productId) || {
         productId,
@@ -175,10 +176,10 @@ export async function GET(request: NextRequest) {
         prices: [],
       };
       existing.quantitySold += quantity;
-      existing.revenue += revenue;
-      existing.cost += cost;
-      existing.profit += profit;
-      existing.prices.push(unitPrice || (quantity > 0 ? revenue / quantity : 0));
+      existing.revenue = addMoney(existing.revenue, revenue);
+      existing.cost = addMoney(existing.cost, cost);
+      existing.profit = addMoney(existing.profit, profit);
+      existing.prices.push(unitPrice || (quantity > 0 ? multiplyMoney(revenue, 1 / quantity) : 0));
       productSalesMap.set(productId, existing);
 
       const catExisting = categoryMap.get(category) || {
@@ -188,9 +189,9 @@ export async function GET(request: NextRequest) {
         profit: 0,
       };
       catExisting.quantitySold += quantity;
-      catExisting.revenue += revenue;
-      catExisting.cost += cost;
-      catExisting.profit += profit;
+      catExisting.revenue = addMoney(catExisting.revenue, revenue);
+      catExisting.cost = addMoney(catExisting.cost, cost);
+      catExisting.profit = addMoney(catExisting.profit, profit);
       categoryMap.set(category, catExisting);
     };
 
@@ -201,14 +202,14 @@ export async function GET(request: NextRequest) {
       const quantity = Number(item.quantity || 0);
       const unitPrice = Number(item.unit_price || 0);
       const totalPrice = Number(item.total_price || 0);
-      const revenue = totalPrice > 0 ? totalPrice : quantity * unitPrice;
+      const revenue = totalPrice > 0 ? totalPrice : multiplyMoney(unitPrice, quantity);
       const supplyPrice = Number(item.products?.supply_price || 0);
-      const cost = quantity * supplyPrice;
-      const profit = revenue - cost;
+      const cost = multiplyMoney(supplyPrice, quantity);
+      const profit = subtractMoney(revenue, cost);
 
       unitsFromOrders += quantity;
-      revenueFromOrders += revenue;
-      costFromOrders += cost;
+      revenueFromOrders = addMoney(revenueFromOrders, revenue);
+      costFromOrders = addMoney(costFromOrders, cost);
 
       const existing = productSalesMap.get(productId) || {
         productId,
@@ -220,10 +221,10 @@ export async function GET(request: NextRequest) {
         prices: [],
       };
       existing.quantitySold += quantity;
-      existing.revenue += revenue;
-      existing.cost += cost;
-      existing.profit += profit;
-      existing.prices.push(unitPrice || (quantity > 0 ? revenue / quantity : 0));
+      existing.revenue = addMoney(existing.revenue, revenue);
+      existing.cost = addMoney(existing.cost, cost);
+      existing.profit = addMoney(existing.profit, profit);
+      existing.prices.push(unitPrice || (quantity > 0 ? multiplyMoney(revenue, 1 / quantity) : 0));
       productSalesMap.set(productId, existing);
 
       const catExisting = categoryMap.get(category) || {
@@ -233,9 +234,9 @@ export async function GET(request: NextRequest) {
         profit: 0,
       };
       catExisting.quantitySold += quantity;
-      catExisting.revenue += revenue;
-      catExisting.cost += cost;
-      catExisting.profit += profit;
+      catExisting.revenue = addMoney(catExisting.revenue, revenue);
+      catExisting.cost = addMoney(catExisting.cost, cost);
+      catExisting.profit = addMoney(catExisting.profit, profit);
       categoryMap.set(category, catExisting);
     };
 
@@ -252,9 +253,9 @@ export async function GET(request: NextRequest) {
         const quantity = Number((item as { quantity?: number }).quantity || 0);
         const unitPrice = Number((item as { unit_price?: number }).unit_price || 0);
         const totalPrice = Number((item as { total_price?: number }).total_price || 0);
-        const lineRevenue = totalPrice > 0 ? totalPrice : quantity * unitPrice;
+        const lineRevenue = totalPrice > 0 ? totalPrice : multiplyMoney(unitPrice, quantity);
         orderUnits += quantity;
-        orderRevenue += lineRevenue;
+        orderRevenue = addMoney(orderRevenue, lineRevenue);
         pushOrderLine(item);
       });
       retailChannelOrders.push({
@@ -267,10 +268,10 @@ export async function GET(request: NextRequest) {
     const by_channel = computeOrderSourceBreakdown({ orders: retailChannelOrders });
 
     const totalProductsSold = Array.from(productSalesMap.values()).reduce((sum, p) => sum + p.quantitySold, 0);
-    const totalRevenue = Array.from(productSalesMap.values()).reduce((sum, p) => sum + p.revenue, 0);
-    const totalCost = Array.from(productSalesMap.values()).reduce((sum, p) => sum + p.cost, 0);
-    const totalProfit = totalRevenue - totalCost;
-    const averageRevenuePerUnitSold = totalProductsSold > 0 ? totalRevenue / totalProductsSold : 0;
+    const totalRevenue = Array.from(productSalesMap.values()).reduce((sum, p) => addMoney(sum, p.revenue), 0);
+    const totalCost = Array.from(productSalesMap.values()).reduce((sum, p) => addMoney(sum, p.cost), 0);
+    const totalProfit = subtractMoney(totalRevenue, totalCost);
+    const averageRevenuePerUnitSold = totalProductsSold > 0 ? multiplyMoney(totalRevenue, 1 / totalProductsSold) : 0;
 
     const topProducts = Array.from(productSalesMap.values())
       .map((product) => ({
@@ -282,7 +283,7 @@ export async function GET(request: NextRequest) {
         profit: product.profit,
         averagePrice:
           product.prices.length > 0
-            ? product.prices.reduce((sum, pr) => sum + pr, 0) / product.prices.length
+            ? multiplyMoney(product.prices.reduce((sum, pr) => addMoney(sum, pr), 0), 1 / product.prices.length)
             : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue)

@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 /**
  * Booking status: counts by lifecycle vs ledger net attributed to current status (facts banner).
  */
@@ -207,7 +208,7 @@ export function BookingStatusReportView({ data }: { data: unknown }) {
             {bsr("ledgerNetHint")}
           </Text>
           {(() => {
-            const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
+            const totalRevenue = rows.reduce((s, r) => addMoney(s, r.revenue), 0);
             return rows.map((r) => {
               const revPct = totalRevenue > 0 ? Math.min(100, Math.max(0, (r.revenue / totalRevenue) * 100)) : 0;
               const countPct = Math.min(100, Math.max(0, r.percentage));

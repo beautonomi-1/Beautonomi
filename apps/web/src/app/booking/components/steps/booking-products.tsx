@@ -11,7 +11,7 @@ import type { BookingState } from "../booking-flow";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTranslation } from "@beautonomi/i18n";
-import { formatMoney as formatMoneyUtil } from "@beautonomi/utils";
+import { addMoney, formatMoney as formatMoneyUtil, multiplyMoney } from "@beautonomi/utils";
 
 interface ProductVariant {
   id: string;
@@ -600,7 +600,7 @@ export default function BookingProducts({
                 <span>
                   {t("web.booking.products.qtyLine", { name: product.name, quantity: product.quantity })}
                 </span>
-                <span className="font-medium">{formatCurrency(product.price * product.quantity, product.currency)}</span>
+                <span className="font-medium">{formatCurrency(multiplyMoney(product.price, product.quantity), product.currency)}</span>
               </div>
             ))}
           </div>
@@ -608,7 +608,7 @@ export default function BookingProducts({
             <span>{t("booking.total")}</span>
             <span>
               {formatCurrency(
-                bookingState.selectedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0),
+                bookingState.selectedProducts.reduce((sum, p) => addMoney(sum, multiplyMoney(p.price, p.quantity)), 0),
                 bookingState.selectedProducts[0]?.currency || tenantCurrency,
               )}
             </span>

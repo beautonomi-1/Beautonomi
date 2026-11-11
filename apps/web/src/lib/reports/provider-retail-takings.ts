@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import { filterProductOrdersForLocation } from "@/lib/reports/provider-report-utils";
@@ -90,7 +91,7 @@ function sumInRange(
     if (!Number.isFinite(paidAt) || paidAt < fromMs || paidAt > toMs) continue;
     const taken = providerRetailTakingsAmount(row);
     if (taken <= 0) continue;
-    amount += taken;
+    amount = addMoney(amount, taken);
     count += 1;
   }
   return { amount, count };
@@ -132,7 +133,7 @@ export async function getProviderRetailTakingsSummary(
 
   const lifetime = orders.reduce(
     (acc, row) => {
-      acc.amount += Number(row.total_amount ?? 0);
+      acc.amount = addMoney(acc.amount, Number(row.total_amount ?? 0));
       acc.count += 1;
       return acc;
     },

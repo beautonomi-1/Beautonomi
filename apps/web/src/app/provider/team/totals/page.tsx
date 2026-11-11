@@ -1,4 +1,5 @@
 "use client";
+import { addMoney } from "@beautonomi/utils";
 
 import { useTranslation } from "@beautonomi/i18n";
 
@@ -170,10 +171,10 @@ export default function StaffTotalsPage() {
     return totals.reduce(
       (acc, total) => ({
         appointments: acc.appointments + total.appointments_count,
-        revenue: acc.revenue + total.revenue,
-        tips: acc.tips + total.tips,
+        revenue: addMoney(acc.revenue, total.revenue),
+        tips: addMoney(acc.tips, total.tips),
         hours: acc.hours + total.hours_worked,
-        commission: acc.commission + total.commission,
+        commission: addMoney(acc.commission, total.commission),
       }),
       { appointments: 0, revenue: 0, tips: 0, hours: 0, commission: 0 }
     );

@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 const mockCheckMarketingFeatureAccess = vi.fn();
 const mockPingMailchimpTransactional = vi.fn();
 const mockValidateEmailApiKeyForProvider = vi.fn();
@@ -19,6 +20,10 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
 vi.mock("@/lib/subscriptions/feature-access", () => ({
@@ -76,12 +81,16 @@ function putRequest(body: unknown) {
 }
 
 describe("PUT /api/provider/email-integration", () => {
+  const prevPayroll = process.env.PAYROLL_FIELD_ENCRYPTION_KEY;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.PAYROLL_FIELD_ENCRYPTION_KEY = "test-field-encryption-material";
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "u1", role: "provider_owner" } });
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
     mockCheckMarketingFeatureAccess.mockResolvedValue({ customIntegrations: true });
     mockGetSupabaseServer.mockResolvedValue(makeSupabase(null));
+    mockGetSupabaseAdmin.mockReturnValue(makeSupabase(null));
     mockValidateEmailApiKeyForProvider.mockImplementation((provider: string, key: string) => {
       if (provider === "sendgrid" && !key.startsWith("SG.")) return "Invalid SendGrid API key format. Should start with 'SG.'";
       if (provider === "mailchimp" && /^[a-f0-9]{32}-[a-z]{2}\d+$/i.test(key)) {
@@ -93,6 +102,11 @@ describe("PUT /api/provider/email-integration", () => {
       return null;
     });
     mockPingMailchimpTransactional.mockResolvedValue({ ok: true });
+  });
+
+  afterEach(() => {
+    if (prevPayroll === undefined) delete process.env.PAYROLL_FIELD_ENCRYPTION_KEY;
+    else process.env.PAYROLL_FIELD_ENCRYPTION_KEY = prevPayroll;
   });
 
   it("rejects Mailchimp Marketing API key shape on create", async () => {
@@ -113,13 +127,13 @@ describe("PUT /api/provider/email-integration", () => {
   });
 
   it("rejects switching provider with masked key", async () => {
-    mockGetSupabaseServer.mockResolvedValue(
-      makeSupabase({
-        id: "int-1",
-        provider_name: "sendgrid",
-        api_key: "SG.existing",
-      }),
-    );
+    const existing = makeSupabase({
+      id: "int-1",
+      provider_name: "sendgrid",
+      api_key: "SG.existing",
+    });
+    mockGetSupabaseServer.mockResolvedValue(existing);
+    mockGetSupabaseAdmin.mockReturnValue(existing);
     const { PUT } = await import("../route");
     const res = await PUT(
       putRequest({
@@ -135,13 +149,13 @@ describe("PUT /api/provider/email-integration", () => {
   });
 
   it("rejects resolved SendGrid key when provider is mailchimp", async () => {
-    mockGetSupabaseServer.mockResolvedValue(
-      makeSupabase({
-        id: "int-1",
-        provider_name: "mailchimp",
-        api_key: "SG.wrong-for-mailchimp",
-      }),
-    );
+    const existing = makeSupabase({
+      id: "int-1",
+      provider_name: "mailchimp",
+      api_key: "SG.wrong-for-mailchimp",
+    });
+    mockGetSupabaseServer.mockResolvedValue(existing);
+    mockGetSupabaseAdmin.mockReturnValue(existing);
     const { PUT } = await import("../route");
     const res = await PUT(
       putRequest({
@@ -171,13 +185,13 @@ describe("PUT /api/provider/email-integration", () => {
   });
 
   it("skips Mandrill ping when key is masked and provider unchanged", async () => {
-    mockGetSupabaseServer.mockResolvedValue(
-      makeSupabase({
-        id: "int-1",
-        provider_name: "mailchimp",
-        api_key: "mandrill-stored",
-      }),
-    );
+    const existing = makeSupabase({
+      id: "int-1",
+      provider_name: "mailchimp",
+      api_key: "mandrill-stored",
+    });
+    mockGetSupabaseServer.mockResolvedValue(existing);
+    mockGetSupabaseAdmin.mockReturnValue(existing);
     const { PUT } = await import("../route");
     const res = await PUT(
       putRequest({

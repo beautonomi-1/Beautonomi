@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@supabase/supabase-js";
 import {
   applyPosProductStockDecrementsReversible,
@@ -27,6 +28,12 @@ import {
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { isBookingCollectionSale } from "@/lib/reports/provider-sales-history";
+import {
+  clampSaleDiscount,
+  clampSaleTip,
+  deriveSalePaymentStatus,
+  normalizeSaleItemsServerSide,
+} from "@/lib/provider-sales/normalize-sale-input";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   captureSaleGiftCard,
@@ -42,7 +49,7 @@ import {
   loadDistinctSaleCustomerIdsForProvider,
   MAX_INLINE_MATCH_IDS,
 } from "@/lib/provider/client-contact-search";
-import { computeVat } from "@beautonomi/utils";
+import { subtractMoney, addMoney, computeVat } from "@beautonomi/utils";
 import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -120,6 +127,9 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -160,6 +170,8 @@ export async function GET(request: NextRequest) {
         supabaseAdmin,
         saleCustomerIds,
         searchTerm,
+        [],
+        { nameOnly: !canViewClients },
       );
       customerIdsMatchingSearch.push(...matched);
     }
@@ -316,7 +328,7 @@ export async function GET(request: NextRequest) {
       if (giftPaid > 0.009) row.gift_card_amount = giftPaid;
     }
     const mergedCount = mergedSales.length;
-    const periodTotalMerged = mergedSales.reduce((sum, row) => sum + Number(row.total || 0), 0);
+    const periodTotalMerged = mergedSales.reduce((sum, row) => addMoney(sum, Number(row.total || 0)), 0);
     const totalPartial = (sales || []).length >= 5_000 || (walkInOrders || []).length >= 5_000;
     const totalPages = mergedCount ? Math.ceil(mergedCount / limit) : 1;
 
@@ -560,7 +572,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const resolvedPaymentStatus = payment_status || "completed";
     const normalizedPaymentMethod = normalizeSalePaymentMethodForDb(payment_method);
 
     if (normalizedPaymentMethod === "yoco") {
@@ -569,9 +580,35 @@ export async function POST(request: NextRequest) {
     }
 
     const bookingCollection = isBookingCollectionSale(notes);
+
+    // F3-06: never trust client money fields. Resolve unit prices from the
+    // catalogue (booking-collection sales carry booking-time line prices, so
+    // those keep the booking's prices), recompute the subtotal, clamp the
+    // discount/tip and derive the payment status server-side.
+    const normalizedSale = await normalizeSaleItemsServerSide(supabase, providerId, items, {
+      resolveCatalogPrices: !bookingCollection,
+    });
+    if (normalizedSale.ok === false) {
+      return handleApiError(new Error(normalizedSale.message), normalizedSale.code, 400);
+    }
+    const saleItemsInput = normalizedSale.items;
+    const serverSubtotal = normalizedSale.subtotal;
+    if (Number.isFinite(Number(subtotal)) && Math.abs(Number(subtotal) - serverSubtotal) > 0.009) {
+      console.warn(
+        `[provider/sales] client subtotal ${subtotal} differs from server subtotal ${serverSubtotal}; using server value`,
+      );
+    }
+    const serverDiscount = clampSaleDiscount(discount_amount, serverSubtotal);
+    const serverTip = clampSaleTip(tip_amount);
+    const hasSplitPayments =
+      Array.isArray(paymentLegsInput) && paymentLegsInput.length > 0;
+    const resolvedPaymentStatus = deriveSalePaymentStatus(payment_status, {
+      hasPaymentLegs: hasSplitPayments,
+    });
+
     const stockError = bookingCollection
       ? null
-      : await validatePosProductStock(supabase, providerId, items);
+      : await validatePosProductStock(supabase, providerId, saleItemsInput);
     if (stockError) {
       return handleApiError(
         new Error(stockError),
@@ -581,15 +618,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const hasSplitPayments =
-      Array.isArray(paymentLegsInput) && paymentLegsInput.length > 0;
     const hasGiftCard =
       Boolean(giftCardCodeInput?.trim()) || Number(giftCardAmountInput || 0) > 0;
-    const hasTip = Number(tip_amount || 0) > 0;
+    const hasTip = serverTip > 0;
 
     // Product-only POS sales → walk_in product_orders (Part I migration path).
     if (
-      isProductOnlyLegacySale(items) &&
+      isProductOnlyLegacySale(saleItemsInput) &&
       !bookingCollection &&
       !hasSplitPayments &&
       !hasGiftCard &&
@@ -612,15 +647,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const calculatedSubtotal = subtotal || items.reduce((sum: number, item: any) =>
-        sum + (item.unit_price || 0) * (item.quantity || 1), 0
-      );
-      const discountNum = Math.max(0, Number(discount_amount || 0));
-      const taxableSubtotal = Math.max(0, calculatedSubtotal - discountNum);
+      const calculatedSubtotal = serverSubtotal;
+      const discountNum = serverDiscount;
+      const taxableSubtotal = Math.max(0, subtractMoney(calculatedSubtotal, discountNum));
       const { taxAmount: calculatedTax, taxRatePercent: serverTaxRate, inclusive } =
         await computeProviderSaleTax(supabase, providerId, taxableSubtotal, "ZAR");
-      const tipNum = Number(tip_amount || 0);
-      const calculatedTotal = taxableSubtotal + (inclusive ? 0 : calculatedTax) + tipNum;
+      const tipNum = serverTip;
+      const calculatedTotal = addMoney(addMoney(taxableSubtotal, inclusive ? 0 : calculatedTax), tipNum);
 
       const { orderId, orderNumber } = await createWalkInOrderFromLegacySale({
         supabase,
@@ -630,11 +663,11 @@ export async function POST(request: NextRequest) {
         tenantId,
         locationId: location_id || null,
         customerId: customer_id || null,
-        items,
+        items: saleItemsInput,
         subtotal: calculatedSubtotal,
         taxRate: serverTaxRate,
         taxAmount: calculatedTax,
-        discountAmount: discount_amount || 0,
+        discountAmount: discountNum,
         totalAmount: calculatedTotal,
         paymentMethod: normalizedPaymentMethod,
         paymentStatus: resolvedPaymentStatus,
@@ -657,13 +690,13 @@ export async function POST(request: NextRequest) {
         ref_number: orderNumber,
         client_name: clientName,
         date: sale_date || new Date().toISOString(),
-        items: items.map((item: any, idx: number) => ({
+        items: saleItemsInput.map((item: any, idx: number) => ({
           id: `${orderId}-${idx}`,
           type: item.type || "product",
           name: item.name,
           quantity: item.quantity || 1,
           unit_price: Number(item.unit_price || 0),
-          total: Number(item.unit_price || 0) * (item.quantity || 1),
+          total: Number(item.total_price || 0),
           item_id: item.item_id ?? null,
           product_variant_id: item.product_variant_id ?? null,
         })),
@@ -679,16 +712,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Calculate totals if not provided
-    const calculatedSubtotal = subtotal || items.reduce((sum: number, item: any) => 
-      sum + (item.unit_price || 0) * (item.quantity || 1), 0
-    );
-    const discountNum = Math.max(0, Number(discount_amount || 0));
-    const taxableForVat = Math.max(0, calculatedSubtotal - discountNum);
+    // Totals are always server-computed (F3-06).
+    const calculatedSubtotal = serverSubtotal;
+    const discountNum = serverDiscount;
+    const taxableForVat = Math.max(0, subtractMoney(calculatedSubtotal, discountNum));
     const { taxAmount: calculatedTax, taxRatePercent: serverTaxRate, inclusive } =
       await computeProviderSaleTax(supabase, providerId, taxableForVat, "ZAR");
-    const tipNum = Number(tip_amount || 0);
-    const serverGross = taxableForVat + (inclusive ? 0 : calculatedTax) + tipNum;
+    const tipNum = serverTip;
+    const serverGross = addMoney(addMoney(taxableForVat, inclusive ? 0 : calculatedTax), tipNum);
     // Gift-card legs are payments against this gross. A client total that adds
     // inclusive VAT, or subtracts the gift card, is not the amount owed.
     const calculatedTotal = serverGross;
@@ -705,7 +736,7 @@ export async function POST(request: NextRequest) {
         subtotal: calculatedSubtotal,
         tax_rate: serverTaxRate,
         tax_amount: calculatedTax,
-        discount_amount: discount_amount || 0,
+        discount_amount: discountNum,
         total_amount: calculatedTotal,
         payment_method: normalizedPaymentMethod,
         payment_status: resolvedPaymentStatus,
@@ -716,7 +747,7 @@ export async function POST(request: NextRequest) {
           if (service_location_type === 'house-call' && house_call_address) {
             parts.push(`House Call Address: ${house_call_address.address_line1}, ${house_call_address.city}${house_call_address.postal_code ? `, ${house_call_address.postal_code}` : ''}`);
           }
-          if (tip_amount && tip_amount > 0) parts.push(`Tip: ${tip_amount}`);
+          if (tipNum > 0) parts.push(`Tip: ${tipNum}`);
           if (is_walk_in) parts.push('Walk-in');
           return parts.length > 0 ? parts.join('\n') : null;
         })(),
@@ -730,15 +761,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Create sale items
-    const saleItems = items.map((item: any) => ({
+    const saleItems = saleItemsInput.map((item: any) => ({
       sale_id: sale.id,
       item_type: item.type || 'product',
       item_id: item.item_id || null,
       product_variant_id: item.product_variant_id || null,
       item_name: item.name,
-      quantity: item.quantity || 1,
-      unit_price: item.unit_price || 0,
-      total_price: (item.unit_price || 0) * (item.quantity || 1),
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      total_price: item.total_price,
     }));
 
     const { error: itemsError } = await supabase
@@ -808,7 +839,7 @@ export async function POST(request: NextRequest) {
 
       if (paymentLegs && paymentLegs.length > 0) {
         const legSum = paymentLegs.reduce(
-          (sum: number, leg: { amount?: unknown }) => sum + Number(leg.amount ?? 0),
+          (sum: number, leg: { amount?: unknown }) => addMoney(sum, Number(leg.amount ?? 0)),
           0,
         );
         if (Math.abs(legSum - calculatedTotal) > 0.02) {
@@ -852,7 +883,7 @@ export async function POST(request: NextRequest) {
         // sale void, so a later stock failure would keep the card money after
         // the sale row is deleted.
         try {
-          stockTaken = await applyPosProductStockDecrementsReversible(supabase, items);
+          stockTaken = await applyPosProductStockDecrementsReversible(supabase, saleItemsInput);
         } catch (stockErr) {
           await rollbackSaleWithGift(giftReserved);
           return handleApiError(

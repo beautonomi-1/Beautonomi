@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { buildSyntheticWalletGiftProviderId } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import { subtractMoney } from "@beautonomi/utils";
 
 export async function rollbackCollectibleSplitLeg(
   admin: SupabaseClient,
@@ -110,9 +111,9 @@ export async function rollbackCollectibleSplitLeg(
     await admin
       .from("bookings")
       .update({
-        wallet_amount: Math.max(0, Math.round((prevWallet - walletAmountToReverse) * 100) / 100),
+        wallet_amount: Math.max(0, subtractMoney(prevWallet, walletAmountToReverse)),
         gift_card_amount: giftRestoredOrCompensated
-          ? Math.max(0, Math.round((prevGift - giftCardAmountToReverse) * 100) / 100)
+          ? Math.max(0, subtractMoney(prevGift, giftCardAmountToReverse))
           : prevGift,
       })
       .eq("id", bookingId);

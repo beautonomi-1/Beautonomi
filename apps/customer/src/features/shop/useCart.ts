@@ -10,6 +10,7 @@ import {
   mergeGuestCartIntoServer,
 } from "@/lib/guest-cart";
 import type { CartItem } from "@/types/api";
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 
 function getCartCacheKey(userId: string, marketHost: string): string {
   const host = marketHost.trim().toLowerCase() || "default";
@@ -223,14 +224,14 @@ export function useCart() {
     > = {};
     for (const item of items) {
       itemCountAcc += item.quantity;
-      const line = lineUnit(item) * item.quantity;
-      subtotalAcc += line;
+      const line = multiplyMoney(lineUnit(item), item.quantity);
+      subtotalAcc = addMoney(subtotalAcc, line);
       const pid = item.provider?.id ?? "unknown";
       if (!grouped[pid]) {
         grouped[pid] = { provider: item.provider, items: [], subtotal: 0 };
       }
       grouped[pid].items.push(item);
-      grouped[pid].subtotal += line;
+      grouped[pid].subtotal = addMoney(grouped[pid].subtotal, line);
     }
     return { itemCount: itemCountAcc, subtotal: subtotalAcc, groupedByProvider: grouped };
   }, [items]);

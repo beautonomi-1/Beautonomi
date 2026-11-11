@@ -14,6 +14,7 @@ import {
   getProviderTimezoneAndTenant,
   parseOptionalAmount,
   parseOptionalLimit,
+  promotionValueError,
 } from "@/lib/promotions/provider-promotion-api";
 import {
   mapPromotionRowToProviderDto,
@@ -177,6 +178,12 @@ export async function PATCH(
         if (Number.isNaN(value)) {
           return badRequestResponse("Invalid numeric value for promotion");
         }
+        const nextType =
+          typeof updateData.type === "string"
+            ? String(updateData.type)
+            : String((row as { type?: string }).type ?? "");
+        const valueErr = promotionValueError(nextType, value);
+        if (valueErr) return badRequestResponse(valueErr);
         updateData.value = value;
       }
     }

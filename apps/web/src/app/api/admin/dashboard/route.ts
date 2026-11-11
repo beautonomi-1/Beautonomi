@@ -15,6 +15,7 @@ import {
   fetchLatestMarketplaceHealth,
 } from "@/lib/admin/marketplace-health-api";
 import { computeTakeRate, computeContributionMargin } from "@/lib/admin/marketplace-health";
+import { addMoney } from "@beautonomi/utils";
 
 /** Ledger window for “all-time” dashboard cards (avoids unbounded row fetch). */
 const LEDGER_TOTAL_MONTHS = 24;
@@ -38,7 +39,7 @@ async function sumWalletTopupsForTenant(
       console.warn("wallet_topups tenant sum failed:", error.message);
       return 0;
     }
-    return (data || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+    return (data || []).reduce((s, r) => addMoney(s, Number(r.amount || 0)), 0);
   } catch (e) {
     console.warn("wallet_topups sum failed:", e);
     return 0;
@@ -404,7 +405,7 @@ export async function GET(request: NextRequest) {
         provider_earnings: total.provider_earnings_net,
         cancellation_fees: total.cancellation_fees_retained,
         tips: total.tips_gross,
-        this_month: thisMonth.provider_earnings_net + thisMonth.tips_gross + thisMonth.cancellation_fees_retained,
+        this_month: addMoney(addMoney(thisMonth.provider_earnings_net, thisMonth.tips_gross), thisMonth.cancellation_fees_retained),
       },
 
       revenue_streams: {

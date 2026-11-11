@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import {
   resolveAgeBand,
+  ageBandForLocks,
   resolveAgeAssurancePolicy,
   readSafetySettingsStored,
   effectiveSafetySettings,
@@ -49,7 +50,9 @@ export async function requireSocialAccess(
   if (policy.socialAgeGateMode === "off") return;
 
   const supabase = await getSupabaseServer(request);
-  const { band, source } = await resolveAgeBand(userId, supabase);
+  const resolved = await resolveAgeBand(userId, supabase);
+  const band = ageBandForLocks(resolved);
+  const { source } = resolved;
 
   if (band === "under_13") {
     const msg = "You must be at least 13 years old to use this feature.";
@@ -112,7 +115,8 @@ export async function isRestrictedViewer(
 
   const tenantId = await resolveTenantIdWithZaFallback(request);
   const supabase = await getSupabaseServer(request);
-  const { band } = await resolveAgeBand(userId, supabase);
+  const resolved = await resolveAgeBand(userId, supabase);
+  const band = ageBandForLocks(resolved);
   const stored = await readSafetySettingsStored(userId, supabase);
   const effective = await effectiveSafetySettings(band, stored, tenantId);
 

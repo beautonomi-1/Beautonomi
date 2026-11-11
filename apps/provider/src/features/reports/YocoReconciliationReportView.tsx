@@ -5,13 +5,10 @@ import { useCallback } from "react";
 import { View, Text } from "react-native";
 import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
+import { fromMinorUnits } from "@beautonomi/utils";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { format } from "date-fns";
-
-function centsToMajor(cents: number): number {
-  return Number(cents ?? 0) / 100;
-}
 
 function isYocoReconciliationPayload(data: unknown): data is {
   payments: {
@@ -132,7 +129,7 @@ export function YocoReconciliationReportView({ data }: { data: unknown }) {
           </Text>
           <Text style={twStyle("mt-1 font-mono text-xs text-gray-800")}>{p.yoco_payment_id}</Text>
           <Text style={twStyle("mt-2 text-base font-semibold text-gray-900")}>
-            {formatCurrency(centsToMajor(p.amount), p.currency)}
+            {formatCurrency(fromMinorUnits(Number(p.amount ?? 0), p.currency), p.currency)}
           </Text>
           {p.link_kind === "booking" ? (
             <Text style={twStyle("mt-1 text-sm text-gray-700")}>

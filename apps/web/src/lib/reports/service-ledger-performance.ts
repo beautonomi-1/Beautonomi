@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { LEDGER_FULL_PROVIDER_NET_TYPES } from "@/lib/reports/constants";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { multiplyMoney, addMoney } from "@beautonomi/utils";
 
 export type ServiceLedgerRow = {
   offeringId: string;
@@ -87,7 +88,7 @@ export async function buildServiceLedgerPerformance(
     if (!services?.length) continue;
 
     const bookingRevenue = revenueByBooking.get(booking.id) || 0;
-    const totalServicePrice = services.reduce((sum, s) => sum + Number(s.price || 0), 0);
+    const totalServicePrice = services.reduce((sum, s) => addMoney(sum, Number(s.price || 0)), 0);
 
     for (const bs of services) {
       const offering = bs.offerings;
@@ -107,7 +108,7 @@ export async function buildServiceLedgerPerformance(
         totalServicePrice > 0
           ? Number(bs.price || 0) / totalServicePrice
           : 1 / services.length;
-      existing.revenue += bookingRevenue * proportion;
+      existing.revenue = addMoney(existing.revenue, multiplyMoney(bookingRevenue, proportion));
       serviceMap.set(offeringId, existing);
     }
   }

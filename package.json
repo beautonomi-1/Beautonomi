@@ -121,6 +121,8 @@
     "release:check:mobile": "pnpm exec turbo run typecheck lint --filter=customer --filter=provider && pnpm run parity:check && pnpm run audit:expo-doctor && pnpm run audit:mobile-gradle-resilience",
     "parity:check": "node tooling/parity/check-parity.mjs",
     "audit:routes": "node tooling/audit/scan-routes.mjs",
+    "check:migration-order": "node scripts/check-migration-order.mjs",
+    "test:db": "node supabase/tests/audit/run.mjs",
     "grc:seed": "pnpm --filter @beautonomi/grc-catalog build && node scripts/grc-seed.mjs",
     "audit:agents:discovery": "node scripts/agents/generate-discovery-inventories.mjs",
     "audit:tenant-admin": "node docs/scripts/check-admin-tenant-scope.mjs",
@@ -198,7 +200,9 @@
     "screenshots:android:all": "node tooling/screenshots/scripts/capture.mjs all",
     "screenshots:clean": "node tooling/screenshots/scripts/clean.mjs",
     "screenshots:setup": "node tooling/screenshots/scripts/setup-tools.mjs",
-    "screenshots:doctor": "node tooling/screenshots/scripts/doctor.mjs"
+    "screenshots:doctor": "node tooling/screenshots/scripts/doctor.mjs",
+    "e2e:maestro:provider-login": "node tooling/e2e/maestro/run.mjs provider.login-assert.yaml",
+    "e2e:maestro:customer-login": "node tooling/e2e/maestro/run.mjs customer.login-assert.yaml"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.104.1",

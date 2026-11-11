@@ -99,7 +99,7 @@ export async function bookShippingForOrder(
 ): Promise<BookShippingResult> {
   const admin = getSupabaseAdmin();
 
-  const { data: order, error } = await supabase
+  const { data: order, error } = await admin
     .from("product_orders")
     .select(`
       id,

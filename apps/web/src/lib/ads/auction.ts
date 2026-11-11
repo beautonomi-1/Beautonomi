@@ -5,6 +5,7 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { multiplyMoney, subtractMoney } from "@beautonomi/utils";
 import { createHash } from "crypto";
 
 export interface AuctionParams {
@@ -170,7 +171,7 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
       // Time-based: always eligible while within date range (already filtered above)
       if (excludeProviderIds.includes(c.provider_id)) continue;
       const targeting = (c.targeting && typeof c.targeting === "object") ? c.targeting : {};
-      const dailyRate = Number(c.budget) / Math.max(Number(c.duration_days ?? 1), 1);
+      const dailyRate = multiplyMoney(Number(c.budget), 1 / Math.max(Number(c.duration_days ?? 1), 1));
       eligible.push({
         id: c.id,
         provider_id: c.provider_id,
@@ -185,7 +186,7 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
       const count = impressionCountByCampaign[c.id] ?? 0;
       if (count >= Number(c.pack_impressions)) continue;
     } else {
-      const remaining = Number(c.budget) - Number(c.spent ?? 0);
+      const remaining = subtractMoney(Number(c.budget), Number(c.spent ?? 0));
       if (remaining <= 0) continue;
     }
     if (excludeProviderIds.includes(c.provider_id)) continue;
@@ -193,12 +194,12 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
     if (dailyBudget != null) {
       const todayImpressions = todayCountByCampaign[c.id] ?? 0;
       const costPerImp = c.pack_impressions != null
-        ? Number(c.budget) / Number(c.pack_impressions)
-        : Number(c.bid_cpc ?? 0) * costPerImpressionRatio;
-      if (todayImpressions * costPerImp >= dailyBudget) continue;
+        ? multiplyMoney(Number(c.budget), 1 / Number(c.pack_impressions))
+        : multiplyMoney(Number(c.bid_cpc ?? 0), costPerImpressionRatio);
+      if (multiplyMoney(costPerImp, todayImpressions) >= dailyBudget) continue;
     }
     const targeting = (c.targeting && typeof c.targeting === "object") ? c.targeting : {};
-    const effectiveBid = c.pack_impressions != null ? Number(c.budget) / Number(c.pack_impressions) : Number(c.bid_cpc ?? 0);
+    const effectiveBid = c.pack_impressions != null ? multiplyMoney(Number(c.budget), 1 / Number(c.pack_impressions)) : Number(c.bid_cpc ?? 0);
     eligible.push({
       id: c.id,
       provider_id: c.provider_id,

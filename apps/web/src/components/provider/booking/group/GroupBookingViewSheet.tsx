@@ -59,13 +59,13 @@ import {
 import { useTranslation } from "@beautonomi/i18n";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { manualCardCollectOptionLabel } from "@beautonomi/utils";
+import { subtractMoney, addMoney, manualCardCollectOptionLabel } from "@beautonomi/utils";
 
 function participantMaxRefundable(p: GroupBookingParticipant): number {
   const totalPaid = Number(p.total_paid ?? 0);
   const totalRefunded = Number(p.total_refunded ?? 0);
   const walletGift = Number(p.wallet_gift_coverage ?? 0);
-  return Math.max(0, Math.max(totalPaid, walletGift) - totalRefunded);
+  return Math.max(0, subtractMoney(Math.max(totalPaid, walletGift), totalRefunded));
 }
 
 const CardMachineCollectDialog = dynamic(
@@ -162,7 +162,7 @@ export function GroupBookingViewSheet({
   const refundableParticipants = participants
     .filter((p) => p.booking_id && participantMaxRefundable(p) > 0.01)
     .map((p) => ({ participant: p, amount: participantMaxRefundable(p) }));
-  const refundableTotal = refundableParticipants.reduce((s, r) => s + r.amount, 0);
+  const refundableTotal = refundableParticipants.reduce((s, r) => addMoney(s, r.amount), 0);
   const openTerminalPayments = booking?.open_terminal_payments ?? [];
   const entityInFlight = openTerminalPayments.length > 0;
   const firstOpenTerminal = openTerminalPayments[0];
@@ -617,7 +617,7 @@ export function GroupBookingViewSheet({
                             if (p.is_primary_contact || !share.share_status) return null;
                             const owed = Math.max(
                               0,
-                              Number(share.share_amount_due ?? 0) - Number(share.share_amount_paid ?? 0),
+                              subtractMoney(Number(share.share_amount_due ?? 0), Number(share.share_amount_paid ?? 0)),
                             );
                             return (
                               <p

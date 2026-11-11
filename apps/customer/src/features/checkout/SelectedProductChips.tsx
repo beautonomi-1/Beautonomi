@@ -1,6 +1,7 @@
 import { View, Text, ScrollView, TouchableOpacity, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
+import { multiplyMoney } from "@beautonomi/utils";
 import type { SelectedCheckoutProduct } from "@/lib/booking-checkout-products";
 
 type SelectedProductChipsProps = {
@@ -57,7 +58,7 @@ export function SelectedProductChips({
                 {item.name}
               </Text>
               <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 1 }}>
-                ×{item.quantity} · {formatCurrency(item.price * item.quantity, item.currency)}
+                ×{item.quantity} · {formatCurrency(multiplyMoney(item.price, item.quantity), item.currency)}
               </Text>
             </Pressable>
             <TouchableOpacity

@@ -5,7 +5,13 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { percentOf } from "@beautonomi/utils";
+import {
+  LAST_RESORT_CURRENCY,
+  addMoney,
+  multiplyMoney,
+  percentOf,
+  roundCurrency,
+} from "@beautonomi/utils";
 import {
   applyPosProductStockDecrements,
   validatePosProductStock,
@@ -133,11 +139,11 @@ export async function createWalkInOrderFromLegacySale(
       throw new Error(`Product not found or inactive: ${item.item_id}`);
     }
     const qty = Math.max(1, Number(item.quantity ?? 1));
-    const unitPrice = Number(item.unit_price ?? prod.retail_price ?? 0);
-    const lineTotal = unitPrice * qty;
-    const lineTax = percentOf(lineTotal, Number.isFinite(taxRate) ? taxRate : 0);
-    subtotal += lineTotal;
-    computedTax += lineTax;
+    const unitPrice = roundCurrency(Number(item.unit_price ?? prod.retail_price ?? 0), LAST_RESORT_CURRENCY);
+    const lineTotal = multiplyMoney(unitPrice, qty, LAST_RESORT_CURRENCY);
+    const lineTax = percentOf(lineTotal, Number.isFinite(taxRate) ? taxRate : 0, LAST_RESORT_CURRENCY);
+    subtotal = addMoney(subtotal, lineTotal, LAST_RESORT_CURRENCY);
+    computedTax = addMoney(computedTax, lineTax, LAST_RESORT_CURRENCY);
     orderItems.push({
       product_id: prod.id,
       product_variant_id: item.product_variant_id ?? null,
@@ -170,12 +176,12 @@ export async function createWalkInOrderFromLegacySale(
       provider_id: providerId,
       fulfillment_type: "collection",
       collection_location_id: locationId,
-      subtotal: resolvedSubtotal.toFixed(2),
-      tax_amount: resolvedTax.toFixed(2),
-      discount_amount: Number(discountAmount || 0).toFixed(2),
-      delivery_fee: "0.00",
-      platform_fee: "0.00",
-      total_amount: resolvedTotal.toFixed(2),
+      subtotal: roundCurrency(resolvedSubtotal, LAST_RESORT_CURRENCY),
+      tax_amount: roundCurrency(resolvedTax, LAST_RESORT_CURRENCY),
+      discount_amount: roundCurrency(Number(discountAmount || 0), LAST_RESORT_CURRENCY),
+      delivery_fee: 0,
+      platform_fee: 0,
+      total_amount: roundCurrency(resolvedTotal, LAST_RESORT_CURRENCY),
       payment_method: orderMethod,
       payment_reference: paymentReference,
       payment_status: isPaid ? "paid" : "pending",
@@ -199,8 +205,8 @@ export async function createWalkInOrderFromLegacySale(
     product_name: oi.product_name,
     product_image_url: oi.product_image_url,
     quantity: oi.quantity,
-    unit_price: oi.unit_price.toFixed(2),
-    total_price: oi.total_price.toFixed(2),
+    unit_price: roundCurrency(oi.unit_price, LAST_RESORT_CURRENCY),
+    total_price: roundCurrency(oi.total_price, LAST_RESORT_CURRENCY),
   }));
 
   const { error: insertErr } = await supabase.from("product_order_items").insert(itemsToInsert);

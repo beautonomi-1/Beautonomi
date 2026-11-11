@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
       currency?: string | null;
     }>;
 
-    const discountTotal = usage.reduce((s, b) => s + Number(b.membership_discount_amount ?? 0), 0);
+    const discountTotal = usage.reduce((s, b) => addMoney(s, Number(b.membership_discount_amount ?? 0)), 0);
 
     return successResponse({
       membership_id: membershipId,

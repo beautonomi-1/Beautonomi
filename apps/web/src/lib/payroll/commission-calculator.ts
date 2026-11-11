@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { STAFF_COMMISSION_REVENUE_TYPES } from "@/lib/reports/constants";
-import { percentOf, sumMoney } from "@beautonomi/utils";
+import { subtractMoney, multiplyMoney, addMoney, percentOf, sumMoney } from "@beautonomi/utils";
 import { posSaleCountsAsRevenue } from "@/lib/reports/provider-sales-history";
 import { resolveStaffRates } from "./resolve-staff-rates";
 
@@ -119,7 +119,7 @@ export async function calculateStaffCommission(
     if (services.length === 0) continue;
 
     const totalServicePrice = services.reduce(
-      (sum: number, s: any) => sum + Number(s.price || 0),
+      (sum: number, s: any) => addMoney(sum, Number(s.price || 0)),
       0
     );
     if (totalServicePrice === 0) continue;
@@ -130,23 +130,25 @@ export async function calculateStaffCommission(
     result.totalBookings += 1;
 
     const staffServicePrice = staffServices.reduce(
-      (sum: number, s: any) => sum + Number(s.price || 0),
+      (sum: number, s: any) => addMoney(sum, Number(s.price || 0)),
       0
     );
     const staffProportion = totalServicePrice > 0 ? staffServicePrice / totalServicePrice : 0;
-    const staffRevenueShare = bookingRevenue * staffProportion;
-    result.serviceRevenue += staffRevenueShare;
+    const staffRevenueShare = multiplyMoney(bookingRevenue, staffProportion);
+    result.serviceRevenue = addMoney(result.serviceRevenue, staffRevenueShare);
 
     for (const svc of staffServices) {
       const offering = offeringMap.get(svc.offering_id);
       const commissionEnabled = offering?.team_member_commission_enabled !== false;
       if (!commissionEnabled) continue;
       const price = Number(svc.price || 0);
-      const revShare = totalServicePrice > 0 ? (price / totalServicePrice) * bookingRevenue : 0;
+      const revShare = totalServicePrice > 0 ? multiplyMoney(bookingRevenue, price / totalServicePrice) : 0;
       const overrideRate = offering?.commission_rate_override;
       const effectiveRate = overrideRate != null ? overrideRate : baseServiceRate;
-      result.serviceCommission +=
-        percentOf(revShare, staff.commission_enabled !== false ? effectiveRate : 0);
+      result.serviceCommission = addMoney(
+        result.serviceCommission,
+        percentOf(revShare, staff.commission_enabled !== false ? effectiveRate : 0),
+      );
     }
   }
 
@@ -190,10 +192,12 @@ export async function calculateStaffCommission(
         if (attributableStaffId !== staffId) continue;
 
         const price = Number((bp as any).total_price || 0);
-        result.productRevenue += price;
+        result.productRevenue = addMoney(result.productRevenue, price);
         const prodRate = product?.commission_rate_override != null ? product.commission_rate_override : baseProductRate;
-        result.productCommission +=
-          percentOf(price, staff.commission_enabled !== false ? prodRate : 0);
+        result.productCommission = addMoney(
+          result.productCommission,
+          percentOf(price, staff.commission_enabled !== false ? prodRate : 0),
+        );
       }
     }
   }
@@ -246,17 +250,19 @@ export async function calculateStaffCommission(
       for (const order of walkInOrders) {
         const subtotal = Number((order as { subtotal?: number | string | null }).subtotal || 0);
         const discount = Number((order as { discount_amount?: number | string | null }).discount_amount || 0);
-        const factor = subtotal > 0 ? Math.max(0, subtotal - discount) / subtotal : 1;
+        const factor = subtotal > 0 ? Math.max(0, subtractMoney(subtotal, discount)) / subtotal : 1;
         for (const item of itemsByOrder.get((order as { id: string }).id) || []) {
           const product = item.product_id ? productMap.get(item.product_id) : undefined;
           if (product?.team_member_commission_enabled === false) continue;
-          const realizedNet = Number(item.total_price || 0) * factor;
+          const realizedNet = multiplyMoney(Number(item.total_price || 0), factor);
           walkInLines.push({ product_id: item.product_id ?? null, realizedNet });
-          result.productRevenue += realizedNet;
+          result.productRevenue = addMoney(result.productRevenue, realizedNet);
           const prodRate =
             product?.commission_rate_override != null ? product.commission_rate_override : baseProductRate;
-          result.productCommission +=
-            percentOf(realizedNet, staff.commission_enabled !== false ? prodRate : 0);
+          result.productCommission = addMoney(
+            result.productCommission,
+            percentOf(realizedNet, staff.commission_enabled !== false ? prodRate : 0),
+          );
         }
       }
     }
@@ -291,9 +297,11 @@ export async function calculateStaffCommission(
       saleItems = saleItemsData;
       for (const item of saleItems) {
         const price = Number((item as any).total_price || 0);
-        result.productRevenue += price;
-        result.productCommission +=
-          percentOf(price, staff.commission_enabled !== false ? baseProductRate : 0);
+        result.productRevenue = addMoney(result.productRevenue, price);
+        result.productCommission = addMoney(
+          result.productCommission,
+          percentOf(price, staff.commission_enabled !== false ? baseProductRate : 0),
+        );
       }
     }
   }
@@ -324,15 +332,15 @@ export async function calculateStaffCommission(
   for (const booking of bookings) {
     const bookingRevenue = revenueByBooking.get(booking.id) || 0;
     const services = (booking as any).booking_services || [];
-    const totalServicePrice = services.reduce((s: number, x: any) => s + Number(x.price || 0), 0);
+    const totalServicePrice = services.reduce((s: number, x: any) => addMoney(s, Number(x.price || 0)), 0);
     if (totalServicePrice === 0) continue;
     const staffServices = services.filter((s: any) => s.staff_id === staffId);
     for (const svc of staffServices) {
       const offering = offeringMap.get(svc.offering_id);
       if (offering?.team_member_commission_enabled === false) continue;
-      const revShare = (Number(svc.price || 0) / totalServicePrice) * bookingRevenue;
+      const revShare = multiplyMoney(bookingRevenue, Number(svc.price || 0) / totalServicePrice);
       const rate = offering?.commission_rate_override != null ? offering.commission_rate_override : effectiveServiceRate;
-      result.serviceCommission += percentOf(revShare, staff.commission_enabled !== false ? rate : 0);
+      result.serviceCommission = addMoney(result.serviceCommission, percentOf(revShare, staff.commission_enabled !== false ? rate : 0));
     }
   }
 
@@ -347,12 +355,12 @@ export async function calculateStaffCommission(
     if (sid !== staffId) continue;
     const price = Number((bp as any).total_price || 0);
     const rate = product?.commission_rate_override != null ? product.commission_rate_override : effectiveProductRate;
-    result.productCommission += percentOf(price, staff.commission_enabled !== false ? rate : 0);
+    result.productCommission = addMoney(result.productCommission, percentOf(price, staff.commission_enabled !== false ? rate : 0));
   }
 
   for (const item of saleItems || []) {
     const price = Number((item as any).total_price || 0);
-    result.productCommission += percentOf(price, staff.commission_enabled !== false ? effectiveProductRate : 0);
+    result.productCommission = addMoney(result.productCommission, percentOf(price, staff.commission_enabled !== false ? effectiveProductRate : 0));
   }
 
   for (const line of walkInLines) {
@@ -360,7 +368,7 @@ export async function calculateStaffCommission(
     if (product?.team_member_commission_enabled === false) continue;
     const rate =
       product?.commission_rate_override != null ? product.commission_rate_override : effectiveProductRate;
-    result.productCommission += percentOf(line.realizedNet, staff.commission_enabled !== false ? rate : 0);
+    result.productCommission = addMoney(result.productCommission, percentOf(line.realizedNet, staff.commission_enabled !== false ? rate : 0));
   }
 
   result.totalCommission = sumMoney(result.serviceCommission, result.productCommission);

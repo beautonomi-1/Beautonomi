@@ -35,7 +35,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney, getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { formatMoney, getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold, roundCurrency, subtractMoney, toMinorUnits, addMoney } from "@beautonomi/utils";
 import * as Clipboard from "expo-clipboard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
@@ -337,14 +337,14 @@ export default function ProductOrderDetailScreen() {
   const giftAmt = Number(order.gift_card_amount ?? 0);
   const dueTotal = Math.max(0, Number(order.total_amount ?? 0));
   const dueGift = Math.min(dueTotal, Math.max(0, giftAmt));
-  const dueWallet = Math.min(Math.max(0, walletAmt), Math.max(0, dueTotal - dueGift));
+  const dueWallet = Math.min(Math.max(0, walletAmt), Math.max(0, subtractMoney(dueTotal, dueGift)));
   const serverDue = order.amount_still_due;
   const onlineAmountDue =
     typeof serverDue === "number" && Number.isFinite(serverDue)
-      ? Math.max(0, Math.round(serverDue * 100) / 100)
+      ? Math.max(0, roundCurrency(serverDue))
       : serverDue === null
         ? 0
-        : Math.round(Math.max(0, dueTotal - dueGift - dueWallet) * 100) / 100;
+        : Math.max(0, subtractMoney(subtractMoney(dueTotal, dueGift), dueWallet));
   const canPayOnline =
     order.status === "pending" &&
     order.payment_status === "pending" &&
@@ -394,7 +394,7 @@ export default function ProductOrderDetailScreen() {
         "/api/paystack/initialize",
         {
           email,
-          amount: Math.round(onlineAmountDue * 100),
+          amount: toMinorUnits(onlineAmountDue, order.currency ?? fb),
           callback_url: paystackCallbackUrl,
           metadata: {
             product_order_id: order.id,
@@ -1242,11 +1242,7 @@ export default function ProductOrderDetailScreen() {
               {fmt(
                 Math.max(
                   0,
-                  Number(order.subtotal ?? 0) -
-                    Number(order.discount_amount ?? 0) +
-                    Number(order.delivery_fee ?? 0) +
-                    Number(order.tax_amount ?? 0) +
-                    platformFee,
+                  addMoney(addMoney(addMoney(subtractMoney(Number(order.subtotal ?? 0), Number(order.discount_amount ?? 0)), Number(order.delivery_fee ?? 0)), Number(order.tax_amount ?? 0)), platformFee),
                 ),
               )}
             </Text>
@@ -1257,11 +1253,7 @@ export default function ProductOrderDetailScreen() {
           </View>
           {Math.abs(
             Number(order.total_amount ?? 0) -
-              (Number(order.subtotal ?? 0) -
-                Number(order.discount_amount ?? 0) +
-                Number(order.delivery_fee ?? 0) +
-                Number(order.tax_amount ?? 0) +
-                platformFee),
+              addMoney(addMoney(addMoney(subtractMoney(Number(order.subtotal ?? 0), Number(order.discount_amount ?? 0)), Number(order.delivery_fee ?? 0)), Number(order.tax_amount ?? 0)), platformFee),
           ) > 0.02 && (
             <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 8 }}>
               {pod("totalDifferenceHint")}

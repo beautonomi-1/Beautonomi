@@ -1,12 +1,14 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactOnDemandRequest } from "@/lib/provider/redact-booking-customer-contact";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
 
@@ -23,10 +25,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request
+    const permissionCheck = await requireAnyPermission(
+      ["create_appointments", "edit_appointments"],
+      request,
     );
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -105,7 +112,7 @@ export async function POST(
       console.error("Failed to send on-demand decline push to customer:", pushErr);
     }
 
-    return successResponse(data);
+    return successResponse(redactOnDemandRequest(data, canViewClients));
   } catch (error) {
     return handleApiError(error as Error, "Failed to decline on-demand request");
   }

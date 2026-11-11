@@ -13,6 +13,7 @@ import {
 } from "@/lib/bookings/resolve-cancellation-outcome";
 import { computeLeadCancellationAmounts } from "@/lib/bookings/compute-lead-cancellation-amounts";
 import { listGroupGuestSharePayments } from "@/lib/bookings/group-guest-refunds";
+import { addMoney } from "@beautonomi/utils";
 
 /**
  * Reads with the service-role client so payment rows are never hidden by RLS (a hidden payment
@@ -68,7 +69,7 @@ export async function loadCancellationOutcomeForBooking(
   });
 
   const guestPayments = await listGroupGuestSharePayments(supabase, bookingId);
-  const guestSharesHeld = guestPayments.reduce((s, p) => s + p.net, 0);
+  const guestSharesHeld = guestPayments.reduce((s, p) => addMoney(s, p.net), 0);
   const lead = computeLeadCancellationAmounts({
     platformCollected: outcome.platformCollected,
     guestSharesHeld,

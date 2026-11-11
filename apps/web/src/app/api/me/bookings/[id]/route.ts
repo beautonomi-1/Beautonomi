@@ -14,6 +14,7 @@ import { pendingConfirmationSlaDisplay } from "@/lib/bookings/pending-confirmati
 import { canCustomerReportRunningLate } from "@/lib/bookings/lifecycle-running-late";
 import { loadLocationWorkingHours } from "@/lib/bookings/lifecycle-pending-expiry";
 import type { WorkingHoursJson } from "@/lib/bookings/lifecycle-deadlines";
+import { addMoney, multiplyMoney, sumMoney } from "@beautonomi/utils";
 /**
  * GET /api/me/bookings/[id]
  *
@@ -229,20 +230,35 @@ export async function GET(
     // This mirrors the fallback logic in build-booking-receipt.ts.
     const linesSubtotalFallback = (() => {
       const svcTotal = (bookingData.booking_services ?? []).reduce(
-        (sum: number, bs: unknown) => sum + Number((bs as Record<string, unknown>).price ?? 0),
+        (sum: number, bs: unknown) => addMoney(sum, Number((bs as Record<string, unknown>).price ?? 0)),
         0
       );
       const addonTotal = (bookingData.booking_addons ?? []).reduce(
         (sum: number, ba: unknown) =>
-          sum + Number((ba as Record<string, unknown>).price ?? 0) * Number((ba as Record<string, unknown>).quantity ?? 1),
+          addMoney(
+            sum,
+            multiplyMoney(
+              Number((ba as Record<string, unknown>).price ?? 0),
+              Number((ba as Record<string, unknown>).quantity ?? 1),
+            ),
+          ),
         0
       );
       const productTotal = (bookingData.booking_products ?? []).reduce(
         (sum: number, bp: unknown) =>
-          sum + Number((bp as Record<string, unknown>).total_price ?? (Number((bp as Record<string, unknown>).unit_price ?? 0) * Number((bp as Record<string, unknown>).quantity ?? 1))),
+          addMoney(
+            sum,
+            Number(
+              (bp as Record<string, unknown>).total_price ??
+                multiplyMoney(
+                  Number((bp as Record<string, unknown>).unit_price ?? 0),
+                  Number((bp as Record<string, unknown>).quantity ?? 1),
+                ),
+            ),
+          ),
         0
       );
-      return svcTotal + addonTotal + productTotal;
+      return sumMoney(svcTotal, addonTotal, productTotal);
     })();
     const storedSubtotal = Number((bookingData as Record<string, unknown>).subtotal ?? 0);
     const resolvedSubtotal =
@@ -489,7 +505,7 @@ export async function GET(
           product_name: `${p.products?.name ?? "Product"}${variantLabel}`,
           quantity: p.quantity ?? 1,
           unit_price: p.unit_price ?? p.products?.retail_price ?? 0,
-          total_price: p.total_price ?? (p.unit_price ?? p.products?.retail_price ?? 0) * (p.quantity ?? 1),
+          total_price: p.total_price ?? multiplyMoney(p.unit_price ?? p.products?.retail_price ?? 0, p.quantity ?? 1),
         };
       }),
       address: bookingData.location_type === "at_home" && bookingData.address_line1 ? {
@@ -578,7 +594,7 @@ export async function GET(
         type AcRow = { status?: string; amount?: number };
         const unpaidCharges = (bookingData.additional_charges ?? [])
           .filter((ac: AcRow) => ac.status !== "paid" && ac.status !== "rejected")
-          .reduce((sum: number, ac: AcRow) => sum + Number(ac.amount ?? 0), 0);
+          .reduce((sum: number, ac: AcRow) => addMoney(sum, Number(ac.amount ?? 0)), 0);
         return computeBookingOutstandingDisplay({
           totalAmount: bookingTotal,
           totalPaid,

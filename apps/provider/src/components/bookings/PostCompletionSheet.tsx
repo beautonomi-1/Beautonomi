@@ -24,7 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
-import { api } from "@/lib/api-client";
+import { submitProviderClientRating } from "@/lib/provider-client-rating";
 import { useAuth } from "@/providers/AuthProvider";
 import { LoveTheAppSheet } from "@/components/LoveTheAppSheet";
 import {
@@ -139,12 +139,12 @@ export function PostCompletionSheet({
     setSubmittingRate(true);
     setRateError(null);
     try {
-      const res = await api.post("/api/provider/ratings", {
-        booking_id: bookingId,
+      const res = await submitProviderClientRating({
+        bookingId,
         rating: rateStars,
-        comment: rateComment.trim() || undefined,
+        comment: rateComment,
       });
-      if (res.error) {
+      if (!res.ok) {
         setRateError(res.error.message || pc("submitFailed"));
         return;
       }

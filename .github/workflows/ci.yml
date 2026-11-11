@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       mobile: ${{ steps.filter.outputs.mobile }}
+      database: ${{ steps.filter.outputs.database }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +31,10 @@ jobs:
         id: filter
         with:
           filters: |
+            database:
+              - 'supabase/migrations/**'
+              - 'supabase/tests/**'
+              - '.github/workflows/ci.yml'
             mobile:
               - 'apps/customer/**'
               - 'apps/provider/**'
@@ -162,6 +167,9 @@ jobs:
       - name: Lint (turbo, web + admin)
         if: needs.changes.outputs.mobile != 'true'
         run: pnpm turbo run lint --filter=web --filter=admin-web
+
+      - name: Migration order (F4-01)
+        run: pnpm check:migration-order
 
   build-web:
     name: Build Web App
@@ -394,6 +402,42 @@ jobs:
 
       - name: Migration prefix + drift check
         run: node tooling/audit/check-migrations.mjs
+
+      - name: Migration lexicographic vs numeric order (F4-01)
+        run: node scripts/check-migration-order.mjs
+
+  db-tests:
+    name: DB money invariants (fresh replay + SQL tests)
+    needs: changes
+    if: needs.changes.outputs.database == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: public.ecr.aws/supabase/postgres:17.6.1.127
+        env:
+          POSTGRES_PASSWORD: ci_only_throwaway
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://postgres:ci_only_throwaway@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Replay every migration from scratch (numeric order)
+        run: bash supabase/tests/audit/ci/apply-migrations.sh
+
+      - name: Run supabase/tests/audit/*.test.sql
+        run: node supabase/tests/audit/run.mjs
 
   test:
     name: Test

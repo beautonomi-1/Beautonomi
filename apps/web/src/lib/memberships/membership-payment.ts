@@ -13,6 +13,7 @@
  *
  * Commission is intentionally 0 — provider keeps gross minus Paystack fees.
  */
+import { subtractMoney } from "@beautonomi/utils";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
@@ -60,7 +61,7 @@ export async function recordMembershipPayment(
     paymentProvider = "paystack",
   } = params;
 
-  const netAmount = Math.max(0, grossAmount - feeAmount);
+  const netAmount = Math.max(0, subtractMoney(grossAmount, feeAmount));
 
   if (!reference || !providerId) {
     console.error("[recordMembershipPayment] missing reference or providerId", { reference, providerId });

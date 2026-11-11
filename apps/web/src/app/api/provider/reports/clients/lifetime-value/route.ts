@@ -1,6 +1,9 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { createClient } from "@supabase/supabase-js";
 import { differenceInCalendarDays } from "date-fns";
 import { formatDateYmd } from "@/lib/dates/provider-tz";
@@ -23,7 +26,11 @@ export async function GET(request: NextRequest) {
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }
-    const { user } = permissionCheck;    // Check subscription allows advanced reports (client reports are advanced)
+    const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
+    // Check subscription allows advanced reports (client reports are advanced)
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -93,7 +100,7 @@ export async function GET(request: NextRequest) {
         daysSinceFirstVisit: 0,
       };
 
-      existing.totalSpent += Number(booking.total_amount || 0);
+      existing.totalSpent = addMoney(existing.totalSpent, Number(booking.total_amount || 0));
       existing.totalBookings += 1;
       if (visitDate < existing.firstVisit) existing.firstVisit = visitDate;
       if (visitDate > existing.lastVisit) existing.lastVisit = visitDate;
@@ -122,7 +129,7 @@ export async function GET(request: NextRequest) {
       const daysSinceFirst = Math.max(0, differenceInCalendarDays(endAnchor, startAnchor));
       return {
         ...client,
-        averageBookingValue: client.totalBookings > 0 ? client.totalSpent / client.totalBookings : 0,
+        averageBookingValue: client.totalBookings > 0 ? multiplyMoney(client.totalSpent, 1 / client.totalBookings) : 0,
         daysSinceFirstVisit: daysSinceFirst,
         visitsPerMonth: daysSinceFirst > 0 ? (client.totalBookings / daysSinceFirst) * 30 : 0,
       };
@@ -152,7 +159,7 @@ export async function GET(request: NextRequest) {
     // Summary metrics
     const totalClients = enrichedLTV.length;
     const averageLTV = totalClients > 0
-      ? enrichedLTV.reduce((sum, c) => sum + c.totalSpent, 0) / totalClients
+      ? multiplyMoney(enrichedLTV.reduce((sum, c) => addMoney(sum, c.totalSpent), 0), 1 / totalClients)
       : 0;
     const medianLTV = (() => {
       if (totalClients === 0) return 0;
@@ -160,20 +167,20 @@ export async function GET(request: NextRequest) {
       if (totalClients % 2 === 1) {
         return enrichedLTV[mid]?.totalSpent ?? 0;
       }
-      return ((enrichedLTV[mid]?.totalSpent ?? 0) + (enrichedLTV[mid + 1]?.totalSpent ?? 0)) / 2;
+      return multiplyMoney(addMoney(enrichedLTV[mid]?.totalSpent ?? 0, enrichedLTV[mid + 1]?.totalSpent ?? 0), 1 / 2);
     })();
-    const totalLTV = enrichedLTV.reduce((sum, c) => sum + c.totalSpent, 0);
-    const totalLedgerEarnings = enrichedLTV.reduce((sum, c) => sum + (c.totalEarned ?? 0), 0);
+    const totalLTV = enrichedLTV.reduce((sum, c) => addMoney(sum, c.totalSpent), 0);
+    const totalLedgerEarnings = enrichedLTV.reduce((sum, c) => addMoney(sum, c.totalEarned ?? 0), 0);
     const averageLedgerEarnings =
-      totalClients > 0 ? totalLedgerEarnings / totalClients : 0;
+      totalClients > 0 ? multiplyMoney(totalLedgerEarnings, 1 / totalClients) : 0;
     const averageVisits = totalClients > 0
       ? enrichedLTV.reduce((sum, c) => sum + c.totalBookings, 0) / totalClients
       : 0;
 
     // Segment by LTV
-    const highValue = enrichedLTV.filter((c) => c.totalSpent >= averageLTV * 1.5);
-    const mediumValue = enrichedLTV.filter((c) => c.totalSpent >= averageLTV * 0.5 && c.totalSpent < averageLTV * 1.5);
-    const lowValue = enrichedLTV.filter((c) => c.totalSpent < averageLTV * 0.5);
+    const highValue = enrichedLTV.filter((c) => c.totalSpent >= multiplyMoney(averageLTV, 1.5));
+    const mediumValue = enrichedLTV.filter((c) => c.totalSpent >= multiplyMoney(averageLTV, 0.5) && c.totalSpent < multiplyMoney(averageLTV, 1.5));
+    const lowValue = enrichedLTV.filter((c) => c.totalSpent < multiplyMoney(averageLTV, 0.5));
 
     const bookingsTruncated = (bookings?.length ?? 0) >= MAX_BOOKINGS_FOR_REPORT;
     let reportBasis =
@@ -195,11 +202,11 @@ export async function GET(request: NextRequest) {
       highValueClients: highValue.length,
       mediumValueClients: mediumValue.length,
       lowValueClients: lowValue.length,
-      topClients: enrichedLTV.slice(0, 20),
+      topClients: redactBookingCustomerContacts(enrichedLTV.slice(0, 20), canViewClients),
       ltvSegments: [
-        { segment: "High Value", count: highValue.length, avgLTV: highValue.length > 0 ? highValue.reduce((sum, c) => sum + c.totalSpent, 0) / highValue.length : 0 },
-        { segment: "Medium Value", count: mediumValue.length, avgLTV: mediumValue.length > 0 ? mediumValue.reduce((sum, c) => sum + c.totalSpent, 0) / mediumValue.length : 0 },
-        { segment: "Low Value", count: lowValue.length, avgLTV: lowValue.length > 0 ? lowValue.reduce((sum, c) => sum + c.totalSpent, 0) / lowValue.length : 0 },
+        { segment: "High Value", count: highValue.length, avgLTV: highValue.length > 0 ? multiplyMoney(highValue.reduce((sum, c) => addMoney(sum, c.totalSpent), 0), 1 / highValue.length) : 0 },
+        { segment: "Medium Value", count: mediumValue.length, avgLTV: mediumValue.length > 0 ? multiplyMoney(mediumValue.reduce((sum, c) => addMoney(sum, c.totalSpent), 0), 1 / mediumValue.length) : 0 },
+        { segment: "Low Value", count: lowValue.length, avgLTV: lowValue.length > 0 ? multiplyMoney(lowValue.reduce((sum, c) => addMoney(sum, c.totalSpent), 0), 1 / lowValue.length) : 0 },
       ],
       basisNote: `${CLIENT_METRICS_BASIS_NOTE} LTV segments use completed appointment booked gross; totalEarned is ledger recognized per client.`,
       reportBasis,

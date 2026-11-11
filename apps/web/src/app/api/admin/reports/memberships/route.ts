@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
@@ -93,11 +94,11 @@ export async function GET(request: NextRequest) {
         : { count: 0 };
 
     const totalSalesValue = (salesTransactions || []).reduce(
-      (sum, t) => sum + Number(t.amount || 0),
+      (sum, t) => addMoney(sum, Number(t.amount || 0)),
       0,
     );
     const totalRecognizedEarnings = membershipEarnings.reduce(
-      (sum, t) => sum + Number(t.net ?? t.amount ?? 0),
+      (sum, t) => addMoney(sum, Number(t.net ?? t.amount ?? 0)),
       0,
     );
     const totalSold = (orders || []).length;
@@ -107,7 +108,7 @@ export async function GET(request: NextRequest) {
       if (!t.created_at) return;
       const date = new Date(t.created_at).toISOString().split("T")[0];
       if (!salesByDayMap[date]) salesByDayMap[date] = { sales: 0, count: 0 };
-      salesByDayMap[date].sales += Number(t.amount || 0);
+      salesByDayMap[date].sales = addMoney(salesByDayMap[date].sales, Number(t.amount || 0));
       salesByDayMap[date].count += 1;
     });
     const salesByDay = Object.entries(salesByDayMap)

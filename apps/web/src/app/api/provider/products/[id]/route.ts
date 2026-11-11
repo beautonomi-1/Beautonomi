@@ -2,6 +2,11 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError, requireRoleInApi, getProviderIdForUser, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { logStockChangeFromAbsoluteQuantity } from "@/lib/products/stock-movements";
+import {
+  productCatalogAmountError,
+  productTaxRateError,
+  variantCatalogPricesError,
+} from "@/lib/products/price-bounds";
 
 /**
  * GET /api/provider/products/[id]
@@ -95,6 +100,17 @@ async function updateProductHandler(
   if (body.retail_sales_enabled !== undefined) updateData.retail_sales_enabled = body.retail_sales_enabled;
   if (body.markup !== undefined) updateData.markup = body.markup;
   if (body.tax_rate !== undefined) updateData.tax_rate = parseFloat(String(body.tax_rate));
+  const priceErr =
+    (updateData.retail_price !== undefined
+      ? productCatalogAmountError("retail_price", updateData.retail_price)
+      : null) ||
+    (updateData.supply_price !== undefined
+      ? productCatalogAmountError("supply_price", updateData.supply_price)
+      : null) ||
+    (updateData.tax_rate !== undefined ? productTaxRateError(updateData.tax_rate) : null);
+  if (priceErr) {
+    return handleApiError(new Error(priceErr), "Validation failed", "VALIDATION_ERROR", 400);
+  }
   if (body.team_member_commission_enabled !== undefined) updateData.team_member_commission_enabled = body.team_member_commission_enabled;
   if (body.track_stock_quantity !== undefined) updateData.track_stock_quantity = body.track_stock_quantity;
   if (body.receive_low_stock_notifications !== undefined) updateData.receive_low_stock_notifications = body.receive_low_stock_notifications;
@@ -146,11 +162,16 @@ async function updateProductHandler(
   // Replace variants if sent
   const variantsPayload = body.variants;
   if (Array.isArray(variantsPayload)) {
+    if (variantsPayload.length > 0) {
+      const variantErr = variantCatalogPricesError(variantsPayload);
+      if (variantErr) {
+        return handleApiError(new Error(variantErr), "Validation failed", "VALIDATION_ERROR", 400);
+      }
+    }
     const { error: delErr } = await supabase.from("product_variants").delete().eq("product_id", id);
     if (delErr) throw delErr;
     if (variantsPayload.length > 0) {
-      const providerId = await getProviderIdForUser(user.id, supabase);
-      const providerShort = providerId ? providerId.substring(0, 4).toUpperCase() : "PRVD";
+      const providerShort = providerId.substring(0, 4).toUpperCase();
       const baseTs = Date.now().toString().slice(-6);
       const variantRows = variantsPayload.map((v: any, idx: number) => ({
         product_id: id,

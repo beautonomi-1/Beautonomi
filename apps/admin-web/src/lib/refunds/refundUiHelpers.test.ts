@@ -25,6 +25,10 @@ describe("remainingRefundable", () => {
   it("never returns negative", () => {
     expect(remainingRefundable(50, 75)).toBe(0);
   });
+
+  it("uses minor-unit rounding (F4-06)", () => {
+    expect(remainingRefundable(100, 33.33)).toBe(66.67);
+  });
 });
 
 describe("isProcessableRefundRow", () => {

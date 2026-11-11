@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { fromMinorUnits, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export type GatewayFeeSource =
   | "paystack"
@@ -27,8 +28,9 @@ export async function resolvePaystackGatewayFees(
   const currency = (params.currency || "ZAR").trim().toUpperCase();
   const channel = (params.channel ?? "*").trim().toLowerCase() || "*";
   const raw = Number(params.feesSmallestOrMajor ?? 0);
-  let feesMajor = params.alreadyMajor ? Math.abs(raw) : Math.abs(raw) / 100;
-  feesMajor = Math.round(feesMajor * 100) / 100;
+  let feesMajor = params.alreadyMajor
+    ? roundCurrency(Math.abs(raw), currency)
+    : fromMinorUnits(Math.abs(raw), currency);
 
   if (feesMajor > 0.0001) {
     return { feesMajor, feeSource: "paystack" };
@@ -51,7 +53,7 @@ export async function resolvePaystackGatewayFees(
     return { feesMajor: 0, feeSource: "paystack" };
   }
 
-  const estimated = Math.round(Number(data ?? 0) * 100) / 100;
+  const estimated = roundCurrency(Number(data ?? 0));
   if (estimated <= 0) {
     return { feesMajor: 0, feeSource: "paystack" };
   }
@@ -64,7 +66,7 @@ export function resolveFlutterwaveGatewayFees(params: {
   currency: string;
 }): ResolvedGatewayFees {
   const feesMajor =
-    Math.round(convertFromSmallestUnit(Math.max(0, params.feeMinor), params.currency) * 100) / 100;
+    roundCurrency(convertFromSmallestUnit(Math.max(0, params.feeMinor), params.currency));
   if (feesMajor > 0) {
     return { feesMajor, feeSource: "flutterwave" };
   }
@@ -75,8 +77,7 @@ export function resolveStripeGatewayFees(params: {
   feeMinor: number;
   currency: string;
 }): ResolvedGatewayFees {
-  const factor = 100;
-  const feesMajor = Math.round((Math.max(0, params.feeMinor) / factor) * 100) / 100;
+  const feesMajor = fromMinorUnits(Math.max(0, params.feeMinor), params.currency);
   if (feesMajor > 0) {
     return { feesMajor, feeSource: "stripe" };
   }
@@ -134,7 +135,7 @@ export async function resolveOnlineChargeFees(
       amountInCurrency,
       feesInCurrency: resolved.feesMajor,
       feeSource: resolved.feeSource,
-      netAmount: amountInCurrency - resolved.feesMajor,
+      netAmount: subtractMoney(amountInCurrency, resolved.feesMajor),
     };
   }
   if (paymentProvider === "stripe") {
@@ -144,7 +145,7 @@ export async function resolveOnlineChargeFees(
       amountInCurrency,
       feesInCurrency: resolved.feesMajor,
       feeSource: resolved.feeSource,
-      netAmount: amountInCurrency - resolved.feesMajor,
+      netAmount: subtractMoney(amountInCurrency, resolved.feesMajor),
     };
   }
   const feesInCurrencyRaw = convertFromSmallestUnit(params.feesSmallest || 0, params.currency);
@@ -159,6 +160,6 @@ export async function resolveOnlineChargeFees(
     amountInCurrency,
     feesInCurrency: resolved.feesMajor,
     feeSource: resolved.feeSource,
-    netAmount: amountInCurrency - resolved.feesMajor,
+    netAmount: subtractMoney(amountInCurrency, resolved.feesMajor),
   };
 }

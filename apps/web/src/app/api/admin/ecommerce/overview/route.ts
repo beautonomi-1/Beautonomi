@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
       total_orders: orders.length,
       total_revenue_paid: orders
         .filter((o) => o.payment_status === "paid")
-        .reduce((s, o) => s + Number(o.total_amount ?? 0), 0),
+        .reduce((s, o) => addMoney(s, Number(o.total_amount ?? 0)), 0),
       pending: orders.filter((o) => o.status === "pending").length,
       by_status: orders.reduce<Record<string, number>>((acc, o) => {
         const k = String(o.status ?? "unknown");

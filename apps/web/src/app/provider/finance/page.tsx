@@ -1,5 +1,7 @@
 "use client";
 
+import { multiplyMoney, roundCurrency } from "@beautonomi/utils";
+
 import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, useRef } from "react";
@@ -13,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { DollarSign, TrendingUp, Calendar, Download, ArrowUpRight, FileText, Building2, CheckCircle2, Loader2, Plus } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
+import { formatApiErrorMessage } from "@/lib/http/api-error";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
@@ -43,7 +46,7 @@ import {
 } from "@/lib/payments/payout-rail-options";
 
 function roundMoney2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  return roundCurrency(n);
 }
 
 interface EarningsData {
@@ -82,9 +85,9 @@ interface EarningsData {
   membership_discounts_this_period?: number;
   loyalty_discounts_this_period?: number;
   promo_discounts_this_period?: number;
-  membership_discounts_total?: number;
-  loyalty_discounts_total?: number;
-  promo_discounts_total?: number;
+  membership_discounts_total?: number | null;
+  loyalty_discounts_total?: number | null;
+  promo_discounts_total?: number | null;
   raw_payout_balance?: number;
   has_negative_payout_balance?: boolean;
   balance_owed_to_platform?: number;
@@ -377,7 +380,7 @@ export default function ProviderFinance() {
         toast.success(t("web.provider.finance.bankVerified"));
       }
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : t("web.provider.finance.bankVerifyFailed"));
+      toast.error(formatApiErrorMessage(err, t("web.provider.finance.bankVerifyFailed")));
     } finally {
       setIsVerifyingBank(false);
     }
@@ -435,7 +438,7 @@ export default function ProviderFinance() {
       } catch {
         // fall through
       }
-      toast.error(err instanceof FetchError ? err.message : t("web.provider.finance.addBankFailed"));
+      toast.error(formatApiErrorMessage(err, t("web.provider.finance.addBankFailed")));
     } finally {
       setIsSavingBank(false);
     }
@@ -487,11 +490,11 @@ export default function ProviderFinance() {
       loadPayouts();
       loadPayoutAccounts();
     } catch (err) {
-      const errorMessage =
-        err instanceof FetchError
-          ? err.message
-          : t("web.provider.finance.requestPayoutFailed");
-      toast.error(errorMessage);
+      toast.error(
+        err instanceof FetchTimeoutError
+          ? t("web.provider.finance.requestPayoutFailed")
+          : formatApiErrorMessage(err, t("web.provider.finance.requestPayoutFailed")),
+      );
       console.error("Error requesting payout:", err);
     } finally {
       setIsRequestingPayout(false);
@@ -1498,7 +1501,7 @@ function financePageLedgerSign(t: Pick<Transaction, "transaction_type" | "type" 
 function providerFacingLedgerDisplay(t: Transaction): { signedPrimary: number; primaryClass: string } {
   const sign = financePageLedgerSign(t);
   const tt = t.transaction_type ?? "";
-  const signedPrimary = sign * financePageLedgerDisplayAbs(t);
+  const signedPrimary = multiplyMoney(financePageLedgerDisplayAbs(t), sign);
   const primaryClass =
     tt === "provider_earnings" && signedPrimary < 0
       ? "text-red-600"

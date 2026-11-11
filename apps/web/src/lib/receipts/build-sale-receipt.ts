@@ -1,6 +1,7 @@
 /**
  * Canonical receipt payload for POS / walk-in sales (`sales` + `sale_items`).
  */
+import { subtractMoney } from "@beautonomi/utils";
 
 export type SaleItemLike = {
   item_type?: string | null;
@@ -77,7 +78,7 @@ export function buildSaleReceiptPayload(input: {
     tip_amount: tipAmount,
     total_amount: totalAmount,
     amount_paid: amountPaid,
-    balance_due: Math.max(0, totalAmount - amountPaid),
+    balance_due: Math.max(0, subtractMoney(totalAmount, amountPaid)),
     currency: input.currency ?? "ZAR",
     notes: sale.notes ?? null,
     provider: input.provider

@@ -37,28 +37,20 @@ if ((startDate && !endDate) || (!startDate && endDate)) {
   process.exit(2);
 }
 
-const windowClause = startDate
-  ? `created_at >= '${startDate}T00:00:00.000Z' AND created_at <= '${endDate}T23:59:59.999Z'`
-  : null;
-
-const brWindowClause = startDate
-  ? `br.created_at >= '${startDate}T00:00:00.000Z' AND br.created_at <= '${endDate}T23:59:59.999Z'`
-  : null;
-
-const poWindowClause = startDate
-  ? `AND po.created_at >= '${startDate}T00:00:00.000Z' AND po.created_at <= '${endDate}T23:59:59.999Z'`
-  : "";
-
 let rpcAvailable = false;
+
+function namedAuditQuery(name) {
+  return startDate ? `${name}:${startDate}:${endDate}` : name;
+}
 
 async function ensureFinanceAuditRpc() {
   const { error } = await client.rpc("finance_audit_run", {
-    p_query: "SELECT 1 AS ok",
+    p_query: "ping",
   });
   if (error) {
     console.error(
       `[finance-audit] FATAL: finance_audit_run RPC unavailable (${error.message}). ` +
-        "Apply migration 724_finance_audit_run_rpc.sql before trusting this gate.",
+        "Apply migration 10141_finance_audit_run_allowlist.sql (named queries) before trusting this gate.",
     );
     process.exit(2);
   }
@@ -90,45 +82,20 @@ await ensureFinanceAuditRpc();
 
 let violations = 0;
 
-const duplicateQuery = `
-  SELECT source_payment_id, transaction_type, COUNT(*) AS duplicate_count
-    FROM public.finance_transactions
-   WHERE source_payment_id IS NOT NULL
-     ${windowClause ? `AND ${windowClause}` : ""}
-   GROUP BY source_payment_id, transaction_type
-  HAVING COUNT(*) > 1`;
+violations += await runAuditQuery(
+  namedAuditQuery("duplicate_source_payment_rows"),
+  "duplicate_source_payment_rows",
+);
 
-violations += await runAuditQuery(duplicateQuery, "duplicate_source_payment_rows");
+violations += await runAuditQuery(
+  namedAuditQuery("completed_refunds_without_ledger"),
+  "completed_refunds_without_ledger",
+);
 
-const refundsQuery = `
-  SELECT br.id, br.booking_id, br.amount, br.status
-    FROM public.booking_refunds br
-    LEFT JOIN public.finance_transactions ft ON ft.source_refund_id = br.id
-   WHERE br.status = 'completed' AND ft.id IS NULL
-     ${brWindowClause ? `AND ${brWindowClause}` : ""}`;
-
-violations += await runAuditQuery(refundsQuery, "completed_refunds_without_ledger");
-
-const productOrdersQuery = `
-  SELECT po.id, po.order_number, po.payment_method, po.created_at
-    FROM public.product_orders po
-   WHERE po.payment_status = 'paid'
-     AND po.payment_method IN ('paystack', 'wallet', 'gift_card')
-     AND NOT EXISTS (
-       SELECT 1 FROM public.finance_transactions ft
-        WHERE ft.transaction_type = 'provider_earnings'
-          AND (
-            ft.product_order_id = po.id
-            OR (
-              ft.product_order_id IS NULL
-              AND ft.provider_id = po.provider_id
-              AND ft.description ILIKE '%' || po.order_number || '%'
-            )
-          )
-     )
-     ${poWindowClause}`;
-
-violations += await runAuditQuery(productOrdersQuery, "paid_product_orders_missing_ledger");
+violations += await runAuditQuery(
+  namedAuditQuery("paid_product_orders_missing_ledger"),
+  "paid_product_orders_missing_ledger",
+);
 
 if (violations > 0) {
   console.error(`[finance-audit] FAILED — ${violations} total violations.`);

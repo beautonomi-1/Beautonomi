@@ -15,10 +15,12 @@ import {
 } from "@/lib/wallet-bank-refunds/settings";
 import { serializeWalletBankRefundRequest } from "@/lib/wallet-bank-refunds/serialize";
 import { notifyWalletBankRefund } from "@/lib/wallet-bank-refunds/notify";
+import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
+import { roundCurrency } from "@beautonomi/utils";
 
 const createSchema = z.object({
   customer_bank_account_id: z.string().uuid(),
-  amount: z.number().positive(),
+  amount: clientMajorAmountSchema,
   customer_note: z.string().max(2000).optional(),
   idempotency_key: z.string().max(128).optional(),
 });
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest) {
       return errorResponse("Validation failed", "VALIDATION_ERROR", 400);
     }
 
-    const amount = Math.round(parsed.data.amount * 100) / 100;
+    const amount = roundCurrency(parsed.data.amount);
     if (amount < settings.min_amount) {
       return errorResponse(`The minimum bank refund is ${settings.min_amount}.`, "AMOUNT_TOO_LOW", 400);
     }

@@ -4,6 +4,7 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { computeMrrBridge, subscriptionMrrForPlan } from "@/lib/admin/marketplace-health";
+import { multiplyMoney, addMoney, subtractMoney, roundCurrency } from "@beautonomi/utils";
 
 /**
  * GET /api/admin/subscription-metrics
@@ -90,11 +91,11 @@ export async function GET(request: NextRequest) {
         
         if (price) {
           if (isMonthly) {
-            mrr += price;
+            mrr = addMoney(mrr, price);
             monthlyCount++;
           } else {
             // Convert yearly to monthly for MRR
-            mrr += price / 12;
+            mrr = addMoney(mrr, multiplyMoney(price, 1 / 12));
             yearlyCount++;
           }
 
@@ -108,13 +109,13 @@ export async function GET(request: NextRequest) {
             };
           }
           revenueByPlan[planId].count++;
-          revenueByPlan[planId].revenue += isMonthly ? price : price / 12;
+          revenueByPlan[planId].revenue = addMoney(revenueByPlan[planId].revenue, isMonthly ? price : multiplyMoney(price, 1 / 12));
         }
       });
     }
 
     // 3. Calculate ARR (Annual Recurring Revenue)
-    const arr = mrr * 12;
+    const arr = multiplyMoney(mrr, 12);
 
     // 4. Get subscription statistics
     const { data: allSubscriptions, error: _allError } = await supabaseAdmin
@@ -196,7 +197,7 @@ export async function GET(request: NextRequest) {
 
     // 6. Calculate ARPU (Average Revenue Per User)
     const activeTotal = activeCount + trialingCount;
-    const arpu = activeTotal > 0 ? mrr / activeTotal : 0;
+    const arpu = activeTotal > 0 ? multiplyMoney(mrr, 1 / activeTotal) : 0;
 
     // 7. Get revenue trends (last 12 months)
     const revenueTrends = [];
@@ -245,7 +246,7 @@ export async function GET(request: NextRequest) {
           const price = isMonthly ? plan.price_monthly : plan.price_yearly;
           
           if (price) {
-            monthRevenue += isMonthly ? price : price / 12;
+            monthRevenue = addMoney(monthRevenue, isMonthly ? price : multiplyMoney(price, 1 / 12));
           }
         });
       }
@@ -280,7 +281,7 @@ export async function GET(request: NextRequest) {
               revenue: 0,
             };
           }
-          providerRevenue[providerId].revenue += isMonthly ? price : price / 12;
+          providerRevenue[providerId].revenue = addMoney(providerRevenue[providerId].revenue, isMonthly ? price : multiplyMoney(price, 1 / 12));
         }
       });
     }
@@ -332,7 +333,7 @@ export async function GET(request: NextRequest) {
     let recognizedMrr = 0;
     for (const row of recognitionRows ?? []) {
       const v = Number((row as { net?: number; amount?: number }).net ?? (row as { amount?: number }).amount ?? 0);
-      if (Number.isFinite(v)) recognizedMrr += v;
+      if (Number.isFinite(v)) recognizedMrr = addMoney(recognizedMrr, v);
     }
 
     // 11. Realized subscription cash from ledger
@@ -360,7 +361,7 @@ export async function GET(request: NextRequest) {
       for (const row of ftSubRows as { net?: number | string | null; amount?: number | string | null }[]) {
         const v = Number(row.net ?? row.amount ?? 0);
         if (Number.isFinite(v)) {
-          realizedSubscriptionRevenue += v;
+          realizedSubscriptionRevenue = addMoney(realizedSubscriptionRevenue, v);
           realizedSubscriptionTransactionCount++;
         }
       }
@@ -387,20 +388,20 @@ export async function GET(request: NextRequest) {
           started <= currentMonth &&
           (sub.status === "active" || sub.status === "trialing") &&
           (!expired || expired >= currentMonth);
-        if (wasActiveAtStart) startingMrr += rowMrr;
+        if (wasActiveAtStart) startingMrr = addMoney(startingMrr, rowMrr);
 
         if (started && started >= currentMonth && rowMrr > 0) {
-          newMrr += rowMrr;
+          newMrr = addMoney(newMrr, rowMrr);
         }
         if (sub.status === "cancelled" && expired && expired >= currentMonth && expired < new Date()) {
-          churnedMrr += rowMrr;
+          churnedMrr = addMoney(churnedMrr, rowMrr);
         }
       }
     }
     const expansionMrr = 0;
     const contractionMrr = Math.max(
       0,
-      startingMrr + newMrr - churnedMrr - mrr,
+      subtractMoney(subtractMoney(addMoney(startingMrr, newMrr), churnedMrr), mrr),
     );
     const mrrBridge = computeMrrBridge({
       startingMrr,
@@ -410,7 +411,7 @@ export async function GET(request: NextRequest) {
       churnedMrr,
     });
 
-    const paidOnlyArpu = mrrEligibleCount > 0 ? mrr / mrrEligibleCount : 0;
+    const paidOnlyArpu = mrrEligibleCount > 0 ? multiplyMoney(mrr, 1 / mrrEligibleCount) : 0;
     let trialStartedThisMonth = 0;
     let trialConvertedThisMonth = 0;
     if (allSubscriptions) {
@@ -429,10 +430,10 @@ export async function GET(request: NextRequest) {
         : 0;
 
     return successResponse({
-      mrr: Math.round(mrr * 100) / 100,
-      catalog_mrr: Math.round(mrr * 100) / 100,
-      recognized_mrr: Math.round(recognizedMrr * 100) / 100,
-      arr: Math.round(arr * 100) / 100,
+      mrr: roundCurrency(mrr),
+      catalog_mrr: roundCurrency(mrr),
+      recognized_mrr: roundCurrency(recognizedMrr),
+      arr: roundCurrency(arr),
       total_subscriptions: totalSubscriptions,
       active_subscriptions: activeCount + trialingCount,
       status_breakdown: statusBreakdown,
@@ -440,19 +441,19 @@ export async function GET(request: NextRequest) {
       revenue_by_plan: Object.values(revenueByPlan).map(plan => ({
         plan_name: plan.name,
         count: plan.count,
-        mrr: Math.round(plan.revenue * 100) / 100,
+        mrr: roundCurrency(plan.revenue),
       })),
-      churn_rate: Math.round(churnRate * 100) / 100,
-      arpu: Math.round(arpu * 100) / 100,
+      churn_rate: roundCurrency(churnRate),
+      arpu: roundCurrency(arpu),
       new_this_month: newThisMonth,
       cancelled_this_month: cancelledThisMonth,
       revenue_trends: revenueTrends,
       top_providers: top10Providers,
-      realized_subscription_revenue: Math.round(realizedSubscriptionRevenue * 100) / 100,
+      realized_subscription_revenue: roundCurrency(realizedSubscriptionRevenue),
       realized_subscription_transaction_count: realizedSubscriptionTransactionCount,
       mrr_eligible_count: mrrEligibleCount,
       free_active_count: freeActiveCount,
-      paid_only_arpu: Math.round(paidOnlyArpu * 100) / 100,
+      paid_only_arpu: roundCurrency(paidOnlyArpu),
       trial_to_paid_rate,
       mrr_bridge: mrrBridge,
     });

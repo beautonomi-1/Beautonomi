@@ -14,17 +14,21 @@ export function sanitizeProviderClientSearchTerm(trimmed: string): string {
 
 export function buildUserContactSearchOrClauses(
   textTerms: string | string[],
-  phoneNeedles: string[]
+  phoneNeedles: string[],
+  options?: { nameOnly?: boolean },
 ): string[] {
   const clauses: string[] = [];
   const terms = [...new Set(Array.isArray(textTerms) ? textTerms : [textTerms])];
   for (const term of terms) {
     const safe = sanitizeProviderClientSearchTerm(term);
     if (safe.length === 0) continue;
-    clauses.push(`full_name.ilike.%${safe}%`, `email.ilike.%${safe}%`);
+    clauses.push(`full_name.ilike.%${safe}%`);
+    if (!options?.nameOnly) clauses.push(`email.ilike.%${safe}%`);
   }
-  for (const needle of phoneNeedles) {
-    clauses.push(`phone.ilike.%${needle}%`);
+  if (!options?.nameOnly) {
+    for (const needle of phoneNeedles) {
+      clauses.push(`phone.ilike.%${needle}%`);
+    }
   }
   return clauses;
 }
@@ -63,7 +67,8 @@ export function contactMatchesSearchQuery(
     provider_supplied_email?: string | null;
     provider_supplied_phone?: string | null;
     default_address?: { address_line1?: string; city?: string } | null;
-  }
+  },
+  options?: { nameOnly?: boolean },
 ): boolean {
   const trimmed = searchQuery.trim();
   if (!trimmed) return true;
@@ -74,6 +79,7 @@ export function contactMatchesSearchQuery(
     .toLowerCase();
 
   if (fields.full_name?.toLowerCase().includes(searchLower)) return true;
+  if (options?.nameOnly) return false;
   if (fields.email?.toLowerCase().includes(searchLower)) return true;
   if (fields.provider_supplied_email?.toLowerCase().includes(searchLower)) return true;
   if (phoneMatchesQuery(fields.phone, trimmed)) return true;
@@ -91,14 +97,19 @@ async function matchUserIdsAmongIds(
   supabaseAdmin: SupabaseClient,
   customerIds: string[],
   searchQuery: string,
-  extraTextTerms: string[] = []
+  extraTextTerms: string[] = [],
+  options?: { nameOnly?: boolean },
 ): Promise<Set<string>> {
   const matched = new Set<string>();
   const trimmed = searchQuery.trim();
   if (!trimmed || customerIds.length === 0) return matched;
 
-  const phoneNeedles = phoneSearchNeedles(trimmed);
-  const orClauses = buildUserContactSearchOrClauses([trimmed, ...extraTextTerms], phoneNeedles);
+  const phoneNeedles = options?.nameOnly ? [] : phoneSearchNeedles(trimmed);
+  const orClauses = buildUserContactSearchOrClauses(
+    [trimmed, ...extraTextTerms],
+    phoneNeedles,
+    options,
+  );
 
   if (orClauses.length > 0) {
     const users = await fetchInIdChunks<{ id: string }>(
@@ -229,10 +240,17 @@ export async function findCustomerIdsByContactSearchAmongIds(
   supabaseAdmin: SupabaseClient,
   customerIds: string[],
   searchQuery: string,
-  extraTextTerms: string[] = []
+  extraTextTerms: string[] = [],
+  options?: { nameOnly?: boolean },
 ): Promise<string[]> {
   return [
-    ...(await matchUserIdsAmongIds(supabaseAdmin, customerIds, searchQuery, extraTextTerms)),
+    ...(await matchUserIdsAmongIds(
+      supabaseAdmin,
+      customerIds,
+      searchQuery,
+      extraTextTerms,
+      options,
+    )),
   ];
 }
 
@@ -276,7 +294,8 @@ export async function loadDistinctSaleCustomerIdsForProvider(
 export async function findGroupBookingIdsByParticipantContactSearch(
   supabaseAdmin: SupabaseClient,
   providerId: string,
-  searchQuery: string
+  searchQuery: string,
+  options?: { nameOnly?: boolean },
 ): Promise<string[]> {
   const trimmed = searchQuery.trim();
   if (!trimmed) return [];
@@ -308,11 +327,15 @@ export async function findGroupBookingIdsByParticipantContactSearch(
   for (const p of participants) {
     if (!p.group_booking_id) continue;
     if (
-      contactMatchesSearchQuery(trimmed, {
-        full_name: p.participant_name,
-        email: p.participant_email,
-        phone: p.participant_phone,
-      })
+      contactMatchesSearchQuery(
+        trimmed,
+        {
+          full_name: p.participant_name,
+          email: p.participant_email,
+          phone: p.participant_phone,
+        },
+        options,
+      )
     ) {
       matched.add(p.group_booking_id);
     }

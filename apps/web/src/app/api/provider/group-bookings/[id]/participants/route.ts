@@ -10,6 +10,8 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { z } from "zod";
 import {
   tryRecalculateGroupBookingTotal,
@@ -76,6 +78,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const { id: rawGroupId } = await params;
@@ -140,7 +145,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           return errorResponse("Booking already belongs to another group", "CONFLICT", 409);
         }
         await tryRecalculateGroupBookingTotal(admin, groupId);
-        return successResponse({ data: existing });
+        return successResponse({ data: redactBookingCustomerContact(existing, canViewClients) });
       }
 
       const capacity = evaluateGroupCapacity({
@@ -153,7 +158,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
 
       const cust = b.customers || {};
-      const name = body.participant_name || cust.full_name || cust.email || "Guest";
+      const name = body.participant_name || cust.full_name || "Guest";
 
       const { data: row, error: insErr } = await admin
         .from("booking_participants")
@@ -183,7 +188,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           if (racedExistingError) throw racedExistingError;
           if (racedExisting) {
             await tryRecalculateGroupBookingTotal(admin, groupId);
-            return successResponse({ data: racedExisting });
+            return successResponse({ data: redactBookingCustomerContact(racedExisting, canViewClients) });
           }
         }
         throw insErr;
@@ -236,7 +241,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       await tryRecalculateGroupBookingTotal(admin, groupId);
 
-      return successResponse({ data: row });
+      return successResponse({ data: redactBookingCustomerContact(row, canViewClients) });
     }
 
     const inline = inlineParticipantSchema.parse(rawBody);
@@ -287,7 +292,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     await tryRecalculateGroupBookingTotal(admin, groupId);
 
-    return successResponse({ data: row });
+    return successResponse({ data: redactBookingCustomerContact(row, canViewClients) });
   } catch (error) {
     return handleApiError(error, "Failed to add group participant");
   }

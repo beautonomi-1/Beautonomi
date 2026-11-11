@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useDeferredValue, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -184,7 +185,7 @@ export function BookingsPage() {
       no_show: bookings.filter((b) => b.status === "no_show").length,
       revenue: bookings
         .filter((b) => b.status === "completed")
-        .reduce((s, b) => s + (b.total_amount || 0), 0),
+        .reduce((s, b) => addMoney(s, b.total_amount || 0), 0),
     };
   }, [apiStats, allRows]);
 

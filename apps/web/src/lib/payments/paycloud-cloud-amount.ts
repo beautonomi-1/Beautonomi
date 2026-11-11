@@ -1,3 +1,4 @@
+import { roundCurrency } from "@beautonomi/utils";
 /**
  * PayCloud Cloud Mode amounts are major currency units (one ZAR = one rand),
  * formatted with two decimal places as strings — e.g. "34.50" per official docs.
@@ -8,7 +9,7 @@
 /** Round to currency precision before sending to PayCloud or storing expected amounts. */
 export function normalizePaycloudMajorAmount(amountMajor: number): number {
   if (!Number.isFinite(amountMajor)) return 0;
-  return Math.round(amountMajor * 100) / 100;
+  return roundCurrency(amountMajor);
 }
 
 export function formatPaycloudCloudOrderAmount(currency: string, amountMajor: number): string {

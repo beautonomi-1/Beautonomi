@@ -1,3 +1,4 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -7,6 +8,7 @@ import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { mapMoneySqlError } from "@/lib/finance/map-money-sql-error";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import {
@@ -201,8 +203,8 @@ export async function POST(
     const walletPaid = (bookingData as { wallet_amount?: number } | null)?.wallet_amount || 0;
     const giftPaid = (bookingData as { gift_card_amount?: number } | null)?.gift_card_amount || 0;
     const totalRefunded = bookingData?.total_refunded || 0;
-    const totalCollectedAllSources = Math.max(totalPaid, walletPaid + giftPaid);
-    const availableForRefund = totalCollectedAllSources - totalRefunded;
+    const totalCollectedAllSources = Math.max(totalPaid, addMoney(walletPaid, giftPaid));
+    const availableForRefund = subtractMoney(totalCollectedAllSources, totalRefunded);
 
     // Validate refund amount
     if (amount > availableForRefund) {
@@ -270,7 +272,7 @@ export async function POST(
     // Cash handed back instead of the machine refund releases the obligation below.
     const cashCap = computeInPersonRefundableCap(
       bookingPayments,
-      Math.max(0, completedInPersonRefunds - awaitingMachineTotal),
+      Math.max(0, subtractMoney(completedInPersonRefunds, awaitingMachineTotal)),
     );
 
     if (refundMethod === "cash" && amount > cashCap) {
@@ -507,6 +509,10 @@ export async function POST(
 
     if (refundError || !refund) {
       console.error("Error creating refund record:", refundError);
+      const mapped = mapMoneySqlError(refundError);
+      if (mapped) {
+        return errorResponse(mapped.message, mapped.code, mapped.status);
+      }
       return errorResponse("Failed to create refund record", "REFUND_ERROR", 500);
     }
 
@@ -521,7 +527,7 @@ export async function POST(
     if (
       refundMethod === "store_credit" &&
       giftPaid > 0 &&
-      totalRefunded + amount + 0.01 >= totalCollectedAllSources
+      addMoney(totalRefunded, amount) + 0.01 >= totalCollectedAllSources
     ) {
       try {
         const { data, error } = await (supabaseAdmin.rpc as any)("void_gift_card_redemption", {
@@ -678,9 +684,32 @@ export async function POST(
 
       if (finalizeErr) {
         console.error("Refund finalize failed after wallet credit:", finalizeErr);
+        // F2-57: never leave the customer holding a wallet credit against a
+        // refund that is still `pending` — a retry would credit them again.
+        // Undo the credit (idempotent) and mark this refund failed; if the
+        // undo fails, open a reconciliation exception instead.
+        const { revertWalletRefundCreditAfterFinalizeFailure } = await import(
+          "@/lib/bookings/revert-wallet-refund-credit"
+        );
+        const revert = await revertWalletRefundCreditAfterFinalizeFailure(supabaseAdmin, {
+          refundId,
+          bookingId,
+          customerId: booking.customer_id!,
+          amount: walletCreditAmount,
+          currency: booking.currency || lastResortCurrency,
+          tenantId: walletTenantId ?? null,
+          finalizeErrorMessage: finalizeErr.message,
+        });
+        if (revert.reverted) {
+          return errorResponse(
+            "Refund could not be finalised; the wallet credit was reverted. Please retry.",
+            "FINALIZE_ERROR",
+            500,
+          );
+        }
         return errorResponse(
-          "Refund credited to wallet but failed to finalise; please re-trigger.",
-          "FINALIZE_ERROR",
+          "Refund credited to wallet but failed to finalise and could not be reverted. Do not retry — finance has been notified.",
+          "FINALIZE_ERROR_UNREVERTED",
           500,
         );
       }
@@ -739,7 +768,7 @@ export async function POST(
     }
 
     // Keep full-refund detection aligned with the same all-source coverage cap.
-    const newTotalRefunded = totalRefunded + amount;
+    const newTotalRefunded = addMoney(totalRefunded, amount);
     const isFullyRefunded = newTotalRefunded >= totalCollectedAllSources;
 
     // Notify the customer. Wallet refunds point at the wallet; in-person (cash)

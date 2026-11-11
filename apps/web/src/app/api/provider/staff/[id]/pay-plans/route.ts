@@ -42,7 +42,14 @@ async function assertViewPayPlan(
   await assertManagePayroll(userId, request);
 }
 
-const upsertSchema = z.object({
+const payPlanTierSchema = z.object({
+  id: z.string().uuid().optional(),
+  min_revenue: z.number().min(0).optional(),
+  commission_rate: z.number().min(0).max(100).optional(),
+  tier_order: z.number().int().optional(),
+});
+
+export const payPlanUpsertSchema = z.object({
   effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   pay_model: payModelSchema,
   employment_type: z.enum(["employee", "contractor", "apprentice"]).optional(),
@@ -52,7 +59,7 @@ const upsertSchema = z.object({
   product_rate: z.number().min(0).max(100).nullable().optional(),
   tier_mode: z.enum(["retroactive", "marginal"]).optional(),
   threshold_amount: z.number().min(0).nullable().optional(),
-  tiers: z.array(z.record(z.string(), z.unknown())).optional(),
+  tiers: z.array(payPlanTierSchema).optional(),
   statutory_mode: z.enum(["auto", "manual", "none"]).optional(),
 });
 
@@ -114,7 +121,7 @@ export async function POST(
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const { id: staffId } = await params;
-    const body = upsertSchema.parse(await request.json());
+    const body = payPlanUpsertSchema.parse(await request.json());
     const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, admin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
@@ -177,19 +184,12 @@ export async function POST(
     if (body.tiers !== undefined) {
       await admin.from("provider_staff_commission_tiers").delete().eq("staff_id", staffId);
       if (body.tiers.length > 0) {
-        const tierRows = body.tiers.map((t, i) => {
-          const row = t as {
-            min_revenue?: number;
-            commission_rate?: number;
-            tier_order?: number;
-          };
-          return {
-            staff_id: staffId,
-            min_revenue: Number(row.min_revenue ?? 0),
-            commission_rate: Number(row.commission_rate ?? 0),
-            tier_order: row.tier_order ?? i,
-          };
-        });
+        const tierRows = body.tiers.map((row, i) => ({
+          staff_id: staffId,
+          min_revenue: row.min_revenue ?? 0,
+          commission_rate: row.commission_rate ?? 0,
+          tier_order: row.tier_order ?? i,
+        }));
         await admin.from("provider_staff_commission_tiers").insert(tierRows);
       }
     }

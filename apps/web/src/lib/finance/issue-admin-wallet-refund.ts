@@ -28,6 +28,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { checkPeriodLock } from "@/lib/finance/period-lock";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 export interface IssueAdminWalletRefundOptions {
   supabase: SupabaseClient;
@@ -236,7 +237,7 @@ export async function issueAdminWalletRefund(
   // (custom-offer charge rows embed the gift leg in `amount`).
   const giftCardAmount = Number(booking.gift_card_amount ?? 0);
   const prior = Math.max(0, Number(priorRefundAmount ?? 0));
-  const cumulativeRefundPreview = Math.round((prior + amount) * 100) / 100;
+  const cumulativeRefundPreview = addMoney(prior, amount);
   const isFullRefundForGiftCard =
     originalChargeAmount > 0 && cumulativeRefundPreview + 0.001 >= originalChargeAmount;
   const willVoidGiftCard = isFullRefundForGiftCard && giftCardAmount > 0;
@@ -260,10 +261,10 @@ export async function issueAdminWalletRefund(
   // Only subtract the gift leg once — on the refund that completes the full amount.
   const giftOffset =
     excludeGift && prior < giftCardAmount
-      ? Math.max(0, Math.round((giftCardAmount - prior) * 100) / 100)
+      ? Math.max(0, subtractMoney(giftCardAmount, prior))
       : 0;
   const walletCreditAmount = excludeGift
-    ? Math.max(0, Math.round((amount - giftOffset) * 100) / 100)
+    ? Math.max(0, subtractMoney(amount, giftOffset))
     : amount;
 
   const { data: refundRecord, error: refundInsertErr } = await supabase
@@ -290,7 +291,7 @@ export async function issueAdminWalletRefund(
   // the wallet so concurrent admin POSTs cannot both succeed. Accumulates
   // refund_amount across partial refunds and CAS on the expected prior amount.
   if (resolvedTransactionId) {
-    const cumulativeRefund = Math.round((prior + amount) * 100) / 100;
+    const cumulativeRefund = addMoney(prior, amount);
     const isFullRefund =
       originalChargeAmount <= 0 || cumulativeRefund + 0.001 >= originalChargeAmount;
     const refundReference = `wallet_refund_${resolvedTransactionId}_${Date.now()}`;

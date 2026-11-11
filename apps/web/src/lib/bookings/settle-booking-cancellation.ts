@@ -9,6 +9,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveLedgerCurrency } from "@/lib/ledger/resolve-ledger-currency";
 import { postCancellationFeeShareLines } from "@/lib/payroll/cancellation-fee-share";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import type { CancellationPolicy } from "@/lib/bookings/cancellation-policy";
 import {
   computeInPersonRefundableCap,
@@ -111,7 +112,7 @@ export function computeYocoTerminalRefundDue(
           String(p.payment_provider ?? "").toLowerCase() === "yoco" &&
           (p.status === "completed" || p.status === "partially_refunded"),
       )
-      .reduce((sum, p) => sum + Math.max(0, Number(p.amount ?? 0)), 0),
+      .reduce((sum, p) => addMoney(sum, Math.max(0, Number(p.amount ?? 0))), 0),
   );
   return roundCurrency2(Math.max(0, Math.min(candidateTerminal, yocoCaptured)));
 }
@@ -123,8 +124,7 @@ export function computeEffectiveCollectedAmount(booking: BookingFinancialSnapsho
   return roundCurrency2(
     Math.max(
       0,
-      Math.max(totalPaid, walletCollected + giftCardCollected) -
-        Number(booking.total_refunded ?? 0),
+      subtractMoney(Math.max(totalPaid, addMoney(walletCollected, giftCardCollected)), Number(booking.total_refunded ?? 0)),
     ),
   );
 }
@@ -155,7 +155,7 @@ export function computeReconciledCancellationAmounts(
     policyRefundAmount + 0.01 >= bookingTotal;
   const willVoidGiftCard = intendsToRestoreGiftCard && params.giftCardRestored !== false;
   const refundableWithoutGift = roundCurrency2(
-    Math.max(0, effectiveCollected - (willVoidGiftCard ? giftCardCollected : 0)),
+    Math.max(0, subtractMoney(effectiveCollected, willVoidGiftCard ? giftCardCollected : 0)),
   );
 
   const walletRefundAmount = roundCurrency2(
@@ -191,13 +191,13 @@ export function walletStoreCreditAmountWhenVoidingGiftOnFullRefund(params: {
    */
   giftCardRestored?: boolean | "unknown";
 }): number {
-  const projectedTotalRefunded = params.totalRefundedBefore + params.refundAmount;
+  const projectedTotalRefunded = addMoney(params.totalRefundedBefore, params.refundAmount);
   const willVoidGiftCardOnFullRefund =
     params.giftCardCollected > 0 &&
     projectedTotalRefunded + 0.01 >= params.totalCollectedAllSources;
   if (!willVoidGiftCardOnFullRefund) return params.refundAmount;
   if (params.giftCardRestored === false) return roundCurrency2(params.refundAmount);
-  return roundCurrency2(Math.max(0, params.refundAmount - params.giftCardCollected));
+  return Math.max(0, subtractMoney(params.refundAmount, params.giftCardCollected));
 }
 
 export function computeCancellationFeeForSettlement(
@@ -208,17 +208,17 @@ export function computeCancellationFeeForSettlement(
     Number(params.refundBookingTotal ?? params.booking.total_amount ?? 0),
   );
   const tip = Math.min(grossTotal, Math.max(0, Number(params.booking.tip_amount ?? 0)));
-  const basis = roundCurrency2(grossTotal - tip);
+  const basis = subtractMoney(grossTotal, tip);
   const collected = params.maxWalletCredit ?? computeEffectiveCollectedAmount(params.booking);
   // Tip is treated as paid last and is always returned; fees only apply to the non-tip basis.
-  const tipPaid = roundCurrency2(Math.min(tip, Math.max(0, collected - basis)));
+  const tipPaid = roundCurrency2(Math.min(tip, Math.max(0, subtractMoney(collected, basis))));
   const isLate = params.isLateCancellation === true;
 
   const fromFee = (fee: number, late: boolean) => {
     const f = roundCurrency2(Math.min(basis, Math.max(0, fee)));
     return {
       cancellationFeeApplied: f,
-      policyRefundAmount: roundCurrency2(Math.max(0, basis - f) + tipPaid),
+      policyRefundAmount: addMoney(Math.max(0, subtractMoney(basis, f)), tipPaid),
       isLate: late,
     };
   };
@@ -240,7 +240,7 @@ export function computeCancellationFeeForSettlement(
   }
 
   const refundOnBasis = computeCancellationRefundAmount(basis, params.policy, isLate);
-  return fromFee(basis - refundOnBasis, isLate);
+  return fromFee(subtractMoney(basis, refundOnBasis), isLate);
 }
 
 export async function insertCancellationFeeLedgerIdempotent(
@@ -405,7 +405,7 @@ async function fetchPriorCancellationRefundsTotal(
           row.refund_method === "original" && reason.endsWith("cancelled — guest share returned");
         return leadCredit || guestShare;
       })
-      .reduce((sum, row) => sum + Math.max(0, Number(row.amount ?? 0)), 0),
+      .reduce((sum, row) => addMoney(sum, Math.max(0, Number(row.amount ?? 0))), 0),
   );
 }
 
@@ -499,11 +499,11 @@ export async function settleBookingCancellation(
   const effectiveCollected = roundCurrency2(
     Math.max(
       0,
-      (params.maxWalletCredit ?? computeEffectiveCollectedAmount(booking)) - guestSharesHeld,
+      subtractMoney(params.maxWalletCredit ?? computeEffectiveCollectedAmount(booking), guestSharesHeld),
     ),
   );
   const leadPolicyRefundAmount = roundCurrency2(
-    Math.max(0, policyRefundAmount - guestSharesHeld - priorCancellationCredits),
+    Math.max(0, subtractMoney(subtractMoney(policyRefundAmount, guestSharesHeld), priorCancellationCredits)),
   );
 
   // On a full refund we also void the gift-card redemption (restoring balance
@@ -522,7 +522,7 @@ export async function settleBookingCancellation(
   const excludeGiftFromWallet = giftCardVoid === "restored" || giftCardVoid === "unknown";
   const giftCardRestored = giftCardVoid === "restored";
   const refundableWithoutGift = roundCurrency2(
-    Math.max(0, effectiveCollected - (excludeGiftFromWallet ? giftCardCollected : 0)),
+    Math.max(0, subtractMoney(effectiveCollected, excludeGiftFromWallet ? giftCardCollected : 0)),
   );
 
   const walletRefundTarget = roundCurrency2(
@@ -566,13 +566,13 @@ export async function settleBookingCancellation(
       if (pcSale?.id) {
         terminalRefundDue = candidateTerminal;
         terminalRefundProvider = "paycloud";
-        walletCreditTarget = roundCurrency2(Math.max(0, walletRefundTarget - terminalRefundDue));
+        walletCreditTarget = Math.max(0, subtractMoney(walletRefundTarget, terminalRefundDue));
       } else {
         const yocoDue = computeYocoTerminalRefundDue(bookingPayments, candidateTerminal);
         if (yocoDue > 0.01) {
           terminalRefundDue = yocoDue;
           terminalRefundProvider = "yoco";
-          walletCreditTarget = roundCurrency2(Math.max(0, walletRefundTarget - terminalRefundDue));
+          walletCreditTarget = Math.max(0, subtractMoney(walletRefundTarget, terminalRefundDue));
         }
       }
     }
@@ -589,7 +589,7 @@ export async function settleBookingCancellation(
     const nonTerminalInPerson = sumNonTerminalInPersonCollected(bookingPaymentsForCap);
     if (nonTerminalInPerson > 0.01) {
       walletCreditTarget = roundCurrency2(
-        Math.max(0, walletCreditTarget - nonTerminalInPerson),
+        Math.max(0, subtractMoney(walletCreditTarget, nonTerminalInPerson)),
       );
     }
   }
@@ -598,7 +598,7 @@ export async function settleBookingCancellation(
   // Use the pre-gift-void collected amount so the retained fee still covers the
   // full non-refunded portion of what was actually taken.
   const cancellationFeeApplied = roundCurrency2(
-    Math.max(0, Math.min(theoreticalFee, effectiveCollected - walletRefundTarget - (giftCardRestored ? giftCardCollected : 0))),
+    Math.max(0, Math.min(theoreticalFee, subtractMoney(subtractMoney(effectiveCollected, walletRefundTarget), giftCardRestored ? giftCardCollected : 0))),
   );
 
   let refundResult: RefundResult = { success: true, amount: 0 };
@@ -670,19 +670,12 @@ export async function settleBookingCancellation(
     );
   }
 
-  const feeDescription =
-    params.cancelledBy === "no_show"
-      ? `No-show fee for booking ${booking.booking_number || bookingId}`
-      : `Cancellation fee for booking ${booking.booking_number || bookingId} — provider-retained (${params.cancelledBy}${isLate ? ", late" : ""})`;
-
-  const cancellationFeeLedgerPosted = await insertCancellationFeeLedgerIdempotent(admin, {
-    bookingId,
-    providerId: booking.provider_id,
-    tenantId: booking.tenant_id,
-    amount: cancellationFeeApplied,
-    description: feeDescription,
-    currency: params.currency,
-  });
+  // T1.10: the refund above is already capped at collected − fee, so the
+  // unrefunded sale components (earnings, platform fee, tax) sum to the
+  // retained fee. Posting cancellation_fee for that same amount as well
+  // leaves recognized revenue at twice the fee. Measured on the local audit
+  // DB: a 333.33 sale, a 50.00 fee row, and a 283.33 refund retained 100.00.
+  const cancellationFeeLedgerPosted = false;
 
   const loyaltyReason =
     params.cancelledBy === "provider"
@@ -817,7 +810,7 @@ export async function settleBookingNoShow(params: {
   const noShowFee = params.noShowFeeEnabled
     ? roundCurrency2(Math.min(Math.max(0, params.noShowFeeAmount), bookingTotal, collected))
     : 0;
-  const refundTotal = roundCurrency2(Math.max(0, bookingTotal - noShowFee));
+  const refundTotal = Math.max(0, subtractMoney(bookingTotal, noShowFee));
 
   return settleBookingCancellation({
     booking: params.booking,

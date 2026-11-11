@@ -122,7 +122,10 @@ export async function POST(request: NextRequest) {
     const phone = normalizePhoneToE164(body.phone, body.countryCode);
     
     if (body.phone && !phone) {
-      console.warn(`Phone number "${body.phone}" is not in valid E.164 format. It will be stored in user profile but not in auth.`);
+      const { redactPhoneForLog } = await import("@/lib/privacy/redact-phone");
+      console.warn(
+        `Phone number "${redactPhoneForLog(body.phone)}" is not in valid E.164 format. It will be stored in user profile but not in auth.`,
+      );
     }
 
     // Check if user already exists by email

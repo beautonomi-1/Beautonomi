@@ -3,13 +3,13 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { getStorageServiceClientOrUser } from "@/lib/supabase/storage-service-client";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   notFoundResponse,
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 
 const BUCKET = "booking-documents";
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
@@ -33,7 +33,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("edit_appointments", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { id: bookingId } = await params;
 

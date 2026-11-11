@@ -4,6 +4,7 @@ import { recordBookingFlutterwavePayment } from "@/lib/bookings/record-booking-f
 import { recordBookingOnlineChargeLedger } from "@/lib/bookings/record-booking-online-charge-ledger";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { ensureWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import { roundCurrency } from "@beautonomi/utils";
 
 type FlutterwaveChargeData = {
   id?: string | number;
@@ -56,7 +57,7 @@ export async function handleFlutterwaveChargeCompleted(data: FlutterwaveChargeDa
 
   const supabase: SupabaseClient = getSupabaseAdmin();
   const currency = (data.currency || "ZAR").toUpperCase();
-  const amountMajor = Math.round(Number(data.amount || 0) * 100) / 100;
+  const amountMajor = roundCurrency(Number(data.amount || 0), currency);
   if (amountMajor <= 0) {
     return;
   }
@@ -71,8 +72,8 @@ export async function handleFlutterwaveChargeCompleted(data: FlutterwaveChargeDa
         ? data.tx_ref
         : transactionId;
 
-  const walletAmount = parseMetaNumber(meta.wallet_amount_applied);
-  const giftCardAmount = parseMetaNumber(meta.gift_card_amount_applied);
+  const walletAmount = roundCurrency(parseMetaNumber(meta.wallet_amount_applied), currency);
+  const giftCardAmount = roundCurrency(parseMetaNumber(meta.gift_card_amount_applied), currency);
   const paymentOption = String(meta.payment_option || "full");
   const requiresDeposit =
     meta.requires_deposit === true || meta.requires_deposit === "true";

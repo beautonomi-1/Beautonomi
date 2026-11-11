@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getCurrencyMeta } from "@beautonomi/utils";
-import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { addMoney, fromMinorUnits, subtractMoney } from "@beautonomi/utils";
 import {
   applyGatewayFeeCorrection,
   findChargeFinanceRowForFeePatch,
@@ -16,6 +15,7 @@ import { syncPaymentTransactionRefundState } from "@/lib/finance/sync-payment-tr
 import { reverseCompletedPayoutLedger } from "@/app/api/payments/webhook/_handlers/transfer-events";
 import { recordFailedPayoutTransferFee } from "@/lib/provider/record-payout-ledger";
 import { applyNonBookingRefundFromTransaction } from "@/lib/payments/apply-non-booking-refund-from-transaction";
+import { capGatewayRefundToRemainingBalance } from "@/lib/bookings/cap-gateway-refund-to-remaining-balance";
 
 type StripeChargeLike = {
   id?: string;
@@ -59,8 +59,7 @@ type StripeTransferLike = {
 };
 
 function stripeMinorToMajor(amountMinor: number | undefined, currency: string): number {
-  const factor = 10 ** getCurrencyMeta(currency).minorUnits;
-  return Math.round((Number(amountMinor || 0) / factor) * 100) / 100;
+  return fromMinorUnits(Number(amountMinor || 0), currency);
 }
 
 type PaymentTxnRow = {
@@ -214,16 +213,29 @@ export async function handleStripeRefundCreated(refund: StripeRefundLike): Promi
       .maybeSingle();
     if (!existingBookingRefund) {
       await removeStripeChargeRefundedBackstopRows(supabase, txn.booking_id);
-      await supabase.from("booking_refunds").insert({
-        booking_id: txn.booking_id,
-        payment_id: bookingPaymentId,
-        amount: refundAmount,
-        reason: `Stripe refund: ${reference}`,
-        refund_method: "original",
-        refund_provider_id: refundId,
-        status: "completed",
-        notes: "Auto-created by Stripe refund.created handler",
+      // F2-33: clamp to the remaining refundable balance; over-refunds open a
+      // reconciliation exception instead of pushing total_refunded > total_paid.
+      const cap = await capGatewayRefundToRemainingBalance(supabase, {
+        bookingId: txn.booking_id,
+        requestedAmount: refundAmount,
+        psp: "stripe",
+        refundReference: refundId,
+        currency,
       });
+      if (cap.amount > 0) {
+        await supabase.from("booking_refunds").insert({
+          booking_id: txn.booking_id,
+          payment_id: bookingPaymentId,
+          amount: cap.amount,
+          reason: `Stripe refund: ${reference}`,
+          refund_method: "original",
+          refund_provider_id: refundId,
+          status: "completed",
+          notes: cap.capped
+            ? `Auto-created by Stripe refund.created handler; gateway amount ${refundAmount.toFixed(2)} capped to remaining balance ${cap.amount.toFixed(2)}`
+            : "Auto-created by Stripe refund.created handler",
+        });
+      }
     }
   } else if (txn) {
     await applyNonBookingRefundFromTransaction({
@@ -242,7 +254,7 @@ export async function handleStripeRefundCreated(refund: StripeRefundLike): Promi
       .select("amount")
       .eq("booking_id", txn.booking_id);
     const cumulativeRefundAmount = (refundRows ?? []).reduce(
-      (sum, row) => sum + Number((row as { amount?: number }).amount ?? 0),
+      (sum, row) => addMoney(sum, Number((row as { amount?: number }).amount ?? 0)),
       0,
     );
     await syncPaymentTransactionRefundState({
@@ -312,10 +324,10 @@ export async function handleStripeChargeRefundedBackstop(charge: StripeChargeLik
     const r = row as { amount?: number; refund_provider_id?: string | null };
     const pid = String(r.refund_provider_id ?? "");
     if (pid.startsWith("chargeback:")) return sum;
-    return sum + Number(r.amount ?? 0);
+    return addMoney(sum, Number(r.amount ?? 0));
   }, 0);
 
-  const delta = Math.round((refundMajor - alreadyRecorded) * 100) / 100;
+  const delta = subtractMoney(refundMajor, alreadyRecorded, currency);
   if (delta <= 0) return;
 
   await supabase.from("booking_refunds").insert({

@@ -22,12 +22,21 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
+import { MAX_CLIENT_AMOUNT_MINOR } from "@/lib/payments/client-amount-bounds";
 
 const initializeSchema = z
   .object({
     email: z.string().email("Invalid email address"),
-    /** Ignored when paying for a product order or booking — server derives amount. */
-    amount: z.number().min(100, "Minimum amount is 100").optional(),
+    /**
+     * Minor units. Ignored when paying for a product order or booking — server derives amount.
+     * F-07: when used (free-form), it must be an integer within [100, MAX_CLIENT_AMOUNT_MINOR].
+     */
+    amount: z
+      .number()
+      .int("Amount must be a whole number of minor units")
+      .min(100, "Minimum amount is 100")
+      .max(MAX_CLIENT_AMOUNT_MINOR, `Maximum amount is ${MAX_CLIENT_AMOUNT_MINOR}`)
+      .optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
     /** Optional mobile/native return target. Must be a trusted app/web URL. */
     callback_url: z

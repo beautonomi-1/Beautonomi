@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseOptionalLimit,
   parseOptionalAmount,
+  promotionValueError,
   resolveValidWindowFromBody,
 } from "../provider-promotion-api";
 
@@ -77,5 +78,20 @@ describe("parseOptionalAmount", () => {
 
   it("parses positive amounts", () => {
     expect(parseOptionalAmount("50.5")).toBe(50.5);
+  });
+});
+
+describe("promotionValueError (F3-05)", () => {
+  it("rejects percentage above 100", () => {
+    expect(promotionValueError("percentage", 500)).toMatch(/0 and 100/);
+  });
+
+  it("rejects oversized fixed amounts", () => {
+    expect(promotionValueError("fixed", 100_001)).toMatch(/100000/);
+    expect(promotionValueError("fixed_amount", 25)).toBeNull();
+  });
+
+  it("accepts a normal percentage", () => {
+    expect(promotionValueError("percentage", 15)).toBeNull();
   });
 });

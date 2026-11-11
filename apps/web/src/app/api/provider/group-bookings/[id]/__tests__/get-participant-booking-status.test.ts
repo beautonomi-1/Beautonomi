@@ -39,6 +39,14 @@ vi.mock("@/lib/auth/requirePermission", () => ({
   requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
+vi.mock("@/lib/auth/permissions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/permissions")>();
+  return {
+    ...actual,
+    hasPermission: vi.fn(async () => true),
+  };
+});
+
 describe("GET /api/provider/group-bookings/[id] participant booking_status", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -106,12 +114,24 @@ describe("GET /api/provider/group-bookings/[id] participant booking_status", () 
         }
         if (table === "booking_payments") {
           const result = { data: [], error: null };
-          const query = {
-            select: vi.fn(() => query),
-            eq: vi.fn(() => query),
-            in: vi.fn().mockResolvedValue(result),
+          const query: Record<string, unknown> = {
+            then: (resolve: (value: typeof result) => unknown) => Promise.resolve(result).then(resolve),
           };
+          query.select = vi.fn(() => query);
+          query.eq = vi.fn(() => query);
+          query.in = vi.fn(() => query);
           return query;
+        }
+        if (table === "providers") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi
+                  .fn()
+                  .mockResolvedValue({ data: { timezone: "Africa/Johannesburg" }, error: null }),
+              }),
+            }),
+          };
         }
         if (table !== "group_bookings") throw new Error(`unexpected table ${table}`);
         return {
@@ -139,6 +159,8 @@ describe("GET /api/provider/group-bookings/[id] participant booking_status", () 
     expect(res.status).toBe(200);
     expect(body.data.participants).toHaveLength(1);
     expect(body.data.participants[0].booking_status).toBe("cancelled");
+    expect(body.data.scheduled_date).toBe("2026-06-01");
+    expect(body.data.scheduled_time).toBe("12:00");
     },
     90_000,
   );

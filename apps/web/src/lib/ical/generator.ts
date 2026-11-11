@@ -3,6 +3,8 @@
  * Generates iCal (.ics) files for calendar export
  */
 
+import { formatCustomerNameForCalendarFeed } from "@/lib/calendar/format-customer-name-for-feed";
+
 export interface CalendarEvent {
   uid: string;
   summary: string;
@@ -134,7 +136,6 @@ export function generateStaffCalendar(
     scheduled_at: string;
     duration_minutes: number;
     customer_name?: string;
-    customer_email?: string;
     service_title?: string;
     location_name?: string;
     location_address?: string;
@@ -151,9 +152,10 @@ export function generateStaffCalendar(
       const end = new Date(start.getTime() + apt.duration_minutes * 60000);
 
       const summary = apt.service_title || 'Appointment';
+      const clientName = formatCustomerNameForCalendarFeed(apt.customer_name);
       const description = [
         `Booking #${apt.booking_number}`,
-        apt.customer_name ? `Client: ${apt.customer_name}` : null,
+        clientName ? `Client: ${clientName}` : null,
         apt.service_title ? `Service: ${apt.service_title}` : null,
       ]
         .filter(Boolean)
@@ -177,12 +179,6 @@ export function generateStaffCalendar(
           name: apt.provider_name || 'Beautonomi',
           email: staffEmail,
         },
-        attendee: apt.customer_email
-          ? {
-              name: apt.customer_name || 'Client',
-              email: apt.customer_email,
-            }
-          : undefined,
       };
     });
 

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney, multiplyMoney, percentOf, roundCurrency } from "@beautonomi/utils";
 
 export type CancellationFeeShareParams = {
   providerId: string;
@@ -32,19 +33,19 @@ export function planCancellationFeeShareLines(
   providerEarningsAmount: number,
 ): Array<{ staff_id: string; base_amount: number; rate: number; amount: number }> {
   const eligible = inputs.filter((i) => i.price > 0 && i.commission_enabled !== false && i.rate > 0);
-  const totalPrice = eligible.reduce((s, i) => s + i.price, 0);
+  const totalPrice = eligible.reduce((s, i) => addMoney(s, i.price), 0);
   if (totalPrice <= 0 || providerEarningsAmount <= 0) return [];
   const byStaff = new Map<string, { price: number; rate: number }>();
   for (const i of eligible) {
     const cur = byStaff.get(i.staff_id) ?? { price: 0, rate: i.rate };
-    cur.price += i.price;
+    cur.price = addMoney(cur.price, i.price);
     cur.rate = Math.max(cur.rate, i.rate);
     byStaff.set(i.staff_id, cur);
   }
   const out: Array<{ staff_id: string; base_amount: number; rate: number; amount: number }> = [];
   for (const [staffId, v] of byStaff) {
-    const base = Math.round((providerEarningsAmount * v.price / totalPrice) * 100) / 100;
-    const amount = Math.round((base * v.rate / 100) * 100) / 100;
+    const base = multiplyMoney(providerEarningsAmount, v.price / totalPrice);
+    const amount = percentOf(base, v.rate);
     if (amount > 0) out.push({ staff_id: staffId, base_amount: base, rate: v.rate, amount });
   }
   return out;
@@ -115,6 +116,6 @@ export async function postCancellationFeeShareLines(
   return {
     enabled: true,
     linesCreated: (inserted ?? []).length,
-    totalShared: (inserted ?? []).reduce((s: number, r: any) => s + Number(r.amount ?? 0), 0),
+    totalShared: (inserted ?? []).reduce((s: number, r: any) => addMoney(s, Number(r.amount ?? 0)), 0),
   };
 }

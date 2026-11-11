@@ -1,5 +1,6 @@
 "use client";
 
+import { subtractMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -205,7 +206,7 @@ export default function InvoiceDetailPage() {
     ? Math.max(
         0,
         Number(invoice.amount_due ?? NaN) ||
-          Number(invoice.total_amount ?? 0) - Number(invoice.amount_paid ?? 0),
+          subtractMoney(Number(invoice.total_amount ?? 0), Number(invoice.amount_paid ?? 0)),
       )
     : 0;
   const displayStatus = invoice?.effective_status ?? invoice?.status ?? "";

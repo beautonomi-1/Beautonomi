@@ -2,13 +2,7 @@
 
 import { Home } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import {
-  hasAtHomePriceAdjustment,
-  houseCallAdjustmentForSnapshotLine,
-  lineHasHouseCallAdjustment,
-  sumHouseCallAdjustmentsFromSnapshot,
-  type AtHomeSnapshotLine,
-} from "@beautonomi/utils";
+import { hasAtHomePriceAdjustment, houseCallAdjustmentForSnapshotLine, lineHasHouseCallAdjustment, sumHouseCallAdjustmentsFromSnapshot, type AtHomeSnapshotLine, addMoney } from "@beautonomi/utils";
 
 type TranslateFn = (key: string, params?: Record<string, string | number>) => string;
 
@@ -111,7 +105,7 @@ export function HouseCallServicePriceLabel({
     );
   }
 
-  const homePrice = basePrice + adj;
+  const homePrice = addMoney(basePrice, adj);
 
   if (!isAtHome) {
     return (

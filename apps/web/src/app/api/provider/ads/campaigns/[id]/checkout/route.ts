@@ -13,12 +13,12 @@
 
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   errorResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { initializeOnlinePayment } from "@/lib/payments/online-payment";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
@@ -43,7 +43,9 @@ type CampaignRow = {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { id: campaignId } = await params;
@@ -210,7 +212,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .select("email")
       .eq("id", user.id)
       .single();
-    const email = (userRow as { email?: string } | null)?.email || user.email;
+    const email = (userRow as { email?: string } | null)?.email || (user as { email?: string | null }).email;
     if (!email) return errorResponse("User email required for payment", "VALIDATION", 400);
 
     const reference = generateTransactionReference("ads_budget", order.id);

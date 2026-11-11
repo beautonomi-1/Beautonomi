@@ -9,9 +9,11 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact, redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { z } from "zod";
-import { computeVat } from "@beautonomi/utils";
-import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import { addMoney, computeVat, multiplyMoney, roundCurrency } from "@beautonomi/utils";
+import { providerVatSnapshotColumns, resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import {
   applyPosProductStockDecrements,
   validatePosProductStock,
@@ -24,8 +26,13 @@ import { fulfillWalkInProductOrderDelivery } from "@/lib/provider-sales/fulfill-
 import { ensureWalkInCustomerLinkedForProductSale } from "@/lib/provider/ensure-walk-in-customer-for-product-sale";
 import { hasProviderCustomerActivityRelationship } from "@/lib/provider/client-access";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
+import { assertYocoMarkPaidReference } from "@/lib/payments/assert-yoco-mark-paid-reference";
 import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
 import { resolveWalkInStaffId } from "@/lib/provider-sales/resolve-walk-in-staff-id";
+import {
+  mergeProductOrderContact,
+  PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT,
+} from "@/lib/orders/product-order-columns";
 
 /**
  * GET /api/provider/product-sales — list walk-in sales history
@@ -37,6 +44,9 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -71,7 +81,10 @@ export async function GET(request: NextRequest) {
       product_order_items: undefined,
     }));
 
-    return successResponse({ sales: mapped, total: count ?? 0 });
+    return successResponse({
+      sales: redactBookingCustomerContacts(mapped, canViewClients),
+      total: count ?? 0,
+    });
   } catch (err) {
     return handleApiError(err, "Failed to fetch walk-in sales");
   }
@@ -148,8 +161,9 @@ async function finalizePaidWalkInOrder(params: {
   providerId: string;
   userId: string;
   orderId: string;
+  canViewClients: boolean;
 }) {
-  const { supabase, providerId, userId, orderId } = params;
+  const { supabase, providerId, userId, orderId, canViewClients } = params;
 
   const { data: order, error: orderErr } = await supabase
     .from("product_orders")
@@ -177,7 +191,9 @@ async function finalizePaidWalkInOrder(params: {
       .from("product_order_items")
       .select("product_name, quantity, unit_price")
       .eq("order_id", orderId);
-    return successResponse({ order: { ...order, items: items ?? [] } });
+    return successResponse({
+      order: redactBookingCustomerContact({ ...order, items: items ?? [] }, canViewClients),
+    });
   }
 
   const paymentMethod = String(order.payment_method ?? "");
@@ -240,7 +256,7 @@ async function finalizePaidWalkInOrder(params: {
 
   const { data: updated } = await supabase
     .from("product_orders")
-    .select("*")
+    .select(PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT)
     .eq("id", orderId)
     .eq("provider_id", providerId)
     .maybeSingle();
@@ -250,7 +266,21 @@ async function finalizePaidWalkInOrder(params: {
     .select("product_name, quantity, unit_price")
     .eq("order_id", orderId);
 
-  return successResponse({ order: { ...(updated ?? order), items: displayItems ?? [] } }, 200);
+  const updatedRow = (updated ?? null) as unknown as { id: string } | null;
+  const [updatedWithContact] = await mergeProductOrderContact(
+    updatedRow ? [updatedRow] : [],
+    canViewClients,
+  );
+
+  return successResponse(
+    {
+      order: redactBookingCustomerContact(
+        { ...(updatedWithContact ?? updatedRow ?? order), items: displayItems ?? [] },
+        canViewClients,
+      ),
+    },
+    200,
+  );
 }
 
 /**
@@ -264,6 +294,9 @@ export async function POST(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const body = await request.json();
     const parsed = walkInSaleSchema.parse(body);
     const mergedItems = mergeWalkInLines(parsed.items ?? []);
@@ -277,6 +310,7 @@ export async function POST(request: NextRequest) {
       return finalizePaidWalkInOrder({
         supabase,
         providerId,
+        canViewClients,
         userId: user.id,
         orderId: finalizeOrderId,
       });
@@ -404,6 +438,8 @@ export async function POST(request: NextRequest) {
         503,
       );
     }
+    const saleCurrency = providerVatRow?.currency?.trim() || LAST_RESORT_CURRENCY;
+    const vatSnapshot = providerVatSnapshotColumns(resolvedVat);
 
     const posItems = mergedItems.map((i) => ({
       type: "product" as const,
@@ -496,15 +532,15 @@ export async function POST(request: NextRequest) {
           stockErrors.push(`Invalid variant for ${prod.name}.`);
           continue;
         }
-        unitPrice = parseFloat(pv.retail_price);
+        unitPrice = roundCurrency(parseFloat(pv.retail_price), saleCurrency);
         displayName = `${prod.name} — ${variantLabel(pv.option_values, pv.sku ?? null)}`;
       } else {
-        unitPrice = parseFloat(prod.retail_price);
+        unitPrice = roundCurrency(parseFloat(prod.retail_price), saleCurrency);
         displayName = prod.name;
       }
 
-      const lineTotal = unitPrice * item.quantity;
-      subtotal += lineTotal;
+      const lineTotal = multiplyMoney(unitPrice, item.quantity, saleCurrency);
+      subtotal = addMoney(subtotal, lineTotal, saleCurrency);
       orderItems.push({
         product_id: prod.id,
         product_variant_id: vid,
@@ -543,7 +579,6 @@ export async function POST(request: NextRequest) {
     const isPendingCardMachine = parsed.payment_method === "card_machine";
     const isPendingTerminal = isPendingPaycloud || isPendingPaystackTerminal || isPendingCardMachine;
 
-    const saleCurrency = providerVatRow?.currency?.trim() || LAST_RESORT_CURRENCY;
     const vatSplit =
       resolvedVat.registered && resolvedVat.ratePercent > 0
         ? computeVat({
@@ -555,6 +590,18 @@ export async function POST(request: NextRequest) {
         : null;
     const taxAmount = vatSplit?.taxAmount ?? 0;
     const totalAmount = resolvedVat.inclusive ? subtotal : (vatSplit?.grossAmount ?? subtotal);
+
+    if (parsed.payment_method === "yoco") {
+      const yocoCheck = await assertYocoMarkPaidReference(getSupabaseAdmin(), {
+        providerId,
+        reference: parsed.payment_reference!.trim(),
+        expectedAmountMajor: Number(totalAmount),
+        currency: saleCurrency,
+      });
+      if (yocoCheck.ok === false) {
+        return errorResponse(yocoCheck.message, yocoCheck.code, 400);
+      }
+    }
 
     const { data: seqData } = await supabase.rpc("nextval", {
       seq_name: "product_order_number_seq",
@@ -577,11 +624,12 @@ export async function POST(request: NextRequest) {
         customer_id: resolvedCustomerId ?? null,
         provider_id: providerId,
         fulfillment_type: "collection",
-        subtotal: subtotal.toFixed(2),
-        tax_amount: taxAmount.toFixed(2),
-        delivery_fee: "0.00",
-        platform_fee: "0.00",
-        total_amount: totalAmount.toFixed(2),
+        subtotal: roundCurrency(subtotal, saleCurrency),
+        tax_amount: roundCurrency(taxAmount, saleCurrency),
+        delivery_fee: 0,
+        platform_fee: 0,
+        total_amount: roundCurrency(totalAmount, saleCurrency),
+        ...vatSnapshot,
         payment_method: isPendingTerminal ? "card" : paymentMethodForOrder,
         payment_reference: parsed.payment_reference ?? null,
         payment_status: isPendingTerminal ? "pending" : "paid",
@@ -607,8 +655,8 @@ export async function POST(request: NextRequest) {
       product_name: oi.product_name,
       product_image_url: oi.product_image_url,
       quantity: oi.quantity,
-      unit_price: oi.unit_price.toFixed(2),
-      total_price: oi.total_price.toFixed(2),
+      unit_price: roundCurrency(oi.unit_price, saleCurrency),
+      total_price: roundCurrency(oi.total_price, saleCurrency),
     }));
 
     const { error: insertErr } = await supabase.from("product_order_items").insert(itemsToInsert);
@@ -622,7 +670,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (isPendingTerminal) {
-      return successResponse({ order: { ...order, items: orderItems } }, 201);
+      return successResponse(
+        { order: redactBookingCustomerContact({ ...order, items: orderItems }, canViewClients) },
+        201,
+      );
     }
 
     // payment_transactions has no provider INSERT RLS (only service_role).
@@ -681,7 +732,10 @@ export async function POST(request: NextRequest) {
       console.error("[product-sales] stock movement log failed:", logErr);
     }
 
-    return successResponse({ order: { ...order, items: orderItems } }, 201);
+    return successResponse(
+      { order: redactBookingCustomerContact({ ...order, items: orderItems }, canViewClients) },
+      201,
+    );
   } catch (err) {
     return handleApiError(err, "Failed to create walk-in sale");
   }

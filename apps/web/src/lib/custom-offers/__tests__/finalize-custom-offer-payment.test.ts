@@ -64,6 +64,24 @@ vi.mock("@/lib/notifications/insert-notification", () => ({
   insertNotification: vi.fn(async () => undefined),
 }));
 
+vi.mock("@/lib/tax/resolve-provider-vat", () => ({
+  resolveProviderVat: vi.fn(async () => ({
+    registered: true,
+    ratePercent: 15,
+    inclusive: true,
+    vatNumber: null,
+    source: "provider",
+  })),
+  providerVatSnapshotColumns: (v: {
+    inclusive: boolean;
+    vatNumber: string | null;
+    registered: boolean;
+  }) => ({
+    tax_inclusive: v.inclusive,
+    provider_vat_number_snapshot: v.registered ? v.vatNumber : null,
+  }),
+}));
+
 function makeAdminMockForOffer(offer: any, paymentTxn: any | null = null) {
   const chainFor = (data: unknown) => {
     const chain: any = {
@@ -410,6 +428,35 @@ describe("finalizeCustomOfferPayment idempotency", () => {
         }),
       ]),
     );
+  });
+
+  it("persists tax_inclusive from pricing metadata on booking insert (F2-13)", async () => {
+    const { admin, allInserts } = makeAdminMockForSuccessfulFinalize();
+    const res = await finalizeCustomOfferPayment(admin, {
+      offerId: "offer-1",
+      reference: "co_vat_ref",
+      paystackAmountMajor: 115,
+      paystackFeesMajor: 0,
+      walletAmountApplied: 0,
+      giftCardAmountApplied: 0,
+      pricingMetadata: {
+        total_amount: 115,
+        tax_amount: 15,
+        tax_rate: 15,
+        tax_inclusive: false,
+        provider_vat_number_snapshot: "4123456789",
+        travel_fee: 0,
+        service_fee_amount: 0,
+        tip_amount: 0,
+      },
+      customerEmail: "customer@example.com",
+      paymentProvider: "paystack",
+    });
+    expect(res.ok).toBe(true);
+    const bookingInsert = allInserts.find((row) => row.table === "bookings");
+    const payload = bookingInsert?.value as Record<string, unknown> | undefined;
+    expect(payload?.tax_inclusive).toBe(false);
+    expect(payload?.provider_vat_number_snapshot).toBe("4123456789");
   });
 
   it("tags every finance transaction description with the custom offer id", async () => {

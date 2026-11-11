@@ -15,6 +15,7 @@ import {
   PRODUCT_RETURN_BLOCKING_STATUSES,
   PRODUCT_RETURN_WINDOW_DAYS,
 } from "@/lib/ecommerce/product-return-eligibility";
+import { LAST_RESORT_CURRENCY, multiplyMoney, roundCurrency, sumMoney } from "@beautonomi/utils";
 
 const RETURN_WINDOW_DAYS = PRODUCT_RETURN_WINDOW_DAYS;
 
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     // Validate order belongs to customer and is delivered
     const { data: order, error: orderErr } = await supabase.from("product_orders")
-      .select("id, customer_id, provider_id, status, delivered_at, created_at")
+      .select("id, customer_id, provider_id, status, delivered_at, created_at, currency")
       .eq("id", parsed.order_id)
       .eq("customer_id", user.id)
       .single();
@@ -182,7 +183,11 @@ export async function POST(request: NextRequest) {
       if (item) {
         productName = item.product_name;
         qty = Math.min(qty, item.quantity);
-        refundAmount = item.unit_price * qty;
+        refundAmount = multiplyMoney(
+          Number(item.unit_price),
+          qty,
+          String(order.currency || LAST_RESORT_CURRENCY),
+        );
       }
     } else {
       // Full order return
@@ -192,7 +197,10 @@ export async function POST(request: NextRequest) {
         .eq("order_id", parsed.order_id);
       const itemRows = (items ?? []) as ItemRow[];
       productName = itemRows.map((i) => i.product_name ?? "").join(", ");
-      refundAmount = itemRows.reduce((s, i) => s + Number(i.total_price ?? 0), 0);
+      refundAmount = sumMoney(
+        String(order.currency || LAST_RESORT_CURRENCY),
+        ...itemRows.map((i) => Number(i.total_price ?? 0)),
+      );
     }
 
     const { data: returnReq, error: createErr } = await supabase
@@ -207,7 +215,10 @@ export async function POST(request: NextRequest) {
         image_urls: parsed.image_urls ?? [],
         product_name: productName,
         quantity: qty,
-        refund_amount: refundAmount.toFixed(2),
+        refund_amount: roundCurrency(
+          refundAmount,
+          String(order.currency || LAST_RESORT_CURRENCY),
+        ),
       })
       .select()
       .single();

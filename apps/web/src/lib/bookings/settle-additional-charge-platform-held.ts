@@ -15,9 +15,10 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
-import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { addMoney, percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
+import type { CommissionMode } from "@/lib/bookings/record-booking-online-charge-ledger";
 
 interface SettleAdditionalChargePlatformHeldInput {
   /** Paystack reference or stable idempotency reference for the charge. */
@@ -34,6 +35,12 @@ interface SettleAdditionalChargePlatformHeldInput {
   paystackTransactionId?: number | string | null;
   /** Customer (created_by for events and notifications). */
   customerId: string;
+  /**
+   * F2-60: Paystack Terminal collections are provider-collected (0 platform
+   * commission), matching booking allocations on the same route. Online
+   * Paystack / saved-card keep `platform_settings`.
+   */
+  commissionMode?: CommissionMode;
 }
 
 interface SettleResult {
@@ -56,6 +63,7 @@ export async function settleAdditionalChargePlatformHeld(
     chargeId,
     paystackTransactionId = null,
     customerId,
+    commissionMode = "platform_settings",
   } = input;
 
   // Fetch booking
@@ -113,21 +121,27 @@ export async function settleAdditionalChargePlatformHeld(
 
   const chargeAmountMajor = Number(chargeData.amount ?? 0);
   const totalEconomicAmount = chargeAmountMajor > 0 ? chargeAmountMajor : amountInCurrency;
-  const netAmount = amountInCurrency - feesInCurrency;
+  const netAmount = subtractMoney(amountInCurrency, feesInCurrency);
 
   // Commission + provider earnings
   const financeTenantId = await resolveTenantIdForFinanceLedger(admin as any, {
     tenant_id: bookingData.tenant_id as string | null | undefined,
     provider_id: bookingData.provider_id as string | null | undefined,
   });
-  const commissionRate = await resolveCommissionPercentageForBooking(admin as any, {
-    bookingId: bookingData.id as string,
-    tenantId: bookingData.tenant_id ?? financeTenantId ?? null,
-    providerId: bookingData.provider_id ?? null,
-  });
+  const commissionRate =
+    commissionMode === "provider_collected"
+      ? 0
+      : await resolveCommissionPercentageForBooking(admin as any, {
+          bookingId: bookingData.id as string,
+          tenantId: bookingData.tenant_id ?? financeTenantId ?? null,
+          providerId: bookingData.provider_id ?? null,
+        });
   const platformCommission =
     commissionRate > 0 ? percentOf(totalEconomicAmount, commissionRate) : 0;
-  const providerEarnings = subtractMoney(totalEconomicAmount, platformCommission);
+  const providerEarnings =
+    commissionMode === "provider_collected"
+      ? totalEconomicAmount
+      : subtractMoney(totalEconomicAmount, platformCommission);
 
   // Idempotency guard — unique on (provider, reference)
   const { error: ptInsertError } = await admin.from("payment_transactions").insert({
@@ -167,7 +181,7 @@ export async function settleAdditionalChargePlatformHeld(
   await admin
     .from("bookings")
     .update({
-      total_amount: Number(bookingData.total_amount ?? 0) + chargeAmountMajor,
+      total_amount: addMoney(Number(bookingData.total_amount ?? 0), chargeAmountMajor),
       updated_at: now,
     })
     .eq("id", bookingId);

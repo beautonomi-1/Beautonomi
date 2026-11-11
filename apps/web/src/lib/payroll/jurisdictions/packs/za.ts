@@ -1,12 +1,9 @@
 import type { StatutoryContext, StatutoryLine, StatutoryResult } from "../types";
+import { subtractMoney, addMoney, multiplyMoney, percentOf } from "@beautonomi/utils";
 
 /** ZA defaults — values must match published payroll_rule_sets rows when seeded. */
 const UIF_RATE_EMPLOYEE = 0.01;
 const UIF_MONTHLY_CEILING = 17_712;
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
 /** ZA year of assessment runs 1 March – end of February. */
 export function zaTaxYearBounds(payDate: string): { start: string; end: string } {
   const year = Number(payDate.slice(0, 4));
@@ -29,7 +26,7 @@ export function estimateZaPaye(
   rebates: { primary: number; secondary?: number; tertiary?: number },
   ageYears?: number,
 ): number {
-  const annual = periodTaxable * payPeriodsPerYear;
+  const annual = multiplyMoney(periodTaxable, payPeriodsPerYear);
   const sorted = [...brackets].sort((a, b) => {
     const au = a.upTo ?? Number.POSITIVE_INFINITY;
     const bu = b.upTo ?? Number.POSITIVE_INFINITY;
@@ -41,7 +38,7 @@ export function estimateZaPaye(
   for (const b of sorted) {
     const cap = b.upTo ?? Number.POSITIVE_INFINITY;
     if (annual <= cap) {
-      tax = b.base + ((annual - prevCap) * b.rate) / 100;
+      tax = addMoney(b.base, percentOf(subtractMoney(annual, prevCap), b.rate));
       break;
     }
     if (b.upTo != null) prevCap = b.upTo;
@@ -51,8 +48,8 @@ export function estimateZaPaye(
   if (ageYears != null && ageYears >= 75) rebate = rebates.tertiary ?? rebate;
   else if (ageYears != null && ageYears >= 65) rebate = rebates.secondary ?? rebate;
 
-  const annualTax = Math.max(0, tax - rebate);
-  return round2(annualTax / payPeriodsPerYear);
+  const annualTax = Math.max(0, subtractMoney(tax, rebate));
+  return multiplyMoney(annualTax, 1 / payPeriodsPerYear);
 }
 
 export function calculateZaStatutory(
@@ -80,9 +77,9 @@ export function calculateZaStatutory(
   const periodsPerYear =
     ctx.periodsPerYearOverride ?? ruleData.incomeTax?.payPeriodsPerYear ?? 12;
   const uifCeilingPeriod =
-    periodsPerYear > 0 ? round2((uifCeilingMonthly * 12) / periodsPerYear) : uifCeilingMonthly;
+    periodsPerYear > 0 ? multiplyMoney(uifCeilingMonthly, 12 / periodsPerYear) : uifCeilingMonthly;
   const uifBase = Math.min(ctx.periodGross, uifCeilingPeriod);
-  const uif = round2(uifBase * uifRate);
+  const uif = multiplyMoney(uifBase, uifRate);
   if (uif > 0) {
     lines.push({
       code: "uif_employee",

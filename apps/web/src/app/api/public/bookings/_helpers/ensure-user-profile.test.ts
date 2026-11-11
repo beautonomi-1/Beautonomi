@@ -93,4 +93,35 @@ describe("ensureUserProfileForAuthUser role mapping", () => {
     );
     expect(insert).not.toHaveBeenCalled();
   });
+
+  it("does not log the email when that address is already in use", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const client = {
+      from: (table: string) => {
+        if (table === "users") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: null, error: null }),
+              }),
+            }),
+            insert: async () => ({ error: { code: "23505", message: "duplicate" } }),
+          };
+        }
+        return {};
+      },
+    } as unknown as SupabaseClient;
+
+    await expect(
+      ensureUserProfileForAuthUser(
+        client,
+        authUser({ id: "u4", email: "ada@example.com" }),
+      ),
+    ).rejects.toThrow(/already exists/);
+
+    const logged = warn.mock.calls.flat().map((part) => JSON.stringify(part)).join(" ");
+    expect(logged).not.toContain("ada@example.com");
+    expect(logged).toContain("u4");
+    warn.mockRestore();
+  });
 });

@@ -6,7 +6,6 @@ import {
   getOffsetPaginationParams,
   getProviderIdForUser,
   handleApiError,
-  requireRoleInApi,
   successResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
@@ -18,6 +17,15 @@ import {
   clearUncollectedProviderPortalPlatformFeeIfNeeded,
   type BookingFeeClearRow,
 } from "@/lib/bookings/provider-booking-platform-fee";
+import {
+  resolveTerminalExpectedAmount,
+  terminalExpectedAmountForDisplay,
+} from "@/lib/payments/resolve-terminal-expected-amount";
+import {
+  mergeTerminalPaymentContact,
+  TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT,
+  viewerMaySeeTerminalPayer,
+} from "@/lib/payments/terminal-payment-columns";
 
 const collectionIntentSchema = z.object({
   terminal_id: z.string().uuid().optional(),
@@ -30,15 +38,21 @@ const collectionIntentSchema = z.object({
 });
 
 async function resolveProvider(request: NextRequest) {
-  const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+  const permissionCheck = await requirePermission("process_payments", request);
+  if (!permissionCheck.authorized) {
+    return { denied: permissionCheck.response! };
+  }
+  const { user } = permissionCheck;
   const supabase = await getSupabaseServer(request);
   const providerId = await getProviderIdForUser(user.id, supabase, { request });
-  return { supabase, user, providerId };
+  return { denied: undefined, supabase, user, providerId };
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const { supabase, providerId } = await resolveProvider(request);
+    const resolved = await resolveProvider(request);
+    if (resolved.denied) return resolved.denied;
+    const { supabase, user, providerId } = resolved;
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
     const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
@@ -57,7 +71,7 @@ export async function GET(request: NextRequest) {
     let query = (supabase.from("provider_paystack_terminal_payments") as any)
       .select(
         `
-          *,
+          ${TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT},
           allocations:provider_terminal_payment_allocations(*),
           terminal:provider_paystack_virtual_terminals(id, name, terminal_code, location_id)
         `,
@@ -74,8 +88,13 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
     if (error) throw error;
 
+    const items = await mergeTerminalPaymentContact(
+      data ?? [],
+      await viewerMaySeeTerminalPayer(user, request),
+    );
+
     return successResponse({
-      items: data ?? [],
+      items,
       total: count ?? 0,
       limit,
       offset,
@@ -92,7 +111,9 @@ export async function POST(request: NextRequest) {
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }
-    const { supabase, providerId } = await resolveProvider(request);
+    const resolved = await resolveProvider(request);
+    if (resolved.denied) return resolved.denied;
+    const { supabase, providerId } = resolved;
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
     const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
@@ -187,6 +208,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const derivedExpected = await resolveTerminalExpectedAmount(
+      admin,
+      providerId,
+      body.entity_type ?? null,
+      body.entity_id ?? null,
+    );
+    const expectedAmount = terminalExpectedAmountForDisplay({
+      derived: derivedExpected,
+      hasEntity: Boolean(body.entity_type && body.entity_id && body.entity_type !== "other"),
+      clientHint: body.expected_amount ?? null,
+    });
+
     const metadata = {
       source: "beautonomi_provider_terminal",
       payment_channel: "paystack_virtual_terminal",
@@ -194,7 +227,7 @@ export async function POST(request: NextRequest) {
       paystack_terminal_code: terminal.terminal_code,
       entity_type: body.entity_type ?? null,
       entity_id: body.entity_id ?? null,
-      expected_amount: body.expected_amount ?? null,
+      expected_amount: expectedAmount,
       customer_reference: customerReference,
     };
 
@@ -202,7 +235,7 @@ export async function POST(request: NextRequest) {
       terminal,
       terminals: selectableTerminals,
       metadata,
-      expectedAmount: body.expected_amount ?? null,
+      expectedAmount,
       ...(bookingTotalAfterFeeClear != null
         ? { bookingTotalAmount: bookingTotalAfterFeeClear }
         : {}),

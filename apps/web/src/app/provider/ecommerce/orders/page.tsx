@@ -41,7 +41,7 @@ import {
   allowsInPersonProductOrderRefund,
   displayedProductOrderAmountStillDue,
 } from "@/lib/orders/product-order-tender";
-import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { subtractMoney, isUnpaidOnlinePaystackHold, roundCurrency } from "@beautonomi/utils";
 import {
   productOrderDisplayCustomerEmail,
   productOrderDisplayCustomerName,
@@ -98,8 +98,8 @@ interface ProductOrder {
 type ProductOrderStatusCounts = Record<string, number>;
 
 function remainingRefundableAmount(order: { total_amount?: number | null; refunded_amount?: number | null }): number {
-  const remaining = Number(order.total_amount ?? 0) - Math.max(0, Number(order.refunded_amount ?? 0));
-  return Math.max(0, Math.round(remaining * 100) / 100);
+  const remaining = subtractMoney(Number(order.total_amount ?? 0), Math.max(0, Number(order.refunded_amount ?? 0)));
+  return Math.max(0, roundCurrency(remaining));
 }
 
 function statusActions(t: (k: string) => string): Record<string, { next: string; label: string; color: string }[]> {
@@ -596,7 +596,7 @@ export default function ProviderProductOrdersPage() {
               const discountAmount = Number(o.discount_amount ?? 0);
               const platformFee = Number(o.platform_fee ?? 0);
               const totalAmount = Number(o.total_amount ?? 0);
-              const providerEarnings = Math.max(0, totalAmount - platformFee);
+              const providerEarnings = Math.max(0, subtractMoney(totalAmount, platformFee));
               const isAppointmentOrder = o.order_source === "appointment";
               const isHold = isUnpaidOnlinePaystackHold(o);
               const canCollectPayment =

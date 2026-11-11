@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { percentOf, sumLineVat, sumMoney } from "@beautonomi/utils";
+import { addMoney, percentOf, sumLineVat, sumMoney, subtractMoney, multiplyMoney } from "@beautonomi/utils";
 import { lineVatRatePercent, resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import { applyProductOrderPromotion } from "@/lib/ecommerce/product-order-promotion";
 import {
@@ -91,6 +91,10 @@ export type ProductOrderTotalsResult = {
     unit_price: number;
     total_price: number;
   }>;
+  /** F2-39: `product_orders.tax_inclusive` at time of sale. */
+  taxInclusive: boolean;
+  /** F2-39: `product_orders.provider_vat_number_snapshot` at time of sale (null when not registered). */
+  providerVatNumber: string | null;
 };
 
 const DELIVERY_QUOTE_ERROR_MESSAGES: Record<
@@ -135,8 +139,8 @@ export async function computeProductOrderTotals(
     const p = item.product;
     const variant = item.product_variant;
     const unitPrice = variant ? parseFloat(String(variant.retail_price)) : parseFloat(String(p.retail_price));
-    const lineTotal = unitPrice * item.quantity;
-    subtotal += lineTotal;
+    const lineTotal = multiplyMoney(unitPrice, item.quantity);
+    subtotal = addMoney(subtotal, lineTotal);
     items.push({
       product_id: p.id,
       product_variant_id: variant?.id ?? null,
@@ -167,7 +171,7 @@ export async function computeProductOrderTotals(
     promotionDiscount = Math.min(promo.discountAmount, subtotal);
   }
 
-  const discountedSubtotal = Math.max(0, Math.round((subtotal - promotionDiscount) * 100) / 100);
+  const discountedSubtotal = Math.max(0, subtractMoney(subtotal, promotionDiscount));
 
   const { data: providerRow } = await supabase
     .from("providers")
@@ -187,10 +191,10 @@ export async function computeProductOrderTotals(
     const p = item.product;
     const variant = item.product_variant;
     const unitPrice = variant ? parseFloat(String(variant.retail_price)) : parseFloat(String(p.retail_price));
-    const lineTotal = unitPrice * item.quantity;
+    const lineTotal = multiplyMoney(unitPrice, item.quantity, currency);
     const taxableBase =
       promotionDiscount > 0 && subtotal > 0
-        ? Math.round(lineTotal * discountRatio * 100) / 100
+        ? multiplyMoney(lineTotal, discountRatio, currency)
         : lineTotal;
     const ratePercent = lineVatRatePercent(providerVat, null);
     if (ratePercent <= 0 || taxableBase <= 0) continue;
@@ -252,6 +256,9 @@ export async function computeProductOrderTotals(
       platformFee,
       totalAmount,
       items,
+      // F2-39: snapshot the VAT treatment / number that applied at time of sale.
+      taxInclusive: providerVat.inclusive,
+      providerVatNumber: providerVat.registered ? providerVat.vatNumber ?? null : null,
     },
   };
 }

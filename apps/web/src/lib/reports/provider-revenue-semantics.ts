@@ -23,6 +23,7 @@
  * All functions are pure (no I/O) so they can be unit-tested and reused everywhere.
  */
 
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 
 /** Minimal `finance_transactions` row shape needed for provider revenue math. */
@@ -75,7 +76,7 @@ export type RecognizedRevenueInRangeOptions = {
 export function recognizedRevenue(rows: ReadonlyArray<ProviderRevenueLedgerRow>): number {
   let sum = 0;
   for (const r of rows) {
-    if (RECOGNIZED_REVENUE_TYPE_SET.has(r.transaction_type)) sum += rowNet(r);
+    if (RECOGNIZED_REVENUE_TYPE_SET.has(r.transaction_type)) sum = addMoney(sum, rowNet(r));
   }
   return sum;
 }
@@ -99,7 +100,7 @@ export function recognizedRevenueInRange(
       if (start != null && createdAt < start) continue;
       if (end != null && createdAt > end) continue;
     }
-    sum += recognizedRowNet(r);
+    sum = addMoney(sum, recognizedRowNet(r));
   }
   return sum;
 }
@@ -124,7 +125,7 @@ export function filterRowsByCreatedAtRange(
 export function providerServiceEarnings(rows: ReadonlyArray<ProviderRevenueLedgerRow>): number {
   let sum = 0;
   for (const r of rows) {
-    if (r.transaction_type === "provider_earnings") sum += rowNet(r);
+    if (r.transaction_type === "provider_earnings") sum = addMoney(sum, rowNet(r));
   }
   return sum;
 }
@@ -138,7 +139,7 @@ export function providerRefundDeduction(rows: ReadonlyArray<ProviderRevenueLedge
   let sum = 0;
   for (const r of rows) {
     if (r.transaction_type === "refund" && isProviderEarningsRefundComponent(r.refund_component)) {
-      sum += Math.abs(rowNet(r));
+      sum = addMoney(sum, Math.abs(rowNet(r)));
     }
   }
   return sum;
@@ -146,7 +147,7 @@ export function providerRefundDeduction(rows: ReadonlyArray<ProviderRevenueLedge
 
 /** Recognized provider revenue NET of the provider's refund clawbacks. */
 export function providerNetAfterRefunds(rows: ReadonlyArray<ProviderRevenueLedgerRow>): number {
-  return recognizedRevenue(rows) - providerRefundDeduction(rows);
+  return subtractMoney(recognizedRevenue(rows), providerRefundDeduction(rows));
 }
 
 /** Itemized recognized-revenue breakdown that always reconciles to the totals above. */
@@ -180,26 +181,26 @@ export function computeProviderRevenueBreakdown(
   for (const r of rows) {
     switch (r.transaction_type) {
       case "provider_earnings":
-        serviceEarnings += rowNet(r);
+        serviceEarnings = addMoney(serviceEarnings, rowNet(r));
         break;
       case "membership_provider_earnings":
-        membershipEarnings += rowNet(r);
+        membershipEarnings = addMoney(membershipEarnings, rowNet(r));
         break;
       case "tip":
-        tips += rowNet(r);
+        tips = addMoney(tips, rowNet(r));
         break;
       case "travel_fee":
-        travelFees += rowNet(r);
+        travelFees = addMoney(travelFees, rowNet(r));
         break;
       case "cancellation_fee":
-        cancellationFees += rowNet(r);
+        cancellationFees = addMoney(cancellationFees, rowNet(r));
         break;
       case "walk_in_additional_charge":
-        walkInAdditionalCharges += rowNet(r);
+        walkInAdditionalCharges = addMoney(walkInAdditionalCharges, rowNet(r));
         break;
       case "refund":
         if (isProviderEarningsRefundComponent(r.refund_component)) {
-          refundDeduction += Math.abs(rowNet(r));
+          refundDeduction = addMoney(refundDeduction, Math.abs(rowNet(r)));
         }
         break;
       default:
@@ -207,8 +208,10 @@ export function computeProviderRevenueBreakdown(
     }
   }
 
-  const recognized =
-    serviceEarnings + membershipEarnings + tips + travelFees + cancellationFees + walkInAdditionalCharges;
+  const recognized = addMoney(
+    addMoney(addMoney(serviceEarnings, membershipEarnings), addMoney(tips, travelFees)),
+    addMoney(cancellationFees, walkInAdditionalCharges),
+  );
   return {
     serviceEarnings,
     membershipEarnings,
@@ -218,7 +221,7 @@ export function computeProviderRevenueBreakdown(
     walkInAdditionalCharges,
     recognizedRevenue: recognized,
     refundDeduction,
-    netAfterRefunds: recognized - refundDeduction,
+    netAfterRefunds: subtractMoney(recognized, refundDeduction),
   };
 }
 
@@ -265,35 +268,35 @@ export function computeDashboardEarningsMix(rows: ReadonlyArray<DashboardEarning
   for (const r of rows) {
     const net = recognizedRowNet(r);
     if (r.transaction_type === "walk_in_additional_charge") {
-      walkInAdditionalChargeEarnings += net;
+      walkInAdditionalChargeEarnings = addMoney(walkInAdditionalChargeEarnings, net);
       continue;
     }
     if (r.transaction_type !== "provider_earnings" && r.transaction_type !== "membership_provider_earnings") continue;
     if (r.product_order_id) {
-      productOrderEarningsTotal += net;
+      productOrderEarningsTotal = addMoney(productOrderEarningsTotal, net);
       continue;
     }
     if (r.booking_id) {
-      bookingEarningsTotal += net;
+      bookingEarningsTotal = addMoney(bookingEarningsTotal, net);
       if (isPlatformAdditionalChargeProviderEarnings(r)) {
-        platformAdditionalChargeEarnings += net;
+        platformAdditionalChargeEarnings = addMoney(platformAdditionalChargeEarnings, net);
       }
       continue;
     }
     if (isMembershipProviderEarnings(r)) {
-      membershipEarningsTotal += net;
+      membershipEarningsTotal = addMoney(membershipEarningsTotal, net);
       continue;
     }
     if (r.transaction_type === "provider_earnings") {
-      otherEarningsTotal += net;
+      otherEarningsTotal = addMoney(otherEarningsTotal, net);
     }
   }
 
   const additionalChargeEarningsTotal =
-    platformAdditionalChargeEarnings + walkInAdditionalChargeEarnings;
+    addMoney(platformAdditionalChargeEarnings, walkInAdditionalChargeEarnings);
 
   return {
-    serviceEarningsTotal: bookingEarningsTotal - platformAdditionalChargeEarnings,
+    serviceEarningsTotal: subtractMoney(bookingEarningsTotal, platformAdditionalChargeEarnings),
     bookingEarningsTotal,
     productOrderEarningsTotal,
     membershipEarningsTotal,

@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney, subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -29,7 +30,7 @@ import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 
 function sumMapValues(m: Map<string, number>): number {
-  return Array.from(m.values()).reduce((s, v) => s + v, 0);
+  return Array.from(m.values()).reduce((s, v) => addMoney(s, v), 0);
 }
 
 export async function GET(request: NextRequest) {
@@ -207,18 +208,18 @@ export async function GET(request: NextRequest) {
 
     /** Booking-linked ledger only ÷ scheduled appointment count (excl. cancelled/no-show). */
     const averageLedgerPerScheduledBooking = (count: number, ledgerBookings: number) =>
-      count > 0 ? ledgerBookings / count : 0;
+      count > 0 ? multiplyMoney(ledgerBookings, 1 / count) : 0;
 
     const currentAvg = averageLedgerPerScheduledBooking(currentBookingsCount, currentLedgerBookings);
     const previousAvg = averageLedgerPerScheduledBooking(previousBookingsCount, previousLedgerBookings);
 
-    const revenueGrowth = previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0;
+    const revenueGrowth = previousRevenue > 0 ? (subtractMoney(currentRevenue, previousRevenue) / previousRevenue) * 100 : 0;
     const bookingsGrowth =
       previousBookingsCount > 0 ? ((currentBookingsCount - previousBookingsCount) / previousBookingsCount) * 100 : 0;
     const clientsGrowth =
       previousClients > 0 ? ((currentClients - previousClients) / previousClients) * 100 : 0;
     const averageLedgerGrowth =
-      previousAvg > 0 ? ((currentAvg - previousAvg) / previousAvg) * 100 : 0;
+      previousAvg > 0 ? (subtractMoney(currentAvg, previousAvg) / previousAvg) * 100 : 0;
 
     const curFromYmd = formatDateYmd(currentFromDate, tz);
     const curToYmd = formatDateYmd(currentToDate, tz);

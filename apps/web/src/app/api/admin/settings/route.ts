@@ -266,13 +266,16 @@ function getDefaultPlatformSettings(): PlatformSettings {
         apple: true,
       },
       paystack: {
-        secret_key: process.env.PAYSTACK_SECRET_KEY || "",
+        // F2-62: never echo env secrets in the admin GET payload. `***` means
+        // "configured" so the UI can show a masked field; PATCH already treats
+        // `***` as "keep existing" via mergeSecretField.
+        secret_key: process.env.PAYSTACK_SECRET_KEY ? "***" : "",
         public_key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "",
         use_transaction_splits: false,
         default_split_code: undefined,
         transfer_otp_required: true,
         skip_payout_account_verification: false,
-        webhook_secret: process.env.PAYSTACK_WEBHOOK_SECRET || undefined,
+        webhook_secret: process.env.PAYSTACK_WEBHOOK_SECRET ? "***" : undefined,
       },
       verification: {
         otp_enabled: true,

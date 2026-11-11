@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { subtractMoney, addMoney, multiplyMoney, roundCurrency } from "@beautonomi/utils";
 
 export type ReverseMembershipPaymentParams = {
   supabase: SupabaseClient;
@@ -34,8 +35,6 @@ export type ReverseMembershipPaymentResult = {
   /** True when membership_orders.refunded_at / status=refunded was written on this call. */
   orderMarkedRefunded: boolean;
 };
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function reverseMembershipPayment(
   params: ReverseMembershipPaymentParams,
@@ -79,16 +78,12 @@ export async function reverseMembershipPayment(
   if (prior.length > 0 && (!reference || prior.some((r) => r.metadata?.reference === reference))) {
     return { ...none, alreadyReversed: true };
   }
-  const priorProvider = round2(
-    prior
-      .filter((r) => r.refund_component === "membership_provider_earnings")
-      .reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0),
-  );
-  const priorSale = round2(
-    prior
-      .filter((r) => r.refund_component === "membership_sale")
-      .reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0),
-  );
+  const priorProvider = prior
+    .filter((r) => r.refund_component === "membership_provider_earnings")
+    .reduce((s, r) => addMoney(s, Math.abs(Number(r.amount ?? 0))), 0);
+  const priorSale = prior
+    .filter((r) => r.refund_component === "membership_sale")
+    .reduce((s, r) => addMoney(s, Math.abs(Number(r.amount ?? 0))), 0);
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: tenantIdHint,
@@ -118,14 +113,14 @@ export async function reverseMembershipPayment(
   const grossAmount = Math.abs(Number(saleRow?.amount ?? refundAmountMajor));
   const fees = Math.abs(Number(saleRow?.fees ?? earnRow?.fees ?? 0));
   const ratio = grossAmount > 0 ? Math.min(1, refundAmountMajor / grossAmount) : 1;
-  const providerReversed = round2(
-    Math.max(0, Math.min(providerNet * ratio, providerNet - priorProvider)),
+  const providerReversed = roundCurrency(
+    Math.max(0, Math.min(multiplyMoney(providerNet, ratio), subtractMoney(providerNet, priorProvider))),
   );
-  const saleReversed = round2(Math.max(0, Math.min(grossAmount * ratio, grossAmount - priorSale)));
+  const saleReversed = roundCurrency(Math.max(0, Math.min(multiplyMoney(grossAmount, ratio), subtractMoney(grossAmount, priorSale))));
   if (providerReversed <= 0 && saleReversed <= 0) {
     return { ...none, alreadyReversed: true, fullyReversed: priorSale + 0.01 >= grossAmount };
   }
-  const fullyReversed = priorSale + saleReversed + 0.01 >= grossAmount;
+  const fullyReversed = addMoney(priorSale, saleReversed) + 0.01 >= grossAmount;
   const legRatio = grossAmount > 0 ? saleReversed / grossAmount : ratio;
 
   const nowIso = new Date().toISOString();
@@ -160,7 +155,7 @@ export async function reverseMembershipPayment(
       transaction_type: "refund",
       refund_component: "membership_sale",
       amount: saleReversed,
-      fees: round2(fees * legRatio),
+      fees: multiplyMoney(fees, legRatio),
       commission: 0,
       net: -saleReversed,
       description: `${descBase} — membership liability reversed`,

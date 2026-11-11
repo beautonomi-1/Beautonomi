@@ -1,3 +1,4 @@
+import { multiplyMoney, addMoney, roundCurrency } from "@beautonomi/utils";
 /**
  * App Store consumption information for CONSUMPTION_REQUEST.
  *
@@ -226,21 +227,21 @@ export async function appleStoredAmountsToUsd(
     const amount = Number(row.amount);
     if (!Number.isFinite(amount) || amount <= 0) continue;
     const currency = (row.currency || "ZAR").toUpperCase();
-    totals.set(currency, (totals.get(currency) ?? 0) + amount);
+    totals.set(currency, addMoney(totals.get(currency) ?? 0, amount, currency));
   }
   if (totals.size === 0) return 0;
 
   let usd = 0;
   for (const [currency, amount] of totals) {
     if (currency === "USD") {
-      usd += amount;
+      usd = addMoney(usd, amount, "USD");
       continue;
     }
     const fx = await getFxRate({ base: currency, quote: "USD" });
     if (fx == null || !Number.isFinite(fx) || fx <= 0) return null;
-    usd += amount * fx;
+    usd = addMoney(usd, multiplyMoney(amount, fx, "USD"), "USD");
   }
-  return Math.round(usd * 100) / 100;
+  return roundCurrency(usd, "USD");
 }
 
 async function sumAppleSpendUsd(

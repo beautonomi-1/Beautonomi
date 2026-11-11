@@ -10,6 +10,7 @@ import {
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { multiplyMoney } from "@beautonomi/utils";
 
 /**
  * GET /api/me/bookings
@@ -234,7 +235,7 @@ export async function GET(request: NextRequest) {
         product_name: bp.products?.name || "Product",
         quantity: bp.quantity || 1,
         unit_price: bp.unit_price || bp.products?.retail_price || 0,
-        total_price: bp.total_price || (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
+        total_price: bp.total_price || multiplyMoney(bp.unit_price || bp.products?.retail_price || 0, bp.quantity || 1),
       }));
 
       // Transform address if it exists

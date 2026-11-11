@@ -1,3 +1,4 @@
+import { roundCurrency } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
@@ -296,8 +297,8 @@ export async function GET(request: NextRequest) {
           savingsCurrency = row.currency;
         }
       }
-      savingsThisMonth = Math.round(savingsThisMonth * 100) / 100;
-      savingsLifetime = Math.round(savingsLifetime * 100) / 100;
+      savingsThisMonth = roundCurrency(savingsThisMonth);
+      savingsLifetime = roundCurrency(savingsLifetime);
     } catch {
       // non-fatal — savings stay at 0
     }

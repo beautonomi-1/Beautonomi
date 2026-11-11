@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney, subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -127,7 +128,7 @@ export async function GET(request: NextRequest) {
     revenueByDate.forEach((revenue, dateStr) => {
       const key = trendBucketKey(dateStr, period, tz);
       const existing = trendMap.get(key) || { revenue: 0, bookings: 0 };
-      existing.revenue += revenue;
+      existing.revenue = addMoney(existing.revenue, revenue);
       trendMap.set(key, existing);
     });
 
@@ -158,7 +159,7 @@ export async function GET(request: NextRequest) {
       const current = trends[trends.length - 1];
       const previous = trends[trends.length - 2];
       revenueGrowth =
-        previous.revenue > 0 ? ((current.revenue - previous.revenue) / previous.revenue) * 100 : 0;
+        previous.revenue > 0 ? (subtractMoney(current.revenue, previous.revenue) / previous.revenue) * 100 : 0;
       bookingsGrowth =
         previous.bookings > 0 ? ((current.bookings - previous.bookings) / previous.bookings) * 100 : 0;
       priorBucketComparison = {
@@ -169,9 +170,9 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    const totalRevenue = trends.reduce((sum, t) => sum + t.revenue, 0);
+    const totalRevenue = trends.reduce((sum, t) => addMoney(sum, t.revenue), 0);
     const totalBookings = trends.reduce((sum, t) => sum + t.bookings, 0);
-    const averageLedgerPerBucket = trends.length > 0 ? totalRevenue / trends.length : 0;
+    const averageLedgerPerBucket = trends.length > 0 ? multiplyMoney(totalRevenue, 1 / trends.length) : 0;
 
     const basisNote =
       "Ledger amounts sum finance_transactions net for provider_earnings, travel_fee, and tip — grouped by recognition date in your timezone. Retail/product ledger rows contribute to revenue but not to booking counts. Appointment counts use scheduled dates (excluding cancelled & no-show), grouped into the same buckets — so revenue and visits are on different business bases and will not always move together. Change % compares only the last two buckets, not year-over-year.";

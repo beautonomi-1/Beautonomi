@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, forbiddenResponse } from "@/lib/supabase/api-helpers";
@@ -56,12 +57,12 @@ export async function GET(request: NextRequest) {
       .gte("paid_at", since30);
     if (oErr) throw oErr;
 
-    const prepaid_revenue_30d_zar = (paidOrders ?? []).reduce((s, r) => s + Number((r as { amount: number }).amount ?? 0), 0);
+    const prepaid_revenue_30d_zar = (paidOrders ?? []).reduce((s, r) => addMoney(s, Number((r as { amount: number }).amount ?? 0)), 0);
 
     const { data: spendRows, error: sErr } = await admin.from("ads_campaigns").select("spent, budget");
     if (sErr) throw sErr;
-    const total_spent_in_campaigns_zar = (spendRows ?? []).reduce((s, r) => s + Number((r as { spent: number }).spent ?? 0), 0);
-    const total_budget_in_campaigns_zar = (spendRows ?? []).reduce((s, r) => s + Number((r as { budget: number }).budget ?? 0), 0);
+    const total_spent_in_campaigns_zar = (spendRows ?? []).reduce((s, r) => addMoney(s, Number((r as { spent: number }).spent ?? 0)), 0);
+    const total_budget_in_campaigns_zar = (spendRows ?? []).reduce((s, r) => addMoney(s, Number((r as { budget: number }).budget ?? 0)), 0);
 
     return successResponse({
       campaigns_by_status,

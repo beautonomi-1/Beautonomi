@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { subDays } from "date-fns";
 import { dateRangeBoundsUtc, formatDateYmd, nowInTz } from "@/lib/dates/provider-tz";
@@ -309,7 +310,7 @@ export function mapLedgerRowToActivity(p: LedgerFetchRow): ProviderActivityFeedI
     net: p.net,
     amount: p.amount,
   });
-  const displayNet = sign * Math.abs(rawNet);
+  const displayNet = multiplyMoney(Math.abs(rawNet), sign);
   const signed = displayNet > 0 ? `+${displayNet.toFixed(2)}` : displayNet.toFixed(2);
 
   let type = "ledger_earnings";

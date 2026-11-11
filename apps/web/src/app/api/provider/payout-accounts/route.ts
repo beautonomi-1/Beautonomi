@@ -25,6 +25,7 @@ import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import { applyPayoutNameMatchForAccount } from "@/lib/verification/apply-payout-name-match";
 import { resolvePayoutRailForTenant } from "@/lib/payments/payout-rail";
 import { resolveFlutterwaveBankAccount } from "@/lib/payments/flutterwave-banks";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 // Â§payout-account-fix 2026-05: Paystack `/transferrecipient` accepts `nuban`,
 // `ghipss`, `mobile_money`, and `basa`. For South African providers (the
@@ -96,6 +97,53 @@ function isRecipientCodeUniqueViolation(error: unknown): boolean {
 function dbSaveErrorResponseDetails(error: unknown) {
   if (process.env.NODE_ENV !== "development") return undefined;
   return { details: getDbSaveErrorDetails(error) };
+}
+
+/**
+ * F2-09: every bank-account addition leaves a financial-tier audit row. Only
+ * the last 4 digits are recorded — never the full account number.
+ */
+async function auditPayoutAccountAdded(params: {
+  request: NextRequest;
+  user: { id: string; role?: string | null };
+  providerId: string;
+  tenantId: string;
+  accountId: string;
+  accountNumberLast4: string;
+  bankCode: string;
+  bankName: string | null;
+  currency: string;
+  payoutRail: "paystack" | "flutterwave";
+  isPrimary: boolean;
+}): Promise<void> {
+  try {
+    const meta = extractRequestMeta(params.request);
+    await writeAuditLog({
+      actor_user_id: params.user.id,
+      actor_role: params.user.role ?? null,
+      action: "provider.payout_account.added",
+      entity_type: "provider_payout_account",
+      entity_id: params.accountId,
+      module: "finance",
+      risk_level: "high",
+      retention_tier: "financial",
+      status: "succeeded",
+      metadata: {
+        provider_id: params.providerId,
+        tenant_id: params.tenantId,
+        account_number_last4: params.accountNumberLast4,
+        bank_code: params.bankCode,
+        bank_name: params.bankName,
+        currency: params.currency,
+        payout_rail: params.payoutRail,
+        is_primary: params.isPrimary,
+      },
+      ip_address: meta.ip_address,
+      user_agent: meta.user_agent,
+    });
+  } catch (auditErr) {
+    console.error("[payout-accounts] audit log failed:", auditErr);
+  }
 }
 
 /** Active payout row for this provider when Paystack recipient_code was already stored. */
@@ -382,6 +430,19 @@ export async function POST(request: NextRequest) {
           accountId: String(savedAccount.id),
           accountLast4: accountNumberLast4,
         });
+        await auditPayoutAccountAdded({
+          request,
+          user,
+          providerId,
+          tenantId,
+          accountId: String(savedAccount.id),
+          accountNumberLast4,
+          bankCode: bank_code,
+          bankName: null,
+          currency: resolvedCurrency,
+          payoutRail: "flutterwave",
+          isPrimary: isFirstAccount,
+        });
       }
       return successResponse(savedAccount);
     }
@@ -568,6 +629,19 @@ export async function POST(request: NextRequest) {
         accountId: String(savedAccount.id),
         accountLast4: accountNumberLast4,
         bankName: (savedAccount as { bank_name?: string | null }).bank_name ?? null,
+      });
+      await auditPayoutAccountAdded({
+        request,
+        user,
+        providerId,
+        tenantId,
+        accountId: String(savedAccount.id),
+        accountNumberLast4,
+        bankCode: details?.bank_code || bank_code,
+        bankName: (savedAccount as { bank_name?: string | null }).bank_name ?? null,
+        currency: paystackRecipient.data.currency || resolvedCurrency,
+        payoutRail: "paystack",
+        isPrimary: isFirstAccount,
       });
     }
 

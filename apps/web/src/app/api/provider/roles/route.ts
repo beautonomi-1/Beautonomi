@@ -10,6 +10,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { isProviderOwner, hasPermission, normalizeStaffPermissions } from "@/lib/auth/permissions";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
+import { findRolePermissionsAboveCeiling } from "@/lib/auth/role-permission-ceiling";
 import { staffPermissionsToStoredJson } from "@/lib/auth/staff-permissions-payload";
 import { z } from "zod";
 
@@ -98,6 +99,21 @@ export async function POST(request: NextRequest) {
         "VALIDATION_ERROR",
         400,
         validationResult.error.issues,
+      );
+    }
+
+    const disallowed = await findRolePermissionsAboveCeiling(
+      user,
+      validationResult.data.permissions,
+      validationResult.data.calendar_scope,
+      request,
+    );
+    if (disallowed.length > 0) {
+      return errorResponse(
+        `You cannot grant permissions you do not have: ${disallowed.join(", ")}`,
+        "FORBIDDEN",
+        403,
+        { disallowed_permissions: disallowed },
       );
     }
 

@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { z } from "zod";
 import {
   mapBookingEmbedToWaitingRoomEntry,
@@ -30,6 +32,9 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = getSupabaseAdmin();
     const { id } = await params;
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -49,7 +54,7 @@ export async function GET(
     }
 
     const row = booking as unknown as WaitingRoomBookingEmbedRow;
-    return successResponse(mapBookingEmbedToWaitingRoomEntry(row));
+    return successResponse(redactBookingCustomerContact(mapBookingEmbedToWaitingRoomEntry(row), canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch waiting room entry");
   }
@@ -69,6 +74,9 @@ export async function PATCH(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = getSupabaseAdmin();
     const { id } = await params;
     const body = await request.json();
@@ -137,7 +145,9 @@ export async function PATCH(
     }
 
     const updRow = updatedBooking as unknown as WaitingRoomBookingEmbedRow;
-    return successResponse(mapBookingEmbedToWaitingRoomEntry(updRow));
+    return successResponse(
+      redactBookingCustomerContact(mapBookingEmbedToWaitingRoomEntry(updRow), canViewClients),
+    );
   } catch (error) {
     return handleApiError(error, "Failed to update waiting room entry");
   }

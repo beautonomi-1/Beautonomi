@@ -22,6 +22,7 @@ import {
   fetchCompletedCashRefundsTotal,
 } from "@/lib/bookings/booking-refund-limits";
 import { hashPayload } from "@beautonomi/agent-policy";
+import { LAST_RESORT_CURRENCY, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 const PER_TENANT_LIMIT = 10;
 
@@ -92,10 +93,13 @@ export function buildRefundBriefing(input: {
   lifecycle?: BookingLifecycleEvidence;
 }): RefundBriefing {
   const flags: string[] = input.lifecycle ? buildLifecycleEvidenceFlags(input.lifecycle) : [];
-  const remainingRefundable = Math.max(0, input.totalPaid - input.alreadyRefunded);
+  const remainingRefundable = Math.max(
+    0,
+    subtractMoney(input.totalPaid, input.alreadyRefunded, LAST_RESORT_CURRENCY),
+  );
   const method = (input.refundMethod ?? "original").toLowerCase();
   const methodCap = method === "cash" ? Math.min(remainingRefundable, input.inPersonCap) : remainingRefundable;
-  const recommendedMax = Math.round(Math.min(input.requestedAmount, methodCap) * 100) / 100;
+  const recommendedMax = roundCurrency(Math.min(input.requestedAmount, methodCap), LAST_RESORT_CURRENCY);
 
   if (input.requestedAmount > remainingRefundable) {
     flags.push(`requested_exceeds_refundable_balance (${remainingRefundable.toFixed(2)} left)`);

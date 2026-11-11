@@ -1,5 +1,7 @@
 "use client";
 
+import { subtractMoney } from "@beautonomi/utils";
+
 import { useTranslation } from "@beautonomi/i18n";
 
 import { useEffect, useMemo, useState } from "react";
@@ -87,7 +89,7 @@ export function BookingNoShowDialog({
     if (!noShowFeeEnabled) return 0;
     const collected = Math.max(
       0,
-      Math.max(Number(raw.total_paid ?? 0), 0) - Number(raw.total_refunded ?? 0),
+      subtractMoney(Math.max(Number(raw.total_paid ?? 0), 0), Number(raw.total_refunded ?? 0)),
     );
     return Math.min(noShowFeeAmount, Number(appointment.total_amount ?? 0), collected);
   }, [appointment.total_amount, noShowFeeAmount, noShowFeeEnabled, raw.total_paid, raw.total_refunded]);

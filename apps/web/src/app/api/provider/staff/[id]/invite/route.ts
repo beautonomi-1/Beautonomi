@@ -170,9 +170,8 @@ export async function POST(
         "INVITE_DELIVERY_FAILED",
         502,
         {
-          join_url: delivery.join_url,
-          email: delivery.email,
-          push: delivery.push,
+          email_delivered: delivery.email.delivered,
+          push_delivered: delivery.push.delivered,
         },
       );
     }
@@ -181,6 +180,7 @@ export async function POST(
       success: true,
       message: "Invitation sent successfully",
       email: inviteEmail,
+      // join_url is returned only on success so the owner can copy it; never on error bodies.
       join_url: delivery.join_url,
       channels: {
         push: delivery.push.delivered,
@@ -194,6 +194,9 @@ export async function POST(
       },
     });
   } catch (error) {
-    return handleApiError(error, "Failed to send invitation");
+    // F3-20: never leak join_url / invite tokens through error bodies.
+    const raw = error instanceof Error ? error.message : "Failed to send invitation";
+    const safe = raw.replace(/https?:\/\/[^\s]+/gi, "[redacted]").replace(/join_url|invite_token/gi, "[redacted]");
+    return handleApiError(new Error(safe), "Failed to send invitation");
   }
 }

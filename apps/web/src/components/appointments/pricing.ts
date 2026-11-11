@@ -1,5 +1,5 @@
 import type { AppointmentService, AppointmentProduct, PricingResult } from "./types";
-import { calculateBookingTotals } from "@beautonomi/utils";
+import { addMoney, calculateBookingTotals } from "@beautonomi/utils";
 
 export interface PricingOptions {
   taxInclusive?: boolean;
@@ -27,11 +27,11 @@ export function calculateBookingPricing(
 ): PricingResult {
   const servicesSubtotal = servicesList.reduce((sum, s) => {
     const servicePrice = s.price;
-    const addonsPrice = s.addons?.reduce((a, ad) => a + ad.price, 0) || 0;
-    return sum + servicePrice + addonsPrice;
+    const addonsPrice = s.addons?.reduce((a, ad) => addMoney(a, ad.price), 0) || 0;
+    return addMoney(sum, addMoney(servicePrice, addonsPrice));
   }, 0);
-  const productsSubtotal = productsList.reduce((sum, p) => sum + p.totalPrice, 0);
-  const subtotal = servicesSubtotal + productsSubtotal;
+  const productsSubtotal = productsList.reduce((sum, p) => addMoney(sum, p.totalPrice), 0);
+  const subtotal = addMoney(servicesSubtotal, productsSubtotal);
 
   return calculateBookingTotals({
     subtotal,

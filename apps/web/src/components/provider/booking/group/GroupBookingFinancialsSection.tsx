@@ -1,4 +1,5 @@
 "use client";
+import { multiplyMoney } from "@beautonomi/utils";
 
 import { ShoppingBag } from "lucide-react";
 import { useTranslation } from "@beautonomi/i18n";
@@ -100,7 +101,7 @@ export function GroupBookingFinancialsSection({
                 );
                 const total =
                   Number(product?.total_price ?? product?.totalPrice) ||
-                  Number(product?.unit_price ?? product?.unitPrice ?? 0) * quantity;
+                  multiplyMoney(Number(product?.unit_price ?? product?.unitPrice ?? 0), quantity);
                 return (
                   <li key={`${name}-${index}`} className="flex justify-between gap-2">
                     <span>
@@ -226,7 +227,7 @@ export function GroupBookingFinancialsSection({
               );
               const total =
                 Number(product?.total_price ?? product?.totalPrice) ||
-                Number(product?.unit_price ?? product?.unitPrice ?? 0) * quantity;
+                multiplyMoney(Number(product?.unit_price ?? product?.unitPrice ?? 0), quantity);
               return (
                 <li key={`${name}-${index}`} className="flex justify-between gap-2">
                   <span>

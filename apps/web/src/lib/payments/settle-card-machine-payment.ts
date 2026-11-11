@@ -29,6 +29,7 @@ import {
 import { rollbackCollectibleSplitLeg } from "@/lib/bookings/rollback-collectible-split-leg";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { notifyTerminalCaptureOnAlreadyPaidBooking } from "@/lib/payments/terminal-capture-on-paid-notify";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 /** Provider-collected card-machine rails that share settle/reverse semantics. */
 export type CardMachinePaymentProvider = "paycloud" | "yoco";
@@ -102,11 +103,11 @@ function computeBaseRemaining(
   const totalRefunded = Number(booking.total_refunded ?? 0);
   const walletAmount = Number(booking.wallet_amount ?? 0);
   const giftCardAmount = Number(booking.gift_card_amount ?? 0);
-  const effectivePaid = Math.max(0, totalPaid - totalRefunded);
-  const walletGiftCoverage = walletAmount + giftCardAmount;
+  const effectivePaid = Math.max(0, subtractMoney(totalPaid, totalRefunded));
+  const walletGiftCoverage = addMoney(walletAmount, giftCardAmount);
   const pending = Math.max(0, pendingWalletGift);
-  const coverage = Math.max(effectivePaid + pending, walletGiftCoverage);
-  return Math.max(0, bookingTotal - coverage);
+  const coverage = Math.max(addMoney(effectivePaid, pending), walletGiftCoverage);
+  return Math.max(0, subtractMoney(bookingTotal, coverage));
 }
 
 async function baseRemainingForBooking(
@@ -134,7 +135,7 @@ export function allocateBaseFromCapture(params: {
   const baseRemaining = Math.max(0, Number(params.baseRemaining) || 0);
   const tip = Math.max(0, Number(params.tip) || 0);
   const cashback = Math.max(0, Number(params.cashback) || 0);
-  const extras = tip + cashback;
+  const extras = addMoney(tip, cashback);
   const expectedBase =
     params.expectedBase != null && params.expectedBase > 0.01
       ? normalizePaycloudMajorAmount(params.expectedBase)
@@ -146,17 +147,17 @@ export function allocateBaseFromCapture(params: {
 
   if (
     expectedBase != null &&
-    Math.abs(captured - (expectedBase + extras)) < 0.02
+    Math.abs(subtractMoney(captured, addMoney(expectedBase, extras))) < 0.02
   ) {
     return Math.min(baseRemaining, expectedBase);
   }
 
-  if (Math.abs(captured - (baseRemaining + extras)) < 0.02) {
-    return Math.min(baseRemaining, Math.max(0, captured - extras));
+  if (Math.abs(subtractMoney(captured, addMoney(baseRemaining, extras))) < 0.02) {
+    return Math.min(baseRemaining, Math.max(0, subtractMoney(captured, extras)));
   }
 
   if (captured > baseRemaining + 0.01) {
-    return Math.min(baseRemaining, Math.max(0, captured - extras));
+    return Math.min(baseRemaining, Math.max(0, subtractMoney(captured, extras)));
   }
 
   return Math.min(captured, baseRemaining);
@@ -173,10 +174,16 @@ export function capturedFundsCoverCharges(input: {
   const charges = Math.max(0, Number(input.chargesTotal) || 0);
   if (charges <= 0.01) return false;
   const leftover =
-    Math.max(0, Number(input.captured) || 0) -
-    Math.max(0, Number(input.baseApplied) || 0) -
-    Math.max(0, Number(input.tip) || 0) -
-    Math.max(0, Number(input.cashback) || 0);
+    subtractMoney(
+      subtractMoney(
+        subtractMoney(
+          Math.max(0, Number(input.captured) || 0),
+          Math.max(0, Number(input.baseApplied) || 0),
+        ),
+        Math.max(0, Number(input.tip) || 0),
+      ),
+      Math.max(0, Number(input.cashback) || 0),
+    );
   return leftover + 0.01 >= charges;
 }
 
@@ -208,7 +215,7 @@ async function settleCardMachineTip(
     processedBy?: string | null;
   },
 ): Promise<void> {
-  const tip = Math.round(params.tip * 100) / 100;
+  const tip = roundCurrency(params.tip);
   if (tip <= 0) return;
 
   const { error } = await supabase.from("booking_payments").insert({
@@ -257,7 +264,7 @@ async function settleCardMachineCashback(
     processedBy?: string | null;
   },
 ): Promise<void> {
-  const cashback = Math.round(params.cashback * 100) / 100;
+  const cashback = roundCurrency(params.cashback);
   if (cashback <= 0) return;
   // Yoco has no cashback rail today.
   if (params.paymentProvider !== "paycloud") return;
@@ -505,7 +512,7 @@ async function settleBookingPayment(
     baseRemaining <= 0 ||
     (basePaymentInserted && basePaymentAmount >= baseRemaining - 0.01);
 
-  const chargesTotal = chargeRows.reduce((sum, charge) => sum + Number(charge?.amount || 0), 0);
+  const chargesTotal = chargeRows.reduce((sum, charge) => addMoney(sum, Number(charge?.amount || 0)), 0);
   if (
     baseFullySettled &&
     capturedFundsCoverCharges({
@@ -574,13 +581,13 @@ async function settleGroupBookingPayment(
 
   const tip = Math.max(0, Number(input.tipAmount ?? 0));
   const cashback = Math.max(0, Number(input.cashbackAmount ?? 0));
-  const baseBudget = Math.max(0, input.amount - tip - cashback);
+  const baseBudget = Math.max(0, subtractMoney(subtractMoney(input.amount, tip), cashback));
   let totalBaseOwed = 0;
   const baseRemainingById = new Map<string, number>();
   for (const booking of bookings) {
     const remaining = await baseRemainingForBooking(supabase, booking);
     baseRemainingById.set(String(booking.id ?? ""), remaining);
-    totalBaseOwed += remaining;
+    totalBaseOwed = addMoney(totalBaseOwed, remaining);
   }
 
   const rows: Record<string, unknown>[] = [];
@@ -614,7 +621,7 @@ async function settleGroupBookingPayment(
         notes: `${PROVIDER_LABEL[input.paymentProvider]} group payment - ${providerPaymentId}`,
         created_by: input.processedBy ?? null,
       });
-      remainingBudget = Math.round((remainingBudget - alloc) * 100) / 100;
+      remainingBudget = subtractMoney(remainingBudget, alloc);
 
       if (chargeRows.length > 0 && alloc >= baseRemaining - 0.01) {
         addonSettlements.push({
@@ -660,7 +667,7 @@ async function settleGroupBookingPayment(
   }
 
   const groupChargesTotal = addonSettlements.reduce(
-    (sum, item) => sum + item.charges.reduce((inner, charge) => inner + Number(charge?.amount || 0), 0),
+    (sum, item) => addMoney(sum, item.charges.reduce((inner, charge) => addMoney(inner, Number(charge?.amount || 0)), 0)),
     0,
   );
   if (groupChargesTotal > 0.01 && remainingBudget + 0.01 < groupChargesTotal) {
@@ -679,7 +686,7 @@ async function settleGroupBookingPayment(
     );
   }
 
-  const totalBaseAllocated = Math.round((baseBudget - remainingBudget) * 100) / 100;
+  const totalBaseAllocated = subtractMoney(baseBudget, remainingBudget);
   const baseFullyCovered =
     totalBaseOwed <= 0.01 || totalBaseAllocated + 0.01 >= totalBaseOwed;
   if (tipTargetBooking && baseFullyCovered && totalBaseOwed > 0.01) {
@@ -743,7 +750,7 @@ async function settleProductOrderPayment(
   const admin = getSupabaseAdmin();
   const tip = Math.max(0, Number(input.tipAmount ?? 0));
   const cashback = Math.max(0, Number(input.cashbackAmount ?? 0));
-  const base = Math.round(Math.max(0, Number(input.amount) - tip - cashback) * 100) / 100;
+  const base = Math.max(0, subtractMoney(subtractMoney(Number(input.amount), tip), cashback));
   const { productOrderCardAmountStillDue } = await import(
     "@/lib/payments/resolve-paystack-initialize-amount"
   );
@@ -822,7 +829,7 @@ async function settleAdditionalChargePayment(
   if (existing) return { settled: true, reason: "already_settled", bookingId: charge.booking_id };
 
   const held = await sumAdditionalChargeTenderLegs(admin, charge.booking_id, charge.id);
-  const heldTotal = held.wallet + held.gift;
+  const heldTotal = addMoney(held.wallet, held.gift);
   if (heldTotal > 0.009) {
     const chargeAmount = Number(charge.amount ?? 0);
     const stillDue = additionalChargeAmountStillDue(chargeAmount, heldTotal);
@@ -831,7 +838,7 @@ async function settleAdditionalChargePayment(
     const capturedBase =
       input.expectedBaseAmount != null
         ? Number(input.expectedBaseAmount)
-        : Math.max(0, Number(input.amount) - tip - cashback);
+        : Math.max(0, subtractMoney(subtractMoney(Number(input.amount), tip), cashback));
     const bookingJoin = booking as {
       provider_id?: string;
       tenant_id?: string | null;
@@ -1049,8 +1056,8 @@ async function reverseBookingCardMachinePayments(
       await supabase
         .from("bookings")
         .update({
-          tip_amount: Math.max(0, Number(booking.tip_amount ?? 0) - tip.amount),
-          total_amount: Math.max(0, Number(booking.total_amount ?? 0) - tip.amount),
+          tip_amount: Math.max(0, subtractMoney(Number(booking.tip_amount ?? 0), tip.amount)),
+          total_amount: Math.max(0, subtractMoney(Number(booking.total_amount ?? 0), tip.amount)),
           updated_at: new Date().toISOString(),
         })
         .eq("id", tip.bookingId);
@@ -1134,7 +1141,7 @@ async function reverseProductOrderCardMachinePayment(
       if (voided === "failed") return { reversed: false, reason: "gift_card_not_restored" };
       giftReturned = true;
       if (productOrderCancelIncludesGiftInWallet(voided)) {
-        walletCredit = roundProductOrderMoney(walletCredit + split.gift);
+        walletCredit = addMoney(walletCredit, split.gift);
       }
     }
     const customerId = (order as { customer_id?: string | null }).customer_id;
@@ -1178,7 +1185,7 @@ async function reverseProductOrderCardMachinePayment(
           roundProductOrderMoney(
             rows
               .filter((row) => row.transaction_type === type)
-              .reduce((sum, row) => sum + Number(row.net ?? row.amount ?? 0), 0),
+              .reduce((sum, row) => addMoney(sum, Number(row.net ?? row.amount ?? 0)), 0),
           );
         const earnings = sumNet("provider_earnings");
         const fee = sumNet("platform_fee");

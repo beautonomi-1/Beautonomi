@@ -2,13 +2,13 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   successResponse,
   errorResponse,
   handleApiError,
   getProviderIdForUser,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membership-entitlement";
 
 /**
@@ -20,10 +20,9 @@ import { isSalonMembershipEntitledForDiscount } from "@/lib/provider/salon-membe
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request,
-    );
+    const permissionCheck = await requirePermission("view_clients", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const providerIdParam = searchParams.get("provider_id");

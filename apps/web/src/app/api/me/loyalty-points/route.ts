@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { handleApiError, successResponse, requireRoleInApi, getOffsetPaginationParams } from "@/lib/supabase/api-helpers";
@@ -119,7 +120,7 @@ export async function GET(request: NextRequest) {
 
     const currencySymbol = currency === "ZAR" ? "R" : currency;
     const conversion_display = `${redemption_rate} points = ${currencySymbol}1 discount`;
-    const can_redeem_currency = redemption_rate > 0 ? available_balance / redemption_rate : 0;
+    const can_redeem_currency = redemption_rate > 0 ? multiplyMoney(available_balance, 1 / redemption_rate) : 0;
 
     return successResponse({
       points_balance: available_balance,
@@ -131,7 +132,7 @@ export async function GET(request: NextRequest) {
       },
       redemption_rate,
       redemption_currency: currency,
-      redemption_value: redemption_rate > 0 ? available_balance / redemption_rate : 0,
+      redemption_value: redemption_rate > 0 ? multiplyMoney(available_balance, 1 / redemption_rate) : 0,
       conversion: {
         rate: redemption_rate,
         display: conversion_display,

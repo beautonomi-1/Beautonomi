@@ -48,6 +48,16 @@ describe("computeTerminalOrderTotalsSync", () => {
     expect(taxAmount).toBeCloseTo(150);
   });
 
+  it("uses computeVat for exclusive tax (F4-06)", () => {
+    const { taxAmount, totalAmount } = computeTerminalOrderTotalsSync({
+      unitPrice: 333.33,
+      taxRatePercent: 15,
+      taxIncluded: false,
+    });
+    expect(taxAmount).toBe(50);
+    expect(totalAmount).toBe(383.33);
+  });
+
   it("handles zero unit price", () => {
     const { subtotal, taxAmount, totalAmount } = computeTerminalOrderTotalsSync({ unitPrice: 0 });
     expect(subtotal).toBe(0);

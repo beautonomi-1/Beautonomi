@@ -4,6 +4,10 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  mergeParticipantContact,
+  PARTICIPANT_COLUMNS_WITHOUT_CONTACT,
+} from '@/lib/bookings/participant-columns';
 
 export interface GroupBooking {
   id: string;
@@ -176,7 +180,7 @@ export async function getGroupBooking(
     .select(`
       *,
       booking_participants (
-        *,
+        ${PARTICIPANT_COLUMNS_WITHOUT_CONTACT},
         bookings (*)
       )
     `)
@@ -187,14 +191,20 @@ export async function getGroupBooking(
     return null;
   }
 
-  const participants = (groupBooking.booking_participants || []) as BookingParticipant[];
+  const group = groupBooking as unknown as GroupBooking & {
+    booking_participants?: BookingParticipant[];
+  };
+  const participants = await mergeParticipantContact(
+    group.booking_participants || [],
+    true,
+  );
   const bookings = participants
     .map((p: any) => p.bookings)
     .filter(Boolean)
     .flat();
 
   return {
-    ...(groupBooking as GroupBooking),
+    ...group,
     bookings,
     participants,
   };

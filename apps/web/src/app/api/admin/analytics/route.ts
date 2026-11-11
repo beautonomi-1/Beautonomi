@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -265,10 +266,10 @@ export async function GET(request: NextRequest) {
         const pid = resolveFinanceLedgerRowProviderId(row);
         if (!pid) continue;
         const amt = Number(row.net ?? row.amount ?? 0);
-        providerRevenue[pid] = (providerRevenue[pid] || 0) + amt;
+        providerRevenue[pid] = addMoney(providerRevenue[pid] || 0, amt);
       }
 
-      const provider_net_earnings_total = Object.values(providerRevenue).reduce((s, v) => s + v, 0);
+      const provider_net_earnings_total = Object.values(providerRevenue).reduce((s, v) => addMoney(s, v), 0);
 
       const topProviders = Object.entries(providerRevenue)
         .sort((a, b) => b[1] - a[1])

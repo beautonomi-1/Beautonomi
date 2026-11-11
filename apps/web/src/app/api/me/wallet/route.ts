@@ -5,6 +5,7 @@ import { requireRoleInApi, successResponse, handleApiError, getOffsetPaginationP
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { roundCurrency, subtractMoney } from "@beautonomi/utils";
 import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
 const WALLET_LEDGER_RECONCILE_MAX = 100_000;
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
     // We only ever self-heal when we have confidently computed the FULL ledger
     // (query succeeded AND was not truncated). Otherwise we leave the stored
     // balance untouched.
-    const storedBalance = Math.round(Number(wallet.balance || 0) * 100) / 100;
+    const storedBalance = roundCurrency(Number(wallet.balance || 0), wallet.currency || walletCurrencyDefault);
     const walletForResponse = { ...wallet, balance: storedBalance };
 
     let ledgerRows: Array<{ type?: string; amount?: number }> = [];
@@ -77,7 +78,11 @@ export async function GET(request: NextRequest) {
         if (tx.type === "debit") debitSum += amt;
         else creditSum += amt;
       }
-      const normalizedLedgerBalance = Math.round((creditSum - debitSum) * 100) / 100;
+      const normalizedLedgerBalance = subtractMoney(
+        creditSum,
+        debitSum,
+        wallet.currency || walletCurrencyDefault,
+      );
 
       if (Math.abs(normalizedLedgerBalance - storedBalance) > 0.01) {
         console.warn(

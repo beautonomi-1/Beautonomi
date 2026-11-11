@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -52,8 +53,8 @@ export async function GET(request: NextRequest) {
       return successResponse(emptyPayload(reportContext.timezone, fromYmd, toYmd));
     }
     const totalGiftCardsSold = redeemRows.length;
-    const totalRevenue = redeemRows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
-    const averageGiftCardValue = totalGiftCardsSold > 0 ? totalRevenue / totalGiftCardsSold : 0;
+    const totalRevenue = redeemRows.reduce((sum, r) => addMoney(sum, Number(r.amount || 0)), 0);
+    const averageGiftCardValue = totalGiftCardsSold > 0 ? multiplyMoney(totalRevenue, 1 / totalGiftCardsSold) : 0;
 
     const amountMap = new Map<number, number>();
     redeemRows.forEach((redemption) => {
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
       .map(([amount, count]) => ({
         amount,
         count,
-        revenue: amount * count,
+        revenue: multiplyMoney(amount, count),
         percentage: totalGiftCardsSold > 0 ? (count / totalGiftCardsSold) * 100 : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue);

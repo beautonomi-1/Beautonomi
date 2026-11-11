@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
 import PDFDocument from "pdfkit";
@@ -92,7 +93,7 @@ export async function generateMarketingCreditReceiptPdf(opts: {
     tx.tenant_id ?? provider?.tenant_id ?? (await resolveTenantIdWithZaFallback(request));
   const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
   const currency = tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
-  const amount = Math.abs(Number(tx.net ?? 0) + Number(tx.fees ?? 0));
+  const amount = Math.abs(addMoney(Number(tx.net ?? 0), Number(tx.fees ?? 0)));
   const isRefund = tx.transaction_type === "provider_marketing_credit_refund";
   const reference = String(metadata.reference || tx.id);
   const title = isRefund ? "Marketing credit refund" : "Marketing credit purchase";

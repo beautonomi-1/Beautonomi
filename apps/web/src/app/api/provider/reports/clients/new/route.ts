@@ -1,6 +1,9 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { formatInTz } from "@/lib/dates/provider-tz";
 import { MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
@@ -21,6 +24,9 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
@@ -95,7 +101,7 @@ export async function GET(request: NextRequest) {
       const clientDetails = clientMap.get(client.customerId);
       const allClientBookings = allBookings?.filter((b) => b.customer_id === client.customerId) || [];
       const hasReturned = allClientBookings.length > 1;
-      const totalSpent = allClientBookings.reduce((sum, b) => sum + Number(b.total_amount || 0), 0);
+      const totalSpent = allClientBookings.reduce((sum, b) => addMoney(sum, Number(b.total_amount || 0)), 0);
 
       return {
         customerId: client.customerId,
@@ -108,7 +114,7 @@ export async function GET(request: NextRequest) {
         completedBookings: allClientBookings.filter((b) => b.status === "completed").length,
         completedSpend: allClientBookings
           .filter((b) => b.status === "completed")
-          .reduce((sum, b) => sum + Number(b.total_amount || 0), 0),
+          .reduce((sum, b) => addMoney(sum, Number(b.total_amount || 0)), 0),
         totalSpent,
       };
     }).sort((a, b) => new Date(b.firstVisit).getTime() - new Date(a.firstVisit).getTime());
@@ -117,7 +123,7 @@ export async function GET(request: NextRequest) {
     const totalNewClients = enrichedNewClients.length;
     const returnedClients = enrichedNewClients.filter((c) => c.hasReturned).length;
     const returnRate = totalNewClients > 0 ? (returnedClients / totalNewClients) * 100 : 0;
-    const totalFirstBookingValue = enrichedNewClients.reduce((sum, c) => sum + c.firstBookingValue, 0);
+    const totalFirstBookingValue = enrichedNewClients.reduce((sum, c) => addMoney(sum, c.firstBookingValue), 0);
     const averageFirstBookingValue = totalNewClients > 0 ? totalFirstBookingValue / totalNewClients : 0;
 
     // Group by month
@@ -138,7 +144,7 @@ export async function GET(request: NextRequest) {
       totalFirstBookingValue,
       averageFirstBookingValue,
       monthlyBreakdown,
-      newClients: enrichedNewClients.slice(0, 50), // Limit to 50 most recent
+      newClients: redactBookingCustomerContacts(enrichedNewClients.slice(0, 50), canViewClients),
       basisNote: `${CLIENT_METRICS_BASIS_NOTE} First-booking and totalSpent figures are booked gross (total_amount), not ledger earnings.`,
       reportBasis:
         "New clients are customers whose first confirmed or completed booking at this provider/location falls in the selected date range. Completed spend is separated from booked value.",

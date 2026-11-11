@@ -1,3 +1,5 @@
+import { addMoney, LAST_RESORT_CURRENCY, subtractMoney } from "@beautonomi/utils";
+
 export const REFUND_REASON_PRESETS = [
   "Customer cancellation",
   "Provider cancellation",
@@ -139,7 +141,7 @@ export function walletCreditMaxForRow(row: {
 export function remainingRefundable(amount: unknown, refundAmount: unknown): number {
   const gross = parseRefundAmount(amount);
   const refunded = parseRefundAmount(refundAmount);
-  return Math.max(0, Math.round((gross - refunded) * 100) / 100);
+  return Math.max(0, subtractMoney(gross, refunded, LAST_RESORT_CURRENCY));
 }
 
 export function isProcessableRefundRow(row: {
@@ -164,10 +166,10 @@ export function computeBookingAvailableRefund(booking: {
 }): number {
   const totalCollected = Math.max(
     Number(booking.total_paid ?? 0),
-    Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0),
+    addMoney(Number(booking.wallet_amount ?? 0), Number(booking.gift_card_amount ?? 0)),
   );
   const alreadyRefunded = Number(booking.total_refunded ?? 0);
-  return Math.max(0, Math.round((totalCollected - alreadyRefunded) * 100) / 100);
+  return Math.max(0, subtractMoney(totalCollected, alreadyRefunded, LAST_RESORT_CURRENCY));
 }
 
 export function canShowBookingRefund(booking: {

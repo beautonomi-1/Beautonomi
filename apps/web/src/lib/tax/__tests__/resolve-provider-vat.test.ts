@@ -1,5 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
-import { lineVatRatePercent, resolveProviderVat } from "../resolve-provider-vat";
+import {
+  lineVatRatePercent,
+  providerVatSnapshotColumns,
+  resolveProviderVat,
+} from "../resolve-provider-vat";
+
+describe("providerVatSnapshotColumns (F2-39)", () => {
+  it("maps a registered provider to the booking/order snapshot columns", () => {
+    expect(
+      providerVatSnapshotColumns({
+        registered: true,
+        ratePercent: 15,
+        inclusive: true,
+        vatNumber: "4123456789",
+        source: "country_default",
+      }),
+    ).toEqual({ tax_inclusive: true, provider_vat_number_snapshot: "4123456789" });
+  });
+
+  it("writes a null VAT number for unregistered providers", () => {
+    expect(
+      providerVatSnapshotColumns({
+        registered: false,
+        ratePercent: 0,
+        inclusive: false,
+        vatNumber: null,
+        source: "none",
+      }),
+    ).toEqual({ tax_inclusive: false, provider_vat_number_snapshot: null });
+  });
+});
 
 describe("resolveProviderVat", () => {
   it("returns 0% when provider is not VAT registered", async () => {

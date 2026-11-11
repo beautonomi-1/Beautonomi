@@ -22,14 +22,21 @@ export type ProviderProtectionPolicy = {
   rollout_started_at: string | null;
 };
 
-const DEFAULT_POLICY: ProviderProtectionPolicy = {
-  step_up: "off",
+/**
+ * F2-10: step-up on bank-account / team changes is ON by default. Operators may
+ * downgrade to `monitor` / `off` explicitly via
+ * `platform_settings.settings.security.provider_protection.step_up`, but an
+ * absent setting must never mean "no second factor on payout redirection".
+ */
+export const DEFAULT_PROVIDER_PROTECTION_POLICY: ProviderProtectionPolicy = {
+  step_up: "enforce",
   device_verification: "off",
   step_up_window_seconds: 600,
   trusted_device_days: 180,
   limited_trust_hours: 24,
   rollout_started_at: null,
 };
+const DEFAULT_POLICY = DEFAULT_PROVIDER_PROTECTION_POLICY;
 
 let policyCache: { at: number; policy: ProviderProtectionPolicy } | null = null;
 const POLICY_TTL_MS = 30_000;
@@ -49,11 +56,11 @@ export async function getProviderProtectionPolicy(): Promise<ProviderProtectionP
     const settings = (row as { settings?: Record<string, unknown> } | null)?.settings ?? {};
     const security = (settings.security as Record<string, unknown> | undefined) ?? {};
     const pp = (security.provider_protection as Record<string, unknown> | undefined) ?? {};
-    const mode = (v: unknown): ProviderProtectionMode =>
-      v === "monitor" || v === "enforce" ? v : "off";
+    const mode = (v: unknown, fallback: ProviderProtectionMode): ProviderProtectionMode =>
+      v === "monitor" || v === "enforce" || v === "off" ? v : fallback;
     const policy: ProviderProtectionPolicy = {
-      step_up: mode(pp.step_up),
-      device_verification: mode(pp.device_verification),
+      step_up: mode(pp.step_up, DEFAULT_POLICY.step_up),
+      device_verification: mode(pp.device_verification, DEFAULT_POLICY.device_verification),
       step_up_window_seconds:
         typeof pp.step_up_window_seconds === "number" && pp.step_up_window_seconds > 0
           ? pp.step_up_window_seconds

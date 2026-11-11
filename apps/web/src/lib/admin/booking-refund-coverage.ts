@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   parseRefundAmount,
@@ -68,13 +69,13 @@ export async function loadBookingRefundCoverage(
   );
 
   const retainedFeeTotal = (feeRows ?? []).reduce(
-    (sum, row) => sum + parseRefundAmount((row as { amount?: unknown }).amount),
+    (sum, row) => addMoney(sum, parseRefundAmount((row as { amount?: unknown }).amount)),
     0,
   );
 
   const reservedPendingTotal = (refunds ?? [])
     .filter((r) => String(r.status ?? "") === "pending")
-    .reduce((sum, r) => sum + parseRefundAmount(r.amount), 0);
+    .reduce((sum, r) => addMoney(sum, parseRefundAmount(r.amount)), 0);
 
   return {
     walletCreditedTotal,

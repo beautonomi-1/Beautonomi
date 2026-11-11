@@ -7,7 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { storedPlatformFeeAmount } from "@/lib/bookings/provider-booking-platform-fee";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
-import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { addMoney, percentOf, subtractMoney } from "@beautonomi/utils";
 import { fetchBookingCommissionContext } from "./fetch-booking-commission-context";
 import {
   resolveCommissionBaseForBookingPayment,
@@ -226,16 +226,16 @@ export async function recordBookingOnlineChargeLedger(
 
   const amountInCurrency = Math.max(0, Number(input.amountMajor || 0));
   const feesInCurrency = Math.max(0, Number(input.feesMajor ?? 0));
-  const netAmount = amountInCurrency - feesInCurrency;
+  const netAmount = subtractMoney(amountInCurrency, feesInCurrency);
   const walletAmountFromMeta = Math.max(0, Number(input.walletAmountApplied ?? 0));
   const giftCardAmountFromMeta = Math.max(0, Number(input.giftCardAmountApplied ?? 0));
   const totalCollectedForCommission =
-    amountInCurrency + walletAmountFromMeta + giftCardAmountFromMeta;
+    addMoney(addMoney(amountInCurrency, walletAmountFromMeta), giftCardAmountFromMeta);
 
   const resolvedLevels = resolveBookingLevelAmounts(bookingData, input.bookingLevelAmountOverrides);
   const incrementalTip = Math.max(0, Number(input.incrementalTipAmount ?? 0));
   const baseTip = Math.max(0, resolvedLevels.tip);
-  const tipAmount = baseTip + incrementalTip;
+  const tipAmount = addMoney(baseTip, incrementalTip);
   const taxAmount = resolvedLevels.tax;
   const travelFee = resolvedLevels.travel;
   const serviceFeeAmount = resolvedLevels.platformFee;
@@ -584,7 +584,7 @@ export async function recordBookingOnlineChargeLedger(
         ),
       );
     }
-    const tipToPost = (existingTypes.has("tip") ? 0 : baseTip) + incrementalTip;
+    const tipToPost = addMoney(existingTypes.has("tip") ? 0 : baseTip, incrementalTip);
     if (tipToPost > 0) {
       deferred.push(
         withSourcePaymentId(

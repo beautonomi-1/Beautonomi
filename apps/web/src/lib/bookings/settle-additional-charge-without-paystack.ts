@@ -4,7 +4,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
-import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { addMoney, percentOf, subtractMoney, roundCurrency } from "@beautonomi/utils";
 import {
   completeWalletGiftSyntheticPayments,
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
@@ -26,8 +26,8 @@ export function additionalChargeMixedTenderLedger(input: {
   walkInAmount: number;
   walkInNet: number;
 } {
-  const held = Math.round(Math.max(0, input.held) * 100) / 100;
-  const remainder = Math.round(Math.max(0, input.remainder) * 100) / 100;
+  const held = roundCurrency(Math.max(0, input.held));
+  const remainder = roundCurrency(Math.max(0, input.remainder));
   const rate = Number(input.commissionRatePercent) || 0;
   const commission = rate > 0 ? percentOf(held, rate) : 0;
   const providerEarnings = subtractMoney(held, commission);
@@ -81,7 +81,7 @@ export async function settleAdditionalChargeWithoutPaystack(
 
   const collectible = Math.max(0, Number(chargeAmount) || 0);
   const tenderTotal =
-    Math.round((walletAmountApplied + giftCardAmountApplied) * 100) / 100;
+    addMoney(walletAmountApplied, giftCardAmountApplied);
   if (tenderTotal + 0.005 < collectible) {
     return { ok: false, error: "Tender amounts do not cover the charge." };
   }
@@ -233,7 +233,10 @@ export async function settleAdditionalChargeWithoutPaystack(
     .from("bookings")
     .update({
       total_amount:
-        Number((bookingRow as { total_amount?: number } | null)?.total_amount ?? 0) + collectible,
+        addMoney(
+          Number((bookingRow as { total_amount?: number } | null)?.total_amount ?? 0),
+          collectible,
+        ),
       updated_at: new Date().toISOString(),
     })
     .eq("id", bookingId);
@@ -305,9 +308,9 @@ export async function settleAdditionalChargeRemainderAfterHold(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const stillDue = additionalChargeAmountStillDue(
     input.chargeAmount,
-    input.heldWallet + input.heldGift,
+    addMoney(input.heldWallet, input.heldGift),
   );
-  const remainder = Math.round(Math.max(0, input.remainderAmount) * 100) / 100;
+  const remainder = roundCurrency(Math.max(0, input.remainderAmount));
   if (remainder > stillDue + 0.02) {
     return {
       ok: false,
@@ -374,7 +377,7 @@ export async function settleAdditionalChargeRemainderAfterHold(
     bookingPaymentId = String((inserted as { id: string }).id);
   }
 
-  const heldTotal = Math.round((input.heldWallet + input.heldGift) * 100) / 100;
+  const heldTotal = addMoney(input.heldWallet, input.heldGift);
   const commissionRate = await resolveCommissionPercentageForBooking(admin, {
     bookingId: input.bookingId,
     tenantId: input.tenantId,
@@ -485,8 +488,10 @@ export async function settleAdditionalChargeRemainderAfterHold(
     .from("bookings")
     .update({
       total_amount:
-        Number((bookingRow as { total_amount?: number } | null)?.total_amount ?? 0) +
-        Math.round((ledger.held + ledger.remainder) * 100) / 100,
+        addMoney(
+          Number((bookingRow as { total_amount?: number } | null)?.total_amount ?? 0),
+          addMoney(ledger.held, ledger.remainder),
+        ),
       updated_at: new Date().toISOString(),
     })
     .eq("id", input.bookingId);

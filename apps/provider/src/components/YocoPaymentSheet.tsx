@@ -20,6 +20,7 @@ import {
   type YocoPaymentResult,
 } from "@/hooks/useYoco";
 import { useTranslation } from "@beautonomi/i18n";
+import { fromMinorUnits } from "@beautonomi/utils";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -222,7 +223,7 @@ export function YocoPaymentSheet({
     }
   }, [selectedDevice, amountCents, currency, bookingId, saleId, groupBookingId, productOrderId, additionalChargeId, description, processPayment, onPaymentSuccess, onClose, router]);
 
-  const displayAmount = formatCurrency(amountCents / 100, currency);
+  const displayAmount = formatCurrency(fromMinorUnits(amountCents, currency), currency);
 
   if (!yocoEnabled) {
     return null;

@@ -14,6 +14,7 @@ import { sendToUser } from '@/lib/notifications/onesignal';
 import { enqueueMultiChannel } from '@/lib/notifications/enqueue';
 import { insertNotification } from '@/lib/notifications/insert-notification';
 import { getGroupBooking } from './group-booking';
+import { mergeParticipantContact } from './participant-columns';
 import { hashGroupInviteToken } from './group-invites';
 import { resolveTwilioCredentials, sendTwilioSMS } from '@/lib/integrations/twilio';
 import { sendResendEmail } from '@/lib/integrations/resend';
@@ -71,11 +72,14 @@ export async function sendGroupBookingNotifications(
   } else {
     const { data: bookingParticipants } = await supabase
       .from('booking_participants')
-      .select('id, participant_name, participant_email, participant_phone, is_primary_contact, customer_id')
+      .select('id, participant_name, is_primary_contact, customer_id')
       .eq('booking_id', bookingId);
 
     if (bookingParticipants) {
-      participants = bookingParticipants as GroupNotificationParticipant[];
+      participants = (await mergeParticipantContact(
+        bookingParticipants as GroupNotificationParticipant[],
+        true,
+      )) as GroupNotificationParticipant[];
     }
   }
 
@@ -410,8 +414,8 @@ async function sendWalkInGroupBookingConfirmation(
 
   if (!channels.email && !channels.sms) {
     console.warn('[group booking notifications] walk-in participant has no contact channels', {
-      email: participant.participant_email,
-      phone: participant.participant_phone,
+      booking_id: booking.id,
+      participant_id: participant.id ?? null,
     });
   }
 }

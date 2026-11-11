@@ -228,7 +228,7 @@ export async function POST(request: NextRequest) {
         try {
           const { data: userData } = await supabase
             .from("users")
-            .select("full_name, email")
+            .select("full_name")
             .eq("id", user.id)
             .single();
 
@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
                 total_affected: booking_ids.length,
               },
               created_by: user.id,
-              created_by_name: userData?.full_name || userData?.email || "System",
+              created_by_name: userData?.full_name || "System",
             });
         } catch (auditError) {
           // Log but don't fail the operation

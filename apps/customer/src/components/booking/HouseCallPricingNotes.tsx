@@ -1,13 +1,6 @@
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  computeAtHomeLinePrice,
-  hasAtHomePriceAdjustment,
-  houseCallAdjustmentForSnapshotLine,
-  lineHasHouseCallAdjustment,
-  sumHouseCallAdjustmentsFromSnapshot,
-  type AtHomeSnapshotLine,
-} from "@beautonomi/utils";
+import { computeAtHomeLinePrice, hasAtHomePriceAdjustment, houseCallAdjustmentForSnapshotLine, lineHasHouseCallAdjustment, sumHouseCallAdjustmentsFromSnapshot, type AtHomeSnapshotLine, addMoney } from "@beautonomi/utils";
 import { formatMoney } from "@beautonomi/utils";
 import { endTextAlign } from "@/lib/rtlText";
 /** Narrow callable surface for i18next `t` without importing incompatible overloads. */
@@ -118,7 +111,7 @@ export function HouseCallServicePriceText({
   }
 
   if (!isAtHome) {
-    const homePrice = basePrice + adj;
+    const homePrice = addMoney(basePrice, adj);
     return (
       <View style={{ alignItems: "flex-end", maxWidth: 140 }}>
         <Text style={styles.priceMain}>{formatMoney(basePrice, currency)}</Text>

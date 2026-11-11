@@ -110,8 +110,20 @@ export async function GET(
       staff_name: staffMap.get(i.staff_id) || "Unknown",
     }));
 
+    // Staff without manage_payroll only receive their own lines. Drop salon
+    // rollups so a later total_* column cannot show everyone else's pay.
+    const payRunForCaller = callerStaffId
+      ? {
+          ...payRun,
+          total_gross_pay: null,
+          total_net_pay: null,
+          total_tax_deductions: null,
+          total_uif: null,
+        }
+      : payRun;
+
     return successResponse({
-      ...payRun,
+      ...payRunForCaller,
       items: itemsWithNames,
     });
   } catch (error) {

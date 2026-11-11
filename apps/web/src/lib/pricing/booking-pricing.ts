@@ -3,7 +3,7 @@
  * Monetary values are in major currency units (e.g. ZAR), not cents.
  */
 
-import { sumMoney, percentOf } from "@beautonomi/utils";
+import { computeVat, percentOf, roundCurrency, sumMoney } from "@beautonomi/utils";
 
 export type BookingPricingTaxMode = {
   taxRatePercent: number;
@@ -35,23 +35,21 @@ export function computeTaxPlatformTipTotal(input: {
   } = input;
 
   const rate = Math.max(0, tax.taxRatePercent);
-  let taxAmount = 0;
-  if (rate > 0) {
-    if (tax.taxIncluded) {
-      taxAmount = base - base / (1 + rate / 100);
-    } else {
-      taxAmount = percentOf(base, rate);
-    }
-  }
+  const vat = computeVat({
+    baseAmount: base,
+    ratePercent: rate,
+    inclusive: tax.taxIncluded,
+  });
+  const taxAmount = vat.taxAmount;
 
   let platformFeeAmount = 0;
   if (platformFeeType === "percentage") {
     platformFeeAmount = percentOf(base, platformFeePercentage);
     if (platformFeeMax != null && platformFeeMax > 0) {
-      platformFeeAmount = Math.min(platformFeeAmount, Number(platformFeeMax));
+      platformFeeAmount = Math.min(platformFeeAmount, roundCurrency(Number(platformFeeMax)));
     }
   } else {
-    platformFeeAmount = platformFeeFixed;
+    platformFeeAmount = roundCurrency(platformFeeFixed);
   }
 
   const totalAmount = tax.taxIncluded

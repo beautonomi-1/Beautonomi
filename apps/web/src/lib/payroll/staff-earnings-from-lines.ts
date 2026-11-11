@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calendarDayInTimezone } from "./period-bounds";
+import { addMoney, roundCurrency, sumMoney } from "@beautonomi/utils";
 
 export type StaffEarningsSummary = {
   commission: number;
@@ -21,8 +22,6 @@ export type StaffEarningsLineLite = {
   rate_source?: string | null;
 };
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
 /** Pure: bucket lines into commission / tips / adjustments. Reversals and manual adjustments are adjustments. */
 export function summarizeStaffEarningsLines(lines: StaffEarningsLineLite[]): StaffEarningsSummary {
   let commission = 0;
@@ -36,27 +35,27 @@ export function summarizeStaffEarningsLines(lines: StaffEarningsLineLite[]): Sta
     if (kind === "commission" || kind === "cancellation_fee_share") {
       // Refund clawbacks post negative lines of the original kind — they are
       // surfaced as adjustments so My earnings can show the reason.
-      if (amount < 0) adjCommission += amount;
-      else commission += amount;
+      if (amount < 0) adjCommission = addMoney(adjCommission, amount);
+      else commission = addMoney(commission, amount);
     } else if (kind === "tip") {
-      if (amount < 0) adjTips += amount;
-      else tips += amount;
+      if (amount < 0) adjTips = addMoney(adjTips, amount);
+      else tips = addMoney(tips, amount);
     } else if (kind === "reversal") {
       const reversed = String((row.metadata as { reversed_kind?: string } | null)?.reversed_kind ?? "commission");
-      if (reversed === "tip") adjTips += amount;
-      else adjCommission += amount;
+      if (reversed === "tip") adjTips = addMoney(adjTips, amount);
+      else adjCommission = addMoney(adjCommission, amount);
     } else {
-      adjCommission += amount;
+      adjCommission = addMoney(adjCommission, amount);
     }
   }
 
-  const adjustments = adjCommission + adjTips;
+  const adjustments = addMoney(adjCommission, adjTips);
   return {
-    commission: round2(commission),
-    tips: round2(tips),
-    adjustments: round2(adjustments),
-    total: round2(commission + tips + adjustments),
-    adjustment_breakdown: { commission: round2(adjCommission), tips: round2(adjTips) },
+    commission: roundCurrency(commission),
+    tips: roundCurrency(tips),
+    adjustments: roundCurrency(adjustments),
+    total: sumMoney(commission, tips, adjustments),
+    adjustment_breakdown: { commission: roundCurrency(adjCommission), tips: roundCurrency(adjTips) },
   };
 }
 

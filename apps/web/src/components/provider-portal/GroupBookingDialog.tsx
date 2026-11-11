@@ -47,7 +47,7 @@ import type {
 } from "@/lib/provider-portal/types";
 import type { AppointmentService, AppointmentProduct } from "@/components/appointments/types";
 import { calculateBookingPricing } from "@/components/appointments/pricing";
-import { effectiveTravelFee, manualCardCollectOptionLabel } from "@beautonomi/utils";
+import { addMoney, effectiveTravelFee, manualCardCollectOptionLabel, multiplyMoney } from "@beautonomi/utils";
 import { providerApi } from "@/lib/provider-portal/api";
 import {
   filterStaffForServiceColumns,
@@ -523,7 +523,7 @@ export function GroupBookingDialog({
             const quantity = Number(product?.quantity ?? 1) || 1;
             const unitPrice = Number(product?.unit_price ?? product?.unitPrice ?? 0) || 0;
             const totalPrice =
-              Number(product?.total_price ?? product?.totalPrice ?? 0) || unitPrice * quantity;
+              Number(product?.total_price ?? product?.totalPrice ?? 0) || multiplyMoney(unitPrice, quantity);
             return {
               id: String(product?.id ?? `existing-product-${index}`),
               productId: String(product?.product_id ?? product?.productId ?? ""),
@@ -682,7 +682,7 @@ export function GroupBookingDialog({
       productVariantName: variantLabel as string | undefined,
       quantity,
       unitPrice,
-      totalPrice: unitPrice * quantity,
+      totalPrice: multiplyMoney(unitPrice, quantity),
     }]);
   }, []);
 
@@ -693,7 +693,7 @@ export function GroupBookingDialog({
   const updateProductQuantity = useCallback((lineId: string, qty: number) => {
     if (qty < 1) { removeProduct(lineId); return; }
     setGroupProducts(prev => prev.map(p =>
-      p.id === lineId ? { ...p, quantity: qty, totalPrice: p.unitPrice * qty } : p,
+      p.id === lineId ? { ...p, quantity: qty, totalPrice: multiplyMoney(p.unitPrice, qty) } : p,
     ));
   }, [removeProduct]);
 
@@ -989,7 +989,7 @@ export function GroupBookingDialog({
         customer_id: p.customer_id || undefined,
         service_id: p.service_id || formData.service_id,
         service_name: p.service_name || formData.service_name,
-        price: p.price + p.addons.reduce((s, a) => s + a.price, 0),
+        price: addMoney(p.price, p.addons.reduce((s, a) => addMoney(s, a.price), 0)),
         duration_minutes: p.duration_minutes + p.addons.reduce((s, a) => s + a.duration, 0),
         addons: p.addons.map(a => ({ id: a.addonId, name: a.name, price: a.price, duration: a.duration })),
         notes: p.notes?.trim() || undefined,
@@ -1617,7 +1617,7 @@ export function GroupBookingDialog({
                   </div>
                 ) : (
                   participants.map((participant, index) => {
-                    const pTotal = participant.price + participant.addons.reduce((s, a) => s + a.price, 0);
+                    const pTotal = addMoney(participant.price, participant.addons.reduce((s, a) => addMoney(s, a.price), 0));
                     const pDur = participant.duration_minutes + participant.addons.reduce((s, a) => s + a.duration, 0);
                     const catalogServiceId = participant.variant_id
                       ? services.find(s => s.id === participant.variant_id || (s as any).parent_service_id)?.id || participant.service_id
@@ -1815,7 +1815,7 @@ export function GroupBookingDialog({
                               <span className="text-xs text-gray-400">R</span>
                               <Input type="number" value={participant.price} onChange={e => handleParticipantChange(index, "price", parseFloat(e.target.value) || 0)} min={0} step={0.01} className="h-8 w-20 text-sm text-end" />
                               {participant.addons.length > 0 && (
-                                <span className="text-[10px] text-gray-400">(+{formatMoney(participant.addons.reduce((s, a) => s + a.price, 0))})</span>
+                                <span className="text-[10px] text-gray-400">(+{formatMoney(participant.addons.reduce((s, a) => addMoney(s, a.price), 0))})</span>
                               )}
                             </div>
                             {isLastParticipant && participants.length < formData.max_participants && (

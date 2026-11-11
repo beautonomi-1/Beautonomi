@@ -27,7 +27,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { multiplyMoney, formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
@@ -87,7 +87,7 @@ export default function GiftCardPurchaseScreen() {
   const [issuedGiftCardCodes, setIssuedGiftCardCodes] = useState<string[]>([]);
 
   const finalAmount = customAmount ? parseFloat(customAmount) || 0 : amount;
-  const total = finalAmount * quantity;
+  const total = multiplyMoney(finalAmount, quantity);
 
   useEffect(() => {
     if (savedCards.length > 0 && defaultCard?.id) {

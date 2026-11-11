@@ -19,7 +19,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
-import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { addMoney, percentOf, subtractMoney } from "@beautonomi/utils";
+import { providerVatSnapshotColumns, resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -284,7 +285,7 @@ async function backfillMissingCustomOfferFinance(
     .eq("reference", reference)
     .maybeSingle();
   if (!existingPaymentTx) {
-    const paystackLeg = Math.max(0, bookingTotal - walletAmountApplied - giftCardAmountApplied);
+    const paystackLeg = Math.max(0, subtractMoney(subtractMoney(bookingTotal, walletAmountApplied), giftCardAmountApplied));
     try {
       await adminSupabase.from("payment_transactions").insert({
         booking_id: bookingId,
@@ -584,7 +585,7 @@ export async function finalizeCustomOfferPayment(
   // ── 3. Currency + pricing inputs ───────────────────────────────────────────
   const { data: provForCurrency } = await adminSupabase
     .from("providers")
-    .select("tenant_id")
+    .select("tenant_id, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number")
     .eq("id", req.provider_id ?? "")
     .maybeSingle();
   const offerCurrencyFallback = await lastResortCurrencyFromTenantId(
@@ -599,6 +600,21 @@ export async function finalizeCustomOfferPayment(
   const tipAmount = Number(meta.tip_amount ?? 0);
   const taxAmount = Number(meta.tax_amount ?? 0);
   const taxRate = Number(meta.tax_rate ?? 0);
+  const resolvedVat = await resolveProviderVat(adminSupabase, {
+    tax_rate_percent: (provForCurrency as { tax_rate_percent?: number | null } | null)?.tax_rate_percent ?? null,
+    tax_inclusive: (provForCurrency as { tax_inclusive?: boolean | null } | null)?.tax_inclusive ?? null,
+    is_vat_registered: (provForCurrency as { is_vat_registered?: boolean | null } | null)?.is_vat_registered ?? null,
+    vat_number: (provForCurrency as { vat_number?: string | null } | null)?.vat_number ?? null,
+    tenant_id: (provForCurrency as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+    tax_rate_override_percent: null,
+  });
+  const vatSnapshot = {
+    ...providerVatSnapshotColumns(resolvedVat),
+    ...(typeof meta.tax_inclusive === "boolean" ? { tax_inclusive: meta.tax_inclusive } : {}),
+    ...(typeof meta.provider_vat_number_snapshot === "string"
+      ? { provider_vat_number_snapshot: meta.provider_vat_number_snapshot }
+      : {}),
+  };
   const serviceFeeAmount = Number(meta.service_fee_amount ?? 0);
   const serviceFeePercentage = Number(meta.service_fee_percentage ?? 0);
   const promotionDiscountAmount = Number(meta.promotion_discount_amount ?? 0);
@@ -638,11 +654,11 @@ export async function finalizeCustomOfferPayment(
   let loyaltyPointsRedeemed = Math.max(0, Number(input.loyaltyPointsRedeemed || 0));
   let loyaltyDiscountAmount = Math.max(0, Number(input.loyaltyDiscountAmount || 0));
 
-  let cashCollected = paystackAmountMajor + walletAmountApplied + giftCardAmountApplied;
+  let cashCollected = addMoney(addMoney(paystackAmountMajor, walletAmountApplied), giftCardAmountApplied);
   // For deposit, use the metadata total; otherwise the actual collected amount
   // (loyalty discount is reflected in pricing — not a tender — so doesn't add here).
   const bookingTotalAmount = isDepositPayment ? coTotalAmount : cashCollected;
-  const netGatewayAmount = paystackAmountMajor - paystackFeesMajor;
+  const netGatewayAmount = subtractMoney(paystackAmountMajor, paystackFeesMajor);
 
   // ── 4. Create offering (ephemeral; cleaned up if booking insert fails) ────
   const offeringTitle =
@@ -716,8 +732,9 @@ export async function finalizeCustomOfferPayment(
     membership_discount_amount: membershipDiscountAmount,
     ...(membershipPlanId ? { membership_plan_id: membershipPlanId } : {}),
     ...(membershipId ? { membership_id: membershipId } : {}),
-    tax_rate: taxRate,
+    tax_rate: taxRate || resolvedVat.ratePercent,
     tax_amount: taxAmount,
+    ...vatSnapshot,
     service_fee_percentage: serviceFeePercentage,
     service_fee_amount: serviceFeeAmount,
     total_amount: bookingTotalAmount,
@@ -910,7 +927,7 @@ export async function finalizeCustomOfferPayment(
         });
       }
       giftCardAmountApplied = 0;
-      cashCollected = paystackAmountMajor + walletAmountApplied;
+      cashCollected = addMoney(paystackAmountMajor, walletAmountApplied);
       const nothingElseCollected = cashCollected <= 0.01;
       await adminSupabase
         .from("bookings")
@@ -1123,7 +1140,7 @@ export async function finalizeCustomOfferPayment(
     fees: paystackFeesMajor,
     // net_amount represents the Paystack leg only (not wallet/gift — those have their own
     // finance_transactions rows and would double-count if included here).
-    net_amount: paystackAmountMajor - paystackFeesMajor,
+    net_amount: subtractMoney(paystackAmountMajor, paystackFeesMajor),
     status: "success",
     provider:
       input.paymentProvider ??

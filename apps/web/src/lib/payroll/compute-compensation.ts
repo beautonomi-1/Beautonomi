@@ -1,4 +1,4 @@
-import { percentOf } from "@beautonomi/utils";
+import { multiplyMoney, subtractMoney, addMoney, percentOf, roundCurrency } from "@beautonomi/utils";
 
 export type PayModel =
   | "commission_only"
@@ -73,9 +73,9 @@ function marginalTierCommission(
     const tier = sorted[i];
     const bandStart = tier.minRevenue;
     const bandEnd = sorted[i + 1]?.minRevenue ?? Number.POSITIVE_INFINITY;
-    const inBand = Math.max(0, Math.min(revenue, bandEnd) - bandStart);
+    const inBand = Math.max(0, subtractMoney(Math.min(revenue, bandEnd), bandStart));
     if (inBand > 0) {
-      total += percentOf(inBand, tier.commissionRate);
+      total = addMoney(total, percentOf(inBand, tier.commissionRate));
     }
   }
   return total;
@@ -99,7 +99,7 @@ export function computeCompensation(
   const productRev = totals.productRevenue;
   const tierMode = plan.tierMode ?? "retroactive";
   const svcRate = pickTierRate(
-    serviceRev + productRev,
+    addMoney(serviceRev, productRev),
     plan.serviceRate ?? 0,
     plan.serviceTiers,
     tierMode,
@@ -119,19 +119,20 @@ export function computeCompensation(
     const prodPart =
       totals.productCommissionFromLedger ??
       marginalTierCommission(productRev, plan.productRate ?? plan.serviceRate ?? 0, plan.productTiers);
-    commission = svcPart + prodPart;
+    commission = addMoney(svcPart, prodPart);
   } else {
-    commission =
-      (totals.serviceCommissionFromLedger ?? percentOf(serviceRev, svcRate)) +
-      (totals.productCommissionFromLedger ?? percentOf(productRev, prodRate));
+    commission = addMoney(
+      totals.serviceCommissionFromLedger ?? percentOf(serviceRev, svcRate),
+      totals.productCommissionFromLedger ?? percentOf(productRev, prodRate),
+    );
   }
 
   if (plan.payModel === "commission_above_threshold" && plan.thresholdAmount != null) {
-    const excess = Math.max(0, serviceRev + productRev - plan.thresholdAmount);
+    const excess = Math.max(0, subtractMoney(addMoney(serviceRev, productRev), plan.thresholdAmount));
     commission = percentOf(excess, svcRate);
   }
 
-  const hourly = (totals.hoursWorked ?? 0) * (plan.hourlyRate ?? 0);
+  const hourly = multiplyMoney(plan.hourlyRate ?? 0, totals.hoursWorked ?? 0);
   const salary =
     plan.payModel === "salary" || plan.payModel === "base_plus_commission"
       ? proratedSalary
@@ -142,21 +143,21 @@ export function computeCompensation(
   switch (plan.payModel) {
     case "commission_only":
     case "commission_above_threshold":
-      if (commission > 0) lines.push({ code: "commission", amount: round2(commission) });
+      if (commission > 0) lines.push({ code: "commission", amount: roundCurrency(commission) });
       break;
     case "hourly":
-      if (hourly > 0) lines.push({ code: "hourly", amount: round2(hourly) });
+      if (hourly > 0) lines.push({ code: "hourly", amount: roundCurrency(hourly) });
       break;
     case "hourly_plus_commission":
-      if (hourly > 0) lines.push({ code: "hourly", amount: round2(hourly) });
-      if (commission > 0) lines.push({ code: "commission", amount: round2(commission) });
+      if (hourly > 0) lines.push({ code: "hourly", amount: roundCurrency(hourly) });
+      if (commission > 0) lines.push({ code: "commission", amount: roundCurrency(commission) });
       break;
     case "salary":
-      if (proratedSalary > 0) lines.push({ code: "salary", amount: round2(proratedSalary) });
+      if (proratedSalary > 0) lines.push({ code: "salary", amount: roundCurrency(proratedSalary) });
       break;
     case "base_plus_commission":
-      if (proratedSalary > 0) lines.push({ code: "salary", amount: round2(proratedSalary) });
-      if (commission > 0) lines.push({ code: "commission", amount: round2(commission) });
+      if (proratedSalary > 0) lines.push({ code: "salary", amount: roundCurrency(proratedSalary) });
+      if (commission > 0) lines.push({ code: "commission", amount: roundCurrency(commission) });
       break;
     case "base_or_commission_higher": {
       const base = proratedSalary;
@@ -164,7 +165,7 @@ export function computeCompensation(
       if (chosen > 0) {
         lines.push({
           code: chosen === base ? "salary_guarantee" : "commission",
-          amount: round2(chosen),
+          amount: roundCurrency(chosen),
           description:
             chosen === base ? "Guaranteed minimum (base)" : "Commission exceeded base",
         });
@@ -179,9 +180,6 @@ export function computeCompensation(
 }
 
 export function sumCompensationLines(lines: CompensationLine[]): number {
-  return round2(lines.reduce((s, l) => s + l.amount, 0));
+  return lines.reduce((s, l) => addMoney(s, l.amount), 0);
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}

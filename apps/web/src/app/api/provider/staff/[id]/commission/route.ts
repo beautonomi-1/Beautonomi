@@ -49,7 +49,7 @@ export async function GET(
     const { data: staff, error: staffError } = await supabase
       .from("provider_staff")
       .select(
-        "id, commission_enabled, service_commission_rate, product_commission_rate, commission_rate, hourly_rate, salary, tips_enabled"
+        "id, user_id, commission_enabled, service_commission_rate, product_commission_rate, commission_rate, hourly_rate, salary, tips_enabled"
       )
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -57,6 +57,14 @@ export async function GET(
 
     if (staffError || !staff) {
       return notFoundResponse("Staff member not found");
+    }
+
+    const owner = await isProviderOwner(user.id, request);
+    if (!owner && staff.user_id !== user.id) {
+      const perms = await getStaffPermissions(user.id, undefined, request);
+      if (!perms.manage_payroll && !perms.manage_team) {
+        return notFoundResponse("Staff member not found");
+      }
     }
 
     // Fetch commission tiers

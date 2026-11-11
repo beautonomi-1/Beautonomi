@@ -7,6 +7,7 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { canViewStaffPay } from "@/lib/auth/provider-team-roster-access";
 
 /**
  * GET /api/provider/staff/onboarding-checklist?staff_id=
@@ -27,13 +28,19 @@ export async function GET(request: NextRequest) {
     const { data: staff } = await supabaseAdmin
       .from("provider_staff")
       .select(
-        "id, invite_accepted_at, is_service_provider, commission_enabled, service_commission_rate, time_clock_enabled, time_clock_pin",
+        "id, user_id, invite_accepted_at, is_service_provider, commission_enabled, service_commission_rate, time_clock_enabled, time_clock_pin",
       )
       .eq("id", staffId)
       .eq("provider_id", providerId)
       .maybeSingle();
 
     if (!staff) return notFoundResponse("Staff not found");
+
+    const payVisible =
+      user.role === "superadmin" ||
+      staff.user_id === user.id ||
+      (await canViewStaffPay(user.id, request));
+    if (!payVisible) return notFoundResponse("Staff not found");
 
     const [{ count: locCount }, { count: svcCount }, { data: schedule }] = await Promise.all([
       supabaseAdmin

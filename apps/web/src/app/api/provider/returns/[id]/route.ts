@@ -9,6 +9,8 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { z } from "zod";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import {
@@ -47,6 +49,9 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -62,7 +67,9 @@ export async function GET(
       .single();
 
     if (error || !data) return notFoundResponse("Return request not found");
-    return successResponse({ return_request: data });
+    return successResponse({
+      return_request: redactBookingCustomerContact(data, canViewClients),
+    });
   } catch (err) {
     return handleApiError(err, "Failed to fetch return request");
   }

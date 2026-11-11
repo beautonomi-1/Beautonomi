@@ -8,6 +8,7 @@ import {
   errorResponse,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 import {
   buildOfferingUpdateFromAddonBody,
@@ -85,7 +86,9 @@ export async function PUT(
 ) {
   try {
     const supabase = await getSupabaseServer(request);
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
@@ -146,7 +149,9 @@ export async function DELETE(
 ) {
   try {
     const supabase = await getSupabaseServer(request);
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");

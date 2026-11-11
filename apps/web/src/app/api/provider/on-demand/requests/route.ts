@@ -8,6 +8,8 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactOnDemandRequest } from "@/lib/provider/redact-booking-customer-contact";
 
 /**
  * GET /api/provider/on-demand/requests
@@ -19,6 +21,9 @@ export async function GET(request: NextRequest) {
       ["provider_owner", "provider_staff", "superadmin"],
       request
     );
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -48,7 +53,7 @@ export async function GET(request: NextRequest) {
       .order("requested_at", { ascending: false });
 
     if (error) throw error;
-    return successResponse(data ?? []);
+    return successResponse((data ?? []).map((row) => redactOnDemandRequest(row, canViewClients)));
   } catch (error) {
     return handleApiError(error as Error, "Failed to list on-demand requests");
   }

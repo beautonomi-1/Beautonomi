@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection,
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
       escalated: returnsList.filter((r) => r.status === "escalated").length,
       total_refunded: returnsList
         .filter((r) => r.status === "refunded")
-        .reduce((s, r) => s + Number(r.refund_processed_amount ?? 0), 0),
+        .reduce((s, r) => addMoney(s, Number(r.refund_processed_amount ?? 0)), 0),
     };
 
     return successResponse({

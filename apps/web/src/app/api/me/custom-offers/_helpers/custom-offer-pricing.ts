@@ -6,8 +6,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promotion-discount";
-import { percentOf, sumMoney, computeVat } from "@beautonomi/utils";
-import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import { subtractMoney, percentOf, roundCurrency, sumMoney, computeVat, addMoney } from "@beautonomi/utils";
+import {
+  providerVatSnapshotColumns,
+  resolveProviderVat,
+} from "@/lib/tax/resolve-provider-vat";
 
 export interface CustomOfferPricingInput {
   offerPrice: number;
@@ -42,6 +45,8 @@ export interface CustomOfferPricingResult {
   loyaltyPointsRedeemed: number;
   taxRate: number;
   taxAmount: number;
+  taxInclusive: boolean;
+  providerVatNumberSnapshot: string | null;
   serviceFeePercentage: number;
   serviceFeeAmount: number;
   showServiceFeeToCustomer: boolean;
@@ -57,7 +62,7 @@ export async function computeCustomOfferPricing(
   const {
     offerPrice,
     travelFee,
-    currency: _currency,
+    currency,
     providerId,
     customerId,
     tenantId,
@@ -71,7 +76,7 @@ export async function computeCustomOfferPricing(
 
   const loyaltyPointsRequested = Math.max(0, Math.floor(Number(loyaltyPointsRequestedRaw) || 0));
 
-  const subtotalBeforeDiscount = Math.max(0, offerPrice) + Math.max(0, travelFee);
+  const subtotalBeforeDiscount = addMoney(Math.max(0, offerPrice), Math.max(0, travelFee));
 
   // Load provider for tax, tips, fee config, tenant (scoped payouts)
   const { data: provider } = await supabase
@@ -109,7 +114,7 @@ export async function computeCustomOfferPricing(
     promotionDiscountAmount = promoResolved.promotionDiscountAmount;
   }
 
-  const combinedAfterPromo = Math.max(0, subtotalBeforeDiscount - promotionDiscountAmount);
+  const combinedAfterPromo = Math.max(0, subtractMoney(subtotalBeforeDiscount, promotionDiscountAmount));
   const discountAmount = promotionDiscountAmount;
 
   // Membership discount (same helper / subtotal input as validate-booking)
@@ -123,7 +128,7 @@ export async function computeCustomOfferPricing(
   const membershipPlanId = membershipResolved.membershipPlanId;
   const membershipId = membershipResolved.membershipId;
   const membershipDiscountAmount = membershipResolved.membershipDiscountAmount;
-  const subtotalAfterMembership = Math.max(0, combinedAfterPromo - membershipDiscountAmount);
+  const subtotalAfterMembership = Math.max(0, subtractMoney(combinedAfterPromo, membershipDiscountAmount));
 
   // Loyalty redemption (before tax & platform fee; matches validate-booking)
   let loyaltyDiscountAmount = 0;
@@ -150,7 +155,7 @@ export async function computeCustomOfferPricing(
       return { ok: false, error: `You need at least ${minPoints} points to redeem.` };
     }
 
-    const maxDiscount = (subtotalAfterMembership * maxPct) / 100;
+    const maxDiscount = percentOf(subtotalAfterMembership, maxPct, currency);
     const maxPointsByCap = Math.floor(maxDiscount * redemptionRate);
     const pointsToRedeem = Math.min(loyaltyPointsRequested, maxPointsByCap);
 
@@ -182,10 +187,10 @@ export async function computeCustomOfferPricing(
 
     const discount = pointsToRedeem / redemptionRate;
     loyaltyPointsRedeemed = pointsToRedeem;
-    loyaltyDiscountAmount = Math.round(discount * 100) / 100;
+    loyaltyDiscountAmount = roundCurrency(discount, currency);
   }
 
-  const baseAfterLoyalty = Math.max(0, subtotalAfterMembership - loyaltyDiscountAmount);
+  const baseAfterLoyalty = Math.max(0, subtractMoney(subtotalAfterMembership, loyaltyDiscountAmount));
 
   const resolvedVat = await resolveProviderVat(supabaseAdmin, {
     tax_rate_percent: (provider as { tax_rate_percent?: number | null } | null)?.tax_rate_percent ?? null,
@@ -281,7 +286,7 @@ export async function computeCustomOfferPricing(
   const prePromoCommissionBase = Math.max(0, offerPrice);
   const commissionBase = Math.max(
     0,
-    prePromoCommissionBase - promotionDiscountAmount - membershipDiscountAmount,
+    subtractMoney(subtractMoney(prePromoCommissionBase, promotionDiscountAmount), membershipDiscountAmount),
   );
 
   return {
@@ -299,6 +304,8 @@ export async function computeCustomOfferPricing(
       loyaltyPointsRedeemed,
       taxRate,
       taxAmount,
+      taxInclusive: resolvedVat.inclusive,
+      providerVatNumberSnapshot: providerVatSnapshotColumns(resolvedVat).provider_vat_number_snapshot,
       serviceFeePercentage,
       serviceFeeAmount,
       showServiceFeeToCustomer,

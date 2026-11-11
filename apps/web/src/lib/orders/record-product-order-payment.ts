@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as Sentry from "@sentry/nextjs";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { subtractMoney } from "@beautonomi/utils";
+import { addMoney, roundCurrency, subtractMoney, sumMoney } from "@beautonomi/utils";
 import { clearCustomerCartForProvider } from "@/lib/orders/product-order-lifecycle";
 import { ensurePackageEntitlementsFromProductOrder } from "@/lib/orders/ensure-package-entitlements-from-product-order";
 import { bookShippingForOrder } from "@/lib/orders/shipping";
@@ -226,7 +226,7 @@ async function recordProductOrderPaymentInner(
   // In-person collection still leaves wallet/gift money with the platform.
   // Those legs are payoutable; the cash/terminal remainder is not.
   let supplementalHeld = !isPlatformHeld
-    ? Math.round(Math.min(orderTotal, walletHeld + giftCardAmount) * 100) / 100
+    ? roundCurrency(Math.min(orderTotal, addMoney(walletHeld, giftCardAmount)))
     : 0;
   let postsHeldLedger = isPlatformHeld || supplementalHeld > 0.009;
   const promotionDiscount = Math.max(0, Number((order as any).promotion_discount_amount ?? 0));
@@ -263,7 +263,7 @@ async function recordProductOrderPaymentInner(
   }
 
   if (!isPlatformHeld) {
-    supplementalHeld = Math.round(Math.min(orderTotal, walletHeld + effectiveGift) * 100) / 100;
+    supplementalHeld = roundCurrency(Math.min(orderTotal, addMoney(walletHeld, effectiveGift)));
     postsHeldLedger = supplementalHeld > 0.009;
   }
 
@@ -276,21 +276,21 @@ async function recordProductOrderPaymentInner(
       return { ok: false, duplicate: false, transitionedToPaid: false };
     }
     const alreadyCollected = (recordedPayments ?? []).reduce(
-      (sum: number, row: { amount?: number | string | null }) => sum + Number(row.amount ?? 0),
+      (sum: number, row: { amount?: number | string | null }) => addMoney(sum, Number(row.amount ?? 0)),
       0,
     );
     const checkoutTender = provider === "wallet" || provider === "gift_card";
-    const droppedGift = Math.max(0, giftCardAmount - effectiveGift);
+    const droppedGift = Math.max(0, subtractMoney(giftCardAmount, effectiveGift));
     const incoming = checkoutTender || alreadyRecorded ? 0 : Math.max(0, Number(amountMajor) || 0);
     // Wallet checkout stores the whole order total on amountMajor, including the gift.
     // After a failed capture that total is not money collected.
     const checkoutCover = Math.max(
-      walletHeld + effectiveGift,
-      Math.max(0, Number(amountMajor) || 0) - droppedGift,
+      addMoney(walletHeld, effectiveGift),
+      Math.max(0, subtractMoney(Number(amountMajor) || 0, droppedGift)),
     );
     const collected = checkoutTender
       ? checkoutCover
-      : walletHeld + effectiveGift + alreadyCollected + incoming;
+      : sumMoney(walletHeld, effectiveGift, alreadyCollected, incoming);
     if (giftReleaseFailed || collected + 0.009 < orderTotal) {
       if (!checkoutTender && incoming > 0.009) {
         const { error: partialTxError } = await (supabase.from("payment_transactions") as any).insert({
@@ -497,7 +497,7 @@ async function recordProductOrderPaymentInner(
   const feeForLedger = isPlatformHeld ? platformFee : Math.min(platformFee, supplementalHeld);
   let earningsForLedger = isPlatformHeld
     ? providerEarnings
-    : Math.max(0, Math.round((supplementalHeld - feeForLedger) * 100) / 100);
+    : Math.max(0, subtractMoney(supplementalHeld, feeForLedger));
   const paymentGrossForLedger = isPlatformHeld ? grossForProvider : earningsForLedger;
 
   const orderTaxAmount = Math.max(0, Number((order as any).tax_amount ?? 0));
@@ -517,7 +517,7 @@ async function recordProductOrderPaymentInner(
     if (vatHeldForProviderPayout) {
       earningsForLedger = Math.max(
         0,
-        Math.round((earningsForLedger - taxForLedger) * 100) / 100,
+        subtractMoney(earningsForLedger, taxForLedger),
       );
     }
   }

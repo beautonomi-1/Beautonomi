@@ -1,5 +1,6 @@
 "use client";
 
+import { addMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState } from "react";
@@ -138,9 +139,9 @@ export default function GroupAppointmentBooking({
   const totalPrice = guests.reduce((sum, guest) => {
     const guestPrice = guest.services.reduce((serviceSum, serviceId) => {
       const service = availableServices.find((s) => s.id === serviceId);
-      return serviceSum + (service?.price || 0);
+      return addMoney(serviceSum, service?.price || 0);
     }, 0);
-    return sum + guestPrice;
+    return addMoney(sum, guestPrice);
   }, 0);
 
   return (

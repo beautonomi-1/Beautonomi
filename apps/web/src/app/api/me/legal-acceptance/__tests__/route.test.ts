@@ -91,4 +91,40 @@ describe("POST /api/me/legal-acceptance", () => {
       }),
     );
   });
+
+  it("returns an error when the profile read fails instead of inserting", async () => {
+    maybeSingleMock.mockResolvedValueOnce({ data: null, error: { code: "57014", message: "timeout" } });
+    const { POST } = await import("../route");
+    const request = new NextRequest("http://localhost/api/me/legal-acceptance", {
+      method: "POST",
+      body: JSON.stringify({ app: "customer", version: "2026-10-31" }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(500);
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to update when a concurrent request created the profile row", async () => {
+    maybeSingleMock
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: { privacy_settings: { analytics_consent: true } }, error: null });
+    insertMock.mockResolvedValueOnce({ error: { code: "23505", message: "duplicate key" } });
+    const { POST } = await import("../route");
+    const request = new NextRequest("http://localhost/api/me/legal-acceptance", {
+      method: "POST",
+      body: JSON.stringify({ app: "customer", version: "2026-10-31" }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith({
+      privacy_settings: expect.objectContaining({
+        analytics_consent: true,
+        customer_eula_version: "2026-10-31",
+      }),
+    });
+  });
 });

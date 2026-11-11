@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
@@ -11,6 +12,11 @@ import { requireProviderReportsAccess } from "@/lib/reports/require-provider-rep
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  mergeTerminalPaymentContact,
+  TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT,
+  viewerMaySeeTerminalPayer,
+} from "@/lib/payments/terminal-payment-columns";
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,7 +43,7 @@ export async function GET(request: NextRequest) {
     let query = (supabase.from("provider_paystack_terminal_payments") as any)
       .select(
         `
-          *,
+          ${TERMINAL_PAYMENT_COLUMNS_WITHOUT_CONTACT},
           allocations:provider_terminal_payment_allocations(*),
           terminal:provider_paystack_virtual_terminals(id, name, terminal_code)
         `,
@@ -50,19 +56,22 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    const rows = data ?? [];
+    const rows = await mergeTerminalPaymentContact(
+      data ?? [],
+      await viewerMaySeeTerminalPayer(user, request),
+    );
     const totals = rows.reduce(
       (acc: Record<string, number>, row: any) => {
         const amount = Number(row.paid_amount ?? 0);
-        acc.received += amount;
+        acc.received = addMoney(acc.received, amount);
         if (["allocated", "provider_confirmed", "split_allocated", "admin_resolved"].includes(row.allocation_status)) {
-          acc.allocated += Number(row.allocated_amount ?? amount);
+          acc.allocated = addMoney(acc.allocated, Number(row.allocated_amount ?? amount));
         } else {
-          acc.unallocated += amount;
+          acc.unallocated = addMoney(acc.unallocated, amount);
         }
-        if (row.payout_eligibility_status === "held") acc.held += amount;
-        if (row.payout_eligibility_status === "eligible") acc.eligible += amount;
-        if (row.allocation_status === "provider_declined") acc.declined += amount;
+        if (row.payout_eligibility_status === "held") acc.held = addMoney(acc.held, amount);
+        if (row.payout_eligibility_status === "eligible") acc.eligible = addMoney(acc.eligible, amount);
+        if (row.allocation_status === "provider_declined") acc.declined = addMoney(acc.declined, amount);
         return acc;
       },
       { received: 0, allocated: 0, unallocated: 0, held: 0, eligible: 0, declined: 0 },

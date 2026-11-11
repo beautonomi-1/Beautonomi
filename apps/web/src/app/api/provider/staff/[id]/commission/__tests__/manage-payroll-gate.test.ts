@@ -66,3 +66,68 @@ describe("PATCH /api/provider/staff/[id]/commission manage payroll gate", () => 
     expect(res.status).toBe(200);
   });
 });
+
+function commissionReadClient(userId: string) {
+  const chain: Record<string, unknown> = {};
+  chain.select = vi.fn(() => chain);
+  chain.eq = vi.fn(() => chain);
+  chain.single = vi.fn(() =>
+    Promise.resolve({
+      data: {
+        id: "staff-1",
+        user_id: userId,
+        commission_enabled: true,
+        service_commission_rate: 40,
+        product_commission_rate: 10,
+        hourly_rate: 80,
+        salary: 12000,
+        tips_enabled: true,
+      },
+      error: null,
+    }),
+  );
+  chain.order = vi.fn(() => Promise.resolve({ data: [], error: null }));
+  return { from: vi.fn(() => chain) };
+}
+
+describe("GET /api/provider/staff/[id]/commission pay visibility", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("hides another staff member's salary without payroll or team access", async () => {
+    const { isProviderOwner, getStaffPermissions } = await import("@/lib/auth/permissions");
+    vi.mocked(isProviderOwner).mockResolvedValue(false);
+    vi.mocked(getStaffPermissions).mockResolvedValue({
+      manage_payroll: false,
+      manage_team: false,
+    } as never);
+    const { getSupabaseServer } = await import("@/lib/supabase/server");
+    vi.mocked(getSupabaseServer).mockResolvedValue(commissionReadClient("someone-else") as never);
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/provider/staff/staff-1/commission"), {
+      params: Promise.resolve({ id: "staff-1" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns the caller's own salary", async () => {
+    const { isProviderOwner, getStaffPermissions } = await import("@/lib/auth/permissions");
+    vi.mocked(isProviderOwner).mockResolvedValue(false);
+    vi.mocked(getStaffPermissions).mockResolvedValue({
+      manage_payroll: false,
+      manage_team: false,
+    } as never);
+    const { getSupabaseServer } = await import("@/lib/supabase/server");
+    vi.mocked(getSupabaseServer).mockResolvedValue(commissionReadClient("u1") as never);
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/provider/staff/staff-1/commission"), {
+      params: Promise.resolve({ id: "staff-1" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.salary).toBe(12000);
+  });
+});

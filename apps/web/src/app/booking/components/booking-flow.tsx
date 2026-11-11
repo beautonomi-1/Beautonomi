@@ -53,7 +53,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@beautonomi/i18n";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { computeAtHomeLinePrice } from "@beautonomi/utils";
+import { addMoney, computeAtHomeLinePrice, computeVat, multiplyMoney, percentOf, subtractMoney, sumMoney } from "@beautonomi/utils";
 import { repriceLegacySelectedServices } from "../lib/legacy-at-home-pricing";
 import {
   parseBookingDeepLink,
@@ -736,12 +736,12 @@ export default function BookingFlow() {
       servicesTotal = bookingState.groupParticipants.reduce((total, participant) => {
         const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
           const service = bookingState.selectedServices.find((s) => s.id === serviceId);
-          return sum + (service?.price || 0);
+          return addMoney(sum, service?.price || 0);
         }, 0);
-        return total + participantTotal;
+        return addMoney(total, participantTotal);
       }, 0);
     } else {
-      servicesTotal = bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
+      servicesTotal = bookingState.selectedServices.reduce((sum, s) => addMoney(sum, s.price), 0);
     }
 
     const packageDiscount = bookingState.selectedPackage
@@ -754,34 +754,39 @@ export default function BookingFlow() {
         )
       : 0;
 
-    const subtotal =
-      Math.max(0, servicesTotal - packageDiscount) +
-      bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0) +
-      bookingState.selectedProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0) +
-      (bookingState.address?.travelFee || 0);
+    const subtotal = sumMoney(
+      Math.max(0, subtractMoney(servicesTotal, packageDiscount)),
+      bookingState.selectedAddons.reduce((sum, a) => addMoney(sum, a.price), 0),
+      bookingState.selectedProducts.reduce((sum, p) => addMoney(sum, multiplyMoney(p.price, p.quantity)), 0),
+      bookingState.address?.travelFee || 0,
+    );
 
     // Coupon only — gift cards are payment tender, not booking discounts.
     const nonMembershipDiscounts =
       (bookingState.promotions.couponDiscount || 0);
 
-    const subtotalAfterPromo = Math.max(0, subtotal - nonMembershipDiscounts);
+    const subtotalAfterPromo = Math.max(0, subtractMoney(subtotal, nonMembershipDiscounts));
 
+    const currency = bookingState.selectedServices[0]?.currency || LAST_RESORT_CURRENCY;
     const membershipDiscount =
       membershipDiscountPercent > 0
-        ? Math.min((subtotalAfterPromo * membershipDiscountPercent) / 100, subtotalAfterPromo)
+        ? Math.min(percentOf(subtotalAfterPromo, membershipDiscountPercent, currency), subtotalAfterPromo)
         : 0;
 
     const loyaltyDiscount = bookingState.promotions.loyaltyDiscount || 0;
     const allDiscounts =
-      nonMembershipDiscounts + membershipDiscount + loyaltyDiscount;
-    const subtotalAfterDiscounts = Math.max(0, subtotal - allDiscounts);
+      addMoney(addMoney(nonMembershipDiscounts, membershipDiscount), loyaltyDiscount);
+    const subtotalAfterDiscounts = Math.max(0, subtractMoney(subtotal, allDiscounts));
 
     // Calculate tax (on subtotal after all discounts)
     const taxRate = bookingState.taxRate || 0;
     const taxAmount = taxRate > 0
-      ? bookingState.taxIncluded
-        ? Number((subtotalAfterDiscounts - subtotalAfterDiscounts / (1 + taxRate / 100)).toFixed(2))
-        : Number(((subtotalAfterDiscounts * taxRate) / 100).toFixed(2))
+      ? computeVat({
+          baseAmount: subtotalAfterDiscounts,
+          ratePercent: taxRate,
+          inclusive: Boolean(bookingState.taxIncluded),
+          currency,
+        }).taxAmount
       : 0;
 
     // Calculate customer-paid Platform Fee (on subtotal after all discounts)
@@ -789,7 +794,7 @@ export default function BookingFlow() {
     let serviceFeeAmount = subtotalAfterDiscounts >= minBookingAmount
       ? (
       platformFeeSettings.platform_service_fee_type === "percentage"
-        ? Number(((subtotalAfterDiscounts * platformFeeSettings.platform_service_fee_percentage) / 100).toFixed(2))
+        ? percentOf(subtotalAfterDiscounts, platformFeeSettings.platform_service_fee_percentage, currency)
         : platformFeeSettings.platform_service_fee_fixed
       )
       : 0;
@@ -1537,12 +1542,12 @@ export default function BookingFlow() {
             staffId: "any",
           };
         });
-        const servicesTotal = built.reduce((sum, s) => sum + s.price, 0);
+        const servicesTotal = built.reduce((sum, s) => addMoney(sum, s.price), 0);
         const discount =
           typeof pkg.price === "number" && pkg.price < servicesTotal
-            ? servicesTotal - pkg.price
+            ? subtractMoney(servicesTotal, pkg.price)
             : pkg.discount_percentage
-              ? (servicesTotal * pkg.discount_percentage) / 100
+              ? percentOf(servicesTotal, pkg.discount_percentage, built[0]?.currency ?? LAST_RESORT_CURRENCY)
               : 0;
 
         const rawProd = prodRes ? ((prodRes as { data?: unknown }).data ?? prodRes) : [];
@@ -1564,7 +1569,7 @@ export default function BookingFlow() {
           selectedPackage: {
             id: pkg.id,
             title: pkg.title || pkg.name || "Package",
-            price: pkg.price ?? Math.max(0, servicesTotal - discount),
+            price: pkg.price ?? Math.max(0, subtractMoney(servicesTotal, discount)),
             discount,
           },
         });
@@ -1613,12 +1618,12 @@ export default function BookingFlow() {
         ) {
           return;
         }
-        const servicesTotal = bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
+        const servicesTotal = bookingState.selectedServices.reduce((sum, s) => addMoney(sum, s.price), 0);
         const discount =
           typeof pkg.price === "number" && pkg.price < servicesTotal
-            ? servicesTotal - pkg.price
+            ? subtractMoney(servicesTotal, pkg.price)
             : pkg.discount_percentage
-              ? (servicesTotal * pkg.discount_percentage) / 100
+              ? percentOf(servicesTotal, pkg.discount_percentage, bookingState.selectedServices[0]?.currency ?? LAST_RESORT_CURRENCY)
               : 0;
         selectedPackageCatalogRef.current = {
           id: pkg.id,
@@ -1628,7 +1633,7 @@ export default function BookingFlow() {
           selectedPackage: {
             id: pkg.id,
             title: pkg.title || pkg.name || "Package",
-            price: pkg.price ?? Math.max(0, servicesTotal - discount),
+            price: pkg.price ?? Math.max(0, subtractMoney(servicesTotal, discount)),
             discount,
           },
         });

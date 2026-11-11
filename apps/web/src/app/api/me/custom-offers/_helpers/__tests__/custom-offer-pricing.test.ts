@@ -128,6 +128,7 @@ describe("computeCustomOfferPricing", () => {
     expect(res.result.serviceFeeAmount).toBeCloseTo(10, 1);
     expect(res.result.totalAmount).toBeCloseTo(240, 1);
     expect(res.result.commissionBase).toBe(200);
+    expect(res.result.taxInclusive).toBe(false);
   });
 
   it("does not reduce commission base by loyalty redemption (platform-funded)", async () => {

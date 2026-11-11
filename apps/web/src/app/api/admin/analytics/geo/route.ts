@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -258,7 +259,7 @@ export async function GET(request: NextRequest) {
         bookingsByCity[city] = { count: 0, value: 0, at_home: 0, at_salon: 0 };
       }
       bookingsByCity[city].count++;
-      bookingsByCity[city].value += Number(b.total_amount || 0);
+      bookingsByCity[city].value = addMoney(bookingsByCity[city].value, Number(b.total_amount || 0));
       if (b.location_type === "at_home" || b.location_type === "house_call") {
         bookingsByCity[city].at_home++;
       } else {
@@ -313,15 +314,15 @@ export async function GET(request: NextRequest) {
 
     for (const v of valueRows) {
       const val = Number(v.total_amount || 0);
-      totalBookingValue += val;
+      totalBookingValue = addMoney(totalBookingValue, val);
       if (
         v.location_type === "at_home" ||
         v.location_type === "house_call"
       ) {
-        atHomeValue += val;
+        atHomeValue = addMoney(atHomeValue, val);
         atHomeCount++;
       } else {
-        atSalonValue += val;
+        atSalonValue = addMoney(atSalonValue, val);
         atSalonCount++;
       }
     }
@@ -379,7 +380,7 @@ export async function GET(request: NextRequest) {
         at_home: { count: atHomeCount, value: atHomeValue },
         at_salon: { count: atSalonCount, value: atSalonValue },
         avg_booking_value:
-          valueRows.length > 0 ? totalBookingValue / valueRows.length : 0,
+          valueRows.length > 0 ? multiplyMoney(totalBookingValue, 1 / valueRows.length) : 0,
       },
 
       device_platforms: Object.entries(deviceBreakdown).map(

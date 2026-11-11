@@ -49,7 +49,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
 import { displayRetailPriceMin, effectiveStockQuantity } from "@/lib/product-inventory-metrics";
 import { trackWalkInSaleCompleted } from "@/lib/analytics";
-import { percentOf, sumMoney } from "@beautonomi/utils";
+import { addMoney, multiplyMoney, percentOf, sumMoney } from "@beautonomi/utils";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { PROVIDER_DASHBOARD_REFRESH_EVENT } from "@/lib/provider-dashboard-events";
 import { useProvider } from "@/providers/ProviderContext";
@@ -599,9 +599,9 @@ export default function WalkInSaleScreen() {
     let sub = 0;
     let tax = 0;
     for (const c of cart) {
-      const line = c.price * c.quantity;
-      sub += line;
-      tax += percentOf(line, c.tax_rate_percent);
+      const line = multiplyMoney(c.price, c.quantity);
+      sub = addMoney(sub, line);
+      tax = addMoney(tax, percentOf(line, c.tax_rate_percent));
     }
     return {
       cartSubtotal: sub,
@@ -1434,7 +1434,7 @@ export default function WalkInSaleScreen() {
                       </View>
                       <View style={{ alignItems: "flex-end" }}>
                         <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800] }}>
-                          {formatCurrency(c.price * c.quantity, tenantCurrency)}
+                          {formatCurrency(multiplyMoney(c.price, c.quantity), tenantCurrency)}
                         </Text>
                         <TouchableOpacity onPress={() => removeLine(c.lineId)} style={{ marginTop: 4 }} hitSlop={8}>
                           <Text style={{ fontSize: 12, color: "#dc2626" }}>{wis("remove")}</Text>

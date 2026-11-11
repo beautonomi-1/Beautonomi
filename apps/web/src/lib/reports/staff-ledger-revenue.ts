@@ -2,6 +2,8 @@
  * Split each booking's ledger net across staff using line-item catalogue price share
  * (same approach as sales/services and staff performance).
  */
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
+
 export type BookingRowForStaffSplit = {
   id: string;
   booking_services?: Array<{ staff_id?: string | null; price?: number }> | null;
@@ -21,7 +23,7 @@ export function allocateLedgerNetByStaff(
     const lines = booking.booking_services;
     if (!lines?.length) continue;
 
-    const totalServicePrice = lines.reduce((sum, s) => sum + Number(s.price || 0), 0);
+    const totalServicePrice = lines.reduce((sum, s) => addMoney(sum, Number(s.price || 0)), 0);
 
     for (const line of lines) {
       const sid = line.staff_id;
@@ -30,8 +32,8 @@ export function allocateLedgerNetByStaff(
         totalServicePrice > 0
           ? Number(line.price || 0) / totalServicePrice
           : 1 / lines.length;
-      const add = bookingRevenue * prop;
-      byStaff.set(sid, (byStaff.get(sid) || 0) + add);
+      const add = multiplyMoney(bookingRevenue, prop);
+      byStaff.set(sid, addMoney(byStaff.get(sid) || 0, add));
     }
   }
 

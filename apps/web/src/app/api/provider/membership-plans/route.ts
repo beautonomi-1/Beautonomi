@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
           const c = countByPlan.get(p.id) ?? 0;
           p.subscriber_count = c;
           const price = Number(p.price_monthly) || 0;
-          p.monthly_revenue = Math.round(price * c * 100) / 100;
+          p.monthly_revenue = multiplyMoney(price, c);
         }
         return successResponse({ plans });
       }

@@ -1,5 +1,7 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection,
   successResponse,
   handleApiError,
@@ -25,7 +27,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
 
     type OrderStatRow = { status?: string; total_amount?: number | string; payment_status?: string };
-    let query = supabase
+    let query = getSupabaseAdmin()
       .from("product_orders")
       .select(
         `*,
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest) {
       total_orders: statRows.length,
       total_revenue: statRows
         .filter((o) => o.payment_status === "paid")
-        .reduce((s, o) => s + Number(o.total_amount ?? 0), 0),
+        .reduce((s, o) => addMoney(s, Number(o.total_amount ?? 0)), 0),
       pending: statRows.filter((o) => o.status === "pending").length,
       delivered: statRows.filter((o) => o.status === "delivered").length,
       cancelled: statRows.filter((o) => o.status === "cancelled").length,

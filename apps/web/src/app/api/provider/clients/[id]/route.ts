@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -533,7 +534,7 @@ export async function GET(
       appointments?.reduce(
         (sum: number, apt: any) =>
           apt.payment_status === "paid" || apt.payment_status === "partially_paid"
-            ? sum + (apt.total_paid || apt.total_amount || 0)
+            ? addMoney(sum, apt.total_paid || apt.total_amount || 0)
             : sum,
         0,
       ) ?? 0;

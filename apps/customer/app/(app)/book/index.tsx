@@ -45,7 +45,7 @@ import {
   getPendingExcludeHoldId,
   setPendingExcludeHoldId,
 } from "@/lib/booking-flow-hold";
-import { catalogHasAnyAtHomePriceAdjustment, computeAtHomeLinePrice } from "@beautonomi/utils";
+import { addMoney, catalogHasAnyAtHomePriceAdjustment, computeAtHomeLinePrice, multiplyMoney } from "@beautonomi/utils";
 import {
   HouseCallAtHomeBanner,
   HouseCallServicePriceText,
@@ -394,7 +394,7 @@ function BookingSummaryHeader({
       ? items[0].title
       : `${items[0].title}${bf("stickySelectionMore", { count: items.length - 1 })}`
     : (variant?.title ?? service?.title);
-  const displayPrice = items ? items.reduce((s, i) => s + i.price, 0) : (variant?.price ?? service?.price);
+  const displayPrice = items ? items.reduce((s, i) => addMoney(s, i.price), 0) : (variant?.price ?? service?.price);
   const displayDuration = items
     ? buildSlotParamsFromSelectedServices(items).durationMinutes
     : (variant?.duration_minutes ?? service?.duration_minutes);
@@ -1338,7 +1338,7 @@ export default function BookScreen() {
                   discount_percentage:
                     pkg.discount_percentage != null ? Number(pkg.discount_percentage) : null,
                 },
-                servicesSubtotal: applied.reduce((sum, s) => sum + (s.price ?? 0), 0),
+                servicesSubtotal: applied.reduce((sum, s) => addMoney(sum, s.price ?? 0), 0),
               }).matches;
               if (bundleOk) {
                 setPackageIdForCheckout(pkgId);
@@ -1479,7 +1479,7 @@ export default function BookScreen() {
         price: activePackage?.price,
         discount_percentage: activePackage?.discount_percentage ?? null,
       },
-      servicesSubtotal: selectedServices.reduce((sum, s) => sum + (s.price ?? 0), 0),
+      servicesSubtotal: selectedServices.reduce((sum, s) => addMoney(sum, s.price ?? 0), 0),
     }).matches;
     if (!ok) {
       resolvedPackageShapeRef.current = null;
@@ -2342,7 +2342,7 @@ export default function BookScreen() {
     const first = selectedServices[0]!;
     const more = selectedServices.length - 1;
     const duration = buildSlotParamsFromSelectedServices(selectedServices).durationMinutes;
-    const price = selectedServices.reduce((sum, s) => sum + s.price, 0);
+    const price = selectedServices.reduce((sum, s) => addMoney(sum, s.price), 0);
     const currency = first.currency;
     const title =
       more > 0 ? `${first.title}${bf("stickySelectionMore", { count: more })}` : first.title;
@@ -2698,7 +2698,7 @@ export default function BookScreen() {
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{p.name}</Text>
                               <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                                ×{p.quantity} · {p.currency} {(p.price * p.quantity).toFixed(2)}
+                                ×{p.quantity} · {p.currency} {multiplyMoney(p.price, p.quantity).toFixed(2)}
                               </Text>
                             </View>
                           </View>

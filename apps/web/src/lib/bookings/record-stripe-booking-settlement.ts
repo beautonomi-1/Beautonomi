@@ -8,6 +8,7 @@ import {
   type CommissionMode,
 } from "./record-booking-online-charge-ledger";
 import { resolveStripeGatewayFees } from "@/lib/payments/resolve-gateway-fees";
+import { roundCurrency, toMinorUnits } from "@beautonomi/utils";
 
 export type RecordStripeBookingSettlementInput = {
   bookingId: string;
@@ -98,11 +99,11 @@ export async function recordStripeBookingSettlement(
     }
 
     const feeMinor = input.feesAlreadyMajor
-      ? Math.round(Number(input.feesSmallestOrMajor ?? 0) * 100)
+      ? toMinorUnits(Number(input.feesSmallestOrMajor ?? 0))
       : Number(input.feesSmallestOrMajor ?? 0);
     const resolved = resolveStripeGatewayFees({ feeMinor, currency: "ZAR" });
     const feesMajor = input.feesAlreadyMajor
-      ? Math.round(Number(input.feesSmallestOrMajor ?? 0) * 100) / 100
+      ? roundCurrency(Number(input.feesSmallestOrMajor ?? 0))
       : resolved.feesMajor;
     const feeSource = input.feeSource ?? resolved.feeSource;
 

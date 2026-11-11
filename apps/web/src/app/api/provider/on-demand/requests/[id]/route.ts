@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactOnDemandRequest } from "@/lib/provider/redact-booking-customer-contact";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -23,6 +25,9 @@ export async function GET(
       ["provider_owner", "provider_staff", "superadmin"],
       request
     );
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -49,9 +54,11 @@ export async function GET(
         .eq("status", "requested")
         .select()
         .maybeSingle();
-      return successResponse(updated ?? { ...data, status: "expired", updated_at: now });
+      return successResponse(
+        redactOnDemandRequest(updated ?? { ...data, status: "expired", updated_at: now }, canViewClients),
+      );
     }
-    return successResponse(data);
+    return successResponse(redactOnDemandRequest(data, canViewClients));
   } catch (error) {
     return handleApiError(error as Error, "Failed to fetch on-demand request");
   }

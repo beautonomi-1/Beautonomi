@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney, subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
@@ -141,14 +142,14 @@ export async function GET(request: NextRequest) {
       const refundedAmount = Number(booking.total_refunded ?? 0);
       const walletAmount = Number(booking.wallet_amount ?? 0);
       const giftCardAmount = Number(booking.gift_card_amount ?? 0);
-      const collectedAmount = gatewayAmount + walletAmount + giftCardAmount;
+      const collectedAmount = addMoney(addMoney(gatewayAmount, walletAmount), giftCardAmount);
 
       // By day (GMV + actual collected)
       if (!revenueByDay[date]) {
         revenueByDay[date] = { revenue: 0, actual_collected: 0, bookings: 0 };
       }
-      revenueByDay[date].revenue += gmvAmount;
-      revenueByDay[date].actual_collected += collectedAmount;
+      revenueByDay[date].revenue = addMoney(revenueByDay[date].revenue, gmvAmount);
+      revenueByDay[date].actual_collected = addMoney(revenueByDay[date].actual_collected, collectedAmount);
       revenueByDay[date].bookings += 1;
 
       // By provider
@@ -156,8 +157,8 @@ export async function GET(request: NextRequest) {
         if (!revenueByProvider[booking.provider_id]) {
           revenueByProvider[booking.provider_id] = { revenue: 0, actual_collected: 0, bookings: 0, provider_name: 'Unknown' };
         }
-        revenueByProvider[booking.provider_id].revenue += gmvAmount;
-        revenueByProvider[booking.provider_id].actual_collected += collectedAmount;
+        revenueByProvider[booking.provider_id].revenue = addMoney(revenueByProvider[booking.provider_id].revenue, gmvAmount);
+        revenueByProvider[booking.provider_id].actual_collected = addMoney(revenueByProvider[booking.provider_id].actual_collected, collectedAmount);
         revenueByProvider[booking.provider_id].bookings += 1;
       }
 
@@ -166,20 +167,20 @@ export async function GET(request: NextRequest) {
       if (!revenueByStatus[status]) {
         revenueByStatus[status] = { revenue: 0, bookings: 0 };
       }
-      revenueByStatus[status].revenue += gmvAmount;
+      revenueByStatus[status].revenue = addMoney(revenueByStatus[status].revenue, gmvAmount);
       revenueByStatus[status].bookings += 1;
 
       const channel = normalizeBookingChannel(booking.booking_source);
       if (!channelGmv[channel]) channelGmv[channel] = { gmv: 0, bookings: 0 };
-      channelGmv[channel].gmv += gmvAmount;
+      channelGmv[channel].gmv = addMoney(channelGmv[channel].gmv, gmvAmount);
       channelGmv[channel].bookings += 1;
 
-      totalRevenue += gmvAmount;
-      totalActualCollected += collectedAmount;
-      totalRefunded += refundedAmount;
-      totalWalletRevenue += walletAmount;
-      totalGatewayRevenue += gatewayAmount;
-      totalGiftCardRevenue += giftCardAmount;
+      totalRevenue = addMoney(totalRevenue, gmvAmount);
+      totalActualCollected = addMoney(totalActualCollected, collectedAmount);
+      totalRefunded = addMoney(totalRefunded, refundedAmount);
+      totalWalletRevenue = addMoney(totalWalletRevenue, walletAmount);
+      totalGatewayRevenue = addMoney(totalGatewayRevenue, gatewayAmount);
+      totalGiftCardRevenue = addMoney(totalGiftCardRevenue, giftCardAmount);
     });
 
     // Get provider names
@@ -212,7 +213,7 @@ export async function GET(request: NextRequest) {
         if (!bid) continue;
         revenueByBooking.set(
           bid,
-          (revenueByBooking.get(bid) ?? 0) + Number((row as { net?: number }).net ?? 0),
+          addMoney(revenueByBooking.get(bid) ?? 0, Number((row as { net?: number }).net ?? 0)),
         );
       }
     }
@@ -247,7 +248,7 @@ export async function GET(request: NextRequest) {
         const bookingRevenue = revenueByBooking.get(id) ?? 0;
         const svcs = servicesByBooking.get(id) ?? [];
         if (svcs.length === 0 || bookingRevenue <= 0) continue;
-        const totalPrice = svcs.reduce((s, x) => s + Number(x.price ?? 0), 0);
+        const totalPrice = svcs.reduce((s, x) => addMoney(s, Number(x.price ?? 0)), 0);
         for (const service of svcs) {
           const offering = Array.isArray(service.offerings)
             ? service.offerings[0]
@@ -256,14 +257,14 @@ export async function GET(request: NextRequest) {
           const serviceId = service.offering_id ?? serviceName;
           const proportion =
             totalPrice > 0 ? Number(service.price ?? 0) / totalPrice : 1 / svcs.length;
-          const serviceRevenue = bookingRevenue * proportion;
+          const serviceRevenue = multiplyMoney(bookingRevenue, proportion);
           const existing = revenueByServiceMap.get(serviceId) ?? {
             service_id: serviceId,
             service_name: serviceName,
             revenue: 0,
             bookingIds: new Set<string>(),
           };
-          existing.revenue += serviceRevenue;
+          existing.revenue = addMoney(existing.revenue, serviceRevenue);
           existing.bookingIds.add(id);
           revenueByServiceMap.set(serviceId, existing);
         }
@@ -304,11 +305,11 @@ export async function GET(request: NextRequest) {
       { transactionType: "promotion_discount" }
     );
     const totalCancellationFeesRetained = (cancellationFeeRows || []).reduce(
-      (s, r) => s + Number(r.net ?? r.amount ?? 0),
+      (s, r) => addMoney(s, Number(r.net ?? r.amount ?? 0)),
       0
     );
     const totalPromotionDiscounts = (promoDiscountRows || []).reduce(
-      (s, r) => s + Number(r.amount ?? 0),
+      (s, r) => addMoney(s, Number(r.amount ?? 0)),
       0
     );
 
@@ -338,12 +339,12 @@ export async function GET(request: NextRequest) {
       .gt("balance", 0);
 
     const outstandingLiability = (liabilityRows || []).reduce(
-      (sum, g) => sum + Number(g.balance || 0),
+      (sum, g) => addMoney(sum, Number(g.balance || 0)),
       0
     );
 
-    const totalSales = (salesTransactions || []).reduce((sum, t) => sum + Number(t.amount || 0), 0);
-    const totalRedemptions = (redemptions || []).reduce((sum, r) => sum + Number(r.amount || 0), 0);
+    const totalSales = (salesTransactions || []).reduce((sum, t) => addMoney(sum, Number(t.amount || 0)), 0);
+    const totalRedemptions = (redemptions || []).reduce((sum, r) => addMoney(sum, Number(r.amount || 0)), 0);
 
     const { data: orders } = await supabase
       .from("gift_card_orders")
@@ -365,7 +366,7 @@ export async function GET(request: NextRequest) {
       if (!salesByDay[date]) {
         salesByDay[date] = { sales: 0, count: 0 };
       }
-      salesByDay[date].sales += Number(t.amount || 0);
+      salesByDay[date].sales = addMoney(salesByDay[date].sales, Number(t.amount || 0));
       salesByDay[date].count += 1;
     });
 
@@ -376,7 +377,7 @@ export async function GET(request: NextRequest) {
       if (!redemptionsByDay[date]) {
         redemptionsByDay[date] = { redemptions: 0, count: 0 };
       }
-      redemptionsByDay[date].redemptions += Number(r.amount || 0);
+      redemptionsByDay[date].redemptions = addMoney(redemptionsByDay[date].redemptions, Number(r.amount || 0));
       redemptionsByDay[date].count += 1;
     });
 
@@ -433,7 +434,7 @@ export async function GET(request: NextRequest) {
       // Total refunded back to customers
       totalRefunded,
       // Net collected: gross collected minus refunds
-      netCollected: totalActualCollected - totalRefunded,
+      netCollected: subtractMoney(totalActualCollected, totalRefunded),
       // Breakdown of how actual_collected is composed
       collectionBreakdown: {
         gateway: totalGatewayRevenue,
@@ -466,8 +467,8 @@ export async function GET(request: NextRequest) {
       cancellationFeesRetainedByProviders: totalCancellationFeesRetained,
       promotionDiscountsGiven: totalPromotionDiscounts,
       // Booking-side operational metric (GMV after discounts), not platform recognized revenue.
-      gmvAfterDiscounts: totalRevenue - totalPromotionDiscounts,
-      netRevenueAfterDiscounts: totalRevenue - totalPromotionDiscounts,
+      gmvAfterDiscounts: subtractMoney(totalRevenue, totalPromotionDiscounts),
+      netRevenueAfterDiscounts: subtractMoney(totalRevenue, totalPromotionDiscounts),
 
       platformRevenue: {
         booking_commission_net: ledgerAgg.platform_take_net,

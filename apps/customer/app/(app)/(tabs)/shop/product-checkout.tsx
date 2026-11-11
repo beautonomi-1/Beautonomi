@@ -46,7 +46,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { haptic } from "@/lib/haptics";
 import { trackProductCheckoutStarted, trackProductOrderPlaced } from "@/lib/analytics";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { distanceKmBetween, formatMoney } from "@beautonomi/utils";
+import { addMoney, multiplyMoney, distanceKmBetween, formatMoney, percentOf, subtractMoney, toMinorUnits } from "@beautonomi/utils";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
 import { useTranslation } from "@beautonomi/i18n";
 import { useSavedCards } from "@/hooks/useSavedCards";
@@ -540,8 +540,8 @@ export default function ProductCheckoutScreen() {
   const promotionDiscount = serverQuote?.promotionDiscount ?? 0;
   const localTaxAmount = providerItems.reduce((s, i) => {
     const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
-    const linePrice = (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
-    return s + Math.round(((linePrice * rate) / 100) * 100) / 100;
+    const linePrice = multiplyMoney(i.effective_price ?? i.product?.retail_price ?? 0, i.quantity);
+    return addMoney(s, percentOf(linePrice, rate));
   }, 0);
   const taxAmount = serverQuote?.taxAmount ?? localTaxAmount;
   const guestDeliveryEstimate =
@@ -579,16 +579,16 @@ export default function ProductCheckoutScreen() {
     : paymentMethod === "paystack"
       ? platformFeeConfig.type === "fixed"
         ? platformFeeConfig.fixed
-        : Math.round(subtotal * platformFeeConfig.percentage) / 100
+        : percentOf(subtotal, platformFeeConfig.percentage)
       : 0;
-  const total = serverQuote?.totalAmount ?? subtotal + taxAmount + deliveryFee + platformFee;
+  const total = serverQuote?.totalAmount ?? addMoney(addMoney(addMoney(subtotal, taxAmount), deliveryFee), platformFee);
   const giftCredit =
     giftCardValid && giftCardCode.trim() ? Math.min(giftCardValid.balance, total) : 0;
   const walletCredit =
     paymentMethod === "paystack" && useWallet && user
-      ? Math.min(walletBalance, Math.max(0, total - giftCredit))
+      ? Math.min(walletBalance, Math.max(0, subtractMoney(total, giftCredit)))
       : 0;
-  const cardPayTotal = Math.max(0, Math.round((total - walletCredit - giftCredit) * 100) / 100);
+  const cardPayTotal = Math.max(0, subtractMoney(subtractMoney(total, walletCredit), giftCredit));
   const fb = getTenantDefaultCurrency();
   const fmt = (amount: number) => formatMoney(amount, fb);
 
@@ -969,7 +969,7 @@ export default function ProductCheckoutScreen() {
       "/api/paystack/initialize",
       {
         email: customerEmail,
-        amount: Math.round(amountDue * 100),
+        amount: toMinorUnits(amountDue, fb),
         callback_url: paystackCallbackUrl,
         metadata: {
           product_order_id: order.id,
@@ -2310,9 +2310,12 @@ export default function ProductCheckoutScreen() {
                 </View>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                   {fmt(
-                    (typeof item.effective_price === "number"
-                      ? item.effective_price
-                      : (item.product?.retail_price ?? 0)) * item.quantity
+                    multiplyMoney(
+                      typeof item.effective_price === "number"
+                        ? item.effective_price
+                        : (item.product?.retail_price ?? 0),
+                      item.quantity,
+                    )
                   )}
                 </Text>
               </View>

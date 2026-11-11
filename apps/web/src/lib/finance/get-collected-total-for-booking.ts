@@ -3,10 +3,7 @@ import {
   CHARGE_ROW_STATUSES,
   netPaymentTransactionAmount,
 } from "@/lib/finance/payment-transaction-net";
-
-function roundCurrency2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 /**
  * Cash-like amount collected for a booking across gateway rows, net of refunds
@@ -29,11 +26,11 @@ export async function getCollectedTotalForBooking(
   const netFromTx = (txs ?? []).reduce((sum, row) => {
     const tt = String((row as { transaction_type?: string }).transaction_type || "charge");
     if (!inflowTypes.has(tt)) return sum;
-    return sum + netPaymentTransactionAmount(row as { amount?: unknown; refund_amount?: unknown });
+    return addMoney(sum, netPaymentTransactionAmount(row as { amount?: unknown; refund_amount?: unknown }));
   }, 0);
 
   if (netFromTx > 0) {
-    return roundCurrency2(netFromTx);
+    return netFromTx;
   }
 
   const { data: booking, error: bookingErr } = await supabase
@@ -46,11 +43,12 @@ export async function getCollectedTotalForBooking(
   if (!booking) return 0;
 
   const totalPaid = Number((booking as { total_paid?: number }).total_paid ?? 0);
-  const walletGift =
-    Number((booking as { wallet_amount?: number }).wallet_amount ?? 0) +
-    Number((booking as { gift_card_amount?: number }).gift_card_amount ?? 0);
+  const walletGift = addMoney(
+    Number((booking as { wallet_amount?: number }).wallet_amount ?? 0),
+    Number((booking as { gift_card_amount?: number }).gift_card_amount ?? 0),
+  );
   const totalRefunded = Number((booking as { total_refunded?: number }).total_refunded ?? 0);
   const collected = Math.max(totalPaid, walletGift);
 
-  return roundCurrency2(Math.max(0, collected - totalRefunded));
+  return Math.max(0, subtractMoney(collected, totalRefunded));
 }

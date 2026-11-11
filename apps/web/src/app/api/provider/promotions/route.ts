@@ -13,6 +13,7 @@ import {
   mapRowsToProviderDtos,
   parseOptionalAmount,
   parseOptionalLimit,
+  promotionValueError,
   resolveValidWindowFromBody,
 } from "@/lib/promotions/provider-promotion-api";
 import { mapPromotionRowToProviderDto } from "@/lib/promotions/provider-promotion";
@@ -94,13 +95,8 @@ export async function POST(request: NextRequest) {
     }
     const dbType = type === "fixed_amount" ? "fixed" : type;
 
-    if (type === "percentage" && (value < 0 || value > 100)) {
-      return badRequestResponse("Percentage value must be between 0 and 100");
-    }
-
-    if (dbType === "fixed" && value <= 0) {
-      return badRequestResponse("Fixed amount value must be greater than 0");
-    }
+    const valueErr = promotionValueError(dbType, value);
+    if (valueErr) return badRequestResponse(valueErr);
 
     const usageLimit = parseOptionalLimit(body.usage_limit ?? body.max_uses);
     if (

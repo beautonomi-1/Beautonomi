@@ -9,6 +9,12 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
+import {
+  mergeProductOrderContact,
+  PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT,
+} from "@/lib/orders/product-order-columns";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
   applyProductOrderCancelRefundSideEffects,
@@ -24,6 +30,7 @@ import {
 import { z } from "zod";
 import { cancelCourierShipmentForOrder } from "@/lib/orders/shipping";
 import { withProductOrderAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 const NOTIFY_STATUSES = new Set<ProductOrderNotifyStatus>([
   "confirmed",
@@ -90,6 +97,9 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -97,7 +107,7 @@ export async function GET(
     const { data: order, error } = await (supabase.from("product_orders") as any)
       .select(
         `
-        *,
+        ${PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT},
         items:product_order_items (
           id, product_id, product_variant_id, product_name, product_image_url, quantity, unit_price, total_price,
           fulfilment_status, fulfilled_qty, fulfilment_updated_at,
@@ -124,7 +134,13 @@ export async function GET(
     }
 
     const [orderWithDue] = await withProductOrderAmountStillDue(getSupabaseAdmin(), [order]);
-    return successResponse({ order: orderWithDue ?? order });
+    const [orderWithContact] = await mergeProductOrderContact(
+      [orderWithDue ?? order],
+      canViewClients,
+    );
+    return successResponse({
+      order: redactBookingCustomerContact(orderWithContact ?? order, canViewClients),
+    });
   } catch (err) {
     return handleApiError(err, "Failed to fetch order");
   }
@@ -154,6 +170,9 @@ export async function PATCH(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -175,13 +194,14 @@ export async function PATCH(
       parsed.refund_method ?? "store_credit";
     const orderTotal = Number(order.total_amount ?? 0);
     const alreadyRefunded = Math.max(0, Number(order.refunded_amount ?? 0));
-    const remainingRefundable = Math.max(0, Math.round((orderTotal - alreadyRefunded) * 100) / 100);
+    const orderCurrency = (order as { currency?: string | null }).currency || LAST_RESORT_CURRENCY;
+    const remainingRefundable = Math.max(0, subtractMoney(orderTotal, alreadyRefunded, orderCurrency));
     const refundAmount =
       parsed.refund_amount != null ? parsed.refund_amount : remainingRefundable;
     // A refund that leaves money on the order keeps it active: no terminal status, no restock.
     const isPartialRefund =
-      parsed.status === "refunded" && alreadyRefunded + refundAmount < orderTotal - 0.01;
-    const cumulativeRefunded = Math.round((alreadyRefunded + refundAmount) * 100) / 100;
+      parsed.status === "refunded" && addMoney(alreadyRefunded, refundAmount, orderCurrency) < orderTotal - 0.01;
+    const cumulativeRefunded = addMoney(alreadyRefunded, refundAmount, orderCurrency);
     const refundKeySuffix =
       isPartialRefund || alreadyRefunded > 0
         ? `:${alreadyRefunded.toFixed(2)}:${refundAmount.toFixed(2)}`
@@ -325,7 +345,9 @@ export async function PATCH(
           : updateQuery.eq("refunded_amount", order.refunded_amount);
     }
     const { data: updated, error: updateErr } = await updateQuery
-      .select("*, customer:users!product_orders_customer_id_fkey(id, full_name)")
+      .select(
+        `${PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT}, customer:users!product_orders_customer_id_fkey(id, full_name)`,
+      )
       .single();
 
     if (updateErr) {
@@ -550,7 +572,13 @@ export async function PATCH(
       }
     }
 
-    return successResponse({ order: updated });
+    const [updatedWithContact] = await mergeProductOrderContact(
+      updated ? [updated] : [],
+      canViewClients,
+    );
+    return successResponse({
+      order: redactBookingCustomerContact(updatedWithContact ?? updated, canViewClients),
+    });
   } catch (err) {
     return handleApiError(err, "Failed to update order");
   }

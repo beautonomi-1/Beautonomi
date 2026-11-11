@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -331,7 +332,7 @@ export function FinanceOverviewPage() {
     if (!summary) return null;
     const cancellationFeesRetained = summary.cancellation_fees_retained ?? 0;
     const ledgerRefundAmountSum = summary.refunds_gross;
-    const bookingSideNet = cancellationFeesRetained + ledgerRefundAmountSum;
+    const bookingSideNet = addMoney(cancellationFeesRetained, ledgerRefundAmountSum);
     return {
       cancellationFeesRetained,
       ledgerRefundAmountSum,

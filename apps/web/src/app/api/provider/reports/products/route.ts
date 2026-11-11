@@ -11,6 +11,7 @@ import { createClient } from "@supabase/supabase-js";
 import { effectiveStockQuantity } from "@/lib/provider-portal/product-inventory-metrics";
 import { filterProductOrdersForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 
 type CatalogRow = {
   id: string;
@@ -32,7 +33,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
 function lineRevenue(qty: number, unitPrice: number, totalPrice: number): number {
   const total = Number(totalPrice) || 0;
   if (total > 0) return total;
-  return qty * (Number(unitPrice) || 0);
+  return multiplyMoney(Number(unitPrice) || 0, qty);
 }
 
 /**
@@ -167,7 +168,7 @@ export async function GET(request: NextRequest) {
         const name = typeof row.products?.name === "string" ? row.products.name : null;
         const prev = salesByProduct.get(pid) ?? { units: 0, revenue: 0, fallbackName: null };
         prev.units += qty;
-        prev.revenue += rev;
+        prev.revenue = addMoney(prev.revenue, rev);
         if (!prev.fallbackName && name) prev.fallbackName = name;
         salesByProduct.set(pid, prev);
       }
@@ -192,14 +193,14 @@ export async function GET(request: NextRequest) {
           const name = typeof row.product_name === "string" ? row.product_name : null;
           const prev = salesByProduct.get(pid) ?? { units: 0, revenue: 0, fallbackName: null };
           prev.units += qty;
-          prev.revenue += rev;
+          prev.revenue = addMoney(prev.revenue, rev);
           if (!prev.fallbackName && name) prev.fallbackName = name;
           salesByProduct.set(pid, prev);
         }
       }
     }
 
-    const total_product_revenue = Array.from(salesByProduct.values()).reduce((s, v) => s + v.revenue, 0);
+    const total_product_revenue = Array.from(salesByProduct.values()).reduce((s, v) => addMoney(s, v.revenue), 0);
     const total_units_sold = Array.from(salesByProduct.values()).reduce((s, v) => s + v.units, 0);
 
     const top_products = Array.from(salesByProduct.entries())

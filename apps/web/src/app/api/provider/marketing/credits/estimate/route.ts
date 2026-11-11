@@ -1,12 +1,13 @@
+import { multiplyMoney, subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getMarketingBalance, priceFor } from "@/lib/marketing/credits";
 import { resolveMarketingSendingContext } from "@/lib/marketing/sending-path";
@@ -21,7 +22,9 @@ const schema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -38,9 +41,9 @@ export async function GET(request: NextRequest) {
     const ctx = await resolveMarketingSendingContext(providerId, channel, supabase);
     const category = channel === "whatsapp" ? "marketing" : "default";
     const unitCost = ctx.debitsCredits ? await priceFor(supabase, channel, category) : 0;
-    const estimatedCost = unitCost * recipients;
+    const estimatedCost = multiplyMoney(unitCost, recipients);
     const balance = await getMarketingBalance(supabase, providerId);
-    const balanceAfter = balance.total_zar - estimatedCost;
+    const balanceAfter = subtractMoney(balance.total_zar, estimatedCost);
 
     return successResponse({
       channel,

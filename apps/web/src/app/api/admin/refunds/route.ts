@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSectionAny, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
       const pageRows = filtered.slice(offset, offset + limit);
 
       const rowsWithRefund = allQueueRows.filter((r) => r.refunded > 0);
-      const totalRefundedAmount = rowsWithRefund.reduce((sum, r) => sum + r.refunded, 0);
+      const totalRefundedAmount = rowsWithRefund.reduce((sum, r) => addMoney(sum, r.refunded), 0);
 
       const statistics = {
         total_transactions: allQueueRows.length,
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
         },
         average_refund_among_recorded:
           rowsWithRefund.length > 0
-            ? (totalRefundedAmount / rowsWithRefund.length).toFixed(2)
+            ? (multiplyMoney(totalRefundedAmount, 1 / rowsWithRefund.length)).toFixed(2)
             : "0.00",
       };
 
@@ -234,7 +235,7 @@ export async function GET(request: NextRequest) {
     const pageRows = filtered.slice(offset, offset + limit);
 
     const rowsWithRefund = allQueueRows.filter((r) => r.refunded > 0);
-    const totalRefundedAmount = rowsWithRefund.reduce((sum, r) => sum + r.refunded, 0);
+    const totalRefundedAmount = rowsWithRefund.reduce((sum, r) => addMoney(sum, r.refunded), 0);
 
     const statistics = {
       total_transactions: allQueueRows.length,
@@ -260,7 +261,7 @@ export async function GET(request: NextRequest) {
       },
       average_refund_among_recorded:
         rowsWithRefund.length > 0
-          ? (totalRefundedAmount / rowsWithRefund.length).toFixed(2)
+          ? (multiplyMoney(totalRefundedAmount, 1 / rowsWithRefund.length)).toFixed(2)
           : "0.00",
     };
 

@@ -1,3 +1,4 @@
+import { multiplyMoney, addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 /**
  * Catalogue `products` + `product_variants` — consistent qty and retail stock value.
  * Parent `retail_price` is often 0 when has_variants; prices live on variants.
@@ -42,11 +43,11 @@ export function retailStockValue(p: ProductInventoryRow): number {
   const hasV = Boolean(p.has_variants && Array.isArray(variants) && variants.length > 0);
   if (hasV) {
     return variants!.reduce(
-      (sum, v) => sum + (Number(v.quantity) || 0) * (Number(v.retail_price) || 0),
+      (sum, v) => addMoney(sum, multiplyMoney(Number(v.retail_price) || 0, Number(v.quantity) || 0)),
       0,
     );
   }
-  return (Number(p.quantity) || 0) * (Number(p.retail_price) || 0);
+  return multiplyMoney(Number(p.retail_price) || 0, Number(p.quantity) || 0);
 }
 
 /**
@@ -63,10 +64,10 @@ export function costStockValue(p: ProductInventoryRow): number {
   if (hasV) {
     return variants!.reduce((sum, v) => {
       const supply = Number(v.supply_price) || parentSupply;
-      return sum + (Number(v.quantity) || 0) * supply;
+      return addMoney(sum, multiplyMoney(supply, Number(v.quantity) || 0));
     }, 0);
   }
-  return (Number(p.quantity) || 0) * parentSupply;
+  return multiplyMoney(parentSupply, Number(p.quantity) || 0);
 }
 
 export type InventoryValuation = {
@@ -83,15 +84,15 @@ export function valueInventory(rows: ProductInventoryRow[]): InventoryValuation 
   let cost = 0;
   let retail = 0;
   for (const p of rows) {
-    cost += costStockValue(p);
-    retail += retailStockValue(p);
+    cost = addMoney(cost, costStockValue(p));
+    retail = addMoney(retail, retailStockValue(p));
   }
-  cost = Math.round(cost * 100) / 100;
-  retail = Math.round(retail * 100) / 100;
+  cost = roundCurrency(cost);
+  retail = roundCurrency(retail);
   return {
     cost_stock_value: cost,
     retail_stock_value: retail,
-    potential_gross_margin: Math.round((retail - cost) * 100) / 100,
+    potential_gross_margin: subtractMoney(retail, cost),
   };
 }
 

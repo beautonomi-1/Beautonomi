@@ -140,6 +140,19 @@ describe("refund briefing", () => {
     expect(b.flags.join(" ")).toContain("wallet_credit_is_substitute_not_default_for_cash");
     expect(b.summary).toContain("Review required");
   });
+  it("uses minor-unit rounding for remaining refundable (F4-06)", () => {
+    const b = buildRefundBriefing({
+      requestedAmount: 80,
+      bookingTotal: 100,
+      totalPaid: 100,
+      alreadyRefunded: 33.33,
+      inPersonCap: 100,
+      refundMethod: "original",
+      paymentBreakdown: "card/paystack 100.00",
+      customerRefunds90d: 0,
+    });
+    expect(b.recommendedMax).toBe(66.67);
+  });
 });
 
 describe("support follow-up drafts", () => {

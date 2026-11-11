@@ -7,6 +7,7 @@ import {
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 import { chunkIds, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { addMoney } from "@beautonomi/utils";
 
 export type CompletedGroupBookingAggregateStats = {
   completed_count: number;
@@ -30,7 +31,7 @@ export async function computeCompletedGroupBookingStats(
   let sessionBookedGross = 0;
   const bookingIds = new Set<string>();
   for (const row of rows) {
-    sessionBookedGross += Number((row as { total_price?: number | null }).total_price ?? 0);
+    sessionBookedGross = addMoney(sessionBookedGross, Number((row as { total_price?: number | null }).total_price ?? 0));
     const participants = (row as { booking_participants?: { booking_id?: string | null }[] })
       .booking_participants;
     for (const p of participants ?? []) {
@@ -48,7 +49,7 @@ export async function computeCompletedGroupBookingStats(
       (slice) => admin.from("bookings").select("id, total_amount").in("id", slice),
     );
     participantBookedGross = bookingRows.reduce(
-      (sum, b) => sum + Number(b.total_amount ?? 0),
+      (sum, b) => addMoney(sum, Number(b.total_amount ?? 0)),
       0,
     );
   }

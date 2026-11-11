@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { View, Text, TextInput, Switch, TouchableOpacity } from "react-native";
 import { KeyboardDoneAccessory } from "@/features/provider-onboarding/KeyboardDoneAccessory";
 import { Ionicons } from "@expo/vector-icons";
-import { roundCurrency } from "@beautonomi/utils";
+import { roundCurrency, addMoney, multiplyMoney } from "@beautonomi/utils";
 import { i18n, useTranslation } from "@beautonomi/i18n";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -215,7 +215,7 @@ export function TravelFeesEditor({
       value.maximum_fee != null && Number.isFinite(value.maximum_fee)
         ? value.maximum_fee
         : Infinity;
-    let totalFee = min + Math.max(0, km - freeKm) * r;
+    let totalFee = addMoney(min, multiplyMoney(r, Math.max(0, km - freeKm)));
     if (Number.isFinite(maxFee)) totalFee = Math.min(totalFee, maxFee);
     return roundCurrency(totalFee);
   }, [value, previewKm, usePlatformDefault, pricingModel, tiers]);

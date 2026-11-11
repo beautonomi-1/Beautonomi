@@ -16,6 +16,7 @@ import {
 } from "@/lib/reports/provider-report-utils";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 
 /** Orders query shape — ids preserved through location filter */
 type ProductOrderTopRow = LocationLinkedProductOrderRow & { id: string };
@@ -23,7 +24,7 @@ type ProductOrderTopRow = LocationLinkedProductOrderRow & { id: string };
 function lineRevenue(qty: number, unitPrice: number, totalPrice: number): number {
   const total = Number(totalPrice) || 0;
   if (total > 0) return total;
-  return qty * (Number(unitPrice) || 0);
+  return multiplyMoney(Number(unitPrice) || 0, qty);
 }
 
 /**
@@ -216,7 +217,7 @@ export async function GET(request: NextRequest) {
       const price = lineRevenue(quantity, Number(bp.unit_price || 0), Number(bp.total_price || 0));
 
       existing.totalQuantity += quantity;
-      existing.totalRevenue += price;
+      existing.totalRevenue = addMoney(existing.totalRevenue, price);
       existing.timesSold += 1;
       productMap.set(productId, existing);
     });
@@ -240,7 +241,7 @@ export async function GET(request: NextRequest) {
       const price = lineRevenue(quantity, Number(item.unit_price || 0), Number(item.total_price || 0));
 
       existing.totalQuantity += quantity;
-      existing.totalRevenue += price;
+      existing.totalRevenue = addMoney(existing.totalRevenue, price);
       existing.timesSold += 1;
       productMap.set(productId, existing);
     });
@@ -248,14 +249,14 @@ export async function GET(request: NextRequest) {
     const topProducts = Array.from(productMap.values())
       .map((product) => ({
         ...product,
-        averagePrice: product.totalQuantity > 0 ? product.totalRevenue / product.totalQuantity : 0,
+        averagePrice: product.totalQuantity > 0 ? multiplyMoney(product.totalRevenue, 1 / product.totalQuantity) : 0,
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, limit);
 
     const allProducts = Array.from(productMap.values());
     const totalProductsSold = allProducts.reduce((sum, p) => sum + p.totalQuantity, 0);
-    const totalRevenue = allProducts.reduce((sum, p) => sum + p.totalRevenue, 0);
+    const totalRevenue = allProducts.reduce((sum, p) => addMoney(sum, p.totalRevenue), 0);
 
     const reportBasis =
       `Period ${fromYmd}–${toYmd} (${reportContext.timezone}). Products ranked by total line revenue from ` +

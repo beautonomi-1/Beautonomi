@@ -9,6 +9,7 @@ import {
   roundProductOrderMoney,
 } from "./product-order-tender";
 import { bookShippingForOrder } from "./shipping";
+import { subtractMoney, multiplyMoney, roundCurrency, addMoney } from "@beautonomi/utils";
 
 // F28: re-export so callers can `import { bookShippingForOrder } from "@/lib/orders/product-order-lifecycle"`.
 export { bookShippingForOrder };
@@ -156,9 +157,9 @@ export async function applyProductOrderCancelRefundSideEffects(
     const refundRatio =
       orderTotal > 0 ? Math.min(1, Math.max(0, ledgerRefundAmount / orderTotal)) : 1;
     const refundProviderEarnings =
-      Math.round(capturedProviderEarnings * refundRatio * 100) / 100;
-    const refundPlatformFee = Math.round(capturedPlatformFee * refundRatio * 100) / 100;
-    const refundTax = Math.round(capturedTax * refundRatio * 100) / 100;
+      multiplyMoney(capturedProviderEarnings, refundRatio);
+    const refundPlatformFee = multiplyMoney(capturedPlatformFee, refundRatio);
+    const refundTax = multiplyMoney(capturedTax, refundRatio);
     const refundDescription = `Refund for product order ${order.order_number || order.id.slice(0, 8)}${
       refundReason
         ? ` (${refundReason})`
@@ -264,7 +265,7 @@ export async function applyProductOrderCancelRefundSideEffects(
       const { voidProductOrderGiftCard } = await import("@/lib/ecommerce/product-order-gift-card");
       const voided = await voidProductOrderGiftCard(admin, order.id);
       if (productOrderCancelIncludesGiftInWallet(voided)) {
-        walletCreditAmount = roundProductOrderMoney(walletCreditAmount + giftPortion);
+        walletCreditAmount = roundProductOrderMoney(addMoney(walletCreditAmount, giftPortion));
       }
     }
     if (walletCreditAmount > 0) {
@@ -554,7 +555,7 @@ export async function creditWalletForProductOrderIfNeeded(
   // zeroing wallet_amount first (only while it is still > 0); only the winner
   // credits. Restore the amount if the credit fails so a later retry can reverse.
   const { data: claimed, error: claimError } = await (supabase.from("product_orders") as any)
-    .update({ wallet_amount: "0.00" })
+    .update({ wallet_amount: 0 })
     .eq("id", order.id)
     .gt("wallet_amount", 0)
     .select("id")
@@ -583,7 +584,7 @@ export async function creditWalletForProductOrderIfNeeded(
   if (creditError) {
     console.error("[product-order] Wallet reversal credit failed, restoring wallet_amount:", creditError);
     await (supabase.from("product_orders") as any)
-      .update({ wallet_amount: w.toFixed(2) })
+      .update({ wallet_amount: roundCurrency(w, order.currency || LAST_RESORT_CURRENCY) })
       .eq("id", order.id);
     return { credited: false, failed: true };
   }
@@ -629,7 +630,7 @@ export async function refundUnpaidProductOrderCardCharges(
     if (!UNPAID_CARD_GATEWAY_PROVIDERS.has(provider)) continue;
     const reference = String(row.reference ?? "").trim();
     const amount = roundProductOrderMoney(
-      Math.max(0, Number(row.amount ?? 0) - Number(row.refund_amount ?? 0)),
+      Math.max(0, subtractMoney(Number(row.amount ?? 0), Number(row.refund_amount ?? 0))),
     );
     if (!reference || amount <= 0.009 || !row.id) continue;
 
@@ -646,7 +647,7 @@ export async function refundUnpaidProductOrderCardCharges(
         fallbackProvider:
           provider === "stripe" ? "stripe" : provider === "flutterwave" ? "flutterwave" : "paystack",
       });
-      onlineRefunded = roundProductOrderMoney(onlineRefunded + amount);
+      onlineRefunded = roundProductOrderMoney(addMoney(onlineRefunded, amount));
       returned = true;
     } catch (e) {
       console.error("[product-order] unpaid card refund failed:", e, { orderId: order.id, reference });
@@ -662,7 +663,7 @@ export async function refundUnpaidProductOrderCardCharges(
           p_idempotency_key: `product_order_unpaid_card_refund:${order.id}:${reference}`,
         });
         if (!walletError) {
-          walletFallback = roundProductOrderMoney(walletFallback + amount);
+          walletFallback = roundProductOrderMoney(addMoney(walletFallback, amount));
           returned = true;
         }
       }

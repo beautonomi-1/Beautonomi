@@ -1,3 +1,4 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
 import { getApiErrorCode, isTransientApiFailure } from "@/lib/api-error";
 import type { ProductOrder } from "@/features/shop/useProductOrders";
@@ -50,9 +51,11 @@ export function recoveredProductOrderAmountDue(input: {
 }): number {
   if (String(input.paymentStatus ?? "").toLowerCase() === "paid") return 0;
   const total = Math.max(0, Number(input.totalAmount) || 0);
-  const covered =
-    Math.max(0, Number(input.walletAmount) || 0) + Math.max(0, Number(input.giftCardAmount) || 0);
-  return Math.max(0, Math.round((total - covered) * 100) / 100);
+  const covered = addMoney(
+    Math.max(0, Number(input.walletAmount) || 0),
+    Math.max(0, Number(input.giftCardAmount) || 0),
+  );
+  return Math.max(0, subtractMoney(total, covered));
 }
 
 /** After a transient create failure, look for a very recent order for this provider. */

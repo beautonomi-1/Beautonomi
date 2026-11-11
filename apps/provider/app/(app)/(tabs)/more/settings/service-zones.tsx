@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useState, useCallback, useMemo } from "react";
 import {
   View,
@@ -142,7 +143,7 @@ export default function ServiceZonesScreen() {
     () =>
       zones
         ?.filter((z) => z.selection?.is_active)
-        .reduce((sum, z) => sum + (z.selection?.travel_fee ?? 0), 0) ?? 0,
+        .reduce((sum, z) => addMoney(sum, z.selection?.travel_fee ?? 0), 0) ?? 0,
     [zones]
   );
   const avgTravelTime = useMemo(() => {

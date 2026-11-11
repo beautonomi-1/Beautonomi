@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
-import { computeVat } from "@beautonomi/utils";
+import { addMoney, computeVat, multiplyMoney } from "@beautonomi/utils";
 import { ensureWalkInCustomerLinkedForProductSale } from "@/lib/provider/ensure-walk-in-customer-for-product-sale";
 import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 
@@ -80,10 +80,10 @@ export async function createGroupParticipantChildBooking(
   const addonTotal = addonRows.reduce<number>((sum, row) => {
     if (!row || typeof row !== "object") return sum;
     const priceVal = Number((row as { price?: unknown }).price ?? 0);
-    return sum + (Number.isFinite(priceVal) ? Math.max(0, priceVal) : 0);
+    return addMoney(sum, Number.isFinite(priceVal) ? Math.max(0, priceVal) : 0);
   }, 0);
-  const merchandiseSubtotal = price + addonTotal;
-  const grossBeforeTax = merchandiseSubtotal + travelFee;
+  const merchandiseSubtotal = addMoney(price, addonTotal);
+  const grossBeforeTax = addMoney(merchandiseSubtotal, travelFee);
 
   const { data: providerVatRow } = await admin
     .from("providers")
@@ -240,7 +240,7 @@ export async function createGroupParticipantChildBooking(
         const unitPrice = Math.max(0, Number(r.unit_price ?? r.unitPrice ?? 0) || 0);
         const totalPrice = Math.max(
           0,
-          Number(r.total_price ?? r.totalPrice ?? unitPrice * quantity) || 0,
+          Number(r.total_price ?? r.totalPrice ?? multiplyMoney(unitPrice, quantity)) || 0,
         );
         return {
           booking_id: id,
@@ -438,7 +438,7 @@ export async function autoInvoiceInlineGroupParticipants(
       .from("bookings")
       .update({
         travel_fee: fee,
-        total_amount: currentTotal + fee,
+        total_amount: addMoney(currentTotal, fee),
         updated_at: new Date().toISOString(),
       })
       .eq("id", fallbackId);

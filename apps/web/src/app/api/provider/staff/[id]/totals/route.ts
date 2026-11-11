@@ -1,3 +1,4 @@
+import { multiplyMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -151,10 +152,10 @@ export async function GET(
       const staffServices = services.filter((s: any) => s.staff_id === id);
       if (staffServices.length === 0) continue;
       appointmentsCount += 1;
-      const totalPrice = services.reduce((s: number, x: any) => s + Number(x.price || 0), 0);
-      const staffPrice = staffServices.reduce((s: number, x: any) => s + Number(x.price || 0), 0);
+      const totalPrice = services.reduce((s: number, x: any) => addMoney(s, Number(x.price || 0)), 0);
+      const staffPrice = staffServices.reduce((s: number, x: any) => addMoney(s, Number(x.price || 0)), 0);
       if (totalPrice > 0) {
-        revenue += (revenueByBooking.get((b as any).id) || 0) * (staffPrice / totalPrice);
+        revenue = addMoney(revenue, multiplyMoney(revenueByBooking.get((b as any).id) || 0, staffPrice / totalPrice));
       }
     }
 

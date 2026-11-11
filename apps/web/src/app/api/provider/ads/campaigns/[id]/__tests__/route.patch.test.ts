@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const mockRequireRoleInApi = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockUserHasProviderAccessAdmin = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
 
@@ -17,8 +17,11 @@ vi.mock("@/lib/ads/notify-ads-campaign-event", () => ({
   notifyAdsCampaignEvent: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
+}));
+
 vi.mock("@/lib/supabase/api-helpers", () => ({
-  requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
   userHasProviderAccessAdmin: (...args: unknown[]) => mockUserHasProviderAccessAdmin(...args),
   successResponse: (data: unknown) => Response.json({ data, error: null }, { status: 200 }),
   handleApiError: (error: unknown, fallback: string) =>
@@ -78,8 +81,26 @@ function setupSupabase(existing: Record<string, unknown>, updateResult?: Record<
 describe("PATCH /api/provider/ads/campaigns/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
+    mockRequirePermission.mockResolvedValue({
+      authorized: true,
+      user: { id: "user-1", role: "provider_owner" },
+    });
     mockUserHasProviderAccessAdmin.mockResolvedValue(true);
+  });
+
+  it("rejects a staff member without manage_marketing before reading the campaign", async () => {
+    mockRequirePermission.mockResolvedValue({
+      authorized: false,
+      response: Response.json({ data: null, error: { code: "FORBIDDEN" } }, { status: 403 }),
+    });
+    const { PATCH } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/ads/campaigns/camp-1", {
+      method: "PATCH",
+      body: JSON.stringify({ status: "paused" }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: "camp-1" }) });
+    expect(res.status).toBe(403);
+    expect(mockGetSupabaseAdmin).not.toHaveBeenCalled();
   });
 
   it("blocks budget increase with BUDGET_INCREASE_REQUIRES_PAYMENT and no top-up copy", async () => {

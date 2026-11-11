@@ -1,4 +1,5 @@
 import { differenceInCalendarDays, endOfMonth, isSameMonth, startOfMonth } from "date-fns";
+import { multiplyMoney, roundCurrency } from "@beautonomi/utils";
 
 export type PayPeriodType = "weekly" | "biweekly" | "semi_monthly" | "monthly" | "custom";
 
@@ -58,10 +59,9 @@ export function prorateMonthlySalary(
     start === formatYmd(startOfMonth(ps)) &&
     end === formatYmd(endOfMonth(pe));
 
-  if (fullMonth) return roundMoney(monthlySalary);
+  if (fullMonth) return roundCurrency(monthlySalary);
 
-  const daily = (monthlySalary * 12) / 365;
-  return roundMoney(daily * payableDays);
+  return multiplyMoney(monthlySalary, (12 * payableDays) / 365);
 }
 
 export function formatYmd(d: Date): string {
@@ -71,13 +71,9 @@ export function formatYmd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function roundMoney(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
 /** @deprecated Use prorateMonthlySalary — kept for transitional callers. */
 export function legacyWeeklySalarySlice(monthlySalary: number, periodType: PayPeriodType): number {
   if (monthlySalary <= 0) return 0;
   if (periodType === "monthly") return monthlySalary;
-  return monthlySalary / 4;
+  return multiplyMoney(monthlySalary, 1 / 4);
 }

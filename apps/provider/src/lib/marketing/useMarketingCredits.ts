@@ -1,3 +1,4 @@
+import { roundCurrency } from "@beautonomi/utils";
 /**
  * Marketing credit state + top-up flow for the provider mobile app.
  *
@@ -109,7 +110,7 @@ export function useMarketingCredits(): UseMarketingCreditsResult {
         const res = await api.post<{ payment_url?: string; paystack_reference?: string; amount_zar?: number }>(
           TOPUP_URL,
           {
-            amount_zar: Math.round(amountZar * 100) / 100,
+            amount_zar: roundCurrency(amountZar),
             callback_url: getMarketingTopupPaystackReturnUrl({ inApp: true }),
           },
         );

@@ -13,6 +13,7 @@ import {
   Alert,
 } from "react-native";
 import {
+  addMoney,
   bookingLifecycleStatus,
   bookingScheduleYmd,
   effectiveScheduleAt,
@@ -1156,7 +1157,7 @@ export default function BookingsListScreen() {
             ? bl("dayLabelTomorrow")
             : format(selectedDate, "EEE, MMM d"),
       count: active.length,
-      revenue: active.reduce((n, b) => n + Number(b.total_amount || 0), 0),
+      revenue: active.reduce((n, b) => addMoney(n, Number(b.total_amount || 0)), 0),
       pending,
       blockCount,
       isClosed: closed,

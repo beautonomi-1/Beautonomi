@@ -129,13 +129,33 @@ function buildServerMock() {
   };
 }
 
-function buildAdminMock(rpcResult: { data: any; error: any }) {
-  const rpc = vi.fn().mockResolvedValue(rpcResult);
+function buildAdminMock(
+  rpcResult: { data: any; error: any },
+  options?: { documentSequence?: number | null },
+) {
+  const rpc = vi.fn(async (fnName: string) => {
+    if (fnName === "next_document_number") {
+      // null → RPC not deployed (42883) so the route falls back to the legacy format.
+      if (options?.documentSequence == null) {
+        return { data: null, error: { code: "42883", message: "function does not exist" } };
+      }
+      return { data: options.documentSequence, error: null };
+    }
+    return rpcResult;
+  });
   return {
     rpc,
-    from: vi.fn(() => ({
-      insert: vi.fn().mockResolvedValue({ data: null, error: null }),
-    })),
+    from: vi.fn(() => {
+      const builder: any = {};
+      const chain = () => builder;
+      builder.select = vi.fn(chain);
+      builder.like = vi.fn(chain);
+      builder.order = vi.fn(chain);
+      builder.limit = vi.fn(chain);
+      builder.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+      builder.insert = vi.fn().mockResolvedValue({ data: null, error: null });
+      return builder;
+    }),
   };
 }
 
@@ -216,8 +236,9 @@ describe("POST /api/provider/payouts (guarded RPC path)", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(adminMock.rpc).toHaveBeenCalledTimes(1);
-    const [fnName, args] = adminMock.rpc.mock.calls[0];
+    const guardedCalls = adminMock.rpc.mock.calls.filter(([name]) => name === "insert_payout_request_guarded");
+    expect(guardedCalls).toHaveLength(1);
+    const [fnName, args] = guardedCalls[0];
     expect(fnName).toBe("insert_payout_request_guarded");
     expect(args.p_provider_id).toBe(PROVIDER_ID);
     // available (500) + pending (200) + dispute reserve (75) = earnings before RPC subtracts disputes once
@@ -256,6 +277,70 @@ describe("POST /api/provider/payouts (guarded RPC path)", () => {
     expect(body.error.code).toBe("INSUFFICIENT_BALANCE");
   });
 
+  it("maps an RPC INVALID_AMOUNT rejection to a 400 with a readable message (F2-19)", async () => {
+    const adminMock = buildAdminMock({
+      data: null,
+      error: { message: "INVALID_AMOUNT", code: "P0001" },
+    });
+    await setupMocks(adminMock);
+
+    const { POST } = await import("../route");
+    const response = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: "http://localhost:3000/api/provider/payouts",
+        body: { amount: 400 },
+      }) as never,
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("INVALID_AMOUNT");
+    expect(String(body.error.message)).toMatch(/amount/i);
+  });
+
+  it("maps an RPC INVALID_STATUS rejection to a 400 (F4-02)", async () => {
+    const adminMock = buildAdminMock({
+      data: null,
+      error: { message: "INVALID_STATUS", code: "P0001" },
+    });
+    await setupMocks(adminMock);
+
+    const { POST } = await import("../route");
+    const response = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: "http://localhost:3000/api/provider/payouts",
+        body: { amount: 400 },
+      }) as never,
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("INVALID_STATUS");
+  });
+
+  it("allocates the payout number from the gap-free per-tenant sequence when deployed (F2-43)", async () => {
+    const payoutRow = { id: "payout-3", provider_id: PROVIDER_ID, amount: 400, net_amount: 400, status: "pending" };
+    const adminMock = buildAdminMock({ data: [payoutRow], error: null }, { documentSequence: 12 });
+    await setupMocks(adminMock);
+
+    const { POST } = await import("../route");
+    const response = await POST(
+      createMockNextRequest({
+        method: "POST",
+        url: "http://localhost:3000/api/provider/payouts",
+        body: { amount: 400 },
+      }) as never,
+    );
+
+    expect(response.status).toBe(200);
+    const seqCall = adminMock.rpc.mock.calls.find(([name]) => name === "next_document_number");
+    expect(seqCall?.[1]).toMatchObject({ p_tenant_id: TENANT_ID, p_kind: expect.stringMatching(/^payout:\d{4}$/) });
+    const guardedCall = adminMock.rpc.mock.calls.find(([name]) => name === "insert_payout_request_guarded");
+    expect(guardedCall?.[1].p_payout.payout_number).toMatch(/^PAY-\d{4}-000012$/);
+  });
+
   it("accepts a request equal to the displayed available balance", async () => {
     const payoutRow = {
       id: "payout-2",
@@ -278,7 +363,7 @@ describe("POST /api/provider/payouts (guarded RPC path)", () => {
     );
 
     expect(response.status).toBe(200);
-    const [fnName, args] = adminMock.rpc.mock.calls[0];
+    const [fnName, args] = adminMock.rpc.mock.calls.find(([name]) => name === "insert_payout_request_guarded")!;
     expect(fnName).toBe("insert_payout_request_guarded");
     expect(args.p_payout.amount).toBe(500);
     expect(args.p_max_available_before_reserve).toBe(775);

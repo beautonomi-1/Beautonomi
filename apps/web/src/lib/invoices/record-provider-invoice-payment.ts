@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isNonPayableInvoiceType } from "@/lib/invoices/provider-invoice-status";
 
@@ -86,7 +87,7 @@ export async function recordProviderInvoicePayment(params: {
   ) {
     throw new Error("This invoice cannot accept payment");
   }
-  const amountDue = Number(row.total_amount ?? 0) - Number(row.amount_paid ?? 0);
+  const amountDue = subtractMoney(Number(row.total_amount ?? 0), Number(row.amount_paid ?? 0));
   if (amount > amountDue + 0.005) {
     throw new Error(`Payment amount cannot exceed ${amountDue.toFixed(2)}`);
   }

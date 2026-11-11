@@ -1,6 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
+import {
+  mergeWaitlistContact,
+  WAITLIST_COLUMNS_WITHOUT_CONTACT,
+} from "@/lib/waitlist/waitlist-columns";
 
 /**
  * POST /api/provider/waitlist/[id]/notify
@@ -12,7 +19,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("edit_appointments", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -29,8 +41,6 @@ export async function POST(
         id,
         customer_id,
         customer_name,
-        customer_email,
-        customer_phone,
         service_id,
         preferred_date,
         preferred_time_start,
@@ -53,6 +63,13 @@ export async function POST(
       return notFoundResponse("Waitlist entry not found");
     }
 
+    const [forSend] = await mergeWaitlistContact([entry], true);
+    const contact = forSend ?? {
+      ...entry,
+      customer_email: null as string | null,
+      customer_phone: null as string | null,
+    };
+
     // Update status to notified
     const { data: updatedEntry, error: updateError } = await supabase
       .from("waitlist_entries")
@@ -61,7 +78,7 @@ export async function POST(
         notified_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .select()
+      .select(WAITLIST_COLUMNS_WITHOUT_CONTACT)
       .single();
 
     if (updateError || !updatedEntry) {
@@ -74,10 +91,10 @@ export async function POST(
       
       // Determine notification channels based on available contact info
       const channels: ("push" | "email" | "sms")[] = ["push"];
-      if (entry.customer_email) {
+      if (contact.customer_email) {
         channels.push("email");
       }
-      if (entry.customer_phone) {
+      if (contact.customer_phone) {
         channels.push("sms");
       }
 
@@ -109,14 +126,10 @@ export async function POST(
         if (!notificationResult.success) {
           console.warn("Failed to send waitlist notification:", notificationResult.error);
         }
-      } else if (entry.customer_email || entry.customer_phone) {
-        // If no customer_id but we have email/phone, log for manual follow-up
-        console.log("Waitlist notification would be sent to:", {
-          email: entry.customer_email,
-          phone: entry.customer_phone,
-          provider: providerName,
-          service: serviceName,
-          date: preferredDate,
+      } else if (contact.customer_email || contact.customer_phone) {
+        // Guest row has contact, but there is no user to notify. Do not log the address.
+        console.warn("Waitlist guest has no customer account; notification was not sent", {
+          waitlist_entry_id: entry.id,
         });
       }
     } catch (notificationError) {
@@ -124,10 +137,14 @@ export async function POST(
       console.error("Error sending waitlist notification:", notificationError);
     }
 
+    const [visibleUpdated] = await mergeWaitlistContact(
+      updatedEntry ? [updatedEntry as unknown as { id: string }] : [],
+      canViewClients,
+    );
     return successResponse({
       success: true,
       message: "Notification sent successfully",
-      entry: updatedEntry,
+      entry: redactBookingCustomerContact(visibleUpdated ?? updatedEntry, canViewClients),
     });
   } catch (error) {
     return handleApiError(error, "Failed to notify waitlist entry");

@@ -16,6 +16,7 @@ import {
   platformRevenueNetFromAggregate,
 } from "@/lib/admin/aggregate-finance-ledger-rows";
 import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
+import { subtractMoney, addMoney, sumMoney } from "@beautonomi/utils";
 import {
   FINANCE_METRIC_CONTRACT_VERSION,
   getFinanceMetricContracts,
@@ -86,7 +87,7 @@ export async function GET(request: Request) {
       if (normalizedRange.end) topupQuery = topupQuery.lte("paid_at", normalizedRange.end);
       try {
         const { rows: topups } = await fetchAllPages<{ amount?: number | null }>(topupQuery);
-        walletTopupCashCollected = topups.reduce((s, r) => s + Number(r.amount || 0), 0);
+        walletTopupCashCollected = topups.reduce((s, r) => addMoney(s, Number(r.amount || 0)), 0);
       } catch (topErr) {
         console.warn("Wallet topups tenant-scoped query failed:", topErr);
       }
@@ -102,7 +103,7 @@ export async function GET(request: Request) {
       if (normalizedRange.end) refQuery = refQuery.lte("created_at", normalizedRange.end);
       try {
         const { rows: refTxs } = await fetchAllPages<{ amount?: number | null }>(refQuery);
-        referralPayouts = refTxs.reduce((s, r) => s + Number(r.amount || 0), 0);
+        referralPayouts = refTxs.reduce((s, r) => addMoney(s, Number(r.amount || 0)), 0);
       } catch (refErr) {
         console.warn("Referral wallet credits tenant-scoped query failed:", refErr);
       }
@@ -117,7 +118,7 @@ export async function GET(request: Request) {
       try {
         const { rows: giftCards } = await fetchAllPages<{ balance?: number | null }>(giftQuery);
         outstandingGiftCardLiability = giftCards.reduce(
-          (s, row) => s + Number(row.balance || 0),
+          (s, row) => addMoney(s, Number(row.balance || 0)),
           0,
         );
       } catch (giftErr) {
@@ -167,11 +168,11 @@ export async function GET(request: Request) {
     const customerPaidPlatformFees = agg.service_fee_revenue;
     const totalPlatformRecognizedRevenue = platformRevenueNetFromAggregate(agg);
     const totalPlatformRecognizedRevenueAfterReferrals =
-      totalPlatformRecognizedRevenue - referralPayouts;
+      subtractMoney(totalPlatformRecognizedRevenue, referralPayouts);
     const providerRefundImpact = Math.abs(agg.provider_refund_net_impact);
     const providerNetAfterRefunds =
-      agg.provider_recognized_revenue_gross - providerRefundImpact;
-    const gmvVariance = agg.service_collected_gross - bookingsGmv;
+      subtractMoney(agg.provider_recognized_revenue_gross, providerRefundImpact);
+    const gmvVariance = subtractMoney(agg.service_collected_gross, bookingsGmv);
     const GMV_VARIANCE_PCT_THRESHOLD = 100;
     const gmvPctDenominator = Math.min(agg.service_collected_gross, bookingsGmv);
     const gmvVariancePct =
@@ -205,7 +206,7 @@ export async function GET(request: Request) {
     }
 
     const gmvGrowth =
-      previousGmv > 0 ? ((agg.service_collected_gross - previousGmv) / previousGmv) * 100 : 0;
+      previousGmv > 0 ? (subtractMoney(agg.service_collected_gross, previousGmv) / previousGmv) * 100 : 0;
 
     const gatewayFeesTotal = gatewayFeesTotalFromAggregate(agg);
     const platformCashPosition = buildPlatformCashPosition({
@@ -266,7 +267,12 @@ export async function GET(request: Request) {
         // (excluding service fees) is preserved as total_platform_commission_net.
         total_platform_take_net: totalPlatformRecognizedRevenue,
         total_platform_commission_net:
-          agg.platform_take_net + agg.subscription_net + agg.ads_net + agg.marketing_credit_net,
+          sumMoney(
+            agg.platform_take_net,
+            agg.subscription_net,
+            agg.ads_net,
+            agg.marketing_credit_net,
+          ),
         total_platform_take_net_including_customer_fees: totalPlatformRecognizedRevenue,
 
         provider_earnings: agg.provider_earnings_net,

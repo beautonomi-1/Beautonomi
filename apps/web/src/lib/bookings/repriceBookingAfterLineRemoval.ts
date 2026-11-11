@@ -1,8 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
+import { multiplyMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 /**
  * Reduce a booking's subtotal, tax and total after `booking_services` lines worth
@@ -26,11 +23,11 @@ export async function repriceBookingAfterLineRemoval(
   const oldSubtotal = Math.max(0, Number(b.subtotal ?? 0));
   const oldTax = Math.max(0, Number(b.tax_amount ?? 0));
   const oldTotal = Math.max(0, Number(b.total_amount ?? 0));
-  const removed = Math.max(0, Math.min(round2(removedLineAmount), oldSubtotal));
+  const removed = Math.max(0, Math.min(roundCurrency(removedLineAmount), oldSubtotal));
 
-  const subtotal = round2(oldSubtotal - removed);
-  const taxAmount = oldSubtotal > 0 ? round2((oldTax * subtotal) / oldSubtotal) : oldTax;
-  const totalAmount = Math.max(0, round2(oldTotal - removed - (oldTax - taxAmount)));
+  const subtotal = subtractMoney(oldSubtotal, removed);
+  const taxAmount = oldSubtotal > 0 ? multiplyMoney(oldTax, subtotal / oldSubtotal) : oldTax;
+  const totalAmount = Math.max(0, subtractMoney(subtractMoney(oldTotal, removed), subtractMoney(oldTax, taxAmount)));
 
   const { error: updateErr } = await admin
     .from("bookings")

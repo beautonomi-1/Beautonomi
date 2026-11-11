@@ -14,7 +14,23 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { applyPayoutNameMatchForAccount } from "@/lib/verification/apply-payout-name-match";
 import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { z } from "zod";
+
+/** F2-09: audit snapshot of a payout account — never includes the full account number. */
+function payoutAccountAuditSnapshot(row: Record<string, unknown> | null | undefined) {
+  if (!row) return null;
+  return {
+    account_name: row.account_name ?? null,
+    account_number_last4: row.account_number_last4 ?? null,
+    bank_code: row.bank_code ?? null,
+    bank_name: row.bank_name ?? null,
+    currency: row.currency ?? null,
+    active: row.active ?? null,
+    is_primary: row.is_primary ?? null,
+    deleted_at: row.deleted_at ?? null,
+  };
+}
 
 const updateAccountSchema = z.object({
   account_name: z.string().min(1).optional(),
@@ -258,6 +274,38 @@ export async function PATCH(
       });
     }
 
+    try {
+      const meta = extractRequestMeta(request);
+      const before = payoutAccountAuditSnapshot(account as Record<string, unknown>);
+      const after = payoutAccountAuditSnapshot(
+        (updatedAccount as Record<string, unknown> | null) ?? { ...account, ...updateData },
+      );
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: user.role ?? null,
+        action: "provider.payout_account.updated",
+        entity_type: "provider_payout_account",
+        entity_id: id,
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        status: "succeeded",
+        before_json: before,
+        after_json: after,
+        metadata: {
+          provider_id: providerId,
+          tenant_id: tenantId,
+          account_number_last4:
+            (account as { account_number_last4?: string | null }).account_number_last4 ?? null,
+          changed_fields: Object.keys(updateData),
+        },
+        ip_address: meta.ip_address,
+        user_agent: meta.user_agent,
+      });
+    } catch (auditErr) {
+      console.error("[payout-accounts] audit log failed:", auditErr);
+    }
+
     return successResponse(updatedAccount);
   } catch (error) {
     return handleApiError(error, "Failed to update payout account");
@@ -370,6 +418,34 @@ export async function DELETE(
           .update({ is_primary: true })
           .eq("id", nextPrimary.id);
       }
+    }
+
+    try {
+      const meta = extractRequestMeta(request);
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: user.role ?? null,
+        action: "provider.payout_account.removed",
+        entity_type: "provider_payout_account",
+        entity_id: id,
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        status: "succeeded",
+        before_json: payoutAccountAuditSnapshot(account as Record<string, unknown>),
+        metadata: {
+          provider_id: providerId,
+          tenant_id: tenantId,
+          account_number_last4:
+            (account as { account_number_last4?: string | null }).account_number_last4 ?? null,
+          bank_name: (account as { bank_name?: string | null }).bank_name ?? null,
+          was_primary: Boolean(account.is_primary),
+        },
+        ip_address: meta.ip_address,
+        user_agent: meta.user_agent,
+      });
+    } catch (auditErr) {
+      console.error("[payout-accounts] audit log failed:", auditErr);
     }
 
     return successResponse({ message: "Payout account removed successfully." });

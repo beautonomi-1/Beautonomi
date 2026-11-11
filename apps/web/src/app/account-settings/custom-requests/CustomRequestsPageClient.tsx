@@ -1,7 +1,7 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { getDefaultMoneyLocale, subtractMoney } from "@beautonomi/utils";
 import { mergeCurrencyChoiceCodes, currencySelectLabel } from "@/lib/locale/currency";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -1424,7 +1424,7 @@ export default function CustomRequestsPageClient({
                       </div>
                       {depositQuote.deposit.full_total != null && depositQuote.deposit.deposit_amount != null && (
                         <p className="text-xs text-gray-500 mb-2">
-                          {t("web.accountSettings.customRequests.remainingDue", { amount: formatMoney(depositQuote.deposit.full_total - depositQuote.deposit.deposit_amount, depositOfferCurrency) })}
+                          {t("web.accountSettings.customRequests.remainingDue", { amount: formatMoney(subtractMoney(depositQuote.deposit.full_total, depositQuote.deposit.deposit_amount, depositOfferCurrency), depositOfferCurrency) })}
                         </p>
                       )}
                       <Button

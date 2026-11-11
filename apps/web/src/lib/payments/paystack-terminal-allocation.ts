@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 export type TerminalAllocationEntityType =
   | "booking"
   | "invoice"
@@ -42,10 +43,6 @@ export type TerminalPaymentSuggestion = {
   reasons: string[];
 };
 
-function roundMoney(value: number) {
-  return Math.round(value * 100) / 100;
-}
-
 export function classifyTerminalAmountMatch(params: {
   paidAmount: number;
   expectedAmount?: number | null;
@@ -84,7 +81,7 @@ export function classifyTerminalAmountMatch(params: {
     };
   }
 
-  const difference = roundMoney(paidAmount - expectedAmount);
+  const difference = subtractMoney(paidAmount, expectedAmount);
   if (Math.abs(difference) < 0.01) {
     reasons.push("amount_matches_open_balance");
     return {

@@ -1,7 +1,7 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/auth/requireRole";
+import { requirePaystackPayoutAdmin } from "@/lib/admin/require-paystack-payout-admin";
 import {
   createTransfer,
   listTransfers,
@@ -19,13 +19,8 @@ import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const auth = await requirePaystackPayoutAdmin(request);
+    if (auth.ok === false) return auth.response;
 
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const { searchParams } = new URL(request.url);
@@ -110,13 +105,8 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const auth = await requirePaystackPayoutAdmin(request);
+    if (auth.ok === false) return auth.response;
 
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const tenantRegion = await getTenantRegionConfig(tenantId);
