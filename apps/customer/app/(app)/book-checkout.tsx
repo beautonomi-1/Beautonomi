@@ -102,6 +102,26 @@ function bookingPaidFromPaystackVerifyBody(body: unknown): boolean {
   return false;
 }
 
+/** Formats a slot in the provider's timezone. Falls back to the device zone when the id is missing or invalid. */
+function formatSlotInZone(
+  iso: string | null | undefined,
+  timeZone: string | null | undefined,
+  options: Intl.DateTimeFormatOptions,
+): string | undefined {
+  if (!iso) return undefined;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return undefined;
+  const zone = timeZone?.trim();
+  if (zone) {
+    try {
+      return new Intl.DateTimeFormat(undefined, { ...options, timeZone: zone }).format(date);
+    } catch {
+      // invalid IANA timezone
+    }
+  }
+  return new Intl.DateTimeFormat(undefined, options).format(date);
+}
+
 function generateCheckoutIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -133,6 +153,8 @@ interface HoldData {
   hold_id: string;
   provider_id: string;
   provider_name?: string;
+  /** IANA timezone from GET /api/public/booking-holds/[id], e.g. Africa/Johannesburg. */
+  provider_timezone?: string | null;
   provider_thumbnail?: string;
   provider_avatar_url?: string;
   staff_id?: string | null;
@@ -1211,6 +1233,10 @@ export default function BookCheckoutScreen() {
           ).provider_on_demand_accept_enabled,
           provider_id: data.provider_id as string,
           provider_name: (data.provider_name as string | undefined) ?? routeProviderName,
+          provider_timezone:
+            typeof (data as { provider_timezone?: unknown }).provider_timezone === "string"
+              ? ((data as { provider_timezone: string }).provider_timezone.trim() || null)
+              : null,
           provider_thumbnail:
             ((data.provider_thumbnail ?? data.provider_avatar_url) as string | undefined) ??
             routeProviderThumbnail,
@@ -2548,16 +2574,15 @@ export default function BookCheckoutScreen() {
         .filter(Boolean)
         .join(", ");
       const startAt = hold?.start_at;
-      const bookingDate = startAt
-        ? new Date(startAt).toLocaleDateString(undefined, {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-          })
-        : undefined;
-      const bookingTime = startAt
-        ? new Date(startAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-        : undefined;
+      const slotZone = hold?.provider_timezone;
+      const bookingDate = formatSlotInZone(startAt, slotZone, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+      const startLabel = formatSlotInZone(startAt, slotZone, { hour: "2-digit", minute: "2-digit" });
+      const endLabel = formatSlotInZone(hold?.end_at, slotZone, { hour: "2-digit", minute: "2-digit" });
+      const bookingTime = startLabel && endLabel && endLabel !== startLabel ? `${startLabel} – ${endLabel}` : startLabel;
 
       // Show the success overlay — it auto-dismisses and navigates after 2.5 s
       setBookingConfirmedData({
@@ -6524,7 +6549,7 @@ export default function BookCheckoutScreen() {
                 }}
               >
                 {t("checkout.bookingSuccessPendingBody", {
-                  defaultValue: "Awaiting provider confirmation — usually within 8 hours",
+                  defaultValue: "Awaiting provider confirmation — we'll notify you as soon as they respond",
                 })}
               </Text>
             )}

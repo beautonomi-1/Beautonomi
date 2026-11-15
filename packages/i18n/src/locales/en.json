@@ -18677,7 +18677,7 @@
     "bookingSuccessTitlePending": "Booking received!",
     "bookingSuccessTitlePendingPayment": "Payment processing...",
     "bookingSuccessPendingPaymentBody": "Your payment is being confirmed. You'll receive a notification shortly.",
-    "bookingSuccessPendingBody": "Awaiting provider confirmation — usually within 8 hours",
+    "bookingSuccessPendingBody": "Awaiting provider confirmation — we'll notify you as soon as they respond",
     "bookingSuccessFooter": "Taking you to your booking…",
     "totalPaidPrefix": "Total paid",
     "platformFeeInclusive": " (incl. booking protection {{amount}})",

@@ -7,7 +7,8 @@ import Link from "next/link";
 import { XCircle } from "lucide-react";
 import { useTranslation } from "@beautonomi/i18n";
 
-const ACCENT = "var(--primary, #FF0077)";
+/** `--primary` is stored as bare HSL components (`330 100% 50%`), so it must be wrapped in `hsl()`. */
+const ACCENT = "hsl(var(--primary, 330 100% 50%))";
 const TEXT_PRIMARY = "#111827";
 const TEXT_SECONDARY = "#6B7280";
 

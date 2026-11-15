@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { render, waitFor } from "@testing-library/react-native";
+import { act, render, waitFor } from "@testing-library/react-native";
 import { Text } from "react-native";
 
 const mockApiPost = jest.fn();
@@ -31,6 +31,17 @@ jest.mock("@/lib/legal-web", () => ({
 }));
 
 jest.mock("@/components/ui/BeautonomiLogo", () => ({ BeautonomiLogo: () => null }));
+
+// Real Ionicons calls Font.loadAsync. React 19's act() waits on that promise, and on CI
+// the font load outlives Jest's 5s test timeout before the EULA title can be queried.
+jest.mock("@expo/vector-icons", () => {
+  const React = require("react");
+  const { Text } = require("react-native");
+  return {
+    Ionicons: ({ name }: { name?: string }) =>
+      React.createElement(Text, { testID: `icon-${name ?? ""}` }, name ?? ""),
+  };
+});
 
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), replace: jest.fn() },
@@ -95,8 +106,13 @@ describe("LegalAcceptanceGate", () => {
         <Text>App shell</Text>
       </LegalAcceptanceGate>,
     );
-    await waitFor(() =>
-      expect(screen.getByText("customer.mobile.components.legalAcceptanceGate.title")).toBeTruthy(),
+    // The acceptance setState is scheduled at normal priority. On a busy CI runner
+    // that update can sit until React's 5s expiration, which is also Jest's test timeout.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(JSON.stringify(screen.toJSON())).toContain(
+      "customer.mobile.components.legalAcceptanceGate.title",
     );
     expect(screen.queryByText("App shell")).toBeNull();
   });

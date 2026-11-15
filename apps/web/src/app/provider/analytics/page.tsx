@@ -375,7 +375,7 @@ export default function ProviderAnalyticsPage() {
                   <YAxis />
                   <Tooltip formatter={(value: number) => formatCurrency(value)} />
                   <Legend />
-                  <Line type="monotone" dataKey="revenue" stroke="var(--primary)" strokeWidth={2} name={t("web.provider.pages.analytics.ledgerNet")} />
+                  <Line type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={2} name={t("web.provider.pages.analytics.ledgerNet")} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -403,7 +403,7 @@ export default function ProviderAnalyticsPage() {
                   <YAxis allowDecimals={false} />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="bookings" fill="var(--primary)" name={t("web.provider.pages.analytics.bookingsCreated")} />
+                  <Bar dataKey="bookings" fill="hsl(var(--primary))" name={t("web.provider.pages.analytics.bookingsCreated")} />
                 </BarChart>
               </ResponsiveContainer>
             )}

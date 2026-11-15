@@ -1,5 +1,5 @@
 name: Setup Playwright Chromium
-description: Restore cached Chromium or download on cache miss (no apt --with-deps; ubuntu-latest already has browser libs).
+description: Restore cached Chromium or download on cache miss (no apt --with-deps; ubuntu-24.04 already has browser libs).
 
 inputs:
   package-filter:
