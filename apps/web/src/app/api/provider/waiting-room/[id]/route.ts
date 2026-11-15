@@ -10,6 +10,13 @@ import {
   WAITING_ROOM_BOOKING_SELECT,
   type WaitingRoomBookingEmbedRow,
 } from "@/lib/provider-waiting-room/booking-to-waiting-room-entry";
+import {
+  deductBookingRetailStock,
+  restoreBookingRetailStock,
+  lineUpBookingStockWithSavedStatus,
+  type BookingRetailStockLine,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
 
 const updateWaitingRoomEntrySchema = z.object({
   status: z.enum(["waiting", "in_service", "completed", "left"]).optional(),
@@ -128,8 +135,19 @@ export async function PATCH(
       updateData.checked_in_time = new Date().toISOString();
     }
 
-    // If marking as completed, set completed_at
-    if (validationResult.data.status === "completed") {
+    const stockTaken: BookingRetailStockLine[] = [];
+    if (validationResult.data.status === "completed" && booking.status !== "completed") {
+      try {
+        stockTaken.push(...(await deductBookingRetailStock(supabase, id)));
+      } catch (stockErr) {
+        return errorResponse(
+          stockErr instanceof Error ? stockErr.message : "Product stock could not be deducted",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+      updateData.completed_at = new Date().toISOString();
+    } else if (validationResult.data.status === "completed") {
       updateData.completed_at = new Date().toISOString();
     }
 
@@ -141,6 +159,16 @@ export async function PATCH(
       .single();
 
     if (error) {
+      try {
+        await lineUpBookingStockWithSavedStatus(supabase, id, stockTaken, []);
+      } catch (undoErr) {
+        console.error("[waiting-room] stock could not be lined up after the visit was not saved:", undoErr);
+        return errorResponse(
+          "This booking changed, and the product stock could not be put back in line with it.",
+          "STOCK_ERROR",
+          409,
+        );
+      }
       throw error;
     }
 
@@ -186,8 +214,19 @@ export async function DELETE(
       return notFoundResponse("Waiting room entry not found");
     }
 
+    let stockReturned: BookingRetailStockLine[] = [];
+    try {
+      stockReturned = await restoreBookingRetailStock(supabase, id);
+    } catch (stockErr) {
+      return errorResponse(
+        stockErr instanceof Error ? stockErr.message : "Product stock could not be restored",
+        "STOCK_ERROR",
+        409,
+      );
+    }
+
     // Mark as cancelled/left (don't actually delete the booking)
-    const { error } = await supabase
+    const { data: cancelledRows, error } = await supabase
       .from("bookings")
       .update({
         status: "cancelled",
@@ -195,11 +234,24 @@ export async function DELETE(
         cancelled_by: user.id,
         cancellation_reason: "Client left waiting room",
       })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id");
 
-    if (error) {
-      throw error;
+    if (error || !cancelledRows?.length) {
+      try {
+        await lineUpBookingStockWithSavedStatus(supabase, id, [], stockReturned);
+      } catch (undoErr) {
+        console.error("[waiting-room cancel] stock could not be lined up after the visit was not saved:", undoErr);
+        return errorResponse(
+          "This booking changed, and the product stock could not be put back in line with it.",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+      if (error) throw error;
+      return errorResponse("This booking changed, reload", "CONFLICT", 409);
     }
+    await returnPackageSessionAfterCancel(supabase, id);
 
     try {
       const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");

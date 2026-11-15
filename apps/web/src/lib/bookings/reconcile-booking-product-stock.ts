@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { decrementStockQuantity, incrementStockQuantity } from "@/lib/orders/product-order-lifecycle";
 import { logBookingStockMovements } from "@/lib/products/stock-movements";
 import type { ValidatedProviderBookingProduct } from "@/lib/bookings/validate-provider-booking-products";
 
 export type ExistingBookingProductRow = {
+  id?: string;
   product_id: string;
   product_variant_id?: string | null;
   quantity: number | null;
@@ -34,8 +36,84 @@ function aggregateByKey(
 }
 
 export type ReconcileBookingProductStockResult =
-  | { ok: true; stockWasDeducted: boolean }
+  | {
+      ok: true;
+      stockWasDeducted: boolean;
+      deductLines: StockReconcileLine[];
+      restockLines: StockReconcileLine[];
+    }
   | { ok: false; message: string; code: "INSUFFICIENT_STOCK" | "STOCK_RECONCILE_FAILED" };
+
+type StockReconcileLine = {
+  productId: string;
+  productVariantId?: string | null;
+  quantity: number;
+};
+
+async function applyBookingProductStockLine(
+  supabase: SupabaseClient,
+  line: StockReconcileLine,
+  direction: "decrement" | "increment",
+): Promise<string | null> {
+  const target = {
+    variantId: line.productVariantId ?? null,
+    productId: line.productId,
+  };
+  const updated =
+    direction === "decrement"
+      ? await decrementStockQuantity(supabase, target, line.quantity)
+      : await incrementStockQuantity(supabase, target, line.quantity);
+  return updated ? null : "Product stock could not be updated.";
+}
+
+/** Put stock back when a product edit moved units and then could not save the lines. */
+export async function reverseReconciledBookingProductStock(
+  supabase: SupabaseClient,
+  params: {
+    providerId: string;
+    bookingId: string;
+    actorUserId?: string | null;
+    deductLines: StockReconcileLine[];
+    restockLines: StockReconcileLine[];
+    logMovements?: boolean;
+  },
+): Promise<void> {
+  for (const line of [...params.deductLines].reverse()) {
+    const message = await applyBookingProductStockLine(supabase, line, "increment");
+    if (message) {
+      console.error("[reverseReconciledBookingProductStock] undo deduct failed:", message);
+    }
+  }
+  for (const line of [...params.restockLines].reverse()) {
+    const message = await applyBookingProductStockLine(supabase, line, "decrement");
+    if (message) {
+      console.error("[reverseReconciledBookingProductStock] undo restock failed:", message);
+    }
+  }
+  try {
+    if (params.logMovements === false) return;
+    if (params.deductLines.length > 0) {
+      await logBookingStockMovements(supabase, {
+        providerId: params.providerId,
+        bookingId: params.bookingId,
+        actorUserId: params.actorUserId ?? null,
+        lines: params.deductLines,
+        revert: true,
+      });
+    }
+    if (params.restockLines.length > 0) {
+      await logBookingStockMovements(supabase, {
+        providerId: params.providerId,
+        bookingId: params.bookingId,
+        actorUserId: params.actorUserId ?? null,
+        lines: params.restockLines,
+        revert: false,
+      });
+    }
+  } catch (logErr) {
+    console.error("[reverseReconciledBookingProductStock] stock movement log failed:", logErr);
+  }
+}
 
 /**
  * After booking product lines are replaced, reconcile inventory for rows that had
@@ -82,7 +160,7 @@ export async function reconcileBookingProductStockOnEdit(
 
   const hadAnyDeduction = oldDeductedAggregated.size > 0;
   if (!hadAnyDeduction) {
-    return { ok: true, stockWasDeducted: false };
+    return { ok: true, stockWasDeducted: false, deductLines: [], restockLines: [] };
   }
 
   const allKeys = new Set([...oldDeductedAggregated.keys(), ...newAggregated.keys()]);
@@ -104,67 +182,71 @@ export async function reconcileBookingProductStockOnEdit(
     }
   }
 
+  const appliedDeducts: StockReconcileLine[] = [];
+  const appliedRestocks: StockReconcileLine[] = [];
+
   for (const line of deductLines) {
     const product = params.newProducts.find(
       (p) =>
         p.productId === line.productId &&
         (p.productVariantId ?? null) === (line.productVariantId ?? null),
     );
-    if (product?.trackStock) {
-      const { error } = line.productVariantId
-        ? await (supabase.rpc as (name: string, args: Record<string, unknown>) => ReturnType<SupabaseClient["rpc"]>)(
-            "decrement_product_variant_stock",
-            { p_variant_id: line.productVariantId, p_quantity: line.quantity },
-          )
-        : await supabase.rpc("decrement_product_stock", {
-            p_product_id: line.productId,
-            p_quantity: line.quantity,
-          });
-      if (error) {
-        return {
-          ok: false,
-          message: error.message || "Insufficient stock for updated product quantities.",
-          code: "INSUFFICIENT_STOCK",
-        };
-      }
+    if (!product?.trackStock) continue;
+    const message = await applyBookingProductStockLine(supabase, line, "decrement");
+    if (message) {
+      await reverseReconciledBookingProductStock(supabase, {
+        providerId: params.providerId,
+        bookingId: params.bookingId,
+        actorUserId: params.actorUserId,
+        deductLines: appliedDeducts,
+        restockLines: appliedRestocks,
+        logMovements: false,
+      });
+      return {
+        ok: false,
+        message: message || "Insufficient stock for updated product quantities.",
+        code: "INSUFFICIENT_STOCK",
+      };
     }
+    appliedDeducts.push(line);
   }
 
   for (const line of restockLines) {
-    const { error } = line.productVariantId
-      ? await (supabase.rpc as (name: string, args: Record<string, unknown>) => ReturnType<SupabaseClient["rpc"]>)(
-          "increment_product_variant_stock",
-          { p_variant_id: line.productVariantId, p_quantity: line.quantity },
-        )
-      : await supabase.rpc("increment_product_stock", {
-          p_product_id: line.productId,
-          p_quantity: line.quantity,
-        });
-    if (error) {
+    const message = await applyBookingProductStockLine(supabase, line, "increment");
+    if (message) {
+      await reverseReconciledBookingProductStock(supabase, {
+        providerId: params.providerId,
+        bookingId: params.bookingId,
+        actorUserId: params.actorUserId,
+        deductLines: appliedDeducts,
+        restockLines: appliedRestocks,
+        logMovements: false,
+      });
       return {
         ok: false,
-        message: error.message || "Could not restore stock for removed products.",
+        message: message || "Could not restore stock for removed products.",
         code: "STOCK_RECONCILE_FAILED",
       };
     }
+    appliedRestocks.push(line);
   }
 
   try {
-    if (deductLines.length > 0) {
+    if (appliedDeducts.length > 0) {
       await logBookingStockMovements(supabase, {
         providerId: params.providerId,
         bookingId: params.bookingId,
         actorUserId: params.actorUserId ?? null,
-        lines: deductLines,
+        lines: appliedDeducts,
         revert: false,
       });
     }
-    if (restockLines.length > 0) {
+    if (appliedRestocks.length > 0) {
       await logBookingStockMovements(supabase, {
         providerId: params.providerId,
         bookingId: params.bookingId,
         actorUserId: params.actorUserId ?? null,
-        lines: restockLines,
+        lines: appliedRestocks,
         revert: true,
       });
     }
@@ -172,7 +254,12 @@ export async function reconcileBookingProductStockOnEdit(
     console.error("[reconcileBookingProductStockOnEdit] stock movement log failed:", logErr);
   }
 
-  return { ok: true, stockWasDeducted: true };
+  return {
+    ok: true,
+    stockWasDeducted: true,
+    deductLines: appliedDeducts,
+    restockLines: appliedRestocks,
+  };
 }
 
 /** Reserved quantities already on the booking (for stock validation credit). */

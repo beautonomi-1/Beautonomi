@@ -8,6 +8,10 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addMoney, percentOf, subtractMoney } from "@beautonomi/utils";
+import {
+  lineUpBookingStockWithSavedStatus,
+  restoreBookingRetailStock,
+} from "@/lib/bookings/deduct-booking-retail-stock";
 import { fetchBookingPaymentsForRefundCap } from "@/lib/bookings/booking-refund-limits";
 import {
   isTerminalMachinePayment,
@@ -18,6 +22,11 @@ import {
   settleBookingCancellation,
   type BookingFinancialSnapshot,
 } from "@/lib/bookings/settle-booking-cancellation";
+import {
+  giftValueStillDueAmount,
+  giftValueStillDueMessage,
+  refundableExcludingGiftStillDue,
+} from "@/lib/bookings/gift-value-still-due";
 import { roundCurrency2 } from "@/lib/bookings/refund-processing";
 import {
   buildSyntheticWalletGiftProviderId,
@@ -90,6 +99,22 @@ export function classifyRescheduleCarryOver(input: {
   return { ok: true, credit, entitlementId: input.entitlementId ?? null };
 }
 
+/**
+ * A gift the sweep still owes is not credit for the new visit. A reserved
+ * redemption is already removed by classifyRescheduleCarryOver, so only the
+ * part that is not reserved is taken out here.
+ */
+export function rescheduleCollectedAfterGiftStillDue(params: {
+  collected: number;
+  reservedGiftAmount: number;
+  settlementError: string | null | undefined;
+}): number {
+  const held = giftValueStillDueAmount(String(params.settlementError ?? "")) ?? 0;
+  const extraHeld = Math.max(0, subtractMoney(held, Math.max(0, params.reservedGiftAmount)));
+  if (extraHeld <= 0.009) return params.collected;
+  return refundableExcludingGiftStillDue(params.collected, giftValueStillDueMessage(extraHeld));
+}
+
 export const RESCHEDULE_IN_PROGRESS_MESSAGE =
   "This booking is being replaced by your reschedule. It is cancelled automatically once the new booking's payment completes.";
 
@@ -121,7 +146,7 @@ export async function loadRescheduleCarryOver(
   const { data, error } = await admin
     .from("bookings")
     .select(
-      "id, customer_id, group_booking_id, total_paid, total_refunded, wallet_amount, gift_card_amount, customer_package_entitlement_id, tenant_id, status",
+      "id, customer_id, group_booking_id, total_paid, total_refunded, wallet_amount, gift_card_amount, customer_package_entitlement_id, tenant_id, status, cancellation_settlement_error",
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -138,6 +163,7 @@ export async function loadRescheduleCarryOver(
     customer_package_entitlement_id?: string | null;
     tenant_id?: string | null;
     status?: string;
+    cancellation_settlement_error?: string | null;
   };
   if (row.customer_id !== customerId) {
     return { ok: false, code: "NOT_FOUND", message: "You can only reschedule your own bookings." };
@@ -163,14 +189,18 @@ export async function loadRescheduleCarryOver(
       0,
     ),
   );
-  const collected = computeEffectiveCollectedAmount({
-    id: bookingId,
-    provider_id: "",
-    total_paid: row.total_paid,
-    total_refunded: row.total_refunded,
-    wallet_amount: row.wallet_amount,
-    gift_card_amount: row.gift_card_amount,
-    total_amount: 0,
+  const collected = rescheduleCollectedAfterGiftStillDue({
+    collected: computeEffectiveCollectedAmount({
+      id: bookingId,
+      provider_id: "",
+      total_paid: row.total_paid,
+      total_refunded: row.total_refunded,
+      wallet_amount: row.wallet_amount,
+      gift_card_amount: row.gift_card_amount,
+      total_amount: 0,
+    }),
+    reservedGiftAmount,
+    settlementError: row.cancellation_settlement_error,
   });
   return classifyRescheduleCarryOver({
     groupBookingId: row.group_booking_id,
@@ -186,11 +216,58 @@ export async function returnBorrowedPackageSession(
   admin: SupabaseClient,
   entitlementId: string,
   customerId: string,
-): Promise<void> {
-  await (admin.rpc as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>)(
-    "redeem_customer_package_entitlement",
-    { p_entitlement_id: entitlementId, p_customer_id: customerId },
-  );
+): Promise<boolean> {
+  try {
+    const { data, error } = await (admin.rpc as unknown as (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: { message?: string } | null }>)(
+      "redeem_customer_package_entitlement",
+      { p_entitlement_id: entitlementId, p_customer_id: customerId },
+    );
+    if (error || data !== true) {
+      console.error(
+        "[reschedule] borrowed package session was not held",
+        error ?? "package session was not held",
+      );
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[reschedule] borrowed package session was not held", e);
+    return false;
+  }
+}
+
+/**
+ * A released visit already returned its prepaid session. If that visit was a
+ * reschedule, or it is the visit whose session this checkout just borrowed,
+ * put the session back so the original visit still holds it.
+ */
+export async function returnBorrowedSessionIfReleased(
+  admin: SupabaseClient,
+  booking: {
+    id: string;
+    customer_id: string | null;
+    customer_package_entitlement_id?: string | null;
+    rescheduled_from_booking_id?: string | null;
+  },
+  borrowedEntitlementId?: string | null,
+): Promise<boolean> {
+  const entitlementId = booking.customer_package_entitlement_id;
+  if (!booking.customer_id || !entitlementId) return false;
+  const borrowedHere = Boolean(borrowedEntitlementId) && entitlementId === borrowedEntitlementId;
+  if (!booking.rescheduled_from_booking_id && !borrowedHere) return false;
+
+  const { data: after } = await admin
+    .from("bookings")
+    .select("customer_package_entitlement_id")
+    .eq("id", booking.id)
+    .maybeSingle();
+  if ((after as { customer_package_entitlement_id?: string | null } | null)?.customer_package_entitlement_id) {
+    return false;
+  }
+  return returnBorrowedPackageSession(admin, entitlementId, booking.customer_id);
 }
 
 export async function borrowPackageSessionForReschedule(
@@ -206,7 +283,7 @@ export async function borrowPackageSessionForReschedule(
     console.error("[reschedule] borrow package session failed", error.message);
     return false;
   }
-  return data !== false;
+  return data === true;
 }
 
 async function sumCompletedCancellationCredits(
@@ -342,6 +419,61 @@ async function postRescheduleCreditLedger(
 }
 
 /**
+ * The original visit gives its prepaid session back once the replacement is the visit.
+ * When the replacement already holds that same session, only the old pointer is cleared.
+ * A failed return leaves the session on the original visit so the next finish can try again.
+ */
+export async function returnOriginalPackageSession(
+  admin: SupabaseClient,
+  oldBookingId: string,
+  customerId: string | null | undefined,
+  replacementEntitlementId: string | null | undefined,
+): Promise<void> {
+  if (!customerId) return;
+  const { data } = await admin
+    .from("bookings")
+    .select("customer_package_entitlement_id")
+    .eq("id", oldBookingId)
+    .maybeSingle();
+  const entitlementId = (data as { customer_package_entitlement_id?: string | null } | null)
+    ?.customer_package_entitlement_id;
+  if (!entitlementId) return;
+
+  if (replacementEntitlementId && replacementEntitlementId === entitlementId) {
+    await admin
+      .from("bookings")
+      .update({ customer_package_entitlement_id: null })
+      .eq("id", oldBookingId)
+      .eq("customer_package_entitlement_id", entitlementId);
+    return;
+  }
+
+  const { data: claimed } = await admin
+    .from("bookings")
+    .update({ customer_package_entitlement_id: null })
+    .eq("id", oldBookingId)
+    .eq("customer_package_entitlement_id", entitlementId)
+    .select("id");
+  if (!claimed?.length) return;
+
+  const { data: restored, error } = await (admin.rpc as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message?: string } | null }>)("restore_customer_package_entitlement", {
+    p_entitlement_id: entitlementId,
+    p_customer_id: customerId,
+  });
+  if (!error && restored === true) return;
+
+  console.error("[finalizeRescheduleCarryOver] package session was not returned", oldBookingId, error);
+  await admin
+    .from("bookings")
+    .update({ customer_package_entitlement_id: entitlementId })
+    .eq("id", oldBookingId)
+    .is("customer_package_entitlement_id", null);
+}
+
+/**
  * After the replacement booking is paid (or committed as cash): cancel the
  * original with a full fee-free wallet refund, then move the applied part of
  * that credit onto the new booking. Idempotent via reschedule_carry_over_finalized_at;
@@ -378,6 +510,13 @@ export async function finalizeRescheduleCarryOver(
   if (row.status === "cancelled") return { ok: false, reason: "replacement_cancelled" };
 
   const oldId = row.rescheduled_from_booking_id;
+  let stockReturned: Awaited<ReturnType<typeof restoreBookingRetailStock>> = [];
+  try {
+    stockReturned = await restoreBookingRetailStock(admin, oldId);
+  } catch (stockErr) {
+    console.error("[finalizeRescheduleCarryOver] stock was not returned", stockErr);
+    return { ok: false, reason: "stock_failed" };
+  }
   const nowIso = new Date().toISOString();
   const { data: claimed } = await admin
     .from("bookings")
@@ -400,6 +539,7 @@ export async function finalizeRescheduleCarryOver(
   }) | null;
 
   if (!old) {
+    await lineUpBookingStockWithSavedStatus(admin, oldId, [], stockReturned);
     const { data: existing } = await admin
       .from("bookings")
       .select("cancellation_reason")
@@ -429,21 +569,6 @@ export async function finalizeRescheduleCarryOver(
           cancellation_settlement_error:
             settleErr instanceof Error ? settleErr.message.slice(0, 500) : "reschedule_settle_failed",
         })
-        .eq("id", oldId);
-    }
-
-    if (old.customer_package_entitlement_id) {
-      // The checkout borrowed this session when the new booking reuses it.
-      // Otherwise the cancelled booking gives its session back.
-      if (row.customer_package_entitlement_id !== old.customer_package_entitlement_id) {
-        await (admin.rpc as unknown as (n: string, a: Record<string, unknown>) => Promise<{ error: unknown }>)(
-          "restore_customer_package_entitlement",
-          { p_entitlement_id: old.customer_package_entitlement_id, p_customer_id: row.customer_id },
-        );
-      }
-      await admin
-        .from("bookings")
-        .update({ customer_package_entitlement_id: null })
         .eq("id", oldId);
     }
 
@@ -479,6 +604,13 @@ export async function finalizeRescheduleCarryOver(
       created_by: row.customer_id,
     });
   }
+
+  await returnOriginalPackageSession(
+    admin,
+    oldId,
+    row.customer_id,
+    row.customer_package_entitlement_id,
+  );
 
   const { data: oldState } = await admin
     .from("bookings")

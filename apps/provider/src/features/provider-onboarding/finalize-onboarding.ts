@@ -124,6 +124,12 @@ async function completeCheckoutAfterReturn(options: {
   }
 
   if (result.outcome === "cancel") {
+    if (initialReference?.trim()) {
+      void verifyPaystackWithRetry(initialReference.trim(), {
+        redirectStatus: "cancelled",
+        maxAttempts: 1,
+      });
+    }
     await clearPendingOnboardingCheckout();
     const { trackProviderCheckoutFunnelClient } = await import(
       "@/lib/subscription/track-checkout-funnel"
@@ -160,6 +166,10 @@ async function completeCheckoutAfterReturn(options: {
   let flutterwaveTransactionId: string | null = null;
   if (result.outcome === "success" && result.url) {
     if (matchesSubscriptionPaystackReturnUrl(result.url, { cancelled: true })) {
+      const cancelRef = parseOnlineCheckoutReturnUrl(result.url).reference || initialReference;
+      if (cancelRef?.trim()) {
+        void verifyPaystackWithRetry(cancelRef.trim(), { redirectStatus: "cancelled", maxAttempts: 1 });
+      }
       await clearPendingOnboardingCheckout();
       Alert.alert(
         "Payment not completed",

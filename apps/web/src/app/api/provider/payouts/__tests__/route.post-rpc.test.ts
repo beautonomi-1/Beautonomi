@@ -336,7 +336,7 @@ describe("POST /api/provider/payouts (guarded RPC path)", () => {
 
     expect(response.status).toBe(200);
     const seqCall = adminMock.rpc.mock.calls.find(([name]) => name === "next_document_number");
-    expect(seqCall?.[1]).toMatchObject({ p_tenant_id: TENANT_ID, p_kind: expect.stringMatching(/^payout:\d{4}$/) });
+    expect(seqCall?.[1]).toMatchObject({ p_tenant_id: TENANT_ID, p_kind: "payout", p_prefix: "PAY" });
     const guardedCall = adminMock.rpc.mock.calls.find(([name]) => name === "insert_payout_request_guarded");
     expect(guardedCall?.[1].p_payout.payout_number).toMatch(/^PAY-\d{4}-000012$/);
   });

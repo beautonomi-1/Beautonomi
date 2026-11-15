@@ -17,8 +17,9 @@ export type NetPayResult = {
 };
 
 /**
- * Net pay with optional carry-forward: staff cannot receive negative net;
- * shortfall becomes nextCarryForward (stored as pay_run item line).
+ * Net pay with optional carry-forward: staff cannot receive negative net.
+ * nextCarryForward is the signed shortfall (negative). Pay-run rows store
+ * that amount as a positive carry_forward_out.
  */
 export function computeNetPay(input: NetPayInput): NetPayResult {
   const currency = input.currency ?? "ZAR";

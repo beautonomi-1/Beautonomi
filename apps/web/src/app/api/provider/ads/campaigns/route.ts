@@ -513,7 +513,7 @@ export async function POST(request: NextRequest) {
     const adsContext = paymentRedirect === "provider_inapp" ? "app" : "web";
     const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaign.id)}&context=${adsContext}`;
 
-    const adsCancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaign.id)}&context=${adsContext}`;
+    const adsCancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaign.id)}&reference=${encodeURIComponent(reference)}&context=${adsContext}`;
 
     const onlineInit = await initializeOnlinePayment({
       tenantId,
@@ -542,6 +542,7 @@ export async function POST(request: NextRequest) {
       requires_payment: true,
       payment_url: paymentUrl,
       order_id: order.id,
+      reference,
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to create campaign");

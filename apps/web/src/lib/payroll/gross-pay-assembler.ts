@@ -71,7 +71,8 @@ export function buildPayRunItem(
     taxDeduction: roundCurrency(deductions.taxDeduction ?? 0),
     uifContribution: roundCurrency(deductions.uifContribution ?? 0),
     netPay: net.netPay,
-    carryForwardOut: net.nextCarryForward !== 0 ? net.nextCarryForward : undefined,
+    carryForwardOut:
+      net.nextCarryForward !== 0 ? Math.abs(net.nextCarryForward) : undefined,
   };
 }
 

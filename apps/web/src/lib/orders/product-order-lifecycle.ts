@@ -56,13 +56,17 @@ export async function applyProductOrderCancelRefundSideEffects(
   admin: SupabaseClient,
   order: ProductOrderSideEffectRow,
   options: ApplyProductOrderCancelRefundOptions,
-): Promise<{ walletCreditFailed: boolean }> {
+): Promise<{
+  walletCreditFailed: boolean;
+  giftRestoreFailed: boolean;
+  giftDisposition: "restored" | "wallet" | "failed" | "none";
+}> {
   if (order.payment_status === "partially_refunded" && options.newStatus === "cancelled") {
     console.warn(
       "[product-order] refused cancel side effects on partially_refunded order",
       order.id,
     );
-    return { walletCreditFailed: false };
+    return { walletCreditFailed: false, giftRestoreFailed: false, giftDisposition: "none" };
   }
   const { newStatus, refundAmount, cancellationReason, refundReason, onlineRefundedAmount } = options;
   const shouldReversePlatformLedger =
@@ -73,7 +77,9 @@ export async function applyProductOrderCancelRefundSideEffects(
       ? (refundAmount ?? Number(order.total_amount ?? 0))
       : Number(order.total_amount ?? 0);
 
-  if (!shouldReversePlatformLedger) return { walletCreditFailed: false };
+  if (!shouldReversePlatformLedger) {
+    return { walletCreditFailed: false, giftRestoreFailed: false, giftDisposition: "none" };
+  }
 
   const providerCollected = isProviderCollectedProductMethod(order.payment_method);
   const storeCreditClawback = computeProviderCollectedStoreCreditClawback(
@@ -166,7 +172,7 @@ export async function applyProductOrderCancelRefundSideEffects(
         : cancellationReason
           ? ` (cancelled: ${cancellationReason})`
           : ""
-    }`;
+    }${options.storeCreditClawbackKey ? ` [${options.storeCreditClawbackKey}]` : ""}`;
     const refundRows: Record<string, unknown>[] = [];
     if (refundProviderEarnings > 0) {
       refundRows.push({
@@ -241,10 +247,33 @@ export async function applyProductOrderCancelRefundSideEffects(
       });
     }
     if (refundRows.length > 0) {
-      await (admin.from("finance_transactions") as any).insert(refundRows);
+      const sameRefundRetry =
+        newStatus === "cancelled" ||
+        (newStatus === "refunded" && Boolean(options.storeCreditClawbackKey));
+      let pendingRows = refundRows;
+      if (sameRefundRetry) {
+        const { data: existingRefunds } = await (admin.from("finance_transactions") as any)
+          .select("refund_component")
+          .eq("product_order_id", order.id)
+          .eq("transaction_type", "refund")
+          .eq("description", refundDescription)
+          .limit(20);
+        const alreadyLogged = new Set(
+          (existingRefunds ?? []).map((row: { refund_component?: string | null }) =>
+            String(row.refund_component ?? ""),
+          ),
+        );
+        pendingRows = refundRows.filter(
+          (row) => !alreadyLogged.has(String(row.refund_component ?? "")),
+        );
+      }
+      if (pendingRows.length > 0) {
+        await (admin.from("finance_transactions") as any).insert(pendingRows);
+      }
     }
   }
 
+  let giftDisposition: "restored" | "wallet" | "failed" | "none" = "none";
   if (
     newStatus === "cancelled" &&
     order.payment_status === "paid" &&
@@ -261,11 +290,19 @@ export async function applyProductOrderCancelRefundSideEffects(
       ledgerRefundAmount,
       Math.max(0, Number(order.gift_card_amount ?? 0)),
     );
+    let giftRestoreFailed = false;
+    giftDisposition = giftPortion > 0.009 ? "restored" : "none";
     if (giftPortion > 0) {
       const { voidProductOrderGiftCard } = await import("@/lib/ecommerce/product-order-gift-card");
       const voided = await voidProductOrderGiftCard(admin, order.id);
-      if (productOrderCancelIncludesGiftInWallet(voided)) {
+      if (voided === "failed") {
+        giftRestoreFailed = true;
+        giftDisposition = "failed";
+      } else if (productOrderCancelIncludesGiftInWallet(voided)) {
         walletCreditAmount = roundProductOrderMoney(addMoney(walletCreditAmount, giftPortion));
+        giftDisposition = "wallet";
+      } else {
+        giftDisposition = "restored";
       }
     }
     if (walletCreditAmount > 0) {
@@ -286,8 +323,11 @@ export async function applyProductOrderCancelRefundSideEffects(
           orderId: order.id,
           walletCreditAmount,
         });
-        return { walletCreditFailed: true };
+        return { walletCreditFailed: true, giftRestoreFailed, giftDisposition };
       }
+    }
+    if (giftRestoreFailed) {
+      return { walletCreditFailed: false, giftRestoreFailed: true, giftDisposition };
     }
     await (supabase.from("product_orders") as any)
       .update({
@@ -297,7 +337,7 @@ export async function applyProductOrderCancelRefundSideEffects(
       })
       .eq("id", order.id);
   }
-  return { walletCreditFailed: false };
+  return { walletCreditFailed: false, giftRestoreFailed: false, giftDisposition };
 }
 
 export type RestockMovementType = "cancel" | "return" | "sale_refund";
@@ -312,6 +352,191 @@ export type RestockProductOrderOptions = {
   /** Restock fewer units than the line quantity (partial-quantity returns). Key = order_item id. */
   quantityOverrides?: Record<string, number>;
 };
+
+/**
+ * Units of one line still out of stock. No movements yet means the whole line
+ * (older sales did not write a movement). A sale of 2 and a restock of 2 is nothing left to put back.
+ */
+export function restockQuantityStillOut(input: {
+  lineQuantity: number;
+  productId: string;
+  variantId: string | null;
+  movements: Array<{
+    product_id?: string | null;
+    product_variant_id?: string | null;
+    quantity_delta?: number | string | null;
+  }>;
+}): number {
+  const lineQty = Math.max(0, Number(input.lineQuantity) || 0);
+  const relevant = input.movements.filter(
+    (row) =>
+      String(row.product_id ?? "") === input.productId &&
+      (row.product_variant_id ?? null) === input.variantId,
+  );
+  if (relevant.length === 0) return lineQty;
+  const netOut = relevant.reduce((sum, row) => sum - Number(row.quantity_delta ?? 0), 0);
+  return Math.min(lineQty, Math.max(0, netOut));
+}
+
+/**
+ * Units to put back for one product-order line.
+ * A walk-in that was never delivered has not had its products taken, so a cancel
+ * must not add them. A delivered walk-in with no movement log still puts the line back.
+ */
+export function productOrderRestockQuantity(input: {
+  orderSource?: string | null;
+  deliveredAt?: string | null;
+  lineQuantity: number;
+  productId: string;
+  variantId: string | null;
+  movements: Array<{
+    product_id?: string | null;
+    product_variant_id?: string | null;
+    quantity_delta?: number | string | null;
+  }>;
+}): number {
+  const relevant = input.movements.filter(
+    (row) =>
+      String(row.product_id ?? "") === input.productId &&
+      (row.product_variant_id ?? null) === input.variantId,
+  );
+  if (String(input.orderSource ?? "") === "walk_in" && !input.deliveredAt && relevant.length === 0) {
+    return 0;
+  }
+  return restockQuantityStillOut(input);
+}
+
+/** True when a refunded or cancelled order still has units that were taken and not put back. */
+export async function productOrderHasStockStillOut(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<boolean> {
+  const { data: orderMeta } = await (supabase.from("product_orders") as any)
+    .select("order_source, delivered_at")
+    .eq("id", orderId)
+    .maybeSingle();
+  const { data: items } = await (supabase.from("product_order_items") as any)
+    .select("product_id, product_variant_id, quantity")
+    .eq("order_id", orderId);
+  const { data: movementRows } = await (supabase.from("stock_movements") as any)
+    .select("product_id, product_variant_id, quantity_delta")
+    .eq("reference_type", "product_order")
+    .eq("reference_id", orderId);
+  const movements = Array.isArray(movementRows) ? movementRows : [];
+  const source = (orderMeta as { order_source?: string | null } | null)?.order_source;
+  const deliveredAt = (orderMeta as { delivered_at?: string | null } | null)?.delivered_at ?? null;
+  for (const item of items ?? []) {
+    if (!item?.product_id) continue;
+    const qty = productOrderRestockQuantity({
+      orderSource: source,
+      deliveredAt,
+      lineQuantity: Number(item.quantity) || 0,
+      productId: String(item.product_id),
+      variantId: (item.product_variant_id as string | null) ?? null,
+      movements,
+    });
+    if (qty > 0) return true;
+  }
+  return false;
+}
+
+/** True when a stock RPC reports a failure instead of throwing. */
+function stockRpcFailed(result: unknown): boolean {
+  return Boolean(result && typeof result === "object" && "error" in result && (result as { error?: unknown }).error);
+}
+
+/**
+ * Add `delta` only while the row still holds the quantity just read.
+ * A newer count is left in place and the read is tried again.
+ */
+async function writeStockQuantity(
+  supabase: SupabaseClient,
+  table: "products" | "product_variants",
+  id: string,
+  delta: number,
+): Promise<boolean> {
+  try {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const { data: row, error: readError } = await (supabase.from(table) as any)
+        .select("quantity")
+        .eq("id", id)
+        .single();
+      if (readError || !row) return false;
+      const current = Number(row.quantity) || 0;
+      const next = current + delta;
+      if (next < 0) return false;
+      const { data, error: updateError } = await (supabase.from(table) as any)
+        .update({ quantity: next })
+        .eq("id", id)
+        .eq("quantity", current)
+        .select("id");
+      if (updateError) return false;
+      if (Array.isArray(data) && data.length > 0) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Put `qty` back on a variant or product. A returned RPC error is a failure:
+ * the fallback update has to succeed before the movement log may say the units are back.
+ */
+export async function incrementStockQuantity(
+  supabase: SupabaseClient,
+  target: { variantId: string | null; productId: string | null },
+  qty: number,
+): Promise<boolean> {
+  const variantId = target.variantId;
+  const productId = target.productId;
+  if (!variantId && !productId) return false;
+  try {
+    const result = variantId
+      ? await (supabase.rpc as any)("increment_product_variant_stock", {
+          p_variant_id: variantId,
+          p_quantity: qty,
+        })
+      : await supabase.rpc("increment_product_stock" as any, {
+          p_product_id: productId,
+          p_quantity: qty,
+        });
+    if (stockRpcFailed(result)) throw (result as { error: unknown }).error;
+    return true;
+  } catch {
+    const table = variantId ? "product_variants" : "products";
+    const id = (variantId ?? productId) as string;
+    return writeStockQuantity(supabase, table, id, qty);
+  }
+}
+
+/** Take `qty` back off after a restock record could not be saved. */
+export async function decrementStockQuantity(
+  supabase: SupabaseClient,
+  target: { variantId: string | null; productId: string | null },
+  qty: number,
+): Promise<boolean> {
+  const variantId = target.variantId;
+  const productId = target.productId;
+  if (!variantId && !productId) return false;
+  try {
+    const result = variantId
+      ? await (supabase.rpc as any)("decrement_product_variant_stock", {
+          p_variant_id: variantId,
+          p_quantity: qty,
+        })
+      : await supabase.rpc("decrement_product_stock" as any, {
+          p_product_id: productId,
+          p_quantity: qty,
+        });
+    if (stockRpcFailed(result)) throw (result as { error: unknown }).error;
+    return true;
+  } catch {
+    const table = variantId ? "product_variants" : "products";
+    const id = (variantId ?? productId) as string;
+    return writeStockQuantity(supabase, table, id, -qty);
+  }
+}
 
 /**
  * Restore inventory for all line items on a product order (provider cancel / payment abandon /
@@ -332,52 +557,45 @@ export async function restockProductOrderLineItems(
 
   if (!items?.length) return;
 
+  const { data: movementRows } = await (supabase.from("stock_movements") as any)
+    .select("product_id, product_variant_id, quantity_delta")
+    .eq("reference_type", "product_order")
+    .eq("reference_id", orderId);
+  const movements = Array.isArray(movementRows) ? movementRows : [];
+  const { data: orderMeta } = await (supabase.from("product_orders") as any)
+    .select("order_source, delivered_at")
+    .eq("id", orderId)
+    .maybeSingle();
+
   const restocked: Array<{ product_id: string; product_variant_id: string | null; quantity: number }> = [];
 
   for (const item of items) {
     const overrideQty = opts?.quantityOverrides?.[item.id as string];
-    const qty =
+    const requested =
       overrideQty != null && Number.isFinite(overrideQty) && overrideQty > 0
         ? Math.min(overrideQty, Number(item.quantity) || 0)
         : Number(item.quantity) || 0;
+    const qty = item.product_id
+      ? productOrderRestockQuantity({
+          orderSource: (orderMeta as { order_source?: string | null } | null)?.order_source,
+          deliveredAt: (orderMeta as { delivered_at?: string | null } | null)?.delivered_at ?? null,
+          lineQuantity: requested,
+          productId: String(item.product_id),
+          variantId: (item.product_variant_id as string | null) ?? null,
+          movements,
+        })
+      : requested;
     if (qty <= 0) continue;
 
-    if (item.product_variant_id) {
-      try {
-        await (supabase.rpc as any)("increment_product_variant_stock", {
-          p_variant_id: item.product_variant_id,
-          p_quantity: qty,
-        });
-      } catch {
-        const { data: v } = await (supabase.from("product_variants") as any)
-          .select("quantity")
-          .eq("id", item.product_variant_id)
-          .single();
-        if (v) {
-          await (supabase.from("product_variants") as any)
-            .update({ quantity: (v.quantity ?? 0) + qty })
-            .eq("id", item.product_variant_id);
-        }
-      }
-    } else if (item.product_id) {
-      try {
-        await supabase.rpc("increment_product_stock" as any, {
-          p_product_id: item.product_id,
-          p_quantity: qty,
-        });
-      } catch {
-        const { data: prod } = await (supabase.from("products") as any)
-          .select("quantity")
-          .eq("id", item.product_id)
-          .single();
-        if (prod) {
-          await (supabase.from("products") as any)
-            .update({ quantity: (prod.quantity ?? 0) + qty })
-            .eq("id", item.product_id);
-        }
-      }
-    }
-    if (item.product_id) {
+    const restored = await incrementStockQuantity(
+      supabase,
+      {
+        variantId: (item.product_variant_id as string | null) ?? null,
+        productId: (item.product_id as string | null) ?? null,
+      },
+      qty,
+    );
+    if (restored && item.product_id) {
       restocked.push({
         product_id: item.product_id,
         product_variant_id: item.product_variant_id ?? null,
@@ -439,6 +657,17 @@ async function logRestockStockMovements(
       });
       if (error) {
         console.error("[product-order] stock_movements restock log failed:", error.message, { orderId });
+        const undone = await decrementStockQuantity(
+          supabase,
+          { variantId: line.product_variant_id, productId: line.product_id },
+          line.quantity,
+        );
+        if (!undone) {
+          console.error("[product-order] restock record missing and quantity could not be taken back", {
+            orderId,
+            productId: line.product_id,
+          });
+        }
       }
     }
   } catch (e) {
@@ -451,13 +680,26 @@ async function logRestockStockMovements(
  * cancelled (also re-credits a captured redemption on paid-order cancel/refund).
  * Best-effort; DB trigger (879) backstops the unpaid-cancel path.
  */
+/** Abandoned online orders stay on this reason until the wallet, gift card, and card refund finish. */
+export const ABANDONED_ORDER_REFUND_STILL_DUE =
+  "Payment was not completed in time — refund still due";
+
+/** True when an unpaid order still owes a wallet credit, a gift-card return, or a card refund. */
+export function abandonedOrderMoneyStillDue(input: {
+  walletFailed: boolean;
+  giftVoid: "restored" | "missing" | "failed" | "none";
+  cardFailed?: boolean;
+}): boolean {
+  return input.walletFailed || input.giftVoid === "failed" || input.cardFailed === true;
+}
+
 export async function voidProductOrderGiftCardIfNeeded(
   supabase: SupabaseClient,
   order: { id: string; gift_card_amount?: number | string | null },
-): Promise<void> {
-  if (!(Number(order.gift_card_amount ?? 0) > 0)) return;
+): Promise<"restored" | "missing" | "failed" | "none"> {
+  if (!(Number(order.gift_card_amount ?? 0) > 0)) return "none";
   const { voidProductOrderGiftCard } = await import("@/lib/ecommerce/product-order-gift-card");
-  await voidProductOrderGiftCard(supabase, order.id);
+  return voidProductOrderGiftCard(supabase, order.id);
 }
 
 export async function clearCustomerCartForProvider(
@@ -508,13 +750,13 @@ export async function rollbackFailedProductOrderCheckout(
     return { rolledBack: false, skippedPaid: true };
   }
 
-  await creditWalletForProductOrderIfNeeded(
+  const wallet = await creditWalletForProductOrderIfNeeded(
     supabase,
     order,
     `Wallet refund (${reason})`,
     "product_order_checkout_failed",
   );
-  await voidProductOrderGiftCardIfNeeded(supabase, order);
+  const giftVoid = await voidProductOrderGiftCardIfNeeded(supabase, order);
   if (opts?.restock !== false) {
     await restockProductOrderLineItems(supabase, order.id, {
       movementType: "cancel",
@@ -526,7 +768,12 @@ export async function rollbackFailedProductOrderCheckout(
       status: "cancelled",
       payment_status: "failed",
       cancelled_at: new Date().toISOString(),
-      cancellation_reason: reason,
+      cancellation_reason: abandonedOrderMoneyStillDue({
+        walletFailed: wallet.failed,
+        giftVoid,
+      })
+        ? ABANDONED_ORDER_REFUND_STILL_DUE
+        : reason,
       updated_at: new Date().toISOString(),
     })
     .eq("id", order.id)
@@ -701,13 +948,23 @@ export async function releaseUnpaidProductOrderHolds(
   amount: number;
   onlineRefunded: number;
   cardWalletFallback: number;
+  giftRestoreFailed: boolean;
+  giftDisposition: "restored" | "failed" | "none";
 }> {
   if (order.payment_status === "partially_refunded") {
     console.warn(
       "[product-order] refused unpaid hold release on partially_refunded order",
       order.id,
     );
-    return { credited: false, failed: false, amount: 0, onlineRefunded: 0, cardWalletFallback: 0 };
+    return {
+      credited: false,
+      failed: false,
+      amount: 0,
+      onlineRefunded: 0,
+      cardWalletFallback: 0,
+      giftRestoreFailed: false,
+      giftDisposition: "none",
+    };
   }
   const amount = Math.max(0, Number(order.wallet_amount ?? 0));
   const wallet = await creditWalletForProductOrderIfNeeded(
@@ -716,7 +973,7 @@ export async function releaseUnpaidProductOrderHolds(
     description,
     "product_order_unpaid_cancel",
   );
-  await voidProductOrderGiftCardIfNeeded(supabase, order);
+  const giftVoid = await voidProductOrderGiftCardIfNeeded(supabase, order);
   const card = await refundUnpaidProductOrderCardCharges(supabase, order, description);
   return {
     credited: wallet.credited,
@@ -724,6 +981,8 @@ export async function releaseUnpaidProductOrderHolds(
     amount: wallet.credited ? amount : 0,
     onlineRefunded: card.onlineRefunded,
     cardWalletFallback: card.walletFallback,
+    giftRestoreFailed: giftVoid === "failed",
+    giftDisposition: giftVoid === "restored" ? "restored" : giftVoid === "failed" ? "failed" : "none",
   };
 }
 
@@ -768,18 +1027,33 @@ export async function cancelStalePendingPaystackProductOrders(
 
     if ((claimed?.length ?? 0) === 0) continue;
 
-    await creditWalletForProductOrderIfNeeded(
+    const wallet = await creditWalletForProductOrderIfNeeded(
       supabase,
       o,
       `Wallet refund (checkout restarted) for order`,
       "product_order_superseded",
     );
-    await voidProductOrderGiftCardIfNeeded(supabase, o);
-    await refundUnpaidProductOrderCardCharges(
+    const giftVoid = await voidProductOrderGiftCardIfNeeded(supabase, o);
+    const cards = await refundUnpaidProductOrderCardCharges(
       supabase,
       o,
       `Card refund (checkout restarted) for order`,
     );
+    if (
+      abandonedOrderMoneyStillDue({
+        walletFailed: wallet.failed,
+        giftVoid,
+        cardFailed: cards.failed,
+      })
+    ) {
+      await (supabase.from("product_orders") as any)
+        .update({
+          cancellation_reason: ABANDONED_ORDER_REFUND_STILL_DUE,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", o.id)
+        .eq("payment_status", "failed");
+    }
     await restockProductOrderLineItems(supabase, o.id, {
       movementType: "cancel",
       reason: "Replaced by a new checkout",

@@ -273,10 +273,25 @@ export default function GiftCardPurchaseScreen() {
             return;
           }
           if (pr.outcome === "cancel") {
+            if (reference) {
+              void verifyPaystackWithRetry(reference, { redirectStatus: "cancelled", maxAttempts: 1 });
+            }
             return;
           }
-          if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
+          if (pr.outcome === "success" && pr.url) {
             const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+            if (isCancelledPaystackUrl(pr.url) || parsed.status === "failed" || parsed.status === "cancelled") {
+              const failRef = parsed.reference || reference;
+              if (failRef) {
+                void verifyPaystackWithRetry(failRef, {
+                  redirectStatus: parsed.status === "failed" ? "failed" : "cancelled",
+                  sessionId: parsed.sessionId,
+                  transactionId: parsed.transactionId,
+                  maxAttempts: 1,
+                });
+              }
+              return;
+            }
             if (parsed.reference) reference = parsed.reference;
             checkoutSessionId = parsed.sessionId;
             flutterwaveTransactionId = parsed.transactionId;

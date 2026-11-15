@@ -1,6 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { recordSuccessfulProviderSubscriptionRenewalFromInvoice } from "../subscription-events";
+import { computePaidPeriodExpiresAt } from "@/lib/subscriptions/provider-billing-merchant";
 import type { SupabaseClient } from "../shared";
+
+const createRefund = vi.fn(async () => ({ status: true, message: "ok", data: {} }));
+vi.mock("@/lib/payments/paystack-complete", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/payments/paystack-complete")>();
+  return { ...actual, createRefund: (...args: unknown[]) => createRefund(...args) };
+});
 
 vi.mock("@/lib/finance/resolve-tenant-id-for-ledger", () => ({
   resolveTenantIdForFinanceLedger: vi.fn(async () => "tenant-ledger"),
@@ -14,7 +21,12 @@ vi.mock("@/lib/notifications/onesignal", () => ({
   sendTemplateNotification: vi.fn(async () => undefined),
 }));
 
-function createRenewalTestSupabase(options: { existingPaymentTx: boolean }) {
+function createRenewalTestSupabase(options: {
+  existingPaymentTx: boolean;
+  existingPaymentStatus?: string;
+  expiresAt?: string | null;
+  priorFinancePayment?: boolean;
+}) {
   const paymentInserts: unknown[] = [];
   const financeInserts: unknown[] = [];
   const subscriptionUpdates: unknown[] = [];
@@ -27,7 +39,12 @@ function createRenewalTestSupabase(options: { existingPaymentTx: boolean }) {
             eq: vi.fn(() => ({
               eq: vi.fn(() => ({
                 maybeSingle: vi.fn(async () => ({
-                  data: options.existingPaymentTx ? { id: "already-recorded" } : null,
+                  data: options.existingPaymentTx
+                    ? {
+                        id: "already-recorded",
+                        status: options.existingPaymentStatus,
+                      }
+                    : null,
                   error: null,
                 })),
               })),
@@ -50,6 +67,7 @@ function createRenewalTestSupabase(options: { existingPaymentTx: boolean }) {
           status: "active",
           paystack_subscription_code: "SUB_testcode",
           plan: { is_free: false },
+          expires_at: options.expiresAt ?? null,
         };
         return {
           select: vi.fn(() => ({
@@ -63,9 +81,17 @@ function createRenewalTestSupabase(options: { existingPaymentTx: boolean }) {
           })),
           update: vi.fn((row: unknown) => {
             subscriptionUpdates.push(row);
-            return {
-              eq: vi.fn(() => Promise.resolve({ error: null })),
+            const result = { data: [{ id: "sub-row-1" }], error: null };
+            const chain = {
+              eq: () => chain,
+              in: () => chain,
+              select: () => Promise.resolve(result),
+              then: (
+                resolve: (value: typeof result) => unknown,
+                reject?: (reason: unknown) => unknown,
+              ) => Promise.resolve(result).then(resolve, reject),
             };
+            return chain;
           }),
         };
       }
@@ -103,24 +129,31 @@ function createRenewalTestSupabase(options: { existingPaymentTx: boolean }) {
         };
       }
       if (table === "finance_transactions") {
-        return {
-          // recordProviderSubscriptionPayment chains .insert().select("id").single()
-          // to capture the finance_transactions.id for the receipt email.
-          insert: vi.fn((row: unknown) => {
+        const api = {
+          select: () => api,
+          eq: () => api,
+          contains: () => api,
+          maybeSingle: async () => ({
+            data: options.priorFinancePayment ? { id: "prior-fin" } : null,
+            error: null,
+          }),
+          insert: (row: unknown) => {
             financeInserts.push(row);
             return {
-              select: vi.fn(() => ({
-                single: vi.fn(async () => ({
+              select: () => ({
+                single: async () => ({
                   data: { id: "finance-tx-1" },
                   error: null,
-                })),
-              })),
+                }),
+              }),
             };
-          }),
+          },
         };
+        return api;
       }
       throw new Error(`unexpected table: ${table}`);
     }),
+    rpc: async () => ({ data: 0, error: null }),
   };
 
   return { mockSupabase: mockSupabase as unknown as SupabaseClient, paymentInserts, financeInserts, subscriptionUpdates };
@@ -146,11 +179,16 @@ describe("recordSuccessfulProviderSubscriptionRenewalFromInvoice", () => {
       providerId: "22222222-2222-4222-8222-222222222222",
     });
 
-    // 1) renewal handler reactivates + extends expiry; 2) payment recorder stamps the billing period.
-    expect(subscriptionUpdates).toHaveLength(2);
-    expect((subscriptionUpdates[0] as { status?: string }).status).toBe("active");
-    const periodUpdate = subscriptionUpdates[1] as { billing_period_start?: string; billing_period_end?: string };
-    expect(periodUpdate.billing_period_start).toBeTruthy();
+    // The payment record does not move the billing window. The renewal opens it.
+    expect(subscriptionUpdates).toHaveLength(1);
+    const periodUpdate = subscriptionUpdates[0] as {
+      status?: string;
+      expires_at?: string;
+      billing_period_start?: string;
+      billing_period_end?: string;
+    };
+    expect(periodUpdate.status).toBe("active");
+    expect(periodUpdate.billing_period_start).toBe("2026-01-15T12:00:00.000Z");
     expect(periodUpdate.billing_period_end).toBeTruthy();
 
     expect(paymentInserts).toHaveLength(1);
@@ -177,7 +215,11 @@ describe("recordSuccessfulProviderSubscriptionRenewalFromInvoice", () => {
     expect(finRow.net).toBe(0);
     expect(finRow.metadata?.recognition_basis).toBe("term");
     expect(finRow.metadata?.term_start).toBeTruthy();
-    expect(finRow.metadata?.term_end).toBeTruthy();
+    expect(finRow.metadata?.term_end).toBe(
+      computePaidPeriodExpiresAt("monthly", new Date(String(finRow.metadata?.term_start))),
+    );
+    expect(periodUpdate.billing_period_end).toBe(finRow.metadata?.term_end);
+    expect(periodUpdate.expires_at).toBe(finRow.metadata?.term_end);
   });
 
   it("skips inserts when payment_transactions already exists for invoice reference (idempotent)", async () => {
@@ -195,8 +237,204 @@ describe("recordSuccessfulProviderSubscriptionRenewalFromInvoice", () => {
       providerId: "22222222-2222-4222-8222-222222222222",
     });
 
-    expect(subscriptionUpdates).toHaveLength(0);
+    expect(subscriptionUpdates).toHaveLength(1);
+    expect((subscriptionUpdates[0] as { status?: string }).status).toBe("active");
     expect(paymentInserts).toHaveLength(0);
     expect(financeInserts).toHaveLength(0);
+  });
+
+  it("leaves the end date when that charge's period is already applied", async () => {
+    const paidAt = "2026-02-01T00:00:00.000Z";
+    const appliedEnd = computePaidPeriodExpiresAt("monthly", new Date(paidAt));
+    const { mockSupabase, subscriptionUpdates } = createRenewalTestSupabase({
+      existingPaymentTx: true,
+      expiresAt: appliedEnd,
+    });
+
+    await recordSuccessfulProviderSubscriptionRenewalFromInvoice(mockSupabase, {
+      subscriptionCode: "SUB_testcode",
+      invoiceCode: "INV_dup",
+      amount: 10_000,
+      fees: 0,
+      paidAt,
+      payload: {},
+      providerId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(subscriptionUpdates).toHaveLength(0);
+  });
+
+  it("adds the next period after an open term when the invoice has no next charge date", async () => {
+    const paidAt = new Date();
+    paidAt.setUTCDate(paidAt.getUTCDate() - 10);
+    const openUntil = new Date();
+    openUntil.setUTCDate(openUntil.getUTCDate() + 10);
+    const { mockSupabase, subscriptionUpdates } = createRenewalTestSupabase({
+      existingPaymentTx: false,
+      expiresAt: openUntil.toISOString(),
+    });
+
+    await recordSuccessfulProviderSubscriptionRenewalFromInvoice(mockSupabase, {
+      subscriptionCode: "SUB_testcode",
+      invoiceCode: "INV_open",
+      amount: 10_000,
+      fees: 0,
+      paidAt: paidAt.toISOString(),
+      payload: {},
+      providerId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    const periodUpdate = subscriptionUpdates.find(
+      (row) => (row as { expires_at?: string }).expires_at,
+    ) as { expires_at?: string; billing_period_start?: string };
+    expect(periodUpdate.billing_period_start).toBe(openUntil.toISOString());
+    expect(periodUpdate.expires_at).toBe(computePaidPeriodExpiresAt("monthly", openUntil));
+  });
+
+  it("leaves the end date when the invoice next charge date is already applied", async () => {
+    const nextPaymentDate = "2026-03-01T00:00:00.000Z";
+    const { mockSupabase, subscriptionUpdates } = createRenewalTestSupabase({
+      existingPaymentTx: true,
+      expiresAt: nextPaymentDate,
+    });
+
+    await recordSuccessfulProviderSubscriptionRenewalFromInvoice(mockSupabase, {
+      subscriptionCode: "SUB_testcode",
+      invoiceCode: "INV_dup",
+      amount: 10_000,
+      fees: 0,
+      paidAt: "2026-02-01T00:00:00.000Z",
+      payload: { next_payment_date: nextPaymentDate },
+      providerId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(subscriptionUpdates).toHaveLength(0);
+  });
+
+  it("returns a second charge when that period is already paid", async () => {
+    const nextPaymentDate = "2026-03-01T00:00:00.000Z";
+    const { mockSupabase, paymentInserts, subscriptionUpdates } = createRenewalTestSupabase({
+      existingPaymentTx: false,
+      expiresAt: nextPaymentDate,
+      priorFinancePayment: true,
+    });
+
+    await recordSuccessfulProviderSubscriptionRenewalFromInvoice(mockSupabase, {
+      subscriptionCode: "SUB_testcode",
+      invoiceCode: "INV_extra",
+      amount: 10_000,
+      fees: 200,
+      paidAt: "2026-02-01T00:00:00.000Z",
+      payload: { next_payment_date: nextPaymentDate, transaction: { reference: "ref-extra" } },
+      providerId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(createRefund).toHaveBeenCalledWith(
+      {
+        transaction: "ref-extra",
+        merchant_note: "This period was already paid. The extra renewal charge was returned.",
+      },
+      { tenantId: "tenant-za" },
+    );
+    expect(paymentInserts).toEqual([
+      expect.objectContaining({ reference: "ref-extra", status: "refunded" }),
+    ]);
+    expect(subscriptionUpdates).toHaveLength(0);
+  });
+
+  it("leaves a returned charge returned when Paystack says it was already refunded", async () => {
+    createRefund.mockRejectedValueOnce(new Error("Transaction has been fully refunded"));
+    const nextPaymentDate = "2026-03-01T00:00:00.000Z";
+    const { mockSupabase, paymentInserts, subscriptionUpdates } = createRenewalTestSupabase({
+      existingPaymentTx: false,
+      expiresAt: nextPaymentDate,
+      priorFinancePayment: true,
+    });
+
+    await recordSuccessfulProviderSubscriptionRenewalFromInvoice(mockSupabase, {
+      subscriptionCode: "SUB_testcode",
+      invoiceCode: "INV_extra",
+      amount: 10_000,
+      fees: 200,
+      paidAt: "2026-02-01T00:00:00.000Z",
+      payload: { next_payment_date: nextPaymentDate, transaction: { reference: "ref-extra" } },
+      providerId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(paymentInserts).toEqual([
+      expect.objectContaining({ reference: "ref-extra", status: "refunded" }),
+    ]);
+    expect(subscriptionUpdates).toHaveLength(0);
+  });
+
+  it("does not open a new period for a charge that was already returned", async () => {
+    const { mockSupabase, paymentInserts, subscriptionUpdates } = createRenewalTestSupabase({
+      existingPaymentTx: true,
+      existingPaymentStatus: "refunded",
+      expiresAt: "2020-01-01T00:00:00.000Z",
+    });
+
+    await recordSuccessfulProviderSubscriptionRenewalFromInvoice(mockSupabase, {
+      subscriptionCode: "SUB_testcode",
+      invoiceCode: "INV_extra",
+      amount: 10_000,
+      fees: 200,
+      paidAt: "2026-02-01T00:00:00.000Z",
+      payload: { transaction: { reference: "ref-extra" } },
+      providerId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(createRefund).not.toHaveBeenCalled();
+    expect(paymentInserts).toHaveLength(0);
+    expect(subscriptionUpdates).toHaveLength(0);
+  });
+
+  it("records the charge when the duplicate refund cannot be sent", async () => {
+    createRefund.mockRejectedValueOnce(new Error("Paystack secret key not configured"));
+    const nextPaymentDate = "2026-03-01T00:00:00.000Z";
+    const { mockSupabase, paymentInserts, subscriptionUpdates } = createRenewalTestSupabase({
+      existingPaymentTx: false,
+      expiresAt: nextPaymentDate,
+      priorFinancePayment: true,
+    });
+
+    await recordSuccessfulProviderSubscriptionRenewalFromInvoice(mockSupabase, {
+      subscriptionCode: "SUB_testcode",
+      invoiceCode: "INV_extra",
+      amount: 10_000,
+      fees: 200,
+      paidAt: "2026-02-01T00:00:00.000Z",
+      payload: { next_payment_date: nextPaymentDate, transaction: { reference: "ref-kept" } },
+      providerId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(paymentInserts).toEqual([
+      expect.objectContaining({ reference: "ref-kept", status: "success" }),
+    ]);
+    expect(subscriptionUpdates).toHaveLength(0);
+  });
+
+  it("books the first charge when the period was opened before the payment", async () => {
+    const nextPaymentDate = "2026-12-15T00:00:00.000Z";
+    const { mockSupabase, paymentInserts, subscriptionUpdates } = createRenewalTestSupabase({
+      existingPaymentTx: false,
+      expiresAt: nextPaymentDate,
+    });
+
+    await recordSuccessfulProviderSubscriptionRenewalFromInvoice(mockSupabase, {
+      subscriptionCode: "SUB_testcode",
+      invoiceCode: "INV_first",
+      amount: 10_000,
+      fees: 200,
+      paidAt: "2026-11-15T00:00:00.000Z",
+      payload: { next_payment_date: nextPaymentDate, transaction: { reference: "ref-first" } },
+      providerId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(createRefund).not.toHaveBeenCalled();
+    expect(paymentInserts).toEqual([
+      expect.objectContaining({ reference: "ref-first", status: "success" }),
+    ]);
+    expect(subscriptionUpdates).toHaveLength(0);
   });
 });

@@ -1,4 +1,4 @@
-import { addMoney, multiplyMoney, subtractMoney } from "@beautonomi/utils";
+import { addMoney, computeGrowthPercent, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -9,6 +9,7 @@ import {
   getPreviousPeriodNetAfterRefunds,
 } from "@/lib/reports/revenue-helpers";
 import { MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { bookingLineShares, averageOfLedgerNets } from "@/lib/reports/staff-ledger-revenue";
 import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
 import { getProviderReportContext, reportDateRangeFromParams, reportDateKey } from "@/lib/reports/provider-report-utils";
 import { emptyRecordedTakings, getRecordedTakingsForRange } from "@/lib/reports/recorded-takings";
@@ -184,16 +185,14 @@ export async function GET(request: NextRequest) {
     const sampleBookings = bookings?.length || 0;
     const totalBookings = exactBookingCount ?? sampleBookings;
     const bookingsSampleTruncated = totalBookings > sampleBookings;
-    const bookingsWithLedgerActivity = [...revenueByBooking.entries()].filter(([, v]) => v > 0).length;
+    const bookingsWithLedgerActivity = revenueByBooking.size;
     const retailOrderCount = revenueByProductOrder.size;
-    /** Average net ledger amount per appointment that has any recognized ledger activity in range. */
-    const averageBookingValue =
-      bookingsWithLedgerActivity > 0 ? multiplyMoney(appointmentLedgerRevenue, 1 / bookingsWithLedgerActivity) : 0;
+    /** Average net ledger amount per appointment that has a ledger row in range, including a refund. */
+    const averageBookingValue = averageOfLedgerNets(revenueByBooking.values());
 
     const prevBookingsCount = prevBookingsCountRaw ?? 0;
 
-    const revenueGrowth =
-      prevRevenue > 0 ? (subtractMoney(totalRevenue, prevRevenue) / prevRevenue) * 100 : 0;
+    const revenueGrowth = computeGrowthPercent(totalRevenue, prevRevenue).percent ?? 0;
     const bookingsGrowth =
       prevBookingsCount > 0
         ? ((totalBookings - prevBookingsCount) / prevBookingsCount) * 100
@@ -221,18 +220,10 @@ export async function GET(request: NextRequest) {
       if (!booking.booking_services || !Array.isArray(booking.booking_services)) {
         return;
       }
-      // Distribute booking revenue proportionally across services
-      const totalServicePrice = booking.booking_services.reduce(
-        (sum: number, s: { price?: number }) => addMoney(sum, Number(s.price || 0)),
-        0
-      );
-      booking.booking_services.forEach((service: { price?: number; offerings?: { title?: string } | Array<{ title?: string }>; staff_id?: string }) => {
+      const shares = bookingLineShares(bookingRevenue, booking.booking_services);
+      booking.booking_services.forEach((service: { price?: number; offerings?: { title?: string } | Array<{ title?: string }>; staff_id?: string }, index: number) => {
         const serviceName = (Array.isArray(service.offerings) ? service.offerings[0]?.title : service.offerings?.title) || "Unknown Service";
-        const serviceProportion =
-          totalServicePrice > 0
-            ? Number(service.price || 0) / totalServicePrice
-            : 1 / booking.booking_services.length;
-        const serviceRevenue = multiplyMoney(bookingRevenue, serviceProportion);
+        const serviceRevenue = shares[index] ?? 0;
         const existing = revenueByServiceMap.get(serviceName) || {
           revenue: 0,
           bookingIds: new Set<string>(),
@@ -273,20 +264,12 @@ export async function GET(request: NextRequest) {
       if (!booking.booking_services || !Array.isArray(booking.booking_services)) {
         return;
       }
-      // Distribute booking revenue proportionally across services/staff
-      const totalServicePrice = booking.booking_services.reduce(
-        (sum: number, s: { price?: number }) => addMoney(sum, Number(s.price || 0)),
-        0
-      );
-      booking.booking_services.forEach((service: { price?: number; staff_id?: string }) => {
+      const shares = bookingLineShares(bookingRevenue, booking.booking_services);
+      booking.booking_services.forEach((service: { price?: number; staff_id?: string }, index: number) => {
         const staffName = service.staff_id 
           ? (staffMap.get(service.staff_id) || "Unassigned")
           : "Unassigned";
-        const serviceProportion =
-          totalServicePrice > 0
-            ? Number(service.price || 0) / totalServicePrice
-            : 1 / booking.booking_services.length;
-        const staffRevenue = multiplyMoney(bookingRevenue, serviceProportion);
+        const staffRevenue = shares[index] ?? 0;
         const existing = revenueByStaffMap.get(staffName) || {
           revenue: 0,
           bookingIds: new Set<string>(),

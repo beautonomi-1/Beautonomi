@@ -35,6 +35,14 @@ function GiftCardPurchaseCancelledInner() {
   );
 
   useEffect(() => {
+    if (!reference) return;
+    void fetch(
+      `/api/paystack/verify?reference=${encodeURIComponent(reference)}&status=cancelled`,
+      { credentials: "include", headers: { Accept: "application/json" } },
+    ).catch(() => undefined);
+  }, [reference]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const sp = new URLSearchParams(window.location.search);
     sp.delete("reference");

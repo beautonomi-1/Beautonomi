@@ -55,6 +55,32 @@ describe("buildProviderBillingObligations (plan matrix)", () => {
     const sub = obligations.find((o) => o.kind === "subscription");
     expect(sub?.status).toBe("due");
     expect(sub?.pay_action).toBe("subscription_pay");
+    expect(sub?.description).toMatch(/did not go through/);
+  });
+
+  it("does not bill a trial handoff before the saved card is charged", async () => {
+    const supabase = makeSupabase({
+      providers: [{ currency: "ZAR" }],
+      provider_subscriptions: [
+        {
+          id: "sub-1",
+          status: "past_due",
+          billing_provider: "paystack",
+          trial_ends_at: "2026-11-01T00:00:00.000Z",
+          dunning_retry_count: 0,
+          plan: { name: "Pro", is_free: false, currency: "ZAR", price_monthly: 299 },
+        },
+      ],
+      provider_subscription_orders: [],
+      provider_invoices: [],
+      terminal_orders: [],
+      provider_billing_activity: [],
+    });
+    const { obligations, outstanding_total } = await buildProviderBillingObligations(supabase, "p1", {
+      includeReceipts: false,
+    });
+    expect(obligations.some((o) => o.kind === "subscription")).toBe(false);
+    expect(outstanding_total).toBe(0);
   });
 
   it("Stripe past_due → stripe_manage", async () => {

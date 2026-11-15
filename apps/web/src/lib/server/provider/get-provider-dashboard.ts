@@ -50,6 +50,7 @@ import {
 } from "@/lib/provider/ensure-provider-gamification-synced";
 import {
   buildProgressToNextBadge,
+  pointsInCurrentProviderTier,
   resolveJoinedBadge,
 } from "@/lib/provider/build-gamification-view";
 import {
@@ -1078,7 +1079,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
         return {
           total_points: currentPoints,
           lifetime_points: gamificationData?.lifetime_points ?? 0,
-          current_tier_points: gamificationData?.current_tier_points ?? 0,
+          current_tier_points: pointsInCurrentProviderTier(currentPoints, badge),
           current_badge: badge
             ? {
                 id: badge.id,

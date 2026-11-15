@@ -139,6 +139,15 @@ export function useMarketingCredits(): UseMarketingCreditsResult {
           if (outcome.url) {
             const parsed = parseOnlineCheckoutReturnUrl(outcome.url);
             if (parsed.status === "failed" || parsed.status === "cancelled") {
+              const failRef = parsed.reference || reference;
+              if (failRef) {
+                void verifyPaystackWithRetry(failRef, {
+                  redirectStatus: parsed.status,
+                  sessionId: parsed.sessionId,
+                  transactionId: parsed.transactionId,
+                  maxAttempts: 1,
+                });
+              }
               await refresh();
               return { ok: false, message: "Top-up was cancelled. No payment was taken." };
             }
@@ -176,9 +185,32 @@ export function useMarketingCredits(): UseMarketingCreditsResult {
           };
         }
         if (outcome.outcome === "cancel") {
+          const cancelRef =
+            typeof res.data.paystack_reference === "string" ? res.data.paystack_reference.trim() : "";
+          if (cancelRef) {
+            void verifyPaystackWithRetry(cancelRef, { redirectStatus: "cancelled", maxAttempts: 1 });
+          }
           return { ok: false, cancelled: true, message: "Top-up cancelled." };
         }
-        // Browser closed before we could confirm — webhook may still land, so refresh.
+        const closedRef =
+          typeof res.data.paystack_reference === "string" ? res.data.paystack_reference.trim() : "";
+        if (closedRef) {
+          const verifyResult = await verifyPaystackWithRetry(closedRef);
+          if (verifyResult.status === "failed") {
+            await refresh();
+            return { ok: false, message: "Top-up was cancelled. No payment was taken." };
+          }
+          const increased = await pollBalanceIncrease(balanceBefore);
+          await refresh();
+          if (increased || verifyResult.status === "success") {
+            return { ok: true };
+          }
+          return {
+            ok: false,
+            message:
+              "Payment was received but credits haven't appeared yet. Pull to refresh — your balance should update shortly.",
+          };
+        }
         await refresh();
         return { ok: false, message: "Top-up wasn't completed. If you were charged, your balance will update shortly." };
       } catch (e) {

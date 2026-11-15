@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveStaffRates } from "@/lib/payroll/resolve-staff-rates";
 
 /**
  * GET /api/admin/staff
@@ -39,6 +40,9 @@ export async function GET(request: NextRequest) {
         bio,
         is_active,
         commission_percentage,
+        commission_rate,
+        service_commission_rate,
+        product_commission_rate,
         created_at,
         updated_at,
         provider:providers(id, business_name, slug),
@@ -68,7 +72,18 @@ export async function GET(request: NextRequest) {
       const row = s as StaffRow;
       const _u = Array.isArray(row.users) ? row.users[0] : row.users;
       const { users: _unused, ...rest } = row;
-      return { ...rest, user_role: _u?.role ?? null } as StaffWithRole;
+      const rates = resolveStaffRates({
+        commission_percentage: row.commission_percentage as number | null,
+        commission_rate: row.commission_rate as number | null,
+        service_commission_rate: row.service_commission_rate as number | null,
+        product_commission_rate: row.product_commission_rate as number | null,
+      });
+      return {
+        ...rest,
+        user_role: _u?.role ?? null,
+        serviceCommissionRate: rates.serviceRate,
+        productCommissionRate: rates.productRate,
+      } as StaffWithRole;
     });
     if (userRole) {
       staff = staff.filter((s) => s.user_role === userRole);

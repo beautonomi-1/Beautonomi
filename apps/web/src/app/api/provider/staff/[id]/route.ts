@@ -8,9 +8,10 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { commissionRatePatch } from "@/lib/provider/staff-commission-patch-fields";
 import type { PermissionRequestContext } from "@/lib/auth/permissions";
 import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import {
   findFutureBookingsForStaff,
   futureBookingsConflictResponse,
@@ -163,6 +164,7 @@ async function fetchStaffDetailForApi(
         is_active,
         mobile_ready,
         commission_rate,
+        commission_percentage,
         commission_enabled,
         service_commission_rate,
         product_commission_rate,
@@ -192,6 +194,7 @@ async function fetchStaffDetailForApi(
     is_active?: boolean | null;
     mobile_ready?: boolean | null;
     commission_rate?: number | null;
+    commission_percentage?: number | null;
     service_commission_rate?: number | null;
     product_commission_rate?: number | null;
     public_title?: string | null;
@@ -255,6 +258,7 @@ async function fetchStaffDetailForApi(
     is_active: r.is_active ?? true,
     mobileReady: r.mobile_ready ?? false,
     commission_rate: r.commission_rate ?? null,
+    commission_percentage: r.commission_percentage ?? null,
     service_commission_rate: r.service_commission_rate ?? null,
     product_commission_rate: r.product_commission_rate ?? null,
     public_title: r.public_title ?? null,
@@ -366,7 +370,7 @@ export async function PATCH(
     const { data: existingRow, error: existingErr } = await supabase
       .from("provider_staff")
       .select(
-        "id, role, user_id, commission_rate, service_commission_rate, product_commission_rate",
+        "id, role, user_id, commission_rate, commission_percentage, service_commission_rate, product_commission_rate",
       )
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -382,6 +386,7 @@ export async function PATCH(
       role: string;
       user_id?: string | null;
       commission_rate?: number | null;
+      commission_percentage?: number | null;
       service_commission_rate?: number | null;
       product_commission_rate?: number | null;
     };
@@ -497,24 +502,7 @@ export async function PATCH(
     if (d.is_active !== undefined) updateData.is_active = d.is_active;
     if (d.mobileReady !== undefined) updateData.mobile_ready = d.mobileReady;
     if (d.commission_rate !== undefined) {
-      const svcRate = existing.service_commission_rate ?? null;
-      const prodRate = existing.product_commission_rate ?? null;
-      const splitRatesEqual = svcRate === prodRate;
-      if (d.commission_rate === null) {
-        updateData.commission_rate = null;
-        updateData.commission_enabled = false;
-        if (splitRatesEqual) {
-          updateData.service_commission_rate = null;
-          updateData.product_commission_rate = null;
-        }
-      } else {
-        updateData.commission_rate = d.commission_rate;
-        updateData.commission_enabled = true;
-        if (splitRatesEqual) {
-          updateData.service_commission_rate = d.commission_rate;
-          updateData.product_commission_rate = d.commission_rate;
-        }
-      }
+      Object.assign(updateData, commissionRatePatch(d.commission_rate, existing));
     }
     if (!forceProceed && d.is_active === false) {
       const conflicts = await findFutureBookingsForStaff(supabase, providerId, id);

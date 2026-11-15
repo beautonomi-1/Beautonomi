@@ -22,9 +22,18 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { chargeAuthorization } from "@/lib/payments/paystack-complete";
 import { convertToSmallestUnit, convertFromSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { getStripeClient } from "@/lib/payments/stripe-server";
+import { stripeOffSessionStillOpen } from "@/lib/payments/charge-stripe-off-session";
 import { upsertOnlinePaymentCheckout } from "@/lib/payments/online-payment-checkouts";
 import { isPaymentMethodExpired } from "@/lib/payments/payment-method-expiry";
 import { recordMembershipPayment } from "@/lib/memberships/membership-payment";
+import {
+  membershipRetryAfterFailedRenewal,
+  renewalPeriodEnd,
+} from "@/lib/memberships/membership-renewal-retry";
+import {
+  resumeUnopenedMembershipRenewal,
+  stampOpenedMembershipOrders,
+} from "@/lib/memberships/resume-unopened-membership-renewal";
 import { applyScheduledMembershipPlanChange } from "@/lib/memberships/apply-scheduled-plan-change";
 import { insertNotification } from "@/lib/notifications/insert-notification";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
@@ -35,18 +44,6 @@ const MEMBERSHIP_MAX_RENEWAL_RETRIES = 3;
 /** Retry delay in days after each failure: +1d, +2d, +3d */
 function retryDelayDays(failureCount: number): number {
   return Math.min(failureCount + 1, 3);
-}
-
-function advanceOneMonth(from: Date): Date {
-  // Clamp to the last day of the target month so month-end anchors don't drift
-  // (Jan 31 + 1 month = Feb 28/29, not Mar 3).
-  const d = new Date(from);
-  const day = d.getDate();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + 1);
-  const lastDayOfTargetMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  d.setDate(Math.min(day, lastDayOfTargetMonth));
-  return d;
 }
 
 function generateRenewalReference(orderId: string): string {
@@ -113,6 +110,53 @@ async function runJob(request: NextRequest) {
       }
     }
 
+    // A term that will not renew (cancelled, card removed, or plan turned off)
+    // stays active until expires_at. Once that date has passed, close it.
+    const { data: endedActiveRows, error: endedActiveErr } = await (supabase.from("user_memberships") as any)
+      .update({
+        status: "expired",
+        auto_renew: false,
+        next_billing_at: null,
+        updated_at: nowIso,
+      })
+      .eq("status", "active")
+      .eq("auto_renew", false)
+      .lt("expires_at", nowIso)
+      .select("id, user_id, provider_id, plan_id");
+
+    if (endedActiveErr) {
+      console.error("[membership-renewals] ended-term expiry error:", endedActiveErr);
+    } else {
+      results.expired += endedActiveRows?.length ?? 0;
+      for (const row of (endedActiveRows ?? []) as any[]) {
+        try {
+          await notifyMembershipExpiredSafe(supabase, row.user_id, row.provider_id, row.plan_id, row.id);
+        } catch (e) {
+          console.error("[membership-renewals] notify ended membership failed:", e);
+        }
+      }
+    }
+
+    const { error: endedPlatformErr } = await (supabase.from("customer_memberships") as any)
+      .update({
+        status: "expired",
+        auto_renew: false,
+        updated_at: nowIso,
+      })
+      .eq("status", "active")
+      .lt("expires_at", nowIso);
+
+    if (endedPlatformErr) {
+      console.error("[membership-renewals] ended platform membership expiry error:", endedPlatformErr);
+    }
+
+    try {
+      await stampOpenedMembershipOrders(supabase, now);
+    } catch (stampErr) {
+      console.error("[membership-renewals] open-month paid stamp failed:", stampErr);
+      results.errors.push("open-month paid stamp failed");
+    }
+
     // ── Step 2: Claim rows due for renewal ───────────────────────────────────
     const { data: dueRows, error: dueErr } = await (supabase.from("user_memberships") as any)
       .select(`
@@ -130,6 +174,7 @@ async function runJob(request: NextRequest) {
         renewal_failure_count,
         past_due_since,
         billing_period,
+        metadata,
         plan:membership_plans!user_memberships_plan_id_fkey(id, name, price_monthly, currency, is_active),
         provider:providers(id, tenant_id)
       `)
@@ -169,6 +214,9 @@ async function runJob(request: NextRequest) {
       const plan = planFresh ?? (Array.isArray(row.plan) ? row.plan[0] : row.plan);
       const provider = Array.isArray(row.provider) ? row.provider[0] : row.provider;
       const tenantId: string | null = provider?.tenant_id ?? null;
+      let pendingRenewalOrderId: string | null = null;
+      let claimedUntil: string | null = null;
+      let chargeStarted = false;
 
       try {
         // Skip if plan has been deactivated or deleted.
@@ -243,19 +291,64 @@ async function runJob(request: NextRequest) {
           .maybeSingle();
         const customerEmail: string | null = (userRow as { email?: string } | null)?.email ?? null;
         if (!customerEmail) {
-          results.skipped_inactive_plan++;
           console.warn("[membership-renewals] no customer email for user:", userId);
+          const retry = membershipRetryAfterFailedRenewal({
+            failureCount: row.renewal_failure_count ?? 0,
+            status: row.status,
+            pastDueSince: row.past_due_since ?? null,
+            now,
+          });
+          const { auto_renew, ...retryFields } = retry;
+          await (supabase.from("user_memberships") as any)
+            .update({
+              ...retryFields,
+              ...(auto_renew === false ? { auto_renew: false } : {}),
+              updated_at: nowIso,
+            })
+            .eq("id", membershipId);
+          results.failed++;
+          await notifyMembershipPaymentFailedSafe(
+            supabase,
+            userId,
+            providerId,
+            planId,
+            plan?.name,
+            membershipId,
+            retry.renewal_failure_count,
+          );
           continue;
         }
 
         const priceMonthly: number = Number(plan.price_monthly ?? 0);
         if (priceMonthly <= 0) {
-          // Free plan — just advance the billing date.
-          const nextBillingAt = advanceOneMonth(new Date(row.next_billing_at ?? now));
-          const newExpiresAt = advanceOneMonth(new Date(row.expires_at ?? now));
+          const periodEnd = renewalPeriodEnd(row.expires_at, now);
           await (supabase.from("user_memberships") as any)
-            .update({ expires_at: newExpiresAt.toISOString(), next_billing_at: nextBillingAt.toISOString(), last_payment_at: nowIso, updated_at: nowIso })
+            .update({
+              expires_at: periodEnd.toISOString(),
+              next_billing_at: periodEnd.toISOString(),
+              last_payment_at: nowIso,
+              updated_at: nowIso,
+            })
             .eq("id", membershipId);
+          results.renewed++;
+          continue;
+        }
+
+        const priorMeta =
+          row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+            ? (row.metadata as Record<string, unknown>)
+            : {};
+        const resumed = await resumeUnopenedMembershipRenewal({
+          supabase,
+          membershipId,
+          userId,
+          providerId,
+          planId,
+          expiresAt: row.expires_at ?? null,
+          metadata: priorMeta,
+          now,
+        });
+        if (resumed === "opened") {
           results.renewed++;
           continue;
         }
@@ -279,27 +372,25 @@ async function runJob(request: NextRequest) {
           results.errors.push(`${membershipId}: failed to create renewal order`);
           continue;
         }
+        pendingRenewalOrderId = renewalOrder.id;
 
         const renewalReference = generateRenewalReference(renewalOrder.id);
         const amountSmallest = convertToSmallestUnit(priceMonthly, plan.currency ?? "ZAR");
+        const periodEnd = renewalPeriodEnd(row.expires_at, now);
 
-        // Claim the row: advance next_billing_at BEFORE charging to prevent double-charge.
-        const nextBillingAt = advanceOneMonth(new Date(row.next_billing_at ?? now));
-        const newExpiresAt = advanceOneMonth(new Date(row.expires_at ?? now));
-
-        // Atomic compare-and-swap on the exact next_billing_at we read: only one
-        // cron invocation can win the claim. Without this guard two overlapping
-        // runs both pass the `next_billing_at <= now` filter, both advance the
-        // date, and both charge the customer's card. If the claim matches no rows
-        // another run already took this cycle — skip to avoid a double charge.
+        // Claim the row before charging so a second run cannot take the same cycle.
         const { data: claimedRenewal } = await (supabase.from("user_memberships") as any)
           .update({
-            next_billing_at: nextBillingAt.toISOString(),
+            next_billing_at: periodEnd.toISOString(),
             updated_at: nowIso,
           })
           .eq("id", membershipId)
           .eq("next_billing_at", row.next_billing_at)
           .select("id");
+
+        if ((claimedRenewal?.length ?? 0) > 0) {
+          claimedUntil = periodEnd.toISOString();
+        }
 
         if ((claimedRenewal?.length ?? 0) === 0) {
           // Roll back the accounting order we optimistically created; another run owns this cycle.
@@ -350,6 +441,7 @@ async function runJob(request: NextRequest) {
                 throw new Error("Stripe payment method is not linked to a customer");
               }
               const currency = (plan.currency ?? "ZAR").toUpperCase();
+              chargeStarted = true;
               const intent = await stripe.paymentIntents.create(
                 {
                   amount: amountSmallest,
@@ -372,13 +464,21 @@ async function runJob(request: NextRequest) {
                 { idempotencyKey: settledReference },
               );
               chargeSucceeded = intent.status === "succeeded";
-              if (!chargeSucceeded) {
+              chargePending = stripeOffSessionStillOpen(intent.status);
+              if (!chargeSucceeded && !chargePending) {
                 console.warn(
                   `[membership-renewals] Stripe PI not succeeded for ${membershipId}: ${intent.status}`,
                 );
               }
             } catch (stripeErr) {
-              console.error(`[membership-renewals] Stripe charge failed for ${membershipId}:`, stripeErr);
+              const openStatus = (stripeErr as { payment_intent?: { status?: string } } | null)
+                ?.payment_intent?.status;
+              const code = (stripeErr as { code?: string } | null)?.code;
+              if (stripeOffSessionStillOpen(openStatus) || code === "authentication_required") {
+                chargePending = true;
+              } else {
+                console.error(`[membership-renewals] Stripe charge failed for ${membershipId}:`, stripeErr);
+              }
             }
           }
         } else if (pmProvider === "flutterwave") {
@@ -386,9 +486,7 @@ async function runJob(request: NextRequest) {
           const token = String(pmRow.provider_payment_method_id ?? "").trim();
           if (!token) {
             results.errors.push(`${membershipId}: missing Flutterwave card token`);
-            continue;
-          }
-          try {
+          } else try {
             const { chargeAndSettleFlutterwaveOffSession } = await import(
               "@/lib/payments/charge-flutterwave-off-session"
             );
@@ -408,6 +506,7 @@ async function runJob(request: NextRequest) {
                 tenant_id: tenantId ?? "",
               },
             });
+            chargeStarted = true;
             const fw = await chargeAndSettleFlutterwaveOffSession(supabase, {
               tenantId,
               token,
@@ -424,6 +523,8 @@ async function runJob(request: NextRequest) {
               },
             });
             chargeSucceeded = fw.ok;
+            chargePending = fw.ok === false && fw.pending === true;
+            if (chargePending) settledReference = renewalReference;
             if (chargeSucceeded) {
               grossAmountSuccess = priceMonthly;
               feeAmountSuccess = 0;
@@ -434,8 +535,7 @@ async function runJob(request: NextRequest) {
         } else {
           if (!authCode || !String(authCode).startsWith("AUTH_")) {
             results.errors.push(`${membershipId}: missing Paystack authorization`);
-            continue;
-          }
+          } else {
 
           // Charge the saved card. A thrown error (network, Paystack 4xx/5xx) is
           // treated as a synchronous failure so the row still enters dunning —
@@ -443,6 +543,7 @@ async function runJob(request: NextRequest) {
           // the membership and the failed order idempotently.
           let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>> | null = null;
           try {
+            chargeStarted = true;
             chargeResult = await chargeAuthorization(
               authCode,
               customerEmail,
@@ -475,6 +576,7 @@ async function runJob(request: NextRequest) {
               chargeResult.data?.currency || plan.currency || "ZAR",
             );
           }
+          }
         }
 
         if (chargePending) {
@@ -489,12 +591,7 @@ async function runJob(request: NextRequest) {
         }
 
         if (chargeSucceeded) {
-          // ── Synchronous success ──────────────────────────────────────────
-          await (supabase.from("membership_orders") as any)
-            .update({ status: "paid", paystack_reference: settledReference, updated_at: nowIso })
-            .eq("id", renewalOrder.id);
-
-          await recordMembershipPayment({
+          const membershipPayment = await recordMembershipPayment({
             supabase,
             reference: settledReference,
             orderId: renewalOrder.id,
@@ -507,21 +604,47 @@ async function runJob(request: NextRequest) {
             tenantIdHint: tenantId,
             paymentProvider,
           });
+          if (!membershipPayment.recorded && !membershipPayment.alreadyRecorded) {
+            throw new Error("membership payment was not recorded");
+          }
 
-          await (supabase.from("user_memberships") as any)
+          const { error: orderPaidError } = await (supabase.from("membership_orders") as any)
+            .update({ status: "paid", paystack_reference: settledReference, updated_at: nowIso })
+            .eq("id", renewalOrder.id);
+          if (orderPaidError) {
+            console.error(
+              `[membership-renewals] paid stamp failed for ${renewalOrder.id}:`,
+              orderPaidError,
+            );
+          }
+
+          const { error: termError } = await (supabase.from("user_memberships") as any)
             .update({
               status: "active",
-              expires_at: newExpiresAt.toISOString(),
+              expires_at: periodEnd.toISOString(),
+              next_billing_at: periodEnd.toISOString(),
               last_payment_at: nowIso,
               renewal_failure_count: 0,
               past_due_since: null,
+              metadata: {
+                ...priorMeta,
+                source: "auto_renewal",
+                membership_order_id: renewalOrder.id,
+              },
               updated_at: nowIso,
             })
             .eq("id", membershipId);
+          if (termError) {
+            await (supabase.from("user_memberships") as any)
+              .update({ next_billing_at: row.next_billing_at, updated_at: nowIso })
+              .eq("id", membershipId)
+              .eq("next_billing_at", periodEnd.toISOString());
+            throw termError;
+          }
 
           results.renewed++;
 
-          await notifyMembershipRenewedSafe(supabase, userId, providerId, planId, plan?.name, nextBillingAt, membershipId);
+          await notifyMembershipRenewedSafe(supabase, userId, providerId, planId, plan?.name, periodEnd, membershipId);
         } else {
           // ── Synchronous failure ──────────────────────────────────────────
           // Webhook will retry idempotently; we only transition state here.
@@ -570,6 +693,21 @@ async function runJob(request: NextRequest) {
           await notifyMembershipPaymentFailedSafe(supabase, userId, providerId, planId, plan?.name, membershipId, newFailureCount);
         }
       } catch (rowErr) {
+        if (claimedUntil && !chargeStarted) {
+          try {
+            await (supabase.from("user_memberships") as any)
+              .update({ next_billing_at: row.next_billing_at, updated_at: nowIso })
+              .eq("id", membershipId)
+              .eq("next_billing_at", claimedUntil);
+            if (pendingRenewalOrderId) {
+              await (supabase.from("membership_orders") as any)
+                .update({ status: "failed", updated_at: nowIso })
+                .eq("id", pendingRenewalOrderId);
+            }
+          } catch (rollbackErr) {
+            console.error(`[membership-renewals] claim rollback failed for ${membershipId}:`, rollbackErr);
+          }
+        }
         const msg = rowErr instanceof Error ? rowErr.message : String(rowErr);
         results.errors.push(`${membershipId}: ${msg}`);
         console.error(`[membership-renewals] error processing ${membershipId}:`, rowErr);

@@ -177,7 +177,7 @@ export async function PATCH(
 
       if (body.entity_type === "product_order") {
         const { data: order } = await (supabase.from("product_orders") as any)
-          .select("id, provider_id")
+          .select("id, provider_id, payment_status, payment_reference")
           .eq("id", body.entity_id)
           .eq("provider_id", payment.provider_id)
           .maybeSingle();
@@ -197,11 +197,17 @@ export async function PATCH(
           return errorResponse(due.message, "PAYMENT_LOOKUP_FAILED", 500);
         }
         if (allocationAmount > due.due + 0.02) {
-          return errorResponse(
-            "Allocation amount is more than this order still owes.",
-            "AMOUNT_MISMATCH",
-            400,
-          );
+          const samePaidCharge =
+            String((order as { payment_status?: string }).payment_status ?? "").toLowerCase() === "paid" &&
+            String((order as { payment_reference?: string }).payment_reference ?? "").trim() ===
+              String(payment.paystack_reference ?? "").trim();
+          if (!samePaidCharge) {
+            return errorResponse(
+              "Allocation amount is more than this order still owes.",
+              "AMOUNT_MISMATCH",
+              400,
+            );
+          }
         }
 
         const payRecord = await recordProductOrderPayment({
@@ -235,31 +241,45 @@ export async function PATCH(
           const { fulfillWalkInProductOrderDelivery } = await import(
             "@/lib/provider-sales/fulfill-walk-in-product-order-delivery"
           );
-          await fulfillWalkInProductOrderDelivery({
+          const delivery = await fulfillWalkInProductOrderDelivery({
             supabase: supabase as any,
             providerId: payment.provider_id,
             orderId: body.entity_id,
           });
+          if (delivery.ok === false) {
+            return errorResponse(
+              delivery.reason === "payment_not_settled"
+                ? "The sale is not paid, so the products were not taken."
+                : delivery.reason,
+              "STOCK_ERROR",
+              409,
+            );
+          }
         }
       }
 
       if (body.entity_type === "sale") {
         const { data: sale } = await supabase
           .from("sales")
-          .select("id, provider_id, payment_status, notes")
+          .select("id, provider_id, payment_status, payment_provider, payment_provider_id, notes")
           .eq("id", body.entity_id)
           .eq("provider_id", payment.provider_id)
           .maybeSingle();
         if (!sale) {
           return errorResponse("Sale target not found for this provider.", "TARGET_NOT_FOUND", 404);
         }
+        const sameCompletedCharge =
+          String((sale as { payment_status?: string }).payment_status ?? "").toLowerCase() === "completed" &&
+          String((sale as { payment_provider?: string }).payment_provider ?? "") === "paystack_virtual_terminal" &&
+          String((sale as { payment_provider_id?: string }).payment_provider_id ?? "").trim() ===
+            String(payment.paystack_reference ?? "").trim();
         if (!isBookingCollectionSale((sale as { notes?: string | null }).notes)) {
           const saleDue = await saleCardAmountStillDueForSale(
             getSupabaseAdmin(),
             payment.provider_id,
             body.entity_id,
           );
-          if (!saleChargeMatchesDue(allocationAmount, saleDue)) {
+          if (!sameCompletedCharge && !saleChargeMatchesDue(allocationAmount, saleDue)) {
             return errorResponse(
               "Amount does not match what this sale still owes.",
               "AMOUNT_MISMATCH",
@@ -300,7 +320,11 @@ export async function PATCH(
           if (gift.ok === false) return errorResponse(gift.message, "GIFT_CARD_ERROR", 400);
         }
 
-        const { error: saleUpdateError } = await supabase
+        const previousStatus = String((sale as { payment_status?: string }).payment_status ?? "");
+        if (previousStatus === "refunded") {
+          return errorResponse("This sale has been refunded.", "SALE_REFUNDED", 400);
+        }
+        const { data: claimedSale, error: saleUpdateError } = await supabase
           .from("sales")
           .update({
             payment_status: "completed",
@@ -308,9 +332,28 @@ export async function PATCH(
             payment_provider_id: payment.paystack_reference,
           })
           .eq("id", body.entity_id)
-          .eq("provider_id", payment.provider_id);
+          .eq("provider_id", payment.provider_id)
+          .eq("payment_status", previousStatus)
+          .select("id")
+          .maybeSingle();
         if (saleUpdateError) throw saleUpdateError;
-        if (becomingCompleted) await applyPosProductStockDecrements(supabase as any, itemsForStock);
+        if (claimedSale && becomingCompleted) {
+          try {
+            await applyPosProductStockDecrements(supabase as any, itemsForStock);
+          } catch (stockErr) {
+            await supabase
+              .from("sales")
+              .update({ payment_status: previousStatus })
+              .eq("id", body.entity_id)
+              .eq("provider_id", payment.provider_id)
+              .eq("payment_status", "completed");
+            return errorResponse(
+              stockErr instanceof Error ? stockErr.message : "Stock could not be updated.",
+              "STOCK_ERROR",
+              400,
+            );
+          }
+        }
       }
 
       if (body.entity_type === "group_booking") {
@@ -451,21 +494,33 @@ export async function PATCH(
       }
 
       const now = new Date().toISOString();
-      const { error: allocationError } = await (supabase
+      const { data: existingAdminAllocations } = await (supabase
         .from("provider_terminal_payment_allocations") as any)
-        .insert({
-        terminal_payment_id: id,
-        provider_id: payment.provider_id,
-        entity_type: body.entity_type,
-        entity_id: body.entity_id,
-        amount: allocationAmount,
-        currency: payment.currency ?? "ZAR",
-        status: "admin_resolved",
-        reason: body.reason ?? "Resolved by Superadmin",
-        allocated_by: user.id,
-        allocated_at: now,
-      });
-      if (allocationError) throw allocationError;
+        .select("id")
+        .eq("terminal_payment_id", id)
+        .eq("provider_id", payment.provider_id)
+        .eq("entity_type", body.entity_type)
+        .eq("entity_id", body.entity_id)
+        .eq("amount", allocationAmount)
+        .eq("status", "admin_resolved")
+        .limit(1);
+      if (!existingAdminAllocations?.length) {
+        const { error: allocationError } = await (supabase
+          .from("provider_terminal_payment_allocations") as any)
+          .insert({
+            terminal_payment_id: id,
+            provider_id: payment.provider_id,
+            entity_type: body.entity_type,
+            entity_id: body.entity_id,
+            amount: allocationAmount,
+            currency: payment.currency ?? "ZAR",
+            status: "admin_resolved",
+            reason: body.reason ?? "Resolved by Superadmin",
+            allocated_by: user.id,
+            allocated_at: now,
+          });
+        if (allocationError) throw allocationError;
+      }
 
       patch.allocation_status = "admin_resolved";
       patch.status = "allocated";

@@ -94,7 +94,9 @@ async function voidProductOrderGiftCardOnce(
       console.error("[product-order-gift-card] void failed:", error.message, { productOrderId });
       return "failed";
     }
-    return data === true ? "restored" : "missing";
+    if (data === true) return "restored";
+    if (data === false) return "missing";
+    return "failed";
   } catch (e) {
     console.error("[product-order-gift-card] void threw:", e, { productOrderId });
     return "failed";

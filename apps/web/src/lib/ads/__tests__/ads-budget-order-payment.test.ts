@@ -25,7 +25,7 @@ function matchContains(rowVal: unknown, obj: Row): boolean {
  * payment helper makes: select/eq/contains/single/maybeSingle, update().eq()…,
  * and insert (which appends so idempotency re-reads see the new state).
  */
-function makeDb(initial: Record<string, Row[]>) {
+function makeDb(initial: Record<string, Row[]>, options?: { failInsert?: string }) {
   const tables: Record<string, Row[]> = {};
   for (const k of Object.keys(initial)) tables[k] = initial[k].map((r) => ({ ...r }));
   const inserts: Record<string, Row[]> = {};
@@ -68,6 +68,9 @@ function makeDb(initial: Record<string, Row[]>) {
         return upd;
       },
       insert: (payload: Row | Row[]) => {
+        if (options?.failInsert === table) {
+          return Promise.resolve({ data: null, error: { code: "XX000", message: "db down" } });
+        }
         const arr = Array.isArray(payload) ? payload : [payload];
         inserts[table] = [...(inserts[table] ?? []), ...arr];
         tables[table] = [...(tables[table] ?? []), ...arr.map((r) => ({ ...r }))];
@@ -186,6 +189,55 @@ describe("recordAdsBudgetOrderPayment", () => {
     expect(second.alreadyPaid).toBe(true);
     expect(db.inserts.payment_transactions).toHaveLength(1);
     expect(db.inserts.finance_transactions).toHaveLength(1);
+  });
+
+  it("leaves the campaign unfunded when the payment is not saved", async () => {
+    const db = makeDb(
+      {
+        ads_budget_orders: [{ ...baseOrder }],
+        ads_campaigns: [{ ...baseCampaign }],
+        payment_transactions: [],
+        finance_transactions: [],
+      },
+      { failInsert: "payment_transactions" },
+    );
+
+    await expect(
+      recordAdsBudgetOrderPayment({
+        supabase: db.supabase,
+        orderId: "order-1",
+        reference: "ref-1",
+        amountMajor: 500,
+        feesMajor: 10,
+      }),
+    ).rejects.toThrow("ads payment was not recorded");
+
+    expect(db.tables.ads_budget_orders[0].status).toBe("pending");
+    expect(db.tables.ads_campaigns[0].status).toBe("draft");
+    expect(db.tables.ads_campaigns[0].funded_at).toBeNull();
+  });
+
+  it("funds the campaign when the payment was already saved and the order is still open", async () => {
+    const db = makeDb({
+      ads_budget_orders: [{ ...baseOrder }],
+      ads_campaigns: [{ ...baseCampaign }],
+      payment_transactions: [{ id: "pay-1", reference: "ref-1", provider: "paystack" }],
+      finance_transactions: [],
+    });
+
+    const result = await recordAdsBudgetOrderPayment({
+      supabase: db.supabase,
+      orderId: "order-1",
+      reference: "ref-1",
+      amountMajor: 500,
+      feesMajor: 10,
+    });
+
+    expect(result.finalized).toBe(true);
+    expect(db.inserts.payment_transactions).toBeUndefined();
+    expect(db.inserts.finance_transactions).toHaveLength(1);
+    expect(db.tables.ads_budget_orders[0].status).toBe("paid");
+    expect(db.tables.ads_campaigns[0].funded_at).toBeTruthy();
   });
 
   it("refuses to fund when the charged amount does not match the order", async () => {

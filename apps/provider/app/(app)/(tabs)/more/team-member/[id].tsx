@@ -38,6 +38,9 @@ interface StaffMember {
   avatar_url?: string | null;
   role: string;
   commission_rate?: number | null;
+  commission_percentage?: number | null;
+  service_commission_rate?: number | null;
+  product_commission_rate?: number | null;
   public_title?: string | null;
   bookable_from?: string | null;
   is_service_provider?: boolean;
@@ -184,6 +187,28 @@ const LINK_ITEMS: {
   },
 ];
 
+function profileCommission(
+  member: StaffMember,
+  label: (key: string, opts?: Record<string, unknown>) => string,
+): string | null {
+  const hasRate =
+    member.service_commission_rate != null ||
+    member.product_commission_rate != null ||
+    member.commission_rate != null ||
+    member.commission_percentage != null;
+  if (!hasRate) return null;
+  const legacy = member.commission_rate ?? member.commission_percentage ?? 0;
+  const clamp = (value: number) => Math.max(0, Math.min(100, value));
+  const service = clamp(
+    member.service_commission_rate != null ? Number(member.service_commission_rate) : Number(legacy),
+  );
+  const product = clamp(
+    member.product_commission_rate != null ? Number(member.product_commission_rate) : Number(legacy),
+  );
+  if (service === product) return label("commissionValue", { rate: service });
+  return label("splitRates", { service, product });
+}
+
 export default function TeamMemberDetailScreen() {
   const { t } = useTranslation();
   const tm = useCallback(
@@ -247,9 +272,17 @@ export default function TeamMemberDetailScreen() {
     id ? `/api/provider/staff/${id}/stats/weekly` : "",
     { enabled: !!id }
   );
-  const { data: payPlanRows } = useApi<{ data?: { pay_model?: string; statutory_mode?: string }[] }>(
-    id && canManageTeam ? `/api/provider/staff/${id}/pay-plans` : "",
-    { enabled: Boolean(id && canManageTeam) },
+  const { data: payPlanRows } = useApi<{
+    data?: {
+      pay_model?: string;
+      employment_type?: string;
+      statutory_mode?: string;
+      employment_start_date?: string | null;
+      employment_end_date?: string | null;
+    }[];
+  }>(
+    id && (canManagePayroll || isSelf) ? `/api/provider/staff/${id}/pay-plans` : "",
+    { enabled: Boolean(id && (canManagePayroll || isSelf)) },
   );
   const latestPayPlan = payPlanRows?.data?.[0];
   const { execute: updateStaff, loading: saving } = useApiMutation("patch");
@@ -619,6 +652,7 @@ export default function TeamMemberDetailScreen() {
   const takesAppointments =
     member.is_service_provider !== false && member.enable_in_online_booking !== false;
   const editMode = isSelf ? "self" : "manager";
+  const commissionLabel = profileCommission(member, tm);
 
   return (
     <ScreenContainer scrollable={false}>
@@ -674,8 +708,8 @@ export default function TeamMemberDetailScreen() {
         <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
 <Row label={tm("email")} value={member.email} />
           {member.phone ? <Row label={tm("phone")} value={member.phone} /> : null}
-          {member.commission_rate != null ? (
-            <Row label={tm("commission")} value={tm("commissionValue", { rate: member.commission_rate })} />
+          {commissionLabel ? (
+            <Row label={tm("commission")} value={commissionLabel} />
           ) : null}
           <Row
             label={tm("takesAppointmentsLabel")}
@@ -758,12 +792,28 @@ export default function TeamMemberDetailScreen() {
           )}
         </TouchableOpacity>
 
-        {canManageTeam && latestPayPlan ? (
+        {(canManagePayroll || isSelf) && latestPayPlan ? (
           <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
             <Text style={twStyle("text-sm font-semibold text-gray-900")}>{tm("payPlanSummary")}</Text>
             <Text style={twStyle("mt-1 text-sm text-gray-600 capitalize")}>
               {(latestPayPlan.pay_model ?? "commission_only").replace(/_/g, " ")}
-              {latestPayPlan.statutory_mode ? ` · ${latestPayPlan.statutory_mode} statutory` : ""}
+              {latestPayPlan.employment_type ? ` · ${latestPayPlan.employment_type.replace(/_/g, " ")}` : ""}
+            </Text>
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+              {latestPayPlan.employment_type === "contractor"
+                ? "PAYE and UIF are not calculated. A payslip is created after the pay run is approved."
+                : latestPayPlan.statutory_mode === "none"
+                  ? "PAYE and UIF are not calculated for this pay plan."
+                  : latestPayPlan.statutory_mode === "manual"
+                    ? "PAYE and UIF are entered on the pay-run draft."
+                    : latestPayPlan.employment_type === "apprentice"
+                      ? "PAYE and UIF use the same calculation as an employee. No learnership allowance is applied."
+                      : "PAYE is an estimate and UIF is the employee contribution."}
+              {latestPayPlan.employment_end_date
+                ? latestPayPlan.employment_type === "contractor"
+                  ? ` Contract ends ${String(latestPayPlan.employment_end_date).slice(0, 10)}. Pay in that period is limited to those dates.`
+                  : ` Employment ends ${String(latestPayPlan.employment_end_date).slice(0, 10)}. Salary in that period is limited to the employment dates.`
+                : ""}
             </Text>
             <Text style={twStyle("mt-2 text-xs text-gray-500")}>{tm("payPlanEditHint")}</Text>
           </View>
@@ -1078,6 +1128,7 @@ export default function TeamMemberDetailScreen() {
           avatar_url: member.avatar_url,
           role: member.role,
           commission_rate: member.commission_rate,
+          commission_percentage: member.commission_percentage,
         }}
         mode={editMode}
         isBusinessOwnerRow={member.role === "provider_owner"}

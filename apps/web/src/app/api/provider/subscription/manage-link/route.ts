@@ -12,6 +12,7 @@ import { getSubscriptionManageLink } from "@/lib/payments/paystack-complete";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { createProviderStripeBillingPortalUrl } from "@/lib/payments/stripe-billing-portal";
+import { pendingSavedCardChargeRefusal } from "@/lib/iap/apple/billing-active";
 
 /**
  * GET /api/provider/subscription/manage-link
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
     const { data: subscription } = await supabase
       .from("provider_subscriptions")
       .select(
-        "id, status, billing_provider, paystack_subscription_code, stripe_customer_id",
+        "id, status, billing_provider, paystack_subscription_code, stripe_customer_id, last_dunning_retry_at, dunning_retry_count, trial_ends_at, past_due_since, updated_at, apple_grace_period_expires_at",
       )
       .eq("provider_id", providerId)
       .maybeSingle();
@@ -52,7 +53,20 @@ export async function GET(request: NextRequest) {
       stripe_customer_id?: string | null;
     };
 
+    const pendingCharge = pendingSavedCardChargeRefusal(row);
+    if (pendingCharge) {
+      return errorResponse(pendingCharge, "SUBSCRIPTION_CHARGE_PENDING", 409);
+    }
+
     const billingProvider = String(row.billing_provider ?? "").toLowerCase();
+
+    if (billingProvider === "flutterwave") {
+      return errorResponse(
+        "This subscription is billed with Flutterwave. Use checkout to pay or update the card.",
+        "FLUTTERWAVE_MANAGE_UNSUPPORTED",
+        400,
+      );
+    }
 
     if (billingProvider === "stripe") {
       const stripeCustomerId = row.stripe_customer_id?.trim();

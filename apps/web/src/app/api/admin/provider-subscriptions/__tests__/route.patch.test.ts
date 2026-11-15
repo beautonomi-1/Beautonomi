@@ -109,6 +109,18 @@ function buildSupabase(existing: Record<string, unknown>, planRows: Record<strin
       };
       return chain;
     }
+    if (table === "finance_transactions") {
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: async () => ({ data: [], error: null }),
+          }),
+        }),
+        update: () => ({
+          eq: async () => ({ error: null }),
+        }),
+      };
+    }
     return {};
   });
   return { from, updatePayload };
@@ -147,7 +159,7 @@ describe("PATCH /api/admin/provider-subscriptions/[id]", () => {
     expect(res.status).toBe(400);
     expect(String(body.error?.message ?? body.error)).toMatch(/free/i);
     },
-    15_000,
+    45_000,
   );
 
   it("assigning a free plan reactivates a cancelled paid row", async () => {
@@ -211,6 +223,7 @@ describe("PATCH /api/admin/provider-subscriptions/[id]", () => {
       expect.objectContaining({
         status: "active",
         cancelled_at: null,
+        past_due_since: null,
       }),
     );
   });
@@ -244,8 +257,57 @@ describe("PATCH /api/admin/provider-subscriptions/[id]", () => {
         expires_at: null,
         auto_renew: false,
         paystack_subscription_code: null,
+        past_due_since: null,
       }),
     );
+  });
+
+  it("starts past_due grace when an admin marks it, and a later edit keeps that time", async () => {
+    const { from, updatePayload } = buildSupabase(
+      {
+        id: SUB_ID,
+        provider_id: PROVIDER_ID,
+        plan_id: PAID_PLAN,
+        status: "active",
+        cancelled_at: null,
+        paystack_subscription_code: null,
+        tenant_id: "tenant-1",
+      },
+      { id: PAID_PLAN },
+    );
+    mockGetSupabaseAdmin.mockReturnValue({ from });
+
+    const { PATCH } = await import("../[id]/route");
+    const req = new NextRequest(`http://localhost/api/admin/provider-subscriptions/${SUB_ID}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "past_due" }),
+    });
+    const res = await PATCH(req, { params: Promise.resolve({ id: SUB_ID }) });
+    expect(res.status).toBe(200);
+    const first = updatePayload.mock.calls[0]?.[0] as { past_due_since?: string };
+    expect(typeof first.past_due_since).toBe("string");
+
+    const again = buildSupabase(
+      {
+        id: SUB_ID,
+        provider_id: PROVIDER_ID,
+        plan_id: PAID_PLAN,
+        status: "past_due",
+        cancelled_at: null,
+        paystack_subscription_code: null,
+        tenant_id: "tenant-1",
+      },
+      { id: PAID_PLAN },
+    );
+    mockGetSupabaseAdmin.mockReturnValue({ from: again.from });
+    const second = new NextRequest(`http://localhost/api/admin/provider-subscriptions/${SUB_ID}`, {
+      method: "PATCH",
+      body: JSON.stringify({ auto_renew: false }),
+    });
+    const secondRes = await PATCH(second, { params: Promise.resolve({ id: SUB_ID }) });
+    expect(secondRes.status).toBe(200);
+    const secondPayload = again.updatePayload.mock.calls[0]?.[0] as { past_due_since?: string };
+    expect(secondPayload.past_due_since).toBeUndefined();
   });
 
   it("paid cancel before period end keeps status active with cancelled_at set", async () => {

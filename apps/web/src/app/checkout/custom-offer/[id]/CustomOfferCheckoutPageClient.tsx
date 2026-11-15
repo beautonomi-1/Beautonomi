@@ -33,6 +33,8 @@ export default function CustomOfferCheckoutPageClient({ offerId }: { offerId: st
   const [paying, setPaying] = useState(false);
   const [quote, setQuote] = useState<QuoteData | null>(null);
   const [offerStatus, setOfferStatus] = useState<string>("pending");
+  const [bookingId, setBookingId] = useState<string | null>(null);
+  const [offerExpiresAt, setOfferExpiresAt] = useState<string | null>(null);
   const [offerCurrency, setOfferCurrency] = useState<string | undefined>(undefined);
 
   const money = useCallback(
@@ -57,11 +59,17 @@ export default function CustomOfferCheckoutPageClient({ offerId }: { offerId: st
       try {
         setLoading(true);
         const [offerRes, quoteRes] = await Promise.all([
-          fetcher.get<{ data: { status?: string; currency?: string | null } }>(`/api/me/custom-offers/${offerId}`),
+          fetcher.get<{
+            data: { status?: string; currency?: string | null; booking_id?: string | null; expiration_at?: string | null };
+          }>(
+            `/api/me/custom-offers/${offerId}`,
+          ),
           fetcher.get<{ data: QuoteData }>(`/api/me/custom-offers/${offerId}/quote`),
         ]);
         if (cancelled) return;
         setOfferStatus(String(offerRes.data?.status ?? "pending").toLowerCase());
+        setBookingId(offerRes.data?.booking_id ?? null);
+        setOfferExpiresAt(offerRes.data?.expiration_at ?? null);
         setOfferCurrency(offerRes.data?.currency ?? undefined);
         setQuote(quoteRes.data ?? null);
       } catch (e) {
@@ -122,12 +130,69 @@ export default function CustomOfferCheckoutPageClient({ offerId }: { offerId: st
     );
   }
 
+  if ((offerStatus === "paid" || offerStatus === "accepted") && bookingId) {
+    return (
+      <div className="max-w-lg mx-auto py-16 px-4 text-center space-y-4">
+        <h1 className="text-xl font-semibold">{t("web.checkout.customOffer.paymentSuccessful")}</h1>
+        <Button asChild>
+          <Link href={`/account-settings/bookings/${bookingId}`}>{t("web.checkout.customOffer.viewBooking", { defaultValue: "View booking" })}</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (offerStatus === "paid") {
+    return (
+      <div className="max-w-lg mx-auto py-16 px-4 text-center space-y-4">
+        <h1 className="text-xl font-semibold">{t("web.checkout.customOffer.paymentSuccessful")}</h1>
+        <p className="text-gray-600 text-sm">
+          {t("web.checkout.customOffer.needsSupportBody", { defaultValue: "We received the payment but could not create the booking. Contact support with your payment reference." })}
+        </p>
+        <Button variant="outline" asChild>
+          <Link href="/account-settings/custom-requests">{t("web.checkout.customOffer.backToRequests")}</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const pastExpiration = !!offerExpiresAt && new Date(offerExpiresAt).getTime() <= Date.now();
+  if (
+    offerStatus === "finalize_failed" ||
+    offerStatus === "accepted" ||
+    offerStatus === "expired" ||
+    offerStatus === "declined" ||
+    offerStatus === "withdrawn" ||
+    (pastExpiration && offerStatus !== "finalize_failed")
+  ) {
+    return (
+      <div className="max-w-lg mx-auto py-16 px-4 text-center space-y-4">
+        <h1 className="text-xl font-semibold">
+          {offerStatus === "finalize_failed" || offerStatus === "accepted"
+            ? t("web.checkout.customOffer.needsSupportTitle", { defaultValue: "Payment needs support" })
+            : t("web.checkout.customOffer.unavailableTitle", { defaultValue: "This offer is no longer payable" })}
+        </h1>
+        <p className="text-gray-600 text-sm">
+          {offerStatus === "finalize_failed" || offerStatus === "accepted"
+            ? t("web.checkout.customOffer.needsSupportBody", { defaultValue: "We received the payment but could not create the booking. Contact support with your payment reference." })
+            : t("web.checkout.customOffer.unavailableBody", { defaultValue: "Ask the provider for a new quote if you still want this service." })}
+        </p>
+        <Button variant="outline" asChild>
+          <Link href="/account-settings/custom-requests">{t("web.checkout.customOffer.backToRequests")}</Link>
+        </Button>
+      </div>
+    );
+  }
+
   if (offerStatus === "payment_pending") {
     return (
       <div className="max-w-lg mx-auto py-16 px-4 text-center space-y-4">
         <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
         <h1 className="text-xl font-semibold">{t("web.checkout.customOffer.waitingTitle")}</h1>
         <p className="text-gray-600 text-sm">{t("web.checkout.customOffer.waitingBody")}</p>
+        <Button disabled={paying} onClick={() => void pay("full")}>
+          {paying ? <Loader2 className="w-4 h-4 animate-spin mr-2 inline" /> : null}
+          {t("web.checkout.customOffer.resumePayment", { defaultValue: "Resume payment" })}
+        </Button>
         <Button variant="outline" asChild>
           <Link href="/account-settings/custom-requests">{t("web.checkout.customOffer.backToRequests")}</Link>
         </Button>

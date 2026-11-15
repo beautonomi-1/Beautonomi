@@ -33,6 +33,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useProviderBookingMobileShell } from "@/components/provider/booking/hooks/useProviderBookingMobileShell";
 import { openProductOrderView } from "@/stores/appointment-sidebar-store";
 import {
+  filterProductOrderStatusActions,
   isValidLineTransition,
   LINE_FULFILMENT_STATUSES,
   normalizeLineStatus,
@@ -69,6 +70,7 @@ interface ProductOrder {
   promotion_code?: string | null;
   platform_fee?: number;
   total_amount: number;
+  refunded_amount?: number | null;
   payment_status: string;
   fulfillment_type: string;
   order_source?: string | null;
@@ -586,17 +588,17 @@ export default function ProviderProductOrdersPage() {
         ) : (
           <div className="divide-y">
             {displayOrders.map((o) => {
-              const actions = (statusActions(t)[o.status] ?? []).filter(
-                (a) => !(a.next === "cancelled" && o.payment_status === "partially_refunded"),
-              );
+              const actions = filterProductOrderStatusActions(
+                statusActions(t)[o.status] ?? [],
+                o.fulfillment_type,
+              ).filter((a) => !(a.next === "cancelled" && o.payment_status === "partially_refunded"));
               const isFocus = Boolean(focusOrderId && o.id === focusOrderId);
               const subtotal = Number(o.subtotal ?? 0);
               const taxAmount = Number(o.tax_amount ?? 0);
               const deliveryFee = Number(o.delivery_fee ?? 0);
               const discountAmount = Number(o.discount_amount ?? 0);
               const platformFee = Number(o.platform_fee ?? 0);
-              const totalAmount = Number(o.total_amount ?? 0);
-              const providerEarnings = Math.max(0, subtractMoney(totalAmount, platformFee));
+              const providerEarnings = Math.max(0, subtractMoney(remainingRefundableAmount(o), platformFee));
               const isAppointmentOrder = o.order_source === "appointment";
               const isHold = isUnpaidOnlinePaystackHold(o);
               const canCollectPayment =
@@ -704,7 +706,8 @@ export default function ProviderProductOrdersPage() {
                               className="ms-auto rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-700 disabled:opacity-50"
                             >
                               {LINE_FULFILMENT_STATUSES.filter(
-                                (status) => status === from || isValidLineTransition(from, status),
+                                (status) =>
+                                  status === from || isValidLineTransition(from, status, o.fulfillment_type),
                               ).map((status) => (
                                 <option key={status} value={status}>
                                   {ecommerceStatusLabel(t, status)}
@@ -715,12 +718,15 @@ export default function ProviderProductOrdersPage() {
                           );
                         })}
                       </div>
-                      {o.tracking_number && (
+                      {o.fulfillment_type === "delivery" && o.tracking_number && (
                         <p className="text-xs text-blue-600 mt-2">{t("web.provider.pages.ecommerce/orders.tracking", { number: o.tracking_number })}</p>
                       )}
                     </div>
                     <div className="text-start sm:text-end shrink-0 w-full sm:w-auto border-t sm:border-t-0 border-gray-100 pt-3 sm:pt-0">
-                      <p className="text-xl font-bold text-gray-900">{formatMoney(totalAmount)}</p>
+                      <p className="text-xl font-bold text-gray-900">{formatMoney(remainingRefundableAmount(o))}</p>
+                      {Number(o.refunded_amount ?? 0) > 0 ? (
+                        <p className="text-xs text-gray-500">{t("web.provider.pages.ecommerce/orders.refundedKept", { amount: formatMoney(Number(o.refunded_amount)) })}</p>
+                      ) : null}
                       <div className="mt-2 space-y-0.5 text-xs text-gray-500">
                         {subtotal > 0 && <p>{t("web.provider.pages.ecommerce/orders.items", { amount: formatMoney(subtotal) })}</p>}
                         {taxAmount > 0 && <p>{t("web.provider.pages.ecommerce/orders.taxVat", { amount: formatMoney(taxAmount) })}</p>}

@@ -148,7 +148,8 @@ export async function settleFlutterwaveChargeWebhookData(
         ? meta.tenantId
         : null;
 
-  if (status !== "successful") {
+  const failed = status === "failed" || status === "failure" || status === "cancelled" || status === "canceled";
+  if (failed) {
     await processFailedPayment(
       {
         reference: txRef || transactionId,
@@ -159,6 +160,10 @@ export async function settleFlutterwaveChargeWebhookData(
       supabase,
     );
     if (txRef) await markOnlinePaymentCheckoutStatus(txRef, "failed");
+    return;
+  }
+
+  if (status !== "successful" && status !== "success") {
     return;
   }
 

@@ -19,6 +19,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         id,
         status,
         booking_id,
+        payment_reference,
         paid_at,
         request_id,
         price,

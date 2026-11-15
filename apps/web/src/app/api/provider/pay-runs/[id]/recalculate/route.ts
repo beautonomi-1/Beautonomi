@@ -29,7 +29,7 @@ export async function POST(
     const { user } = payrollCheck;
     const { id } = await params;
     const supabaseAdmin = getSupabaseAdmin();
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
     const payrollBlocked = await payrollDisabledMessage(supabaseAdmin, providerId);
     if (payrollBlocked) {

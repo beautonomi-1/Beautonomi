@@ -1814,6 +1814,12 @@ export default function PartnerProfileScreen() {
                 }
                 if (pr.outcome === "cancel") {
                   haptic.error();
+                  if (paystackRef) {
+                    void verifyPaystackWithRetry(paystackRef, {
+                      redirectStatus: "cancelled",
+                      maxAttempts: 1,
+                    });
+                  }
                   Alert.alert(pp("paymentCancelledTitle"), pp("paymentCancelledBody"));
                   return;
                 }
@@ -1822,6 +1828,15 @@ export default function PartnerProfileScreen() {
                   const parsed = parseOnlineCheckoutReturnUrl(pr.url);
                   if (parsed.status === "failed" || parsed.status === "cancelled") {
                     haptic.error();
+                    const failRef = parsed.reference || paystackRef;
+                    if (failRef) {
+                      void verifyPaystackWithRetry(failRef, {
+                        redirectStatus: parsed.status,
+                        sessionId: parsed.sessionId,
+                        transactionId: parsed.transactionId,
+                        maxAttempts: 1,
+                      });
+                    }
                     Alert.alert(pp("paymentCancelledTitle"), pp("paymentCancelledBody"));
                     return;
                   }

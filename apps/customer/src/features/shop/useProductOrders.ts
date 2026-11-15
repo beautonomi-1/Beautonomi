@@ -23,6 +23,7 @@ export interface ProductOrder {
   amount_still_due?: number | null;
   promotion_code?: string | null;
   total_amount: number;
+  refunded_amount?: number | null;
   currency: string;
   payment_status: string;
   payment_method?: string | null;

@@ -27,6 +27,11 @@ import {
 import { requireManualCardEnabledForProvider } from "@/lib/payments/require-manual-card-enabled";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
 import {
+  deductBookingRetailStock,
+  lineUpBookingStockWithSavedStatus,
+  type BookingRetailStockLine,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import {
   sumPendingWalletGiftBookingPayments,
   sumPendingWalletGiftByBookingIds,
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
@@ -948,7 +953,44 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .filter((row) => childBookingEligibleForCompletionComplete(row as never))
         .map((row) => row.id);
 
-      const { error: bookingsError } =
+      const stockTaken = new Map<string, BookingRetailStockLine[]>();
+      const putTakenStockBack = async (bookingIds: string[]) => {
+        for (const bookingId of bookingIds) {
+          try {
+            await lineUpBookingStockWithSavedStatus(
+              admin,
+              bookingId,
+              stockTaken.get(bookingId) ?? [],
+              [],
+            );
+          } catch (undoErr) {
+            console.error("[group complete] stock could not be lined up:", undoErr);
+            return false;
+          }
+        }
+        return true;
+      };
+      for (const bookingId of eligibleIds) {
+        try {
+          stockTaken.set(bookingId, await deductBookingRetailStock(admin, bookingId));
+        } catch (stockErr) {
+          const linedUp = await putTakenStockBack([...stockTaken.keys()]);
+          if (!linedUp) {
+            return errorResponse(
+              "Product stock could not be put back in line with the visits that were kept.",
+              "STOCK_ERROR",
+              409,
+            );
+          }
+          return errorResponse(
+            stockErr instanceof Error ? stockErr.message : "Product stock could not be deducted",
+            "STOCK_ERROR",
+            409,
+          );
+        }
+      }
+
+      const { data: completedRows, error: bookingsError } =
         eligibleIds.length > 0
           ? await admin
               .from("bookings")
@@ -961,15 +1003,38 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               .in("id", eligibleIds)
               .eq("provider_id", providerId)
               .in("status", ["in_progress", "confirmed", "waiting", "checked_in"])
-          : { error: null };
-      if (bookingsError) {
-        console.warn(
-          "[provider group complete_service] child booking update failed (continuing):",
-          bookingsError
+              .select("id")
+          : { data: [] as Array<{ id: string }>, error: null };
+      const alreadyFinished = (childRows ?? [])
+        .filter(
+          (row) =>
+            eligibleIds.includes(String(row.id)) && String(row.status ?? "") === "completed",
+        )
+        .map((row) => String(row.id));
+      const finishedIds = new Set([
+        ...alreadyFinished,
+        ...(completedRows ?? []).map((row) => String(row.id)),
+      ]);
+      if (bookingsError || finishedIds.size !== eligibleIds.length) {
+        const missed = eligibleIds.filter((bookingId) => !finishedIds.has(bookingId));
+        const linedUp = await putTakenStockBack(bookingsError ? eligibleIds : missed);
+        if (!linedUp) {
+          return errorResponse(
+            "The products were taken, but the appointments could not be marked finished. Try again.",
+            "STOCK_ERROR",
+            409,
+          );
+        }
+        return errorResponse(
+          finishedIds.size > 0
+            ? "Some appointments could not be marked finished. Their product stock was put back. The ones that finished stay finished."
+            : "The appointments could not be marked finished. Product stock was put back in line with the visits that were kept.",
+          "STOCK_ERROR",
+          409,
         );
       }
       if (allowUnpaid && unpaidReason && completionCheck.balanceDue > 0.01) {
-        for (const bid of eligibleIds) {
+        for (const bid of finishedIds) {
           await admin.from("booking_events").insert({
             booking_id: bid,
             event_type: "completed_with_balance",
@@ -1288,7 +1353,6 @@ export async function DELETE(
     });
 
     if (childSettlements.length) {
-      const cancelledIds = childSettlements.map((c) => c.bookingId);
       after(async () => {
         try {
           const { getGroupBookingParticipantsForCancellation } = await import("@/lib/bookings/group-booking-cancellation");
@@ -1303,16 +1367,27 @@ export async function DELETE(
             providerId,
             bookingRef: (groupRef as { ref_number?: string | null } | null)?.ref_number || id,
             cancelledBy: "provider",
+            guestCardRefundPending: childSettlements.some((child) => child.guestShareRefundFailed),
           });
         } catch (guestNotifyErr) {
           console.warn("[provider group cancel] guest notice failed:", guestNotifyErr);
         }
         try {
           const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
+          const { cancellationNoticeFromGroupChild } = await import(
+            "@/lib/bookings/cancellation-outcome-bridge"
+          );
           const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
           await Promise.allSettled(
-            cancelledIds.map(async (bookingId) => {
-              await sendCancellationNotification(bookingId, { cancelledBy: "provider" }).catch(
+            childSettlements.map(async (child) => {
+              const bookingId = child.bookingId;
+              const notice = cancellationNoticeFromGroupChild(child);
+              await sendCancellationNotification(bookingId, {
+                cancelledBy: "provider",
+                refundInfo: notice.refundInfo,
+                walletRefund: notice.walletRefund,
+                currency: child.currency,
+              }).catch(
                 (e: unknown) =>
                   console.warn("[provider group cancel] notification failed for booking", bookingId, e)
               );

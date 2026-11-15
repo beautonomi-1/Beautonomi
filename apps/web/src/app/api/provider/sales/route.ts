@@ -266,7 +266,7 @@ export async function GET(request: NextRequest) {
           supabaseAdmin
             .from("product_orders")
             .select(
-              "id, order_number, created_at, paid_at, subtotal, tax_amount, total_amount, payment_method, payment_status, customer_id, customer_name, staff_id, collection_location_id, legacy_sale_id",
+              "id, order_number, created_at, paid_at, subtotal, tax_amount, total_amount, refunded_amount, payment_method, payment_status, customer_id, customer_name, staff_id, collection_location_id, legacy_sale_id",
             ),
         ).range(from, to);
         return { data, error };
@@ -290,7 +290,7 @@ export async function GET(request: NextRequest) {
       items: [],
       subtotal: Number(sale.subtotal || 0),
       tax: Number(sale.tax_amount || 0),
-      total: Number(sale.total_amount || 0),
+      total: String(sale.payment_status || "").toLowerCase() === "refunded" ? 0 : Number(sale.total_amount || 0),
       payment_method: sale.payment_method || "cash",
       payment_status: sale.payment_status || "completed",
       team_member_id: sale.staff_id || null,
@@ -324,7 +324,10 @@ export async function GET(request: NextRequest) {
       if (!sale) continue;
       const giftPaid = giftPaidBySale.get(String(row.id)) ?? 0;
       const cardTaken = cardTakenBySale.get(String(row.id)) ?? 0;
-      row.amount_due = saleCardAmountStillDue(Number(sale.total_amount ?? 0), giftPaid, cardTaken);
+      row.amount_due =
+        String(sale.payment_status || "").toLowerCase() === "refunded"
+          ? 0
+          : saleCardAmountStillDue(Number(sale.total_amount ?? 0), giftPaid, cardTaken);
       if (giftPaid > 0.009) row.gift_card_amount = giftPaid;
     }
     const mergedCount = mergedSales.length;
@@ -480,7 +483,7 @@ export async function GET(request: NextRequest) {
     return successResponse({
       data: enrichedPage,
       total: mergedCount,
-      /** Sum of `total_amount` across ALL rows matching the filters (not just this page). */
+      /** Amount still kept on every matching sale, not only this page. A refunded till sale counts as zero. */
       total_amount_sum: periodTotalMerged,
       total_partial: totalPartial,
       page,

@@ -1,9 +1,6 @@
-import { multiplyMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { STAFF_COMMISSION_REVENUE_TYPES } from "@/lib/reports/constants";
 import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
 import { getTipsByStaff } from "@/lib/payroll/tips-helper";
 import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
@@ -124,41 +121,6 @@ export async function GET(
       locationId
     );
 
-    const { revenueByBooking } = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      fromDate,
-      toDate,
-      locationId,
-      { transactionTypes: STAFF_COMMISSION_REVENUE_TYPES, timezone: tz }
-    );
-
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select("id, status, booking_services(id, staff_id, price)")
-      .eq("provider_id", providerId)
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString())
-      .in("status", ["confirmed", "completed"]);
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-    const { data: bookings } = await bookingsQuery;
-
-    let appointmentsCount = 0;
-    let revenue = 0;
-    for (const b of bookings || []) {
-      const services = (b as any).booking_services || [];
-      const staffServices = services.filter((s: any) => s.staff_id === id);
-      if (staffServices.length === 0) continue;
-      appointmentsCount += 1;
-      const totalPrice = services.reduce((s: number, x: any) => addMoney(s, Number(x.price || 0)), 0);
-      const staffPrice = staffServices.reduce((s: number, x: any) => addMoney(s, Number(x.price || 0)), 0);
-      if (totalPrice > 0) {
-        revenue = addMoney(revenue, multiplyMoney(revenueByBooking.get((b as any).id) || 0, staffPrice / totalPrice));
-      }
-    }
-
     const { data: timeCards } = await supabaseAdmin
       .from("staff_time_cards")
       .select("total_hours")
@@ -180,8 +142,8 @@ export async function GET(
     const item: StaffTotalsItem = {
       team_member_id: id,
       team_member_name: (staff.users as any)?.full_name || "Unknown",
-      appointments_count: appointmentsCount,
-      revenue,
+      appointments_count: commission.totalBookings,
+      revenue: commission.totalRevenue,
       tips,
       hours_worked: hoursWorked,
       commission: commissionEligible ? commission.totalCommission : 0,

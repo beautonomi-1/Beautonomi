@@ -39,11 +39,15 @@ vi.mock("@/lib/bookings/sync-booking-after-paystack-success", () => ({
   syncBookingAfterPaystackSuccess: vi.fn(async () => undefined),
 }));
 
-vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", () => ({
-  ensureWalletGiftBookingPayments: vi.fn(async () => undefined),
-  completeWalletGiftSyntheticPayments: vi.fn(async () => undefined),
-  sumPendingWalletGiftBookingPayments: vi.fn(async () => 0),
-}));
+vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/bookings/ensure-wallet-gift-booking-payments")>();
+  return {
+    ...actual,
+    ensureWalletGiftBookingPayments: vi.fn(async () => undefined),
+    completeWalletGiftSyntheticPayments: vi.fn(async () => undefined),
+    sumPendingWalletGiftBookingPayments: vi.fn(async () => 0),
+  };
+});
 
 vi.mock("@/lib/finance/resolve-commission-percentage-for-booking", () => ({
   resolveCommissionPercentageForBooking: vi.fn(async () => 10),

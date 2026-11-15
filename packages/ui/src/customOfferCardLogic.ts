@@ -66,15 +66,24 @@ export function getOfferEffectiveStatus(
 ): EffectiveOfferStatus {
   const rawStatus = override?.status ?? attachment.status ?? "";
   const effStatus = rawStatus.toLowerCase();
-  const effBookingId = override?.booking_id ?? attachment.booking_id ?? undefined;
+  const effBookingId = override
+    ? override.booking_id ?? undefined
+    : attachment.booking_id ?? undefined;
 
-  const isExpired = attachment.expired === true || effStatus === "expired";
   const isWithdrawn = attachment.withdrawn === true || effStatus === "withdrawn";
   const isDeclined = effStatus === "declined";
   const isChangesRequested = effStatus === "changes_requested";
-  const isPaid = effStatus === "paid" || (!!effBookingId && effStatus !== "");
-  const isPaymentPending = effStatus === "payment_pending";
-  const isFinalizeFailed = effStatus === "finalize_failed";
+  // A booking id alone is not payment. Only a paid row, or the legacy
+  // accepted+booking pair, means the offer was collected.
+  const isPaid = effStatus === "paid" || (effStatus === "accepted" && !!effBookingId);
+  const isFinalizeFailed =
+    effStatus === "finalize_failed" || (effStatus === "accepted" && !effBookingId);
+  const expirationMs = attachment.expiration_at ? Date.parse(attachment.expiration_at) : NaN;
+  const pastExpiration = Number.isFinite(expirationMs) && expirationMs <= Date.now();
+  const settled = isPaid || isFinalizeFailed || isWithdrawn || isDeclined;
+  const isExpired =
+    attachment.expired === true || effStatus === "expired" || (pastExpiration && !settled);
+  const isPaymentPending = effStatus === "payment_pending" && !isExpired;
 
   const isInactive = isExpired || isWithdrawn || isDeclined || isPaid || isFinalizeFailed;
   const isMuted = isWithdrawn || isExpired || isFinalizeFailed;
@@ -84,10 +93,10 @@ export function getOfferEffectiveStatus(
     badge = { type: "withdrawn", label: "Withdrawn" };
   } else if (isDeclined) {
     badge = { type: "declined", label: "Declined" };
-  } else if (isChangesRequested) {
-    badge = { type: "changes_requested", label: "Changes requested" };
   } else if (isExpired) {
     badge = { type: "expired", label: "Expired" };
+  } else if (isChangesRequested) {
+    badge = { type: "changes_requested", label: "Changes requested" };
   } else if (isPaid) {
     badge = { type: "paid", label: "Paid ✓" };
   } else if (isFinalizeFailed) {

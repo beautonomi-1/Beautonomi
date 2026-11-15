@@ -115,6 +115,15 @@ function supabaseForInitPayment() {
           }),
         };
       }
+      if (table === "provider_subscriptions") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        };
+      }
       if (table === "provider_subscription_orders") {
         return {
           insert: () => ({

@@ -7,10 +7,11 @@ describe("classifySavedCardChargeStatus", () => {
     expect(classifySavedCardChargeStatus("failed")).toBe("failed");
   });
 
-  it("treats otp, 3DS and pending as hosted fallback", () => {
+  it("treats otp and 3DS as hosted fallback, and leaves a pending charge open", () => {
     expect(classifySavedCardChargeStatus("send_otp")).toBe("hosted_fallback");
     expect(classifySavedCardChargeStatus("send_pin")).toBe("hosted_fallback");
     expect(classifySavedCardChargeStatus("open_url")).toBe("hosted_fallback");
-    expect(classifySavedCardChargeStatus("pending")).toBe("hosted_fallback");
+    expect(classifySavedCardChargeStatus("pending")).toBe("still_open");
+    expect(classifySavedCardChargeStatus("ongoing")).toBe("still_open");
   });
 });

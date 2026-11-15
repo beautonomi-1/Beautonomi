@@ -122,6 +122,43 @@ describe("build-order-receipt", () => {
     expect(finances.balanceDue).toBe(0);
   });
 
+  it("refunded order with no stored amount keeps nothing", () => {
+    const finances = computeOrderReceiptFinancials({
+      order: {
+        subtotal: 130,
+        tax_amount: 0,
+        delivery_fee: 0,
+        discount_amount: 0,
+        platform_fee: 0,
+        wallet_amount: 0,
+        total_amount: 130,
+        payment_status: "refunded",
+      },
+    });
+    expect(finances.refundedAmount).toBe(130);
+    expect(finances.amountPaid).toBe(0);
+    expect(finances.balanceDue).toBe(0);
+  });
+
+  it("a paid order with a recorded refund keeps the remainder", () => {
+    const finances = computeOrderReceiptFinancials({
+      order: {
+        subtotal: 130,
+        tax_amount: 0,
+        delivery_fee: 0,
+        discount_amount: 0,
+        platform_fee: 0,
+        wallet_amount: 0,
+        total_amount: 130,
+        payment_status: "paid",
+        refunded_amount: 50,
+      },
+    });
+    expect(finances.refundedAmount).toBe(50);
+    expect(finances.amountPaid).toBe(80);
+    expect(finances.balanceDue).toBe(0);
+  });
+
   it("partially refunded order reduces net paid without balance due", () => {
     const finances = computeOrderReceiptFinancials({
       order: {

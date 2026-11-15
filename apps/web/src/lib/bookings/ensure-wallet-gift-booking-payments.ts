@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addMoney, roundCurrency } from "@beautonomi/utils";
 
+/** A follow-up wallet or gift return that has not finished. Do not count this row as paid. */
+export const COLLECTIBLE_ROLLBACK_STILL_DUE = "Collectible return still due";
+
 /** Synthetic provider id; optional leg suffix enables multiple wallet/gift legs per booking (pay-remaining, additional charge). */
 export function buildSyntheticWalletGiftProviderId(
   kind: "wallet" | "gift_card",
@@ -173,7 +176,8 @@ export async function completeWalletGiftSyntheticPayments(
     .update({ status: "completed", notes: "Synthetic wallet/gift leg — completed after gateway ledger" })
     .eq("booking_id", bookingId)
     .in("payment_provider", ["wallet", "gift_card"])
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .or(`notes.is.null,notes.neq."${COLLECTIBLE_ROLLBACK_STILL_DUE}"`);
   if (options && Object.prototype.hasOwnProperty.call(options, "paymentLegSuffix")) {
     const suffix = options.paymentLegSuffix ?? "";
     query = query.in("payment_provider_id", [

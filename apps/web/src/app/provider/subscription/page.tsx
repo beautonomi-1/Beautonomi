@@ -142,6 +142,10 @@ function isStripeBilled(sub: ProviderSubscription | null): boolean {
   return String(sub?.billing_provider ?? "").toLowerCase() === "stripe";
 }
 
+function isFlutterwaveBilled(sub: ProviderSubscription | null): boolean {
+  return String(sub?.billing_provider ?? "").toLowerCase() === "flutterwave";
+}
+
 function openAppleSubscriptions(): void {
   window.open(APPLE_SUBSCRIPTIONS_URL, "_blank", "noopener,noreferrer");
 }
@@ -191,6 +195,7 @@ function billingActionLabel(
     if (subscription.cancelled_at || subscription.auto_renew === false) return tx("resumeInAppStore");
     return null;
   }
+  if (subscription.billing_issue?.action === "charge_pending") return null;
   if (subscription.status === "past_due") return tx("payNowUpdateCard");
   if (subscription.paystack_sync_pending) return tx("completeBilling");
   if (subscription.billing_issue?.action === "retry_payment") return tx("retryPayment");
@@ -284,6 +289,18 @@ export default function SubscriptionPage() {
     const timeouts: ReturnType<typeof setTimeout>[] = [];
 
     async function init() {
+      if (isPaymentCancelled || isHostedCheckoutFailureStatus(hostedStatus)) {
+        if (reference) {
+          void verifyWithRetry(reference, {
+            maxAttempts: 1,
+            delayMs: 0,
+            sessionId,
+            transactionId: flutterwaveTransactionId,
+            redirectStatus: isHostedCheckoutFailureStatus(hostedStatus) ? hostedStatus : "cancelled",
+          });
+        }
+      }
+
       if (isPaymentCancelled) {
         // User cancelled on the Paystack hosted page — clean URL and show info toast.
         const cleanSearch = inApp ? "?in_app=1" : "";
@@ -440,6 +457,10 @@ export default function SubscriptionPage() {
 
   // Paid plans open the review dialog first; free plans activate immediately.
   const handleUpgrade = async (planId: string) => {
+    if (subscription?.billing_issue?.action === "charge_pending") {
+      toast.message(subscription.billing_issue.message);
+      return;
+    }
     if (isAppleBilled(subscription)) {
       toast.error(tx("appleBilledMessage"));
       return;
@@ -458,6 +479,12 @@ export default function SubscriptionPage() {
   };
 
   const proceedUpgrade = async (planId: string) => {
+    if (subscription?.billing_issue?.action === "charge_pending") {
+      toast.message(subscription.billing_issue.message);
+      setReviewPlan(null);
+      setReviewSubmitting(false);
+      return;
+    }
     if (isAppleBilled(subscription)) {
       toast.error(tx("appleBilledMessage"));
       setReviewPlan(null);
@@ -628,9 +655,11 @@ export default function SubscriptionPage() {
       }
     }
 
+    if (subscription?.billing_issue?.action === "charge_pending") return;
     if (
-      subscription?.billing_issue?.action === "update_payment" ||
-      subscription?.status === "past_due"
+      !isFlutterwaveBilled(subscription) &&
+      (subscription?.billing_issue?.action === "update_payment" ||
+        subscription?.status === "past_due")
     ) {
       try {
         const res = await fetcher.get<{ data: { link: string } }>(
@@ -716,6 +745,12 @@ export default function SubscriptionPage() {
         toast.error(tx("stripeManageUnavailable"));
       } else if (code === "NO_PAYSTACK_SUBSCRIPTION") {
         toast.error(tx("paystackManageUnavailable"));
+      } else if (
+        code === "FLUTTERWAVE_MANAGE_UNSUPPORTED" &&
+        err instanceof FetchError &&
+        err.message.trim()
+      ) {
+        toast.message(err.message);
       } else {
         toast.error(tx("cardUpdateFailed"));
       }
@@ -967,7 +1002,9 @@ export default function SubscriptionPage() {
                   {visibleBillingIssue ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                       <p className="font-semibold">
-                        {visibleBillingIssue.type === "payment_failed"
+                        {visibleBillingIssue.action === "charge_pending"
+                          ? tx("statusPastDue")
+                          : visibleBillingIssue.type === "payment_failed"
                           ? tx("billingIssuePaymentFailed")
                           : visibleBillingIssue.type === "past_due"
                             ? tx("billingIssuePastDue")
@@ -1033,7 +1070,9 @@ export default function SubscriptionPage() {
                   )}
 
                   <div className="flex flex-wrap gap-2 border-t pt-4">
-                    {subscription.status !== "active" && !billingLabel && (
+                    {subscription.status !== "active" &&
+                    !billingLabel &&
+                    subscription.billing_issue?.action !== "charge_pending" && (
                       <Button onClick={() => setShowUpgradeDialog(true)}>
                         <CreditCard className="me-2 h-4 w-4" />
                         {tx("choosePlan")}
@@ -1047,7 +1086,10 @@ export default function SubscriptionPage() {
                         {billingLabel}
                       </Button>
                     ) : null}
-                    {isPaidPlan && !billingLabel && !isAppleBilled(subscription) ? (
+                    {isPaidPlan &&
+                    !billingLabel &&
+                    !isAppleBilled(subscription) &&
+                    subscription.billing_issue?.action !== "charge_pending" ? (
                       <Button
                         onClick={handleManageCard}
                         variant="outline"
@@ -1173,7 +1215,13 @@ export default function SubscriptionPage() {
                                 <li className="ps-6 text-xs text-gray-400">{tx("moreIncluded")}</li>
                               ) : null}
                             </ul>
-                            {!isCurrent || needsReactivate ? (
+                            {subscription?.billing_issue?.action === "charge_pending" ? (
+                              isCurrent ? (
+                                <div className="mt-auto rounded-xl bg-gray-50 py-3 text-center text-sm font-medium text-gray-500">
+                                  {tx("activeSelection")}
+                                </div>
+                              ) : null
+                            ) : !isCurrent || needsReactivate ? (
                               appleLocked && !plan.is_free ? (
                                 <Button
                                   type="button"
@@ -1233,7 +1281,7 @@ export default function SubscriptionPage() {
                         ) : null}
                         <h4 className="text-lg font-bold text-gray-900">{plan.name}</h4>
                         <p className="mt-3 text-3xl font-bold">{formatPlanPriceMain(plan, tx)}</p>
-                        {!isCurrent || needsReactivate ? (
+                        {subscription?.billing_issue?.action === "charge_pending" ? null : !isCurrent || needsReactivate ? (
                           appleLocked && !plan.is_free ? (
                             <Button type="button" variant="outline" className="mt-6 w-full rounded-xl py-5" disabled>
                               {tx("manageInAppStore")}

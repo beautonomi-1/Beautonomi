@@ -1,5 +1,7 @@
 export type LoyaltyPageData = {
   points_balance: number;
+  /** Lifetime earned, used for milestone progress. Falls back to the available balance. */
+  lifetime_points?: number;
   redemption_value: number;
   redemption_currency: string;
   redemption_rate: number;

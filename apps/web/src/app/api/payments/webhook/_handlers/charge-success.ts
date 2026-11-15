@@ -15,10 +15,12 @@ import crypto from "crypto";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { resolvePaystackFeeMajor } from "@/lib/payments/resolve-paystack-fee";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { bookingGiftVoidOutcome, giftCardCaptureAnswer } from "@/lib/bookings/gift-value-still-due";
 import {
   computeGiftCardExpiresAt,
   resolveGiftCardValidityMonths,
 } from "@/lib/gift-cards/gift-card-expiry";
+import { ensureGiftCardSaleLedger, completeClaimedGiftCardOrder, releaseGiftCardOrderClaim } from "@/lib/gift-cards/ensure-gift-card-sale";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_PAYMENT_SUCCESS, EVENT_PAYMENT_FAILED } from "@/lib/analytics/amplitude/types";
 import type { PaystackEvent, SupabaseClient } from "./shared";
@@ -28,6 +30,8 @@ import {
   saveFlutterwaveCardToken,
   generateGiftCardCode,
 } from "./shared";
+import { membershipExpiresStillOpen, renewalPeriodEnd } from "@/lib/memberships/membership-renewal-retry";
+import { subscriptionPaymentFailedAccessNote } from "@/lib/iap/apple/billing-active";
 import { recordLoyaltyRedemption } from "@/lib/loyalty/record-redemption";
 import { recordPromotionUsage } from "@/lib/promotions/record-promotion-usage";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -43,6 +47,8 @@ import {
   refundUnpaidProductOrderCardCharges,
   restockProductOrderLineItems,
   voidProductOrderGiftCardIfNeeded,
+  ABANDONED_ORDER_REFUND_STILL_DUE,
+  abandonedOrderMoneyStillDue,
 } from "@/lib/orders/product-order-lifecycle";
 import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
@@ -66,25 +72,73 @@ import {
   recordAdsBudgetOrderPayment,
   reverseAdsBudgetOrderPayment,
 } from "@/lib/ads/ads-budget-order-payment";
-import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
 import {
+  alignRecognizedSubscriptionTerm,
+  recordProviderSubscriptionPayment,
+  returnRecordedPaystackSubscriptionCharge,
+} from "@/lib/subscriptions/provider-subscription-payment";
+import {
+  authorizationLinkPatch,
+  checkoutGrantAlreadyApplied,
+  checkoutRenewalAccess,
   computePaidPeriodExpiresAt,
+  rememberCheckoutGrant,
   loadProviderSubscriptionByPaystackCode,
   loadProviderSubscriptionByProviderId,
+  loadProviderSubscriptionForPaystackCustomer,
   paystackActivationFields,
   subscriptionActivationFields,
-  refundPaystackReferenceIfNeeded,
+  openSavedAuthorizationPeriod,
+  checkoutPaymentOwnsPlan,
+  renewalChargeAlreadySettled,
+  returnPaystackChargeForOtherMerchant,
   shouldIgnorePaystackEventForRow,
+  trackInboundPaystackSubscription,
 } from "@/lib/subscriptions/provider-billing-merchant";
 import { recordSuccessfulProviderSubscriptionRenewalFromInvoice } from "@/app/api/payments/webhook/_handlers/subscription-events";
 import { slackNotifyPaymentFailed, slackNotifyUnrecognizedPayments } from "@/lib/integrations/slack/ops-triggers";
 import {
   bookingFinancialsFromDb,
+  expectedHostedCardAmountMajor,
   verifyBookingCharge,
   verifyPaystackBookingCharge,
 } from "@/lib/bookings/verify-paystack-booking-charge";
+import {
+  mergeStoredCheckoutMetadata,
+  normalizePaystackMetadata,
+} from "@/lib/payments/normalize-paystack-metadata";
 
 const ONLINE_VERIFY_PROVIDERS = new Set(["paystack", "stripe", "flutterwave"]);
+
+/** Fill routing ids from the checkout row when the gateway omits custom metadata. */
+async function fillMetadataFromCheckoutRow(
+  supabase: SupabaseClient,
+  reference: string | undefined,
+  meta: Record<string, unknown>,
+): Promise<void> {
+  if (!reference) return;
+  try {
+    const query = supabase.from("online_payment_checkouts") as unknown as {
+      select?: (columns: string) => {
+        eq: (
+          column: string,
+          value: string,
+        ) => { maybeSingle: () => Promise<{ data?: { metadata?: unknown } | null }> };
+      };
+    };
+    if (!query || typeof query.select !== "function") return;
+    const { data } = await query.select("metadata").eq("reference", reference).maybeSingle();
+    const stored = data?.metadata;
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return;
+    const merged = mergeStoredCheckoutMetadata(meta, stored as Record<string, unknown>);
+    for (const key of Object.keys(meta)) {
+      if (!(key in merged)) delete meta[key];
+    }
+    Object.assign(meta, merged);
+  } catch {
+    // A missing checkout row must not block a charge that already carries its metadata.
+  }
+}
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -273,6 +327,7 @@ type ChargeBookingRow = Record<string, unknown> & {
   promotion_id?: string;
   promotion_discount_amount?: number;
   tenant_id?: string | null;
+  gift_card_amount?: number;
 };
 
 /** payment_transactions statuses that mean the charge was actually captured. */
@@ -468,10 +523,8 @@ export async function processSuccessfulPayment(
   const paymentProvider =
     options?.paymentProvider ?? data.__paymentProvider ?? "paystack";
   const reference = data.reference;
-  const metaObj: Record<string, unknown> =
-    data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
-      ? { ...(data.metadata as Record<string, unknown>) }
-      : {};
+  const metaObj = normalizePaystackMetadata(data.metadata);
+  await fillMetadataFromCheckoutRow(supabase, reference, metaObj);
   const hasNonAdsRoutingMetadata = Boolean(
     metaObj.product_order_id ||
       metaObj.wallet_topup_id ||
@@ -481,6 +534,8 @@ export async function processSuccessfulPayment(
       metaObj.custom_offer_id ||
       metaObj.booking_id ||
       metaObj.bookingId ||
+      metaObj.provider_invoice_id ||
+      metaObj.terminal_order_id ||
       metaObj.kind === "card_verification" ||
       metaObj.marketing_credit_topup === true ||
       metaObj.marketing_credit_topup === "true",
@@ -520,6 +575,12 @@ export async function processSuccessfulPayment(
       "@/lib/wallet/enrich-wallet-topup-metadata-from-reference"
     );
     await enrichWalletTopupMetadataFromReference(supabase, String(reference), metaObj);
+  }
+  if (reference && !metaObj.booking_id && !metaObj.bookingId) {
+    const { enrichBookingMetadataFromReference } = await import(
+      "@/lib/bookings/enrich-booking-metadata-from-reference"
+    );
+    await enrichBookingMetadataFromReference(supabase, String(reference), metaObj);
   }
   data.metadata = metaObj as PaystackChargeData["metadata"];
   if (isPaystackTerminalCharge(data as any)) {
@@ -896,7 +957,16 @@ export async function processSuccessfulPayment(
         );
       } else {
         await handleProviderSubscriptionOrderSuccess(
-          { reference, metadata, amount, fees, currency, customer, paymentProvider },
+          {
+            reference,
+            metadata,
+            amount,
+            fees,
+            currency,
+            customer,
+            authorization: data.authorization,
+            paymentProvider,
+          },
           supabase,
         );
       }
@@ -942,6 +1012,31 @@ export async function processSuccessfulPayment(
         { reference, subscriptionCode: renewalSubscriptionCode, amount, fees, data },
         supabase,
       );
+      return;
+    }
+    if (
+      reference &&
+      (metadata?.dunning_retry === true ||
+        metadata?.dunning_retry === "true" ||
+        metadata?.kind === "subscription_renewal")
+    ) {
+      const providerId = typeof metadata.provider_id === "string" ? metadata.provider_id : "";
+      if (providerId) {
+        const { settleDunningSubscriptionCharge } = await import(
+          "@/lib/subscriptions/settle-dunning-subscription-charge"
+        );
+        await settleDunningSubscriptionCharge({
+          supabase,
+          reference: String(reference),
+          providerId,
+          planId: typeof metadata.plan_id === "string" ? metadata.plan_id : null,
+          subscriptionId:
+            typeof metadata.subscription_id === "string" ? metadata.subscription_id : null,
+          amountMajor: convertFromSmallestUnit(Number(amount || 0), paystackCurrency),
+          feesMajor: convertFromSmallestUnit(Number(fees || 0), paystackCurrency),
+          paymentProvider: paymentProvider === "flutterwave" ? "flutterwave" : "paystack",
+        });
+      }
       return;
     }
     // Last resort: a hosted Paystack Virtual Terminal payment can arrive without any of
@@ -1102,6 +1197,11 @@ export async function processSuccessfulPayment(
         typeof bookingData.payment_reference === "string" ? bookingData.payment_reference : null,
       bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
       psp: paymentProvider,
+      fallbackAmountMajor:
+        typeof bookingData.payment_reference === "string" &&
+        bookingData.payment_reference.trim() === String(reference).trim()
+          ? expectedHostedCardAmountMajor(bookingData)
+          : null,
     });
     if (verified.ok === false) {
       console.error("[charge-success] booking online charge rejected:", {
@@ -1281,7 +1381,7 @@ export async function processSuccessfulPayment(
       // the balance is still held, so dropping it would pay the booking without that money.
       if (giftCaptureError) throw giftCaptureError;
 
-      if (captureResult === false || captureResult === null) {
+      if (giftCardCaptureAnswer(captureResult) === "absent") {
         giftForLedger = 0;
         console.warn(
           `Gift card redemption capture failed for booking ${metadata.booking_id}. Check if gift card expired.`,
@@ -1294,6 +1394,15 @@ export async function processSuccessfulPayment(
           })
           .eq("id", metadata.booking_id);
         await dropUncapturedGiftPayment();
+      } else if (giftCardCaptureAnswer(captureResult) === "unknown") {
+        const { rememberGiftCaptureStillDue } = await import(
+          "@/lib/bookings/rollback-collectible-split-leg"
+        );
+        await rememberGiftCaptureStillDue(
+          supabase,
+          metadata.booking_id,
+          bookingData?.tenant_id ?? null,
+        );
       } else {
         giftCardCaptured = true;
       }
@@ -1318,6 +1427,14 @@ export async function processSuccessfulPayment(
       await dropUncapturedGiftPayment();
     } else {
       console.error("Error capturing gift card redemption:", gcError);
+      const { rememberGiftCaptureStillDue } = await import(
+        "@/lib/bookings/rollback-collectible-split-leg"
+      );
+      await rememberGiftCaptureStillDue(
+        supabase,
+        metadata.booking_id,
+        bookingData?.tenant_id ?? null,
+      );
     }
   }
 
@@ -1744,7 +1861,43 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
     order_number?: string | null;
   };
 
-  if (o.payment_status !== "pending") return;
+  const finishCancelledFailedOrder = async () => {
+    const wallet = await creditWalletForProductOrderIfNeeded(
+      supabase,
+      o,
+      "Wallet refund (card payment failed)",
+      "product_order_payment_failed",
+    );
+    const giftVoid = await voidProductOrderGiftCardIfNeeded(supabase, o);
+    const cards = await refundUnpaidProductOrderCardCharges(
+      supabase,
+      o,
+      "Card refund (card payment failed)",
+    );
+    if (
+      abandonedOrderMoneyStillDue({
+        walletFailed: wallet.failed,
+        giftVoid,
+        cardFailed: cards.failed,
+      })
+    ) {
+      await (supabase.from("product_orders") as any)
+        .update({
+          cancellation_reason: ABANDONED_ORDER_REFUND_STILL_DUE,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", o.id)
+        .eq("payment_status", "failed");
+    }
+    await restockProductOrderLineItems(supabase, o.id);
+  };
+
+  if (o.payment_status !== "pending") {
+    if (o.status === "cancelled" && o.payment_status === "failed") {
+      await finishCancelledFailedOrder();
+    }
+    return;
+  }
 
   const { isUnpaidOnlinePaystackHold } = await import("@beautonomi/utils");
   const failureMessage =
@@ -1823,19 +1976,21 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
     .eq("status", "pending")
     .select("id");
 
-  if ((claimed?.length ?? 0) === 0) return;
+  if ((claimed?.length ?? 0) === 0) {
+    const { data: liveOrder } = await (supabase.from("product_orders") as any)
+      .select("status, payment_status")
+      .eq("id", o.id)
+      .maybeSingle();
+    const live = liveOrder as { status?: string | null; payment_status?: string | null } | null;
+    if (live?.status === "cancelled" && live?.payment_status === "failed") {
+      await finishCancelledFailedOrder();
+    }
+    return;
+  }
 
   emitPaystackPaymentFailedSlack(data, { orderId: o.id });
 
-  await creditWalletForProductOrderIfNeeded(supabase, o, "Wallet refund (card payment failed)", "product_order_payment_failed");
-  await voidProductOrderGiftCardIfNeeded(supabase, o);
-  await refundUnpaidProductOrderCardCharges(
-    supabase,
-    o,
-    "Card refund (card payment failed)",
-  );
-
-  await restockProductOrderLineItems(supabase, o.id);
+  await finishCancelledFailedOrder();
 
   try {
     const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
@@ -1890,7 +2045,7 @@ async function handleSubscriptionRenewalChargeFailed(
   const { data: existingFailedTx } = await supabase
     .from("payment_transactions")
     .select("id")
-    .eq("provider", "paystack")
+    .eq("provider", paymentProvider)
     .eq("reference", paystackRef)
     .eq("status", "failed")
     .maybeSingle();
@@ -1905,16 +2060,9 @@ async function handleSubscriptionRenewalChargeFailed(
   // recognized this renewal under the same Paystack charge reference. Never
   // flip an active (paid) subscription to past_due after money was recognized.
   if (reference) {
-    const { data: successTxForRef } = await supabase
-      .from("payment_transactions")
-      .select("id")
-      .eq("provider", "paystack")
-      .eq("reference", reference)
-      .eq("status", "success")
-      .maybeSingle();
-    if (successTxForRef) {
+    if (await renewalChargeAlreadySettled(supabase, reference, paymentProvider)) {
       console.log(
-        `[charge.failed] Skipping subscription past_due — reference ${reference} already succeeded`,
+        `[charge.failed] Skipping subscription past_due — reference ${reference} already settled`,
       );
       return;
     }
@@ -1922,13 +2070,20 @@ async function handleSubscriptionRenewalChargeFailed(
 
   const { data: subRow } = await supabase
     .from("provider_subscriptions")
-    .select("provider_id, plan_id, status, subscription_plans:plan_id(name)")
+    .select("provider_id, plan_id, status, billing_provider, subscription_plans:plan_id(name)")
     .eq("paystack_subscription_code", subscriptionCode)
     .maybeSingle();
 
   if (!subRow) {
     console.warn(
       `charge.failed: no provider_subscriptions row for subscription_code ${subscriptionCode}`,
+    );
+    return;
+  }
+
+  if (shouldIgnorePaystackEventForRow(subRow)) {
+    console.log(
+      `[charge.failed] skip past_due — ${subRow.billing_provider} is merchant for ${subscriptionCode}`,
     );
     return;
   }
@@ -1953,14 +2108,19 @@ async function handleSubscriptionRenewalChargeFailed(
     kind: "subscription_renewal",
   };
 
-  await supabase
-    .from("provider_subscriptions")
-    .update({
-      status: "past_due",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("paystack_subscription_code", subscriptionCode)
-    .in("status", ["active", "past_due"]);
+  if (prevStatus === "active") {
+    const failedAt = new Date().toISOString();
+    await supabase
+      .from("provider_subscriptions")
+      .update({
+        status: "past_due",
+        last_dunning_retry_at: failedAt,
+        past_due_since: failedAt,
+        updated_at: failedAt,
+      })
+      .eq("paystack_subscription_code", subscriptionCode)
+      .eq("status", "active");
+  }
 
   await supabase.from("payment_transactions").insert({
     booking_id: null,
@@ -2000,6 +2160,8 @@ async function handleSubscriptionRenewalChargeFailed(
           plan_name: subData.subscription_plans?.name || "subscription",
           amount: `${convertFromSmallestUnit(amountSmallest, paystackCurrency)}`,
           app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
+          grace_days: "3",
+          access_note: subscriptionPaymentFailedAccessNote(true),
         },
         ["push"],
         { appType: "provider" },
@@ -2013,19 +2175,186 @@ async function handleSubscriptionRenewalChargeFailed(
   }
 }
 
+export const PAYMENT_FAILED_REFUND_STILL_DUE = "Payment failed — refund still due";
+
+export async function finishFailedBookingTender(
+  supabase: SupabaseClient,
+  metadata: { booking_id?: string; wallet_amount_applied?: number; currency?: string },
+  bookingData: ChargeBookingRow,
+): Promise<{ walletDone: boolean; giftDone: boolean }> {
+  const lastResortFailed = await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
+    supabase,
+    providerId: bookingData.provider_id,
+  });
+  const failedChargeWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: bookingData.tenant_id,
+    provider_id: bookingData.provider_id,
+  });
+  const walletAmountApplied = Number(metadata?.wallet_amount_applied ?? 0);
+  let walletDone = walletAmountApplied <= 0.009 || !bookingData.customer_id;
+  if (walletAmountApplied > 0.009 && bookingData.customer_id) {
+    try {
+      const { data: failedWallet } = await supabase
+        .from("user_wallets")
+        .select("id")
+        .eq("user_id", bookingData.customer_id)
+        .maybeSingle();
+
+      const { data: existingReversal } = (failedWallet as { id?: string } | null)?.id
+        ? await supabase
+            .from("wallet_transactions")
+            .select("id")
+            .eq("wallet_id", (failedWallet as { id: string }).id)
+            .eq("reference_id", metadata.booking_id)
+            .eq("reference_type", "booking_payment_failed")
+            .maybeSingle()
+        : { data: null };
+
+      if (existingReversal) {
+        await supabase.from("bookings").update({ wallet_amount: 0 }).eq("id", metadata.booking_id);
+        walletDone = true;
+      } else {
+        const { error: reversalErr } = await supabase.rpc("wallet_credit_admin", {
+          p_user_id: bookingData.customer_id,
+          p_amount: walletAmountApplied,
+          p_currency: metadata?.currency || lastResortFailed,
+          p_description: `Wallet refund (payment failed) for booking ${bookingData.booking_number}`,
+          p_reference_id: metadata.booking_id,
+          p_reference_type: "booking_payment_failed",
+          p_tenant_id: failedChargeWalletTenantId,
+          p_idempotency_key: `booking_payment_failed:${metadata.booking_id}`,
+        });
+        if (reversalErr) {
+          console.error("Failed to refund wallet on charge.failed:", reversalErr);
+        } else {
+          walletDone = true;
+          await supabase.from("bookings").update({ wallet_amount: 0 }).eq("id", metadata.booking_id);
+        }
+      }
+    } catch (walletErr) {
+      console.error("Failed to refund wallet on charge.failed:", walletErr);
+    }
+  }
+
+  let giftDone = false;
+  const giftHeld = Number(bookingData.gift_card_amount ?? 0);
+  try {
+    const { data: voided, error: giftErr } = await supabase.rpc("void_gift_card_redemption", {
+      p_booking_id: metadata.booking_id,
+    });
+    const giftOutcome = giftErr ? "unknown" : bookingGiftVoidOutcome(voided);
+    if (giftErr) {
+      console.error("Error voiding gift card redemption:", giftErr);
+    } else if (giftOutcome === "restored") {
+      giftDone = true;
+      if (giftHeld > 0.009) {
+        await supabase
+          .from("bookings")
+          .update({ gift_card_amount: 0, gift_card_id: null })
+          .eq("id", metadata.booking_id);
+      }
+    } else if (giftOutcome === "spent" && giftHeld > 0.009 && bookingData.customer_id) {
+      const { error: giftCreditErr } = await supabase.rpc("wallet_credit_admin", {
+        p_user_id: bookingData.customer_id,
+        p_amount: giftHeld,
+        p_currency: metadata?.currency || bookingData.currency || lastResortFailed,
+        p_description: `Gift card value for failed payment ${bookingData.booking_number || metadata.booking_id}`,
+        p_reference_id: metadata.booking_id,
+        p_reference_type: "booking_payment_failed",
+        p_tenant_id: failedChargeWalletTenantId,
+        p_idempotency_key: `booking_payment_failed_gift:${metadata.booking_id}`,
+      });
+      giftDone = !giftCreditErr;
+      if (giftCreditErr) {
+        console.error("Failed to return a captured gift card on charge.failed:", giftCreditErr);
+      } else {
+        await supabase
+          .from("bookings")
+          .update({ gift_card_amount: 0, gift_card_id: null })
+          .eq("id", metadata.booking_id);
+      }
+    } else if (giftOutcome === "spent") {
+      giftDone = true;
+    }
+  } catch (gcError) {
+    console.error("Error voiding gift card redemption:", gcError);
+  }
+
+  if (bookingData.customer_id) {
+    try {
+      const bookingId =
+        typeof metadata.booking_id === "string" ? metadata.booking_id : String(bookingData.id);
+      const { finishCancellationLoyalty, markLoyaltyStillDue } = await import(
+        "@/lib/bookings/settle-booking-cancellation"
+      );
+      const loyalty = await finishCancellationLoyalty(
+        supabase,
+        {
+          id: bookingId,
+          customer_id: bookingData.customer_id as string,
+          booking_number: (bookingData.booking_number as string | null | undefined) ?? null,
+        },
+        "customer",
+        "payment_failed",
+      );
+      await markLoyaltyStillDue(supabase, bookingId, loyalty.stillDue);
+    } catch (loyaltyErr) {
+      console.error("Failed to restore loyalty on charge.failed:", loyaltyErr);
+    }
+  }
+
+  try {
+    await supabase
+      .from("booking_payments")
+      .delete()
+      .eq("booking_id", metadata.booking_id)
+      .in("payment_provider_id", [
+        `wallet_booking:${metadata.booking_id}`,
+        `gift_card_booking:${metadata.booking_id}`,
+      ]);
+  } catch (paymentCleanupError) {
+    console.error("Error cleaning synthetic booking payments after charge.failed:", paymentCleanupError);
+  }
+  return { walletDone, giftDone };
+}
+
+async function rememberFailedChargeTender(
+  supabase: SupabaseClient,
+  bookingId: string,
+  done: boolean,
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from("bookings")
+      .update({
+        cancellation_reason: done ? "Payment failed" : PAYMENT_FAILED_REFUND_STILL_DUE,
+      })
+      .eq("id", bookingId)
+      .in("cancellation_reason", ["Payment failed", PAYMENT_FAILED_REFUND_STILL_DUE]);
+    if (error) console.error("[charge.failed] could not mark the refund", bookingId, error);
+  } catch (err) {
+    console.error("[charge.failed] could not mark the refund", bookingId, err);
+  }
+}
+
 export async function processFailedPayment(data: PaystackChargeData, supabase: SupabaseClient) {
   const paymentProvider = resolveChargePaymentProvider(data);
   const { reference, message, gateway_response } = data;
-  const metadata: Record<string, unknown> =
-    data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
-      ? { ...(data.metadata as Record<string, unknown>) }
-      : {};
+  const metadata = normalizePaystackMetadata(data.metadata);
+  await fillMetadataFromCheckoutRow(supabase, reference, metadata);
+  if (reference && !metadata.booking_id && !metadata.bookingId) {
+    const { enrichBookingMetadataFromReference } = await import(
+      "@/lib/bookings/enrich-booking-metadata-from-reference"
+    );
+    await enrichBookingMetadataFromReference(supabase, String(reference), metadata);
+  }
   if (reference && !metadata.wallet_topup_id) {
     const { enrichWalletTopupMetadataFromReference } = await import(
       "@/lib/wallet/enrich-wallet-topup-metadata-from-reference"
     );
     await enrichWalletTopupMetadataFromReference(supabase, String(reference), metadata);
   }
+  data.metadata = metadata as PaystackChargeData["metadata"];
 
   if (!reference || !metadata?.booking_id) {
     if (metadata?.product_order_id) {
@@ -2079,6 +2408,41 @@ export async function processFailedPayment(data: PaystackChargeData, supabase: S
       });
       return;
     }
+    if (
+      reference &&
+      (metadata?.kind === "subscription_renewal" ||
+        metadata?.dunning_retry === true ||
+        metadata?.dunning_retry === "true")
+    ) {
+      if (await renewalChargeAlreadySettled(supabase, String(reference), paymentProvider)) {
+        return;
+      }
+      {
+        const { markOnlinePaymentCheckoutStatus } = await import(
+          "@/lib/payments/online-payment-checkouts"
+        );
+        await markOnlinePaymentCheckoutStatus(String(reference), "failed");
+        const providerId =
+          typeof metadata.provider_id === "string" ? metadata.provider_id : null;
+        if (providerId) {
+          const failedAt = new Date().toISOString();
+          const failedOwners = paymentProvider === "flutterwave" ? ["flutterwave"] : paymentProvider === "stripe" ? ["stripe"] : ["paystack", "manual"];
+          await supabase
+            .from("provider_subscriptions")
+            .update({
+              status: "past_due",
+              last_dunning_retry_at: failedAt,
+              past_due_since: failedAt,
+              updated_at: failedAt,
+            })
+            .eq("provider_id", providerId)
+            .in("billing_provider", failedOwners)
+            .eq("status", "active")
+            .lte("expires_at", failedAt);
+        }
+      }
+      return;
+    }
     console.error("Missing reference or booking_id in payment data");
     return;
   }
@@ -2112,12 +2476,31 @@ export async function processFailedPayment(data: PaystackChargeData, supabase: S
   if (metadata?.payment_type === "booking_remaining") {
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, customer_id, booking_number, payment_status")
+      .select("id, customer_id, provider_id, tenant_id, booking_number, payment_status, currency")
       .eq("id", metadata.booking_id)
       .maybeSingle();
     if (!booking) {
       console.error("Booking not found for booking_remaining charge.failed:", metadata.booking_id);
       return;
+    }
+    const walletApplied = Number(metadata.wallet_amount_applied ?? 0);
+    const giftApplied = Number(metadata.gift_card_amount_applied ?? 0);
+    const remainingCustomerId = (booking as { customer_id?: string | null }).customer_id;
+    if ((walletApplied > 0.009 || giftApplied > 0.009) && remainingCustomerId) {
+      const { rollbackCollectibleSplitLeg } = await import(
+        "@/lib/bookings/rollback-collectible-split-leg"
+      );
+      await rollbackCollectibleSplitLeg(supabase, {
+        bookingId: String(metadata.booking_id),
+        customerId: remainingCustomerId,
+        currency: String(metadata.currency || (booking as { currency?: string }).currency || "ZAR"),
+        tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+        providerId: String((booking as { provider_id?: string | null }).provider_id ?? ""),
+        walletAmountToReverse: walletApplied,
+        giftCardAmountToReverse: giftApplied,
+        paymentLegSuffix: `:remaining:${reference}`,
+        idempotencyKey: `pay_remaining_rollback:${reference}`,
+      });
     }
     const currentStatus = (booking as { payment_status?: string }).payment_status;
     const nextPaymentStatus =
@@ -2130,8 +2513,6 @@ export async function processFailedPayment(data: PaystackChargeData, supabase: S
       .from("bookings")
       .update({
         payment_status: nextPaymentStatus,
-        payment_reference: reference,
-        payment_provider: paymentProvider,
         updated_at: new Date().toISOString(),
       })
       .eq("id", metadata.booking_id);
@@ -2170,11 +2551,78 @@ export async function processFailedPayment(data: PaystackChargeData, supabase: S
     return;
   }
 
+/**
+ * A failed card charge cancels the visit. Return its prepaid session once.
+ * When the original visit still holds that same session, the replacement only drops its copy.
+ */
+async function returnPackageSessionAfterFailedBookingCharge(
+  supabase: SupabaseClient,
+  booking: {
+    id?: string | null;
+    customer_id?: string | null;
+    customer_package_entitlement_id?: string | null;
+    rescheduled_from_booking_id?: string | null;
+  },
+): Promise<void> {
+  const bookingId = booking.id ? String(booking.id) : "";
+  const customerId = booking.customer_id ? String(booking.customer_id) : "";
+  const entitlementId = booking.customer_package_entitlement_id
+    ? String(booking.customer_package_entitlement_id)
+    : "";
+  if (!bookingId || !customerId || !entitlementId) return;
+
+  if (booking.rescheduled_from_booking_id) {
+    const { data: original } = await supabase
+      .from("bookings")
+      .select("customer_package_entitlement_id")
+      .eq("id", String(booking.rescheduled_from_booking_id))
+      .maybeSingle();
+    const originalEntitlement = (original as { customer_package_entitlement_id?: string | null } | null)
+      ?.customer_package_entitlement_id;
+    if (originalEntitlement && String(originalEntitlement) === entitlementId) {
+      await supabase
+        .from("bookings")
+        .update({ customer_package_entitlement_id: null })
+        .eq("id", bookingId)
+        .eq("customer_package_entitlement_id", entitlementId);
+      return;
+    }
+  }
+
+  const { data: claimed, error: claimError } = await supabase
+    .from("bookings")
+    .update({ customer_package_entitlement_id: null })
+    .eq("id", bookingId)
+    .eq("customer_package_entitlement_id", entitlementId)
+    .select("id");
+  if (claimError || !claimed?.length) return;
+
+  const { data: restored, error } = await supabase.rpc("restore_customer_package_entitlement", {
+    p_entitlement_id: entitlementId,
+    p_customer_id: customerId,
+  });
+  if (error || restored !== true) {
+    console.error(
+      "[charge.failed] package session restore failed",
+      bookingId,
+      error ?? "package session was not returned",
+    );
+    await supabase
+      .from("bookings")
+      .update({ customer_package_entitlement_id: entitlementId })
+      .eq("id", bookingId)
+      .is("customer_package_entitlement_id", null);
+  }
+}
+
+
   // ── Standard booking failure ──────────────────────────────────────────────
 
   const { data: booking } = await supabase
     .from("bookings")
-    .select("customer_id, booking_number, tenant_id, provider_id")
+    .select(
+      "id, customer_id, booking_number, tenant_id, provider_id, customer_package_entitlement_id, rescheduled_from_booking_id, gift_card_amount, currency",
+    )
     .eq("id", metadata.booking_id)
     .single();
 
@@ -2188,7 +2636,6 @@ export async function processFailedPayment(data: PaystackChargeData, supabase: S
   const { data: successTxForRef } = await supabase
     .from("payment_transactions")
     .select("id")
-    .eq("provider", "paystack")
     .eq("reference", reference)
     .eq("status", "success")
     .maybeSingle();
@@ -2214,109 +2661,48 @@ export async function processFailedPayment(data: PaystackChargeData, supabase: S
     .select("id");
 
   if ((claimedBooking?.length ?? 0) === 0) {
+    const { data: liveBooking } = await supabase
+      .from("bookings")
+      .select("status, payment_status")
+      .eq("id", metadata.booking_id)
+      .maybeSingle();
+    const live = liveBooking as { status?: string | null; payment_status?: string | null } | null;
+    if (live?.status === "cancelled" && live?.payment_status === "failed") {
+      const { restoreBookingRetailStock } = await import("@/lib/bookings/deduct-booking-retail-stock");
+      await restoreBookingRetailStock(supabase, String(metadata.booking_id));
+      await returnPackageSessionAfterFailedBookingCharge(supabase, bookingData);
+      const tender = await finishFailedBookingTender(supabase, metadata, bookingData);
+      await rememberFailedChargeTender(
+        supabase,
+        String(metadata.booking_id),
+        tender.walletDone && tender.giftDone,
+      );
+    }
     console.log(
       `[charge.failed] Skipping booking failure — booking ${metadata.booking_id} no longer pending payment`,
     );
     return;
   }
 
+  const { restoreBookingRetailStock } = await import("@/lib/bookings/deduct-booking-retail-stock");
+  await restoreBookingRetailStock(supabase, String(metadata.booking_id));
+  await returnPackageSessionAfterFailedBookingCharge(supabase, bookingData);
+
   emitPaystackPaymentFailedSlack(data, {
     bookingId: typeof metadata.booking_id === "string" ? metadata.booking_id : null,
   });
+
+  const tender = await finishFailedBookingTender(supabase, metadata, bookingData);
+  await rememberFailedChargeTender(
+    supabase,
+    String(metadata.booking_id),
+    tender.walletDone && tender.giftDone,
+  );
 
   const lastResortFailed = await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
     supabase,
     providerId: bookingData.provider_id,
   });
-
-  const failedChargeWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-    tenant_id: bookingData.tenant_id,
-    provider_id: bookingData.provider_id,
-  });
-
-  // If wallet was used as partial payment, refund it immediately.
-  // §Wallet-refund (audit 2026-06): a duplicate charge.failed webhook previously
-  // double-credited the wallet (no idempotency, RPC error swallowed). We now check
-  // for an existing reversal credit on this booking before crediting, and only zero
-  // out `wallet_amount` when the credit is confirmed (or already present).
-  const walletAmountApplied = Number(metadata?.wallet_amount_applied ?? 0);
-  if (walletAmountApplied > 0) {
-    const { data: failedWallet } = await supabase
-      .from("user_wallets")
-      .select("id")
-      .eq("user_id", bookingData.customer_id)
-      .maybeSingle();
-
-    const { data: existingReversal } = (failedWallet as { id?: string } | null)?.id
-      ? await supabase
-          .from("wallet_transactions")
-          .select("id")
-          .eq("wallet_id", (failedWallet as { id: string }).id)
-          .eq("reference_id", metadata.booking_id)
-          .eq("reference_type", "booking_payment_failed")
-          .maybeSingle()
-      : { data: null };
-
-    if (existingReversal) {
-      // Already reversed by a prior delivery — just ensure the booking no longer
-      // claims a wallet portion.
-      await supabase.from("bookings").update({ wallet_amount: 0 }).eq("id", metadata.booking_id);
-    } else {
-      const { error: reversalErr } = await supabase.rpc("wallet_credit_admin", {
-        p_user_id: bookingData.customer_id,
-        p_amount: walletAmountApplied,
-        p_currency: metadata?.currency || lastResortFailed,
-        p_description: `Wallet refund (payment failed) for booking ${bookingData.booking_number}`,
-        p_reference_id: metadata.booking_id,
-        p_reference_type: "booking_payment_failed",
-        p_tenant_id: failedChargeWalletTenantId,
-        p_idempotency_key: `booking_payment_failed:${metadata.booking_id}`,
-      });
-
-      if (reversalErr) {
-        console.error("Failed to refund wallet on charge.failed:", reversalErr);
-      } else {
-        await supabase.from("bookings").update({ wallet_amount: 0 }).eq("id", metadata.booking_id);
-      }
-    }
-  }
-
-  // Gift cards: void reserved redemption and restore balance before the final
-  // failed status update so payment-status triggers cannot leave stale coverage.
-  try {
-    await supabase.rpc("void_gift_card_redemption", {
-      p_booking_id: metadata.booking_id,
-    });
-  } catch (gcError) {
-    console.error("Error voiding gift card redemption:", gcError);
-  }
-
-  if (bookingData.customer_id) {
-    try {
-      const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
-      await refundRedeemedLoyaltyPoints(supabase, {
-        bookingId:
-          typeof metadata.booking_id === "string" ? metadata.booking_id : String(bookingData.id),
-        customerId: bookingData.customer_id as string,
-        reason: "payment_failed",
-      });
-    } catch (loyaltyErr) {
-      console.error("Failed to restore loyalty on charge.failed:", loyaltyErr);
-    }
-  }
-
-  try {
-    await supabase
-      .from("booking_payments")
-      .delete()
-      .eq("booking_id", metadata.booking_id)
-      .in("payment_provider_id", [
-        `wallet_booking:${metadata.booking_id}`,
-        `gift_card_booking:${metadata.booking_id}`,
-      ]);
-  } catch (paymentCleanupError) {
-    console.error("Error cleaning synthetic booking payments after charge.failed:", paymentCleanupError);
-  }
 
   // Create payment transaction record
   await supabase.from("payment_transactions").insert({
@@ -2572,35 +2958,19 @@ async function handleCustomOfferFailed(
 
     const walletAmountApplied = Number(payload.metadata?.wallet_amount_applied ?? 0);
     if (walletAmountApplied > 0) {
-      const referenceType = `custom_offer_payment_failed:${payload.reference || offerId}`;
-      const { data: wallet } = await admin
-        .from("user_wallets")
-        .select("id")
-        .eq("user_id", customerId)
-        .maybeSingle();
-      const { data: existingRefund } = wallet?.id
-        ? await admin
-            .from("wallet_transactions")
-            .select("id")
-            .eq("wallet_id", wallet.id)
-            .eq("reference_id", offerId)
-            .eq("reference_type", referenceType)
-            .maybeSingle()
-        : { data: null };
-      if (!existingRefund) {
-        const walletTenantId = await resolveTenantIdForFinanceLedger(admin, {
-          tenant_id: null,
-          provider_id: offer?.provider_id ?? null,
+      try {
+        const { creditWalletForCustomOfferAbandon } = await import(
+          "@/lib/custom-offers/credit-wallet-for-offer-abandon"
+        );
+        await creditWalletForCustomOfferAbandon(admin, offerId, customerId, offer?.provider_id ?? null, {
+          reason: "failed",
         });
-        await admin.rpc("wallet_credit_admin", {
-          p_user_id: customerId,
-          p_amount: walletAmountApplied,
-          p_currency: String(payload.metadata?.currency ?? offer?.currency ?? LAST_RESORT_CURRENCY),
-          p_description: `Wallet refund (custom offer payment failed)`,
-          p_reference_id: offerId,
-          p_reference_type: referenceType,
-          p_tenant_id: walletTenantId,
-        });
+      } catch (walletErr) {
+        console.error("[charge.failed] custom offer wallet return failed", offerId, walletErr);
+        const { rememberCustomOfferWalletStillDue } = await import(
+          "@/lib/custom-offers/credit-wallet-for-offer-abandon"
+        );
+        await rememberCustomOfferWalletStillDue(admin, offerId);
       }
     }
 
@@ -2701,7 +3071,6 @@ async function handleGiftCardOrderSuccess(
     } | null;
   };
   const orderData = order as GiftOrderRow;
-  if (orderData.status === "paid" && orderData.gift_card_id) return;
 
   let cardTenantId: string | null = orderData.tenant_id ?? null;
   if (!cardTenantId && orderData.provider_id) {
@@ -2723,11 +3092,24 @@ async function handleGiftCardOrderSuccess(
   const value = Number(orderData.amount || 0);
   const quantity = Number(orderData.quantity || metadata.quantity || 1);
   const totalAmount = Number(orderData.total_amount || multiplyMoney(value, quantity));
+  const paystackCurrency = paystackChargeCurrency(payload, orderData.currency);
+  const feesMajor = convertFromSmallestUnit(_fees || 0, paystackCurrency);
+
+  if (orderData.status === "paid" && orderData.gift_card_id) {
+    await ensureGiftCardSaleLedger(supabase, {
+      orderId,
+      quantity,
+      totalAmount,
+      feesMajor,
+      providerId: orderData.provider_id ?? null,
+      tenantId: giftOrderFinanceTenantId,
+    });
+    return;
+  }
 
   // §Gift-purchase (audit 2026-06): validate that Paystack actually charged the
   // order total before issuing cards. Issuing full value on an underpayment would
   // hand out more gift-card liability than was collected.
-  const paystackCurrency = paystackChargeCurrency(payload, orderData.currency);
   const paidAmount = convertFromSmallestUnit(Number(_amount) || 0, paystackCurrency);
   if (paidAmount > 0 && paidAmount + 0.01 < totalAmount) {
     console.error(
@@ -2771,6 +3153,17 @@ async function handleGiftCardOrderSuccess(
       console.log(
         `[gift_card_order] reference ${reference} already claimed — skipping duplicate issuance.`,
       );
+      await completeClaimedGiftCardOrder(supabase, {
+        orderId,
+        reference,
+        paymentProvider,
+        quantity,
+        totalAmount,
+        feesMajor,
+        providerId: orderData.provider_id ?? null,
+        tenantId: giftOrderFinanceTenantId,
+        orderMetadata: (orderData.metadata as Record<string, unknown> | null) ?? null,
+      });
       return;
     }
     throw new Error(`Failed to claim gift card order ${orderId}: ${claimError.message}`);
@@ -2854,11 +3247,7 @@ async function handleGiftCardOrderSuccess(
   if (giftCardIds.length === 0) {
     // Total issuance failure: release the idempotency claim so a webhook retry can
     // re-attempt (otherwise the customer is charged with zero cards and no retry).
-    await supabase
-      .from("payment_transactions")
-      .delete()
-      .eq("provider", "paystack")
-      .eq("reference", reference);
+    await releaseGiftCardOrderClaim(supabase, paymentProvider, reference);
     throw new Error("Failed to issue any gift cards");
   }
 
@@ -2902,20 +3291,16 @@ async function handleGiftCardOrderSuccess(
         ...templateMetadata,
       },
     })
-    .eq("provider", "paystack")
+    .eq("provider", paymentProvider)
     .eq("reference", reference);
 
-  await supabase.from("finance_transactions").insert({
-    booking_id: null,
-    provider_id: orderData.provider_id ?? null,
-    tenant_id: giftOrderFinanceTenantId,
-    transaction_type: "gift_card_sale",
-    amount: totalAmount,
-    fees: convertFromSmallestUnit(_fees || 0, paystackCurrency),
-    commission: 0,
-    net: totalAmount,
-    description: `Platform gift card sale (${quantity} card${quantity > 1 ? "s" : ""}) - liability until redemption`,
-    created_at: new Date().toISOString(),
+  await ensureGiftCardSaleLedger(supabase, {
+    orderId,
+    quantity,
+    totalAmount,
+    feesMajor,
+    providerId: orderData.provider_id ?? null,
+    tenantId: giftOrderFinanceTenantId,
   });
 
   // Notify purchaser (best-effort)
@@ -3043,7 +3428,6 @@ async function handleMembershipOrderSuccess(
     metadata?: Record<string, unknown> | { attribution?: Record<string, unknown> } | null;
   };
   const orderData = order as MembershipOrderRow;
-  if (orderData.status === "paid") return;
   const attribution =
     metadata?.attribution && typeof metadata.attribution === "object"
       ? metadata.attribution
@@ -3134,24 +3518,59 @@ async function handleMembershipOrderSuccess(
 
   const now = new Date();
   const { data: existingMembership } = await (supabase.from("user_memberships") as any)
-    .select("id, status, started_at, expires_at")
+    .select("id, status, started_at, expires_at, metadata")
     .eq("user_id", orderData.user_id)
     .eq("provider_id", providerId)
     .maybeSingle();
   const existing = existingMembership as
-    | { status?: string | null; started_at?: string | null; expires_at?: string | null }
+    | {
+        status?: string | null;
+        started_at?: string | null;
+        expires_at?: string | null;
+        metadata?: Record<string, unknown> | null;
+      }
     | null;
-  const existingExpiry = existing?.expires_at ? new Date(existing.expires_at) : null;
-  const existingExpiryValid = Boolean(existingExpiry && Number.isFinite(existingExpiry.getTime()));
-  const hasFutureActiveTerm =
-    existing?.status === "active" &&
-    existingExpiryValid &&
-    (existingExpiry as Date).getTime() > now.getTime();
-  const renewalStart = hasFutureActiveTerm ? (existingExpiry as Date) : now;
-  const expiresAt = new Date(renewalStart);
-  expiresAt.setMonth(expiresAt.getMonth() + 1);
-  const startedAt =
-    hasFutureActiveTerm && existing?.started_at ? existing.started_at : now.toISOString();
+  const alreadyApplied =
+    existing?.metadata?.membership_order_id === orderId;
+
+  const isAutoRenewal = metadata?.kind === "membership_renewal" || metadata?.source === "auto_renewal";
+  const { recordMembershipPayment } = await import("@/lib/memberships/membership-payment");
+  const membershipPayment = await recordMembershipPayment({
+    supabase,
+    reference: payload.reference,
+    orderId,
+    userId: orderData.user_id,
+    providerId,
+    planId: orderData.plan_id ?? "",
+    grossAmount,
+    feeAmount,
+    kind: isAutoRenewal ? "membership_renewal" : "membership_order",
+    tenantIdHint: membershipFinanceTenantIdHint,
+    paymentProvider: payload.paymentProvider ?? "paystack",
+  });
+  if (!membershipPayment.recorded && !membershipPayment.alreadyRecorded) {
+    throw new Error("membership payment was not recorded");
+  }
+  if (alreadyApplied) {
+    const { error: paidError } = await supabase
+      .from("membership_orders")
+      .update({
+        status: "paid",
+        updated_at: new Date().toISOString(),
+        ...(payload.reference ? { paystack_reference: payload.reference } : {}),
+      })
+      .eq("id", orderId)
+      .in("status", ["pending", "failed", "paid"]);
+    if (paidError) {
+      console.error("[membership] order was not marked paid:", paidError);
+      throw new Error("membership order was not marked paid");
+    }
+    return;
+  }
+
+  const stillOpen = membershipExpiresStillOpen(existing?.expires_at, now);
+  const expiresAt = renewalPeriodEnd(existing?.expires_at, now);
+  const startedAt = stillOpen && existing?.started_at ? existing.started_at : now.toISOString();
 
   // Persist the Paystack authorization so renewals can be charged automatically.
   let savedPaymentMethodId: string | null = null;
@@ -3220,12 +3639,6 @@ async function handleMembershipOrderSuccess(
     }
   }
 
-  // Idempotent ledger kind: auto-billing cron renewals must advance next_billing_at
-  // even when this webhook path does not re-save a card (renewal metadata has no
-  // enable_auto_renew / save_card). Leaving the cron's short retry date would
-  // re-charge the customer within 1–3 days after a successful recovery charge.
-  const isAutoRenewal = metadata?.kind === "membership_renewal" || metadata?.source === "auto_renewal";
-
   const recurringFields: Record<string, unknown> = {};
   if (savedPaymentMethodId) {
     recurringFields.auto_renew = true;
@@ -3251,7 +3664,7 @@ async function handleMembershipOrderSuccess(
     recurringFields.past_due_since = null;
   }
 
-  await supabase.from("user_memberships").upsert(
+  const { error: membershipError } = await supabase.from("user_memberships").upsert(
     {
       user_id: orderData.user_id,
       provider_id: providerId,
@@ -3269,10 +3682,14 @@ async function handleMembershipOrderSuccess(
     },
     { onConflict: "user_id,provider_id" },
   );
+  if (membershipError) {
+    console.error("[membership] month was not opened:", membershipError);
+    throw new Error("membership month was not opened");
+  }
 
   // Atomic claim to paid when still pending/failed — webhook recovery after cron
   // marked the order failed must still settle it.
-  await supabase
+  const { error: paidError } = await supabase
     .from("membership_orders")
     .update({
       status: "paid",
@@ -3281,22 +3698,10 @@ async function handleMembershipOrderSuccess(
     })
     .eq("id", orderId)
     .in("status", ["pending", "failed"]);
-
-  // Idempotent ledger: one payment_transactions + two finance_transactions per reference.
-  const { recordMembershipPayment } = await import("@/lib/memberships/membership-payment");
-  await recordMembershipPayment({
-    supabase,
-    reference: payload.reference,
-    orderId,
-    userId: orderData.user_id,
-    providerId,
-    planId: orderData.plan_id ?? "",
-    grossAmount,
-    feeAmount,
-    kind: isAutoRenewal ? "membership_renewal" : "membership_order",
-    tenantIdHint: membershipFinanceTenantIdHint,
-    paymentProvider: payload.paymentProvider ?? "paystack",
-  });
+  if (paidError) {
+    console.error("[membership] order was not marked paid:", paidError);
+    throw new Error("membership order was not marked paid");
+  }
 
   // Only send "Membership activated" on the initial purchase, not on every auto-renewal.
   if (!isAutoRenewal) {
@@ -3319,8 +3724,26 @@ async function handleMembershipOrderFailed(
   payload: { reference: string; metadata: any; message: any },
   supabase: SupabaseClient,
 ) {
-  const orderId = payload.metadata.membership_order_id as string;
+  const orderId = payload.metadata?.membership_order_id as string;
   if (!orderId) return;
+
+  const { data: orderRow } = await supabase
+    .from("membership_orders")
+    .select("id, user_id, provider_id, metadata")
+    .eq("id", orderId)
+    .eq("status", "pending")
+    .maybeSingle();
+  const order = orderRow as {
+    user_id?: string | null;
+    provider_id?: string | null;
+    metadata?: Record<string, unknown> | null;
+  } | null;
+  if (!order) {
+    console.log(
+      `[charge.failed] Skipping membership order failure — order ${orderId} no longer pending`,
+    );
+    return;
+  }
 
   const { data: claimedOrder } = await supabase
     .from("membership_orders")
@@ -3333,7 +3756,64 @@ async function handleMembershipOrderFailed(
     console.log(
       `[charge.failed] Skipping membership order failure — order ${orderId} no longer pending`,
     );
+    return;
   }
+
+  const orderMeta = order.metadata ?? {};
+  const renewal =
+    payload.metadata?.kind === "membership_renewal" ||
+    payload.metadata?.source === "auto_renewal" ||
+    orderMeta.source === "auto_renewal";
+  if (!renewal || !order.user_id || !order.provider_id) return;
+
+  const { data: membershipRow } = await supabase
+    .from("user_memberships")
+    .select("id, status, renewal_failure_count, past_due_since")
+    .eq("user_id", order.user_id)
+    .eq("provider_id", order.provider_id)
+    .maybeSingle();
+  const membership = membershipRow as {
+    id?: string;
+    status?: string | null;
+    renewal_failure_count?: number | null;
+    past_due_since?: string | null;
+  } | null;
+  if (!membership?.id) return;
+
+  const { membershipRetryAfterFailedRenewal } = await import(
+    "@/lib/memberships/membership-renewal-retry"
+  );
+  const now = new Date();
+  const retry = membershipRetryAfterFailedRenewal({
+    failureCount: Number(membership.renewal_failure_count ?? 0),
+    status: membership.status,
+    pastDueSince: membership.past_due_since,
+    now,
+  });
+  await supabase
+    .from("user_memberships")
+    .update({
+      status: retry.status,
+      past_due_since: retry.past_due_since,
+      renewal_failure_count: retry.renewal_failure_count,
+      next_billing_at: retry.next_billing_at,
+      ...(retry.auto_renew === false ? { auto_renew: false } : {}),
+      updated_at: now.toISOString(),
+    })
+    .eq("id", membership.id);
+}
+
+function otherMerchantCheckoutNote(
+  row: { billing_provider?: string | null } | null | undefined,
+): string {
+  const billing = String(row?.billing_provider ?? "").toLowerCase();
+  if (billing === "stripe") {
+    return "This plan is billed through Stripe. This checkout was not applied.";
+  }
+  if (billing === "flutterwave") {
+    return "This plan is billed through Flutterwave. This checkout was not applied.";
+  }
+  return "This plan is billed through the App Store. This checkout was not applied.";
 }
 
 // ─── Provider Subscription Order ─────────────────────────────────────────────
@@ -3346,6 +3826,7 @@ async function handleProviderSubscriptionOrderSuccess(
     fees: any;
     currency?: string;
     customer: any;
+    authorization?: { authorization_code?: string; reusable?: boolean };
     paymentProvider?: "paystack" | "stripe" | "flutterwave";
   },
   supabase: SupabaseClient,
@@ -3361,28 +3842,39 @@ async function handleProviderSubscriptionOrderSuccess(
   if (!order) return;
   type SubOrderRow = { status?: string; provider_id?: string; plan_id?: string; billing_period?: string };
   const orderData = order as SubOrderRow;
-  if (orderData.status === "paid") return;
 
   const providerId = orderData.provider_id as string;
   const planId = orderData.plan_id as string;
   const billingPeriod = (orderData.billing_period ?? "monthly") as "monthly" | "yearly";
 
   const merchantRow = await loadProviderSubscriptionByProviderId(supabase, providerId);
-  if (shouldIgnorePaystackEventForRow(merchantRow)) {
-    await refundPaystackReferenceIfNeeded(reference, { providerId });
+  const paymentProvider = payload.paymentProvider ?? "paystack";
+  if (
+    shouldIgnorePaystackEventForRow(merchantRow) &&
+    !checkoutPaymentOwnsPlan(paymentProvider, merchantRow)
+  ) {
+    if (paymentProvider === "paystack") {
+      await returnRecordedPaystackSubscriptionCharge({
+        supabase,
+        reference,
+        providerId,
+        tenantId: (merchantRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+        amountMajor: convertFromSmallestUnit(Number(amount || 0), paystackChargeCurrency(payload)),
+      });
+    }
     await supabase
       .from("provider_subscription_orders")
       .update({
         status: "failed",
         paystack_reference: reference,
         failed_at: new Date().toISOString(),
-        failure_reason: "apple_billing_active",
+        failure_reason: otherMerchantCheckoutNote(merchantRow),
         updated_at: new Date().toISOString(),
       })
       .eq("id", orderId)
       .eq("status", "pending");
     console.warn(
-      `[provider_subscription_order] refunded charge.success — Apple is merchant for provider ${providerId}`,
+      `[provider_subscription_order] checkout not applied — ${merchantRow?.billing_provider ?? "apple"} is merchant for provider ${providerId}`,
     );
     return;
   }
@@ -3392,7 +3884,6 @@ async function handleProviderSubscriptionOrderSuccess(
     provider_id: providerId,
   });
 
-  const paymentProvider = payload.paymentProvider ?? "paystack";
   const {
     amountInCurrency,
     feesInCurrency,
@@ -3407,6 +3898,27 @@ async function handleProviderSubscriptionOrderSuccess(
     paymentProvider,
   );
 
+  const payment = await recordProviderSubscriptionPayment({
+    supabase,
+    reference,
+    providerId,
+    amountMajor: amountInCurrency,
+    feesMajor: feesInCurrency,
+    planId,
+    orderId,
+    paymentTransactionType: "charge",
+    kind: "provider_subscription_order",
+    description: "Provider subscription payment",
+    tenantIdHint: providerSubOrderFinanceTenantId,
+    paymentProvider,
+    billingPeriod,
+    updateBillingPeriod: false,
+  });
+  if (!payment.recorded && !payment.alreadyRecorded) {
+    throw new Error("subscription payment was not recorded");
+  }
+  if (payment.chargeReturned) return;
+
   const { data: claimedPaidOrder } = await supabase
     .from("provider_subscription_orders")
     .update({
@@ -3420,34 +3932,153 @@ async function handleProviderSubscriptionOrderSuccess(
     .select("id");
 
   if ((claimedPaidOrder?.length ?? 0) === 0) {
+    const { data: savedPayments, error: savedPaymentError } = await supabase
+      .from("payment_transactions")
+      .select("created_at")
+      .eq("provider", paymentProvider)
+      .eq("reference", reference)
+      .eq("status", "success")
+      .limit(1);
+    if (savedPaymentError) throw savedPaymentError;
+    const chargedAt = (savedPayments?.[0] as { created_at?: string } | undefined)?.created_at;
+    if (!chargedAt) throw new Error("subscription charge time was not saved");
+  }
+
+  const { data: currentAccessRow, error: currentAccessError } = await supabase
+    .from("provider_subscriptions")
+    .select("plan_id, billing_period, expires_at")
+    .eq("provider_id", providerId)
+    .maybeSingle();
+  if (currentAccessError) throw currentAccessError;
+  const currentAccess = currentAccessRow as {
+    plan_id?: string | null;
+    billing_period?: string | null;
+    expires_at?: string | null;
+  } | null;
+
+  const now = new Date();
+  const recognizedEndMs = payment.termEnd ? Date.parse(payment.termEnd) : Number.NaN;
+  const chargePeriodEnd =
+    Number.isFinite(recognizedEndMs) && recognizedEndMs > now.getTime()
+      ? new Date(recognizedEndMs).toISOString()
+      : computePaidPeriodExpiresAt(billingPeriod, now);
+  const renewalAccess = checkoutRenewalAccess({
+    billingPeriod,
+    paidAt: now,
+    currentPlanId: currentAccess?.plan_id,
+    currentBillingPeriod: currentAccess?.billing_period,
+    currentExpiresAt: currentAccess?.expires_at,
+    orderPlanId: planId,
+    chargePeriodEnd,
+  });
+  const storedGrant = await rememberCheckoutGrant(supabase, {
+    paymentProvider,
+    reference,
+    granted: renewalAccess,
+  });
+  if (
+    checkoutGrantAlreadyApplied({
+      alreadyStored: storedGrant.alreadyStored,
+      currentPlanId: currentAccess?.plan_id,
+      currentBillingPeriod: currentAccess?.billing_period,
+      currentExpiresAt: currentAccess?.expires_at,
+      orderPlanId: planId,
+      billingPeriod,
+      grantedExpiresAt: storedGrant.expiresAt,
+    })
+  ) {
     console.log(
-      `[provider_subscription_order] skip activation — order ${orderId} no longer pending`,
+      `[provider_subscription_order] skip activation — order ${orderId} period already applied`,
     );
     return;
   }
-
-  const now = new Date();
-  const expiresAtIso = computePaidPeriodExpiresAt(billingPeriod, now);
+  const expiresAtIso = storedGrant.expiresAt;
 
   const { CLEAR_PENDING_UPGRADE_FIELDS } = await import(
     "@/lib/subscriptions/pending-upgrade-fields"
   );
+  const previousPaystackCode = String(
+    (merchantRow as { paystack_subscription_code?: string | null } | null)?.paystack_subscription_code ?? "",
+  ).trim();
+  const { stopPaystackSubscriptionBeforeClear } = await import(
+    "@/lib/subscriptions/provider-billing-merchant"
+  );
+  const keepPaystackRenewal =
+    paymentProvider === "paystack" &&
+    Boolean(previousPaystackCode) &&
+    !merchantRow?.cancelled_at &&
+    (merchantRow?.status === "past_due" ||
+      merchantRow?.status === "trialing" ||
+      merchantRow?.auto_renew !== false);
+  const flutterwaveCardToken =
+    paymentProvider === "flutterwave" &&
+    payload.authorization?.reusable === true &&
+    typeof payload.authorization.authorization_code === "string"
+      ? payload.authorization.authorization_code.trim()
+      : "";
+  const keepExistingCardRenewal =
+    (paymentProvider === "flutterwave" || paymentProvider === "stripe") &&
+    merchantRow?.auto_renew === true &&
+    !merchantRow?.cancelled_at;
+  const renewsAutomatically =
+    keepPaystackRenewal || keepExistingCardRenewal || Boolean(flutterwaveCardToken);
+  const checkoutPaystackStop =
+    previousPaystackCode && !keepPaystackRenewal
+    ? await stopPaystackSubscriptionBeforeClear({
+        supabase,
+        code: previousPaystackCode,
+        tenantId:
+          (merchantRow as { tenant_id?: string | null } | null)?.tenant_id ??
+          providerSubOrderFinanceTenantId,
+        providerId,
+      })
+    : "none";
   await supabase.from("provider_subscriptions").upsert(
     {
       provider_id: providerId,
       tenant_id: providerSubOrderFinanceTenantId,
       plan_id: planId,
       status: "active",
+      past_due_since: null,
       started_at: now.toISOString(),
       expires_at: expiresAtIso,
+      billing_period_start: storedGrant.periodStart,
+      billing_period_end: expiresAtIso,
       cancelled_at: null,
       billing_period: billingPeriod,
-      auto_renew: false,
+      auto_renew: renewsAutomatically,
+      ...(renewsAutomatically ? { next_payment_date: expiresAtIso } : {}),
+      ...(flutterwaveCardToken ? { paystack_authorization_code: flutterwaveCardToken } : {}),
       ...subscriptionActivationFields(paymentProvider),
       ...CLEAR_PENDING_UPGRADE_FIELDS,
     },
     { onConflict: "provider_id" },
   );
+  if (checkoutPaystackStop === "cleared") {
+    await supabase
+      .from("provider_subscriptions")
+      .update({
+        paystack_subscription_code: null,
+        paystack_sync_pending: false,
+        paystack_sync_note: null,
+      })
+      .eq("provider_id", providerId)
+      .eq("paystack_subscription_code", previousPaystackCode);
+  } else if (checkoutPaystackStop === "kept") {
+    await supabase
+      .from("provider_subscriptions")
+      .update({
+        paystack_sync_note:
+          "We could not stop automatic billing. Contact support if charges continue.",
+      })
+      .eq("provider_id", providerId)
+      .eq("paystack_subscription_code", previousPaystackCode);
+  }
+  await alignRecognizedSubscriptionTerm(supabase, {
+    financeTransactionId: payment.financeTransactionId,
+    recognizedEnd: Number.isFinite(recognizedEndMs) ? new Date(recognizedEndMs).toISOString() : null,
+    accessEnd: expiresAtIso,
+  });
 
   try {
     const { trackProviderCheckoutFunnel } = await import(
@@ -3472,24 +4103,6 @@ async function handleProviderSubscriptionOrderSuccess(
   } catch {
     /* non-fatal analytics */
   }
-
-  // Recognize the payment through the unified idempotent helper (one
-  // payment_transactions + finance_transactions per Paystack reference).
-  await recordProviderSubscriptionPayment({
-    supabase,
-    reference,
-    providerId,
-    amountMajor: amountInCurrency,
-    feesMajor: feesInCurrency,
-    planId,
-    orderId,
-    paymentTransactionType: "charge",
-    kind: "provider_subscription_order",
-    description: "Provider subscription payment",
-    tenantIdHint: providerSubOrderFinanceTenantId,
-    paymentProvider,
-    billingPeriod,
-  });
 
   try {
     const { data: plan } = await supabase
@@ -3527,13 +4140,53 @@ async function handleSubscriptionRenewalChargeSuccess(
   const { reference, subscriptionCode, amount, fees, data } = payload;
   const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
   if (shouldIgnorePaystackEventForRow(merchantRow)) {
+    const currency = typeof data?.currency === "string" ? data.currency : "ZAR";
+    await returnPaystackChargeForOtherMerchant(supabase, {
+      reference,
+      tenantId: (merchantRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      providerId: merchantRow?.provider_id ?? null,
+      amountMajor: convertFromSmallestUnit(Number(amount || 0), currency),
+    });
     console.log(
-      `[subscription] renewal charge.success ignored — Apple is merchant for ${subscriptionCode}`,
+      `[subscription] returned Paystack renewal ${reference} — ${merchantRow?.billing_provider} is merchant for ${subscriptionCode}`,
     );
+    if (merchantRow?.provider_id) {
+      await trackInboundPaystackSubscription({
+        supabase,
+        row: merchantRow,
+        subscriptionCode,
+        tenantId: (merchantRow as { tenant_id?: string | null }).tenant_id ?? null,
+        providerId: merchantRow.provider_id,
+      });
+    }
     return;
   }
   const providerId = merchantRow?.provider_id;
   if (!providerId) {
+    const byCustomer = await loadProviderSubscriptionForPaystackCustomer(supabase, {
+      email: data?.customer?.email,
+      customerCode: data?.customer?.customer_code,
+    });
+    if (shouldIgnorePaystackEventForRow(byCustomer) && byCustomer?.provider_id) {
+      const currency = typeof data?.currency === "string" ? data.currency : "ZAR";
+      await returnPaystackChargeForOtherMerchant(supabase, {
+        reference,
+        tenantId: (byCustomer as { tenant_id?: string | null }).tenant_id ?? null,
+        providerId: byCustomer.provider_id,
+        amountMajor: convertFromSmallestUnit(Number(amount || 0), currency),
+      });
+      await trackInboundPaystackSubscription({
+        supabase,
+        row: byCustomer,
+        subscriptionCode,
+        tenantId: (byCustomer as { tenant_id?: string | null }).tenant_id ?? null,
+        providerId: byCustomer.provider_id,
+      });
+      console.log(
+        `[subscription] returned Paystack renewal ${reference} — ${byCustomer.billing_provider} is merchant for ${subscriptionCode}`,
+      );
+      return;
+    }
     console.log(
       `[subscription] renewal charge.success for unknown subscription_code ${subscriptionCode}; deferring to invoice.update`,
     );
@@ -3868,23 +4521,47 @@ async function handleSubscriptionAuthorizationSuccess(
   }
 
   const merchantRow = await loadProviderSubscriptionByProviderId(supabase, providerId);
-  if (shouldIgnorePaystackEventForRow(merchantRow)) {
-    await refundPaystackReferenceIfNeeded(reference, { providerId });
+  if (
+    shouldIgnorePaystackEventForRow(merchantRow) &&
+    !checkoutPaymentOwnsPlan(paymentProvider, merchantRow)
+  ) {
+    if (paymentProvider === "paystack") {
+      await returnRecordedPaystackSubscriptionCharge({
+        supabase,
+        reference,
+        providerId,
+        tenantId: (merchantRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+        amountMajor: convertFromSmallestUnit(Number(amount || 0), paystackCurrency),
+      });
+    }
     await supabase
       .from("provider_subscription_orders")
       .update({
         status: "failed",
         paystack_reference: reference,
         failed_at: new Date().toISOString(),
-        failure_reason: "apple_billing_active",
+        failure_reason: otherMerchantCheckoutNote(merchantRow),
         updated_at: new Date().toISOString(),
       })
       .eq("id", orderId)
       .eq("status", "pending");
     console.warn(
-      `[subscription_auth] refunded authorization — Apple is merchant for provider ${providerId}`,
+      `[subscription_auth] checkout not applied — ${merchantRow?.billing_provider ?? "apple"} is merchant for provider ${providerId}`,
     );
     return;
+  }
+
+  if (paymentProvider === "paystack") {
+    const { data: returnedCharge } = await supabase
+      .from("payment_transactions")
+      .select("status")
+      .eq("provider", "paystack")
+      .eq("reference", reference)
+      .maybeSingle();
+    const returnedStatus = String(
+      (returnedCharge as { status?: string } | null)?.status ?? "",
+    ).toLowerCase();
+    if (returnedStatus === "refunded" || returnedStatus === "partially_refunded") return;
   }
 
   // Idempotency: verify + charge.success both call this path. If the order is
@@ -3931,7 +4608,7 @@ async function handleSubscriptionAuthorizationSuccess(
       tenant_id: null,
       provider_id: providerId,
     });
-    await recordProviderSubscriptionPayment({
+    const replayedPayment = await recordProviderSubscriptionPayment({
       supabase,
       reference,
       providerId,
@@ -3945,7 +4622,23 @@ async function handleSubscriptionAuthorizationSuccess(
       tenantIdHint: tenantHint,
       paymentProvider,
       billingPeriod,
+      updateBillingPeriod: false,
     });
+    if (replayedPayment.chargeReturned) return;
+    const openedPeriod = await openSavedAuthorizationPeriod({
+      supabase,
+      providerId,
+      reference,
+      paymentProvider,
+      billingPeriod,
+    });
+    if (openedPeriod.expiresAt) {
+      await alignRecognizedSubscriptionTerm(supabase, {
+        financeTransactionId: replayedPayment.financeTransactionId,
+        recognizedEnd: replayedPayment.termEnd,
+        accessEnd: openedPeriod.expiresAt,
+      });
+    }
     return;
   }
 
@@ -3991,7 +4684,7 @@ async function handleSubscriptionAuthorizationSuccess(
       console.log(
         `[subscription_auth] order ${orderId} claim lost (already settled); skipping createSubscription`,
       );
-      await recordProviderSubscriptionPayment({
+      const replayedPayment = await recordProviderSubscriptionPayment({
         supabase,
         reference,
         providerId,
@@ -4005,7 +4698,23 @@ async function handleSubscriptionAuthorizationSuccess(
         tenantIdHint: subscriptionAuthTenantId,
         paymentProvider,
         billingPeriod,
+        updateBillingPeriod: false,
       });
+      if (replayedPayment.chargeReturned) return;
+    const openedPeriod = await openSavedAuthorizationPeriod({
+        supabase,
+        providerId,
+        reference,
+        paymentProvider,
+        billingPeriod,
+      });
+      if (openedPeriod.expiresAt) {
+        await alignRecognizedSubscriptionTerm(supabase, {
+          financeTransactionId: replayedPayment.financeTransactionId,
+          recognizedEnd: replayedPayment.termEnd,
+          accessEnd: openedPeriod.expiresAt,
+        });
+      }
       return;
     }
     // Order paid but no Paystack sub yet (prior createSubscription failed) —
@@ -4017,7 +4726,7 @@ async function handleSubscriptionAuthorizationSuccess(
 
   const { data: existingSubRows, error: existingSubErr } = await supabase
     .from("provider_subscriptions")
-    .select("id, paystack_subscription_code")
+    .select("id, status, paystack_subscription_code, plan_id, billing_period, expires_at")
     .eq("provider_id", providerId)
     .order("created_at", { ascending: true })
     .limit(5);
@@ -4034,16 +4743,19 @@ async function handleSubscriptionAuthorizationSuccess(
         `[subscription_auth] provider ${providerId} has ${existingSubRows.length} subscription rows; using oldest`,
       );
     }
-    subscriptionRowId = String((existingSubRows[0] as { id: string }).id);
+    const existingSub = existingSubRows[0] as { id: string; status?: string | null };
+    subscriptionRowId = String(existingSub.id);
     await supabase
       .from("provider_subscriptions")
-      .update({
-        plan_id: planId,
-        billing_period: billingPeriod,
-        ...(authCode ? { paystack_authorization_code: authCode } : {}),
-        paystack_customer_code: customerCode,
-        updated_at: new Date().toISOString(),
-      })
+      .update(
+        authorizationLinkPatch({
+          planId,
+          billingPeriod,
+          authorizationCode: authCode,
+          customerCode,
+          status: existingSub.status,
+        }),
+      )
       .eq("id", subscriptionRowId);
   } else {
     const { data: insertedSub, error: insertErr } = await supabase
@@ -4073,6 +4785,7 @@ async function handleSubscriptionAuthorizationSuccess(
     return;
   }
 
+  let billingPeriodStartIso = new Date().toISOString();
   const applyActiveSubscriptionUpdate = async (
     extra: Record<string, unknown>,
   ): Promise<void> => {
@@ -4082,18 +4795,28 @@ async function handleSubscriptionAuthorizationSuccess(
         plan_id: planId,
         billing_period: billingPeriod,
         status: "active",
+        past_due_since: null,
+        billing_period_start: billingPeriodStartIso,
         ...subscriptionActivationFields(paymentProvider, extra),
       })
       .eq("id", subscriptionRowId);
   };
 
-  const applyPendingSyncFailure = async (message: string): Promise<void> => {
+  const applyPendingSyncFailure = async (
+    message: string,
+    accessEnd: string,
+    periodStart: string,
+  ): Promise<void> => {
     await supabase
       .from("provider_subscriptions")
       .update({
         plan_id: planId,
         billing_period: billingPeriod,
         status: "active",
+        past_due_since: null,
+        expires_at: accessEnd,
+        billing_period_start: periodStart,
+        billing_period_end: accessEnd,
         paystack_sync_pending: true,
         paystack_sync_note: message,
         billing_provider: paymentProvider,
@@ -4127,15 +4850,33 @@ async function handleSubscriptionAuthorizationSuccess(
 
   const activatePeriodBasedSubscription = async (
     syncNote: string | null,
+    expiresAtIso: string,
+    extra: Record<string, unknown> = {},
   ): Promise<void> => {
-    const now = new Date();
-    const expiresAtIso = computePaidPeriodExpiresAt(billingPeriod, now);
-
     await applyActiveSubscriptionUpdate({
-      started_at: now.toISOString(),
+      started_at: new Date().toISOString(),
       expires_at: expiresAtIso,
+      billing_period_end: expiresAtIso,
       auto_renew: false,
       ...(syncNote ? { paystack_sync_note: syncNote, paystack_sync_pending: true } : {}),
+      ...extra,
+    });
+  };
+
+  const stopPreviousPaystackSubscription = async (): Promise<"cleared" | "kept" | "none"> => {
+    const code = String(
+      (existingSubRows?.[0] as { paystack_subscription_code?: string | null } | undefined)
+        ?.paystack_subscription_code ?? "",
+    ).trim();
+    if (!code) return "none";
+    const { stopPaystackSubscriptionBeforeClear } = await import(
+      "@/lib/subscriptions/provider-billing-merchant"
+    );
+    return stopPaystackSubscriptionBeforeClear({
+      supabase,
+      code,
+      tenantId: subscriptionAuthTenantId,
+      providerId,
     });
   };
 
@@ -4143,7 +4884,7 @@ async function handleSubscriptionAuthorizationSuccess(
   // helper. Previously this path posted only payment_transactions and NO
   // finance_transactions, so the first paid month was never recognized as
   // revenue until the next invoice — the helper closes that gap.
-  await recordProviderSubscriptionPayment({
+  const authorizationPayment = await recordProviderSubscriptionPayment({
     supabase,
     reference,
     providerId,
@@ -4157,7 +4898,41 @@ async function handleSubscriptionAuthorizationSuccess(
     tenantIdHint: subscriptionAuthTenantId,
     paymentProvider,
     billingPeriod,
+    updateBillingPeriod: false,
   });
+  if (!authorizationPayment.recorded && !authorizationPayment.alreadyRecorded) {
+    throw new Error("subscription payment was not recorded");
+  }
+  if (authorizationPayment.chargeReturned) return;
+  const recognizedMs = authorizationPayment.termEnd
+    ? Date.parse(authorizationPayment.termEnd)
+    : Number.NaN;
+  const paidAt = new Date();
+  const chargePeriodEnd =
+    Number.isFinite(recognizedMs) && recognizedMs > paidAt.getTime()
+      ? new Date(recognizedMs).toISOString()
+      : computePaidPeriodExpiresAt(billingPeriod, paidAt);
+  const existingAccess = existingSubRows?.[0] as {
+    plan_id?: string | null;
+    billing_period?: string | null;
+    expires_at?: string | null;
+  } | undefined;
+  const renewalAccess = checkoutRenewalAccess({
+    billingPeriod,
+    paidAt,
+    currentPlanId: existingAccess?.plan_id,
+    currentBillingPeriod: existingAccess?.billing_period,
+    currentExpiresAt: existingAccess?.expires_at,
+    orderPlanId: planId,
+    chargePeriodEnd,
+  });
+  const storedGrant = await rememberCheckoutGrant(supabase, {
+    paymentProvider,
+    reference,
+    granted: renewalAccess,
+  });
+  const paidAccessEnd = storedGrant.expiresAt;
+  billingPeriodStartIso = storedGrant.periodStart;
 
   if (paymentProvider === "stripe") {
     const stripeCustomerId =
@@ -4166,22 +4941,40 @@ async function handleSubscriptionAuthorizationSuccess(
       typeof metadata.stripe_payment_method_id === "string"
         ? metadata.stripe_payment_method_id
         : null;
+    const stripePaystackStop = await stopPreviousPaystackSubscription();
     await applyActiveSubscriptionUpdate({
       auto_renew: Boolean(stripePaymentMethodId),
       started_at: new Date().toISOString(),
-      expires_at: computePaidPeriodExpiresAt(billingPeriod),
+      expires_at: paidAccessEnd,
+      billing_period_end: paidAccessEnd,
       ...(stripeCustomerId ? { stripe_customer_id: stripeCustomerId } : {}),
       ...(stripePaymentMethodId ? { stripe_payment_method_id: stripePaymentMethodId } : {}),
+      ...(stripePaystackStop === "cleared" ? { paystack_subscription_code: null } : {}),
+      ...(stripePaystackStop === "kept"
+        ? {
+            paystack_sync_note:
+              "We could not stop automatic billing. Contact support if charges continue.",
+          }
+        : {}),
     });
     await notifySubscriptionActivated();
     return;
   }
 
   if (paymentProvider === "flutterwave") {
+    const flutterwavePaystackStop = await stopPreviousPaystackSubscription();
     await applyActiveSubscriptionUpdate({
       auto_renew: isReusableAuth,
       started_at: new Date().toISOString(),
-      expires_at: computePaidPeriodExpiresAt(billingPeriod),
+      expires_at: paidAccessEnd,
+      billing_period_end: paidAccessEnd,
+      ...(flutterwavePaystackStop === "cleared" ? { paystack_subscription_code: null } : {}),
+      ...(flutterwavePaystackStop === "kept"
+        ? {
+            paystack_sync_note:
+              "We could not stop automatic billing. Contact support if charges continue.",
+          }
+        : {}),
     });
     await notifySubscriptionActivated();
     return;
@@ -4191,8 +4984,13 @@ async function handleSubscriptionAuthorizationSuccess(
     console.warn(
       `[subscription_auth] non-reusable authorization for order ${orderId}; activating period-based subscription`,
     );
+    const onePeriodPaystackStop = await stopPreviousPaystackSubscription();
     await activatePeriodBasedSubscription(
-      "Card authorization is not reusable. Subscription activated for one billing period — renew manually or update your card for auto-renew.",
+      onePeriodPaystackStop === "kept"
+        ? "We could not stop automatic billing. This card cannot renew automatically. Contact support if charges continue."
+        : "Card authorization is not reusable. Subscription activated for one billing period — renew manually or update your card for auto-renew.",
+      paidAccessEnd,
+      onePeriodPaystackStop === "kept" ? {} : { paystack_subscription_code: null },
     );
     await notifySubscriptionActivated();
     return;
@@ -4214,7 +5012,8 @@ async function handleSubscriptionAuthorizationSuccess(
         paystack_subscription_code: existingCodeOnRow,
         auto_renew: true,
         started_at: new Date().toISOString(),
-        expires_at: computePaidPeriodExpiresAt(billingPeriod),
+        expires_at: paidAccessEnd,
+        billing_period_end: paidAccessEnd,
       });
       await notifySubscriptionActivated();
       return;
@@ -4239,25 +5038,45 @@ async function handleSubscriptionAuthorizationSuccess(
           ).data?.paystack_plan_code_monthly;
 
     if (paystackPlanCode) {
-      const subscriptionResponse = await createSubscription({
-        customer: customerCode,
-        plan: paystackPlanCode,
-        authorization: authCode,
-      });
+      const grantMs = Date.parse(paidAccessEnd);
+      const subscriptionResponse = await createSubscription(
+        {
+          customer: customerCode,
+          plan: paystackPlanCode,
+          authorization: authCode,
+          ...(Number.isFinite(grantMs) && grantMs > Date.now()
+            ? { start_date: paidAccessEnd }
+            : {}),
+        },
+        { tenantId: subscriptionAuthTenantId },
+      );
 
       const paystackSubscription = subscriptionResponse.data;
 
+      const paystackNextMs = paystackSubscription?.next_payment_date
+        ? Date.parse(paystackSubscription.next_payment_date)
+        : Number.NaN;
+      const accessEnd =
+        Number.isFinite(paystackNextMs) &&
+        paystackNextMs > Date.now() &&
+        (!Number.isFinite(grantMs) || paystackNextMs > grantMs)
+          ? new Date(paystackNextMs).toISOString()
+          : paidAccessEnd;
       await applyActiveSubscriptionUpdate({
         paystack_subscription_code: paystackSubscription?.subscription_code,
-        next_payment_date: paystackSubscription?.next_payment_date
-          ? new Date(paystackSubscription.next_payment_date).toISOString()
-          : null,
+        next_payment_date: accessEnd,
         started_at: new Date().toISOString(),
-        expires_at: computePaidPeriodExpiresAt(billingPeriod),
+        expires_at: accessEnd,
+        billing_period_end: accessEnd,
         auto_renew: true,
       });
+      await alignRecognizedSubscriptionTerm(supabase, {
+        financeTransactionId: authorizationPayment.financeTransactionId,
+        recognizedEnd: paidAccessEnd,
+        accessEnd,
+      });
     } else {
-      await activatePeriodBasedSubscription(null);
+      await activatePeriodBasedSubscription(null, paidAccessEnd);
     }
 
     await notifySubscriptionActivated();
@@ -4266,6 +5085,8 @@ async function handleSubscriptionAuthorizationSuccess(
     console.error("Failed to create Paystack subscription after authorization:", err);
     await applyPendingSyncFailure(
       `We could not finish setting up automatic billing (${msg}). Payment was recorded — if your plan does not activate soon, contact support.`,
+      paidAccessEnd,
+      billingPeriodStartIso,
     );
   }
 }
@@ -4437,7 +5258,7 @@ async function handleBookingRemainingSuccess(
         },
       );
       if (giftCaptureError) throw giftCaptureError;
-      if (captureResult === false || captureResult === null) {
+      if (giftCardCaptureAnswer(captureResult) === "absent") {
         giftCardAmountFromMeta = 0;
         await supabase
           .from("booking_payments")
@@ -4453,6 +5274,15 @@ async function handleBookingRemainingSuccess(
             payment_status: "partially_paid",
           })
           .eq("id", bookingId);
+      } else if (giftCardCaptureAnswer(captureResult) === "unknown") {
+        const { rememberGiftCaptureStillDue } = await import(
+          "@/lib/bookings/rollback-collectible-split-leg"
+        );
+        await rememberGiftCaptureStillDue(
+          supabase,
+          bookingId,
+          (bookingData.tenant_id as string | null | undefined) ?? null,
+        );
       }
     } catch (giftCaptureErr) {
       const giftCaptureMessage =
@@ -4474,6 +5304,15 @@ async function handleBookingRemainingSuccess(
             payment_status: "partially_paid",
           })
           .eq("id", bookingId);
+      } else {
+        const { rememberGiftCaptureStillDue } = await import(
+          "@/lib/bookings/rollback-collectible-split-leg"
+        );
+        await rememberGiftCaptureStillDue(
+          supabase,
+          bookingId,
+          (bookingData.tenant_id as string | null | undefined) ?? null,
+        );
       }
     }
   }
@@ -4743,7 +5582,7 @@ async function handleAdditionalChargeSuccess(
         { p_booking_id: bookingId },
       );
       if (giftCaptureError) throw giftCaptureError;
-      if (captureResult === false || captureResult === null) {
+      if (giftCardCaptureAnswer(captureResult) === "absent") {
         giftCardAmountFromMeta = 0;
         await supabase
           .from("booking_payments")
@@ -4759,6 +5598,15 @@ async function handleAdditionalChargeSuccess(
             payment_status: "partially_paid",
           })
           .eq("id", bookingId);
+      } else if (giftCardCaptureAnswer(captureResult) === "unknown") {
+        const { rememberGiftCaptureStillDue } = await import(
+          "@/lib/bookings/rollback-collectible-split-leg"
+        );
+        await rememberGiftCaptureStillDue(
+          supabase,
+          bookingId,
+          (bookingData.tenant_id as string | null | undefined) ?? null,
+        );
       }
     } catch (giftCaptureErr) {
       const giftCaptureMessage =
@@ -4780,6 +5628,15 @@ async function handleAdditionalChargeSuccess(
             payment_status: "partially_paid",
           })
           .eq("id", bookingId);
+      } else {
+        const { rememberGiftCaptureStillDue } = await import(
+          "@/lib/bookings/rollback-collectible-split-leg"
+        );
+        await rememberGiftCaptureStillDue(
+          supabase,
+          bookingId,
+          (bookingData.tenant_id as string | null | undefined) ?? null,
+        );
       }
     }
   }
@@ -5055,6 +5912,24 @@ async function handleAdditionalChargeFailed(
     .single();
   if (!booking) return;
   const bookingData = booking as ChargeBookingRow;
+  const walletApplied = Number(metadata?.wallet_amount_applied ?? 0);
+  const giftApplied = Number(metadata?.gift_card_amount_applied ?? 0);
+  if ((walletApplied > 0.009 || giftApplied > 0.009) && bookingData.customer_id && chargeId) {
+    const { rollbackCollectibleSplitLeg } = await import(
+      "@/lib/bookings/rollback-collectible-split-leg"
+    );
+    await rollbackCollectibleSplitLeg(supabase, {
+      bookingId,
+      customerId: bookingData.customer_id,
+      currency: String(metadata?.currency || bookingData.currency || "ZAR"),
+      tenantId: bookingData.tenant_id ?? null,
+      providerId: String(bookingData.provider_id ?? ""),
+      walletAmountToReverse: walletApplied,
+      giftCardAmountToReverse: giftApplied,
+      paymentLegSuffix: `:additional:${chargeId}`,
+      idempotencyKey: `additional_charge_rollback:${chargeId}:${reference}`,
+    });
+  }
 
   await supabase.from("payment_transactions").insert({
     booking_id: bookingId,

@@ -34,7 +34,7 @@ export function mapSaleReceiptItems(items: SaleItemLike[] | null | undefined): S
   );
 }
 
-function parseTipFromNotes(notes: unknown): number {
+export function parseTipFromSaleNotes(notes: unknown): number {
   if (typeof notes !== "string") return 0;
   const match = notes.match(/Tip:\s*([\d.]+)/i);
   if (!match?.[1]) return 0;
@@ -55,11 +55,22 @@ export function buildSaleReceiptPayload(input: {
   const subtotal = Number(sale.subtotal || 0);
   const taxAmount = Number(sale.tax_amount || 0);
   const discountAmount = Number(sale.discount_amount || 0);
-  const tipAmount = parseTipFromNotes(sale.notes);
+  const tipAmount = parseTipFromSaleNotes(sale.notes);
   const totalAmount = Number(sale.total_amount || 0);
-  const paymentStatus = String(sale.payment_status ?? "completed");
-  const isPaid = paymentStatus === "completed" || paymentStatus === "paid";
-  const amountPaid = isPaid ? totalAmount : 0;
+  const paymentStatus = String(sale.payment_status ?? "completed").toLowerCase();
+  const recordedRefund = Math.max(0, Number(sale.refunded_amount ?? 0));
+  const refundedAmount =
+    paymentStatus === "refunded" && recordedRefund <= 0
+      ? Math.max(0, totalAmount)
+      : paymentStatus === "refunded" || paymentStatus === "partially_refunded"
+        ? Math.min(Math.max(0, totalAmount), recordedRefund)
+        : 0;
+  const settled =
+    paymentStatus === "completed" ||
+    paymentStatus === "paid" ||
+    paymentStatus === "partially_refunded" ||
+    paymentStatus === "refunded";
+  const amountPaid = settled ? Math.max(0, subtractMoney(totalAmount, refundedAmount)) : 0;
   const isWalkIn = typeof sale.notes === "string" && sale.notes.includes("Walk-in");
 
   return {
@@ -77,8 +88,9 @@ export function buildSaleReceiptPayload(input: {
     discount_amount: discountAmount,
     tip_amount: tipAmount,
     total_amount: totalAmount,
+    refunded_amount: refundedAmount,
     amount_paid: amountPaid,
-    balance_due: Math.max(0, subtractMoney(totalAmount, amountPaid)),
+    balance_due: settled ? 0 : Math.max(0, subtractMoney(totalAmount, amountPaid)),
     currency: input.currency ?? "ZAR",
     notes: sale.notes ?? null,
     provider: input.provider

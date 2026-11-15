@@ -303,7 +303,9 @@ export async function notifyGroupGuestsWithoutAccountsOfCancellation(
     }>;
     providerId?: string | null;
     bookingRef: string;
-    cancelledBy: 'customer' | 'provider';
+    cancelledBy: 'customer' | 'provider' | 'admin';
+    /** A guest card refund on this group did not finish. */
+    guestCardRefundPending?: boolean;
   },
 ): Promise<{ notified: number }> {
   let smsCreds: Awaited<ReturnType<typeof resolveTwilioCredentials>> | null | undefined;
@@ -336,10 +338,16 @@ export async function notifyGroupGuestsWithoutAccountsOfCancellation(
     }
 
     const name = participant.participant_name?.trim() || 'there';
-    const who = input.cancelledBy === 'provider' ? 'the provider has cancelled' : 'the organiser has cancelled';
-    const message =
-      `Hi ${name}, ${who} group booking ${input.bookingRef}. ` +
-      'Any amount you paid online toward your share is refunded in full to the card you paid with.';
+    const who =
+      input.cancelledBy === "provider"
+        ? "the provider has cancelled"
+        : input.cancelledBy === "admin"
+          ? "an administrator has cancelled"
+          : "the organiser has cancelled";
+    const shareReturn = input.guestCardRefundPending
+      ? "A payment you made toward your share is still being returned to the card you paid with."
+      : "Any amount you paid online toward your share is refunded in full to the card you paid with.";
+    const message = `Hi ${name}, ${who} group booking ${input.bookingRef}. ${shareReturn}`;
 
     if (email) {
       await sendGroupGuestEmail(supabase, email, `Group booking ${input.bookingRef} cancelled`, message);

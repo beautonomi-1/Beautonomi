@@ -30,6 +30,8 @@ vi.mock("@/lib/custom-offers/sync-offer-message-attachments", () => ({
 vi.mock("@/lib/custom-offers/credit-wallet-for-offer-abandon", () => ({
   creditWalletForCustomOfferAbandon: (...args: unknown[]) =>
     mockCreditWalletForCustomOfferAbandon(...args),
+  rememberCustomOfferWalletStillDue: vi.fn(async () => undefined),
+  retryCustomOfferWalletStillDue: vi.fn(async () => 0),
 }));
 
 vi.mock("@/lib/notifications/onesignal", () => ({
@@ -178,6 +180,6 @@ describe("GET /api/cron/expire-custom-requests", () => {
     expect(body.data.expired_requests).toBe(2);
     expect(body.data.expired_offers).toBe(1);
     expect(captured.cascadeUpdates).toBe(1);
-    expect(captured.paymentPendingSelects).toBe(1);
+    expect(captured.paymentPendingSelects).toBe(2);
   });
 });

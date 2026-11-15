@@ -14,6 +14,13 @@ import { getShopMarketHeaderSync } from "@/lib/market/shop-market-opt-in";
 export type Platform = "web" | "customer" | "provider";
 export type Environment = "production" | "staging" | "development";
 
+let activeConfigEnvironment: Environment = typeof __DEV__ !== "undefined" && __DEV__ ? "development" : "production";
+
+/** Environment the public config bundle was requested with. Ringtone URLs must use the same row. */
+export function getActiveConfigEnvironment(): Environment {
+  return activeConfigEnvironment;
+}
+
 export interface ConfigBundleMeta {
   env: Environment;
   platform: Platform;
@@ -211,6 +218,7 @@ export async function fetchConfigBundle(params?: {
 }): Promise<PublicConfigBundle> {
   const platform = params?.platform ?? "provider";
   const environment = params?.environment ?? (__DEV__ ? "development" : "production");
+  activeConfigEnvironment = environment;
   const userId = params?.userId ?? null;
   if (isConfigBundleCacheFresh(userId)) {
     return cached as PublicConfigBundle;

@@ -148,7 +148,7 @@ async function resolveTerminalContext(
   const providerId = metadataString(metadata, "provider_id");
   const terminalCode = extractTerminalCode(data, metadata);
 
-  if (providerId || terminalCode) {
+  if (terminalCode || (providerId && isPaystackTerminalCharge(data))) {
     const terminal = await lookupTerminalRow(supabase, { providerId, terminalCode });
     if (terminal) return terminal;
   }

@@ -11,6 +11,7 @@ type WalkInOrderRow = Record<string, unknown> & {
   tax_amount?: string | number | null;
   discount_amount?: string | number | null;
   total_amount?: string | number | null;
+  refunded_amount?: string | number | null;
   customer_id?: string | null;
   customer_name?: string | null;
   staff_id?: string | null;
@@ -55,6 +56,7 @@ export function buildWalkInProductOrderSaleReceipt(input: {
     tax_amount: order.tax_amount,
     discount_amount: order.discount_amount ?? 0,
     total_amount: order.total_amount,
+    refunded_amount: order.refunded_amount,
     notes: "Walk-in product sale",
   };
 

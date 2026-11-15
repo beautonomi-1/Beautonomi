@@ -30,6 +30,11 @@ vi.mock("@/lib/waitlist/matching", () => ({
   matchWaitlistOnCancellation: vi.fn(async () => undefined),
 }));
 
+const returnSession = vi.fn(async () => undefined);
+vi.mock("@/lib/bookings/return-package-session-after-cancel", () => ({
+  returnPackageSessionAfterCancel: (...args: unknown[]) => returnSession(...args),
+}));
+
 const BOOKING_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
 function makeBooking(overrides: Record<string, unknown> = {}) {
@@ -50,16 +55,27 @@ function makeBooking(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeSupabase(chargeRows: Array<Record<string, unknown>>) {
+function makeSupabase(
+  chargeRows: Array<Record<string, unknown>>,
+  claimRows: Array<{ id: string }> = [{ id: BOOKING_ID }],
+) {
   const bookingUpdates: Record<string, unknown>[] = [];
   return {
     bookingUpdates,
     from: vi.fn((table: string) => {
       const chain: Record<string, unknown> = {};
       const self = () => chain;
-      chain.select = vi.fn(self);
+      chain.select = vi.fn((columns?: string) => {
+        if (columns === "id") {
+          return Promise.resolve({ data: claimRows, error: null });
+        }
+        return chain;
+      });
       chain.eq = vi.fn(self);
+      chain.neq = vi.fn(self);
       chain.in = vi.fn(self);
+      chain.not = vi.fn(async () => ({ data: [], error: null }));
+      chain.is = vi.fn(async () => ({ data: [], error: null }));
       chain.update = vi.fn((payload: Record<string, unknown>) => {
         if (table === "bookings") bookingUpdates.push(payload);
         return chain;
@@ -89,11 +105,12 @@ describe("POST /api/admin/bookings/[id]/refund", () => {
   async function setup(opts: {
     booking?: ReturnType<typeof makeBooking>;
     chargeRows?: Array<Record<string, unknown>>;
+    claimRows?: Array<{ id: string }>;
   }) {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const { fetchBookingInAdminTenant } = await import("@/lib/tenant/admin-booking-tenant");
     const { issueAdminWalletRefund } = await import("@/lib/finance/issue-admin-wallet-refund");
-    const supabase = makeSupabase(opts.chargeRows ?? []);
+    const supabase = makeSupabase(opts.chargeRows ?? [], opts.claimRows);
     vi.mocked(getSupabaseAdmin).mockReturnValue(supabase as never);
     vi.mocked(fetchBookingInAdminTenant).mockResolvedValue({
       booking: opts.booking ?? makeBooking(),
@@ -164,6 +181,7 @@ describe("POST /api/admin/bookings/[id]/refund", () => {
       expect.objectContaining({ status: "cancelled" }),
     ]);
     expect(matchWaitlistOnCancellation).toHaveBeenCalledWith(supabase, BOOKING_ID);
+    expect(returnSession).toHaveBeenCalledWith(supabase, BOOKING_ID);
   });
 
   it("partial refund leaves the booking active", async () => {
@@ -172,6 +190,7 @@ describe("POST /api/admin/bookings/[id]/refund", () => {
     await post({ amount: 100 });
 
     expect(supabase.bookingUpdates).toEqual([]);
+    expect(returnSession).not.toHaveBeenCalled();
   });
 
   it("passes through refund failures without cancelling", async () => {
@@ -199,5 +218,55 @@ describe("POST /api/admin/bookings/[id]/refund", () => {
 
     expect(res.status).toBe(400);
     expect(issueAdminWalletRefund).not.toHaveBeenCalled();
+  });
+
+  it("finishes a full refund that was already paid back without refunding again", async () => {
+    const { supabase, issueAdminWalletRefund } = await setup({
+      booking: makeBooking({
+        payment_status: "refunded",
+        total_refunded: 300,
+        status: "completed",
+      }),
+    });
+
+    const res = await post({ amount: 300 });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.already_refunded).toBe(true);
+    expect(issueAdminWalletRefund).not.toHaveBeenCalled();
+    expect(supabase.bookingUpdates).toEqual([
+      expect.objectContaining({ status: "cancelled" }),
+    ]);
+    expect(returnSession).toHaveBeenCalledWith(supabase, BOOKING_ID);
+  });
+
+  it("does not cancel a visit when only part of the bill was refunded", async () => {
+    const { supabase, issueAdminWalletRefund } = await setup({
+      booking: makeBooking({
+        payment_status: "refunded",
+        total_paid: 100,
+        total_refunded: 100,
+        status: "completed",
+      }),
+    });
+
+    const res = await post({ amount: 300 });
+
+    expect(res.status).toBe(400);
+    expect(issueAdminWalletRefund).not.toHaveBeenCalled();
+    expect(supabase.bookingUpdates).toEqual([]);
+  });
+
+  it("does not return the session when the cancel changes no row", async () => {
+    const { supabase } = await setup({ chargeRows: [], claimRows: [] });
+
+    const res = await post({ amount: 300 });
+
+    expect(res.status).toBe(200);
+    expect(supabase.bookingUpdates).toEqual([
+      expect.objectContaining({ status: "cancelled" }),
+    ]);
+    expect(returnSession).not.toHaveBeenCalled();
   });
 });

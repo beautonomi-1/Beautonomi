@@ -220,7 +220,19 @@ export async function createWalkInOrderFromLegacySale(
   }
 
   if (isPaid) {
-    await applyPosProductStockDecrements(supabase, posItems);
+    try {
+      await applyPosProductStockDecrements(supabase, posItems);
+    } catch (stockErr) {
+      const { error: deleteError } = await admin
+        .from("product_orders")
+        .delete()
+        .eq("id", order.id)
+        .eq("provider_id", providerId);
+      if (deleteError) {
+        console.error("[legacy-sale-adapter] could not remove the sale after a stock failure:", deleteError);
+      }
+      throw stockErr;
+    }
     try {
       await logSaleStockMovements(supabase, {
         providerId,

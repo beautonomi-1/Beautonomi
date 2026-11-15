@@ -2174,7 +2174,8 @@ export default function BookingDetailScreen() {
     outstanding,
   });
   const netPaidAfterRefunds = subtractMoney(totalPaid, totalRefunded);
-  /** Align with POST /api/provider/bookings/[id]/mark-paid — collect cash/Yoco before or during visit. */
+  const maxRefundable = refundCaps?.maxRefundable ?? Math.max(0, netPaidAfterRefunds);
+  const canRefund = canIssueRefunds && maxRefundable > 0.01;
   const statusesAllowingPayment = new Set([
     "pending",
     "booked",
@@ -2193,8 +2194,6 @@ export default function BookingDetailScreen() {
   const canMarkPaid = canCollectPayment;
   const requiresRecollectConfirm = (b.payment_status ?? "").toLowerCase() === "refunded";
 
-  const canRefund = canIssueRefunds && totalPaid > 0 && totalRefunded < totalPaid;
-  const maxRefundable = Math.max(0, netPaidAfterRefunds);
   const awaitingMachineRefunds =
     (b as { awaiting_machine_refunds?: Array<{ id: string; amount: number }> }).awaiting_machine_refunds ?? [];
   const awaitingMachineTotal = awaitingMachineRefunds.reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);

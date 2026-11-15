@@ -19,4 +19,9 @@ describe("computeGrowthPercent", () => {
   it("treats near-zero change as flat", () => {
     expect(computeGrowthPercent(100.02, 100).kind).toBe("flat");
   });
+
+  it("counts a recovery from a refund as growth", () => {
+    expect(computeGrowthPercent(50, -100)).toEqual({ kind: "up", percent: 150 });
+    expect(computeGrowthPercent(-150, -100)).toEqual({ kind: "down", percent: -50 });
+  });
 });

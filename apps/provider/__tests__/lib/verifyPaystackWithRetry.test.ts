@@ -80,6 +80,25 @@ describe("verifyPaystackWithRetry (provider)", () => {
     expect(apiGetMock).not.toHaveBeenCalled();
   });
 
+  it("keeps polling when the bank is still processing", async () => {
+    apiGetMock.mockResolvedValue(ok({ verified: false, status: "pending", paystackStatus: "ongoing" }));
+    const res = await verifyPaystackWithRetry("ref-pending", { maxAttempts: 2, delayMs: 0 });
+    expect(res.status).toBe("pending");
+    expect(res.attempts).toBe(2);
+  });
+
+  it("sends a cancelled redirect status to verify", async () => {
+    apiGetMock.mockResolvedValueOnce(ok({ status: "failed" }));
+    await verifyPaystackWithRetry("ref-cancel", {
+      maxAttempts: 1,
+      delayMs: 0,
+      redirectStatus: "cancelled",
+    });
+    const call = apiGetMock.mock.calls[0]?.[0] ?? "";
+    expect(call).toContain("reference=ref-cancel");
+    expect(call).toContain("status=cancelled");
+  });
+
   it("appends session_id when provided (Stripe Checkout)", async () => {
     apiGetMock.mockResolvedValueOnce(ok({ verified: true }));
     await verifyPaystackWithRetry("ref-stripe", {

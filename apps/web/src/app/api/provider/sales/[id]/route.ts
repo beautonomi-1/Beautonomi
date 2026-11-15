@@ -11,13 +11,19 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 import {
   applyPosProductStockDecrements,
+  posSaleRefundShouldRestoreStock,
+  restorePosSaleStock,
   validatePosProductStock,
 } from "@/lib/provider-sales/pos-product-stock";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { isBookingCollectionSale } from "@/lib/reports/provider-sales-history";
 import { fulfillWalkInProductOrderDelivery } from "@/lib/provider-sales/fulfill-walk-in-product-order-delivery";
-import { settleReservedSaleGiftCard, voidSaleGiftCard } from "@/lib/gift-cards/sale-gift-card";
+import {
+  restoreSaleGiftCard,
+  settleReservedSaleGiftCard,
+  voidSaleGiftCard,
+} from "@/lib/gift-cards/sale-gift-card";
 
 const patchBodySchema = z.object({
   payment_status: z.enum(["pending", "completed", "failed", "refunded"]).optional(),
@@ -98,7 +104,7 @@ export async function PATCH(
           const payRef =
             parsed.data.payment_provider_id?.trim() ||
             `walk_in_pos_patch_${walkInOrder.id}`;
-          await recordProductOrderPayment({
+          const payRecord = await recordProductOrderPayment({
             supabase: admin as never,
             productOrderId: walkInOrder.id as string,
             reference: payRef,
@@ -113,12 +119,28 @@ export async function PATCH(
                   : "cash",
             platformHeld: false,
           });
+          if (!payRecord.ok) {
+            return errorResponse(
+              "The sale payment was not recorded, so the products were not taken.",
+              "PRODUCT_ORDER_PAYMENT_NOT_RECORDED",
+              409,
+            );
+          }
           if (String((walkInOrder as { status?: string }).status ?? "") !== "delivered") {
-            await fulfillWalkInProductOrderDelivery({
+            const delivery = await fulfillWalkInProductOrderDelivery({
               supabase: admin as never,
               providerId,
               orderId: walkInOrder.id as string,
             });
+            if (delivery.ok === false) {
+              return errorResponse(
+                delivery.reason === "payment_not_settled"
+                  ? "The sale is not paid, so the products were not taken."
+                  : delivery.reason,
+                "STOCK_ERROR",
+                409,
+              );
+            }
           }
           return successResponse({
             id: walkInOrder.id,
@@ -182,6 +204,20 @@ export async function PATCH(
       }
     }
 
+    if (
+      nextPaymentStatus === "refunded" &&
+      String(existingSale.payment_status ?? "") !== "refunded"
+    ) {
+      if (
+        posSaleRefundShouldRestoreStock(
+          existingSale as { payment_status?: string | null; notes?: string | null },
+        )
+      ) {
+        await restorePosSaleStock(getSupabaseAdmin(), { saleId, providerId });
+      }
+      await restoreSaleGiftCard(getSupabaseAdmin(), saleId);
+    }
+
     const { data: sale, error: saleError } = await supabase
       .from("sales")
       .update(updates)
@@ -232,7 +268,7 @@ export async function PATCH(
         return errorResponse(gift.message, "GIFT_CARD_ERROR", 400);
       }
     } else if (
-      (parsed.data.payment_status === "failed" || parsed.data.payment_status === "refunded") &&
+      parsed.data.payment_status === "failed" &&
       String(existingSale.payment_status ?? "") === "pending"
     ) {
       await voidSaleGiftCard(getSupabaseAdmin(), saleId);

@@ -46,9 +46,16 @@ function mockSupabase(rows: Array<{ provider_id: string; apple_original_transact
           }),
         }),
       }),
-      update: () => ({
-        eq: async () => ({ data: null, error: null }),
-      }),
+      update: () => {
+        const api = {
+          eq: () => api,
+          then: (
+            resolve: (value: unknown) => unknown,
+            reject?: (reason: unknown) => unknown,
+          ) => Promise.resolve({ data: null, error: null }).then(resolve, reject),
+        };
+        return api;
+      },
     }),
   } as never;
 }

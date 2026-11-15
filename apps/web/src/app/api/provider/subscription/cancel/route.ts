@@ -50,12 +50,13 @@ export async function POST(request: NextRequest) {
 
     // Cancel Paystack subscription if it exists (fetch email_token then disable)
     const paystackSubscriptionCode = (subscriptionToCancel as any).paystack_subscription_code;
+    let paystackStopFailed = false;
     if (paystackSubscriptionCode) {
       try {
         await disableSubscriptionByCode(paystackSubscriptionCode, { tenantId });
       } catch (paystackError) {
+        paystackStopFailed = true;
         console.error("Error disabling Paystack subscription:", paystackError);
-        // Continue with local cancellation even if Paystack call fails
       }
     }
 
@@ -67,6 +68,12 @@ export async function POST(request: NextRequest) {
       .update({
         cancelled_at: new Date().toISOString(),
         auto_renew: false,
+        ...(paystackStopFailed
+          ? {
+              paystack_sync_note:
+                "We could not stop automatic billing. Contact support if charges continue.",
+            }
+          : {}),
         scheduled_plan_id: null,
         scheduled_change_at: null,
         scheduled_billing_period: null,

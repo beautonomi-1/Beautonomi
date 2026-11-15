@@ -24,7 +24,7 @@ export async function refundRedeemedLoyaltyPoints(
 ): Promise<{ refunded: boolean; points: number; reason?: string }> {
   const { bookingId, customerId, reason } = args;
 
-  const { data: existingRefund } = await adminClient
+  const { data: existingRefund, error: existingErr } = await adminClient
     .from("loyalty_points_ledger")
     .select("id")
     .eq("booking_id", bookingId)
@@ -34,11 +34,16 @@ export async function refundRedeemedLoyaltyPoints(
     .limit(1)
     .maybeSingle();
 
+  if (existingErr) {
+    console.error("Loyalty refund lookup failed:", existingErr);
+    return { refunded: false, points: 0, reason: "lookup_failed" };
+  }
+
   if (existingRefund) {
     return { refunded: false, points: 0, reason: "already_refunded" };
   }
 
-  const { data: redeemedRow } = await adminClient
+  const { data: redeemedRow, error: redeemedErr } = await adminClient
     .from("loyalty_points_ledger")
     .select("id, points_amount")
     .eq("booking_id", bookingId)
@@ -46,6 +51,11 @@ export async function refundRedeemedLoyaltyPoints(
     .eq("transaction_type", "redeemed")
     .limit(1)
     .maybeSingle();
+
+  if (redeemedErr) {
+    console.error("Loyalty refund lookup failed:", redeemedErr);
+    return { refunded: false, points: 0, reason: "lookup_failed" };
+  }
 
   if (!redeemedRow) {
     return { refunded: false, points: 0, reason: "no_redeem_row" };

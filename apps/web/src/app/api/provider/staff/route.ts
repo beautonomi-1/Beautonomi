@@ -179,7 +179,8 @@ export async function GET(request: NextRequest) {
         is_service_provider,
         enable_in_online_booking,
         bookable_from,
-        public_title
+        public_title,
+        time_clock_enabled
       `
       )
       .eq("provider_id", providerId)
@@ -197,6 +198,21 @@ export async function GET(request: NextRequest) {
     }
 
     const idsForServiceAssignments = (staff || []).map((m: StaffMemberRow) => m.id);
+    const clockedInIds = new Set<string>();
+    if (idsForServiceAssignments.length > 0) {
+      const { data: openCards, error: openCardsError } = await getSupabaseAdmin()
+        .from("staff_time_cards")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .is("clock_out_time", null)
+        .in("staff_id", idsForServiceAssignments);
+      if (!openCardsError) {
+        for (const row of openCards ?? []) {
+          const id = (row as { staff_id?: string }).staff_id;
+          if (id) clockedInIds.add(id);
+        }
+      }
+    }
     const serviceIdsByStaff = new Map<string, string[]>();
     if (idsForServiceAssignments.length > 0) {
       const { data: svcAssignRows } = await supabase
@@ -301,6 +317,8 @@ export async function GET(request: NextRequest) {
           (member as { enable_in_online_booking?: boolean | null }).enable_in_online_booking ?? true,
         bookable_from: (member as { bookable_from?: string | null }).bookable_from ?? null,
         public_title: (member as { public_title?: string | null }).public_title ?? null,
+        time_clock_enabled: (member as { time_clock_enabled?: boolean | null }).time_clock_enabled === true,
+        clocked_in: clockedInIds.has(member.id),
       };
       const payVisible = viewerCanPay || member.user_id === user.id;
       const priced = redactStaffPayFields(row, payVisible);

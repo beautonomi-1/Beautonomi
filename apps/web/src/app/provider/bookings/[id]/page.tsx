@@ -1731,7 +1731,7 @@ export default function ProviderBookingDetail() {
   const markPaidPrimary =
     outstanding > 0 &&
     (b.current_stage === "service_completed" || bookingLifecycleStatus === "completed");
-  const canRefund = canIssueRefunds && fallbackMaxRefundable > 0.01;
+  const canRefund = canIssueRefunds && maxRefundable > 0.01;
   const refundShowWalletMethod =
     (refundCaps?.onlineCap ?? 0) > 0.01 && refundCaps?.hasCustomerAccount === true;
   const refundShowOriginalMethod =

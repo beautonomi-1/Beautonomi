@@ -13,6 +13,7 @@ import { redactOnDemandRequest } from "@/lib/provider/redact-booking-customer-co
 import { getRequestNowAvailability } from "@/lib/on-demand/request-now-availability";
 import { validateBooking } from "@/app/api/public/bookings/_helpers/validate-booking";
 import { createBookingRecord } from "@/app/api/public/bookings/_helpers/create-booking-record";
+import { releaseBookingSlotAfterPaymentFailure } from "@/app/api/public/bookings/_helpers/release-booking-slot-after-payment-failure";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import type { BookingDraft } from "@/types/beautonomi";
 
@@ -229,10 +230,12 @@ export async function POST(
       // Atomic update failed — another accept won or the request expired.
       // Clean up the orphan booking we just created.
       try {
-        await admin
-          .from("bookings")
-          .update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancellation_reason: "On-demand request expired or already handled" })
-          .eq("id", booking.id);
+        await releaseBookingSlotAfterPaymentFailure(
+          admin,
+          booking.id,
+          customerId,
+          "On-demand request expired or already handled",
+        );
       } catch (cleanupErr) {
         console.error("Failed to clean up orphan booking after on-demand race:", cleanupErr);
       }

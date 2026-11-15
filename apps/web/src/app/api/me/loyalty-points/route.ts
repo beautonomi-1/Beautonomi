@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
     let max_redemption_percentage = 50;
     let points_expiry_days = 365;
     let earning_rate = 1.0;
+    let referral_code: string | null = null;
     let recent_transactions: { id: string; type: string; points: number; description: string; created_at: string }[] = [];
 
     try {
@@ -62,6 +63,14 @@ export async function GET(request: NextRequest) {
         last_transaction_at = balanceSummary.last_transaction_at ?? null;
       }
 
+      const { data: userRow } = await supabase
+        .from("users")
+        .select("referral_code")
+        .eq("id", user.id)
+        .maybeSingle();
+      const code = (userRow as { referral_code?: string | null } | null)?.referral_code?.trim();
+      referral_code = code || null;
+
       const { data: transactions, error: transactionsError } = await supabase
         .from("loyalty_points_ledger")
         .select("id, transaction_type, points_amount, description, created_at")
@@ -74,7 +83,7 @@ export async function GET(request: NextRequest) {
           const raw = t.transaction_type;
           const pts = Number(t.points_amount) || 0;
           const type =
-            raw === "expired" ? "expire" : pts < 0 ? "redeem" : "earn";
+            raw === "expired" ? "expire" : raw === "redeemed" ? "redeem" : raw === "adjusted" ? "adjust" : "earn";
           return {
             id: t.id,
             type,
@@ -146,6 +155,7 @@ export async function GET(request: NextRequest) {
         earning_rate,
       },
       minimum_redemption: min_redemption_points,
+      referral_code,
       recent_transactions: recent_transactions,
       lifetime_points: total_earned,
       earning_rate_description: "Earn points with every booking",

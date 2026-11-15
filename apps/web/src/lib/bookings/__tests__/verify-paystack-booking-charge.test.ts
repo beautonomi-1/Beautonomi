@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   bookingFinancialsFromDb,
+  expectedHostedCardAmountMajor,
   verifyPaystackBookingCharge,
 } from "../verify-paystack-booking-charge";
 
@@ -120,6 +121,22 @@ describe("verifyPaystackBookingCharge", () => {
     expect(result).toEqual({ ok: false, reason: "no_pending_payment" });
   });
 
+  it("accepts a matching booking reference when the pending payments row is missing", async () => {
+    const result = await verifyPaystackBookingCharge({
+      supabase: mockSupabase([]),
+      bookingId: "b1",
+      reference: "ref_hosted",
+      bookingPaymentReference: "ref_hosted",
+      paystackAmountSmallest: 18000,
+      paystackCurrency: "ZAR",
+      tenantId: "tenant-1",
+      fallbackAmountMajor: 180,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.amountMajor).toBe(180);
+    expect(recordException).not.toHaveBeenCalled();
+  });
+
   it("rejects when no pending payment exists", async () => {
     const result = await verifyPaystackBookingCharge({
       supabase: mockSupabase([]),
@@ -129,6 +146,32 @@ describe("verifyPaystackBookingCharge", () => {
       tenantId: "tenant-1",
     });
     expect(result).toEqual({ ok: false, reason: "no_pending_payment" });
+  });
+});
+
+describe("expectedHostedCardAmountMajor", () => {
+  it("uses the full total after tip and booking protection when nothing else was applied", () => {
+    expect(
+      expectedHostedCardAmountMajor({
+        total_amount: 180,
+        currency: "ZAR",
+        payment_option: "full",
+      }),
+    ).toBe(180);
+  });
+
+  it("subtracts wallet, gift card, and reschedule credit, and uses the deposit when that was the option", () => {
+    expect(
+      expectedHostedCardAmountMajor({
+        total_amount: 200,
+        deposit_amount: 60,
+        payment_option: "deposit",
+        wallet_amount: 10,
+        gift_card_amount: 5,
+        reschedule_credit_pending: 5,
+        currency: "ZAR",
+      }),
+    ).toBe(40);
   });
 });
 

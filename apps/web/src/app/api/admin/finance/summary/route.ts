@@ -16,7 +16,7 @@ import {
   platformRevenueNetFromAggregate,
 } from "@/lib/admin/aggregate-finance-ledger-rows";
 import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
-import { subtractMoney, addMoney, sumMoney } from "@beautonomi/utils";
+import { subtractMoney, addMoney, sumMoney, computeGrowthPercent } from "@beautonomi/utils";
 import {
   FINANCE_METRIC_CONTRACT_VERSION,
   getFinanceMetricContracts,
@@ -205,8 +205,7 @@ export async function GET(request: Request) {
       previousGmv = aggregateFinanceLedgerRows(prev).service_collected_gross;
     }
 
-    const gmvGrowth =
-      previousGmv > 0 ? (subtractMoney(agg.service_collected_gross, previousGmv) / previousGmv) * 100 : 0;
+    const gmvGrowth = computeGrowthPercent(agg.service_collected_gross, previousGmv).percent ?? 0;
 
     const gatewayFeesTotal = gatewayFeesTotalFromAggregate(agg);
     const platformCashPosition = buildPlatformCashPosition({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyRescheduleCarryOver } from "../reschedule-carry-over";
+import { classifyRescheduleCarryOver, rescheduleCollectedAfterGiftStillDue } from "../reschedule-carry-over";
 
 describe("classifyRescheduleCarryOver", () => {
   it("carries card, wallet and captured gift money as wallet credit", () => {
@@ -41,5 +41,35 @@ describe("classifyRescheduleCarryOver", () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("GROUP_RESCHEDULE_USE_GROUP_ROUTE");
+  });
+
+  it("leaves a captured gift the sweep still owes out of the reschedule credit", () => {
+    const collected = rescheduleCollectedAfterGiftStillDue({
+      collected: 300,
+      reservedGiftAmount: 0,
+      settlementError: "Gift card value could not be returned: 50.00",
+    });
+    const result = classifyRescheduleCarryOver({
+      collected,
+      reservedGiftAmount: 0,
+      inPersonAmount: 0,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.credit).toBe(250);
+  });
+
+  it("does not remove a reserved gift twice when the sweep already owes it", () => {
+    const collected = rescheduleCollectedAfterGiftStillDue({
+      collected: 300,
+      reservedGiftAmount: 50,
+      settlementError: "Gift card value could not be returned: 50.00",
+    });
+    const result = classifyRescheduleCarryOver({
+      collected,
+      reservedGiftAmount: 50,
+      inPersonAmount: 0,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.credit).toBe(250);
   });
 });

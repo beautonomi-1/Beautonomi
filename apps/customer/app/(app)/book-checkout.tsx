@@ -243,6 +243,22 @@ function parseValidDate(value: unknown): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
+/** Keep a date answer in the same YYYY-MM-DD shape the website stores. */
+function maskIsoDate(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+}
+
+interface CheckoutResource {
+  id: string;
+  name: string;
+  description?: string | null;
+  is_required: boolean;
+  capacity?: number;
+}
+
 function formatDateOnly(s: string) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
@@ -1002,6 +1018,9 @@ export default function BookCheckoutScreen() {
   const [providerFormValues, setProviderFormValues] = useState<
     Record<string, Record<string, string | number | boolean | null>>
   >({});
+  const [checkoutResources, setCheckoutResources] = useState<CheckoutResource[]>([]);
+  const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
+  const [resourceAvailability, setResourceAvailability] = useState<Record<string, boolean>>({});
   /** Parity with web booking engine StepReview — required when hold includes a visible cancellation / fee policy. */
   const [cancellationPolicyAccepted, setCancellationPolicyAccepted] = useState(false);
   const [specialRequests, setSpecialRequests] = useState("");
@@ -1711,6 +1730,68 @@ export default function BookCheckoutScreen() {
     (hold?.booking_services_snapshot
       ?.map((s) => s.offering_id ?? (s as { id?: string }).id)
       .filter(Boolean) as string[]) ?? [];
+  const resourceServiceKey = snapshotOfferingIds.join(",");
+
+  useEffect(() => {
+    if (!effectiveProviderSlug || !resourceServiceKey) {
+      setCheckoutResources([]);
+      setSelectedResourceIds([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<CheckoutResource[]>(
+        `/api/public/providers/${encodeURIComponent(effectiveProviderSlug)}/resources?service_ids=${encodeURIComponent(resourceServiceKey)}`
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const list = Array.isArray(res.data) ? res.data : [];
+        setCheckoutResources(list);
+        setSelectedResourceIds(list.filter((r) => r.is_required).map((r) => r.id));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCheckoutResources([]);
+          setSelectedResourceIds([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveProviderSlug, resourceServiceKey]);
+
+  const selectedResourceKey = selectedResourceIds.join(",");
+  useEffect(() => {
+    if (!effectiveProviderSlug || !selectedResourceKey || !hold?.start_at || !hold?.end_at) {
+      setResourceAvailability({});
+      return;
+    }
+    let cancelled = false;
+    api
+      .post<{ available?: Record<string, boolean> }>(
+        `/api/public/providers/${encodeURIComponent(effectiveProviderSlug)}/availability/resources/check`,
+        {
+          resource_ids: selectedResourceKey.split(","),
+          start_at: hold.start_at,
+          end_at: hold.end_at,
+        }
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const body = res.data as { available?: Record<string, boolean> } | CheckoutResource[] | null;
+        const available =
+          body && !Array.isArray(body) && body.available && typeof body.available === "object"
+            ? body.available
+            : {};
+        setResourceAvailability(available);
+      })
+      .catch(() => {
+        if (!cancelled) setResourceAvailability({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveProviderSlug, selectedResourceKey, hold?.start_at, hold?.end_at]);
 
   const snapshotServiceLines = useMemo(
     () =>
@@ -2688,6 +2769,17 @@ export default function BookCheckoutScreen() {
         return;
       }
     }
+    if (
+      checkoutResources.some(
+        (resource) =>
+          resource.is_required &&
+          selectedResourceIds.includes(resource.id) &&
+          resourceAvailability[resource.id] === false
+      )
+    ) {
+      setError(bc("resourcesBlocked"));
+      return;
+    }
 
     if (
       cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) &&
@@ -2748,6 +2840,7 @@ export default function BookCheckoutScreen() {
         payload.custom_field_values = bookingCustomValues;
       if (Object.keys(providerFormValues).length > 0)
         payload.provider_form_responses = providerFormValues;
+      if (selectedResourceIds.length > 0) payload.resource_ids = selectedResourceIds;
       if (specialRequests.trim()) payload.special_requests = specialRequests.trim();
       if (houseCallInstructionsPrefill.trim())
         payload.house_call_instructions = houseCallInstructionsPrefill.trim();
@@ -2958,6 +3051,7 @@ export default function BookCheckoutScreen() {
         let returnedPaymentReference: string | null = data?.payment_reference ?? null;
         let returnedCheckoutSessionId: string | null = null;
         let returnedFlutterwaveTransactionId: string | null = null;
+        let returnedRedirectStatus: string | null = null;
         if (Platform.OS !== "web") {
           // Important: close the blocking overlay before opening Paystack WebView.
           // Two RN modals competing can leave users stuck on "opening payment page".
@@ -2999,18 +3093,19 @@ export default function BookCheckoutScreen() {
               reason: "cancel_action",
               source: "customer_mobile",
             });
-            if (bookingId) {
-              trackBookingConfirmed(bookingId, paymentMethod, total);
-              navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
-            } else {
-              Alert.alert(
-                t("checkout.paymentCancelledTitle", "Payment cancelled"),
-                t(
-                  "checkout.paymentCancelledBody",
-                  "You cancelled the payment. Your booking has not been confirmed."
-                )
-              );
+            if (returnedPaymentReference) {
+              void verifyPaystackWithRetry(returnedPaymentReference, {
+                redirectStatus: "cancelled",
+                maxAttempts: 1,
+              });
             }
+            Alert.alert(
+              t("checkout.paymentCancelledTitle", "Payment cancelled"),
+              t(
+                "checkout.paymentCancelledBody",
+                "You cancelled the payment. Your booking has not been confirmed."
+              )
+            );
             return;
           }
 
@@ -3019,7 +3114,6 @@ export default function BookCheckoutScreen() {
             setProcessingStep(undefined);
             if (!returnedPaymentReference) {
               if (bookingId) {
-                trackBookingConfirmed(bookingId, paymentMethod, total);
                 navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
               } else {
                 Alert.alert(
@@ -3047,18 +3141,21 @@ export default function BookCheckoutScreen() {
                 reason: "cancel_action",
                 source: "customer_mobile",
               });
-              if (bookingId) {
-                trackBookingConfirmed(bookingId, paymentMethod, total);
-                navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
-              } else {
-                Alert.alert(
-                  t("checkout.paymentCancelledTitle", "Payment cancelled"),
-                  t(
-                    "checkout.paymentCancelledBody",
-                    "You cancelled the payment. Your booking has not been confirmed."
-                  )
-                );
+              const cancelRef =
+                parseOnlineCheckoutReturnUrl(authResult.url).reference || returnedPaymentReference;
+              if (cancelRef) {
+                void verifyPaystackWithRetry(cancelRef, {
+                  redirectStatus: "cancelled",
+                  maxAttempts: 1,
+                });
               }
+              Alert.alert(
+                t("checkout.paymentCancelledTitle", "Payment cancelled"),
+                t(
+                  "checkout.paymentCancelledBody",
+                  "You cancelled the payment. Your booking has not been confirmed."
+                )
+              );
               return;
             }
             const parsedReturn = parseOnlineCheckoutReturnUrl(authResult.url);
@@ -3068,12 +3165,7 @@ export default function BookCheckoutScreen() {
               returnedFlutterwaveTransactionId = parsedReturn.transactionId;
             }
             if (parsedReturn.status === "failed" || parsedReturn.status === "cancelled") {
-              setProcessingPayment(false);
-              Alert.alert(
-                t("checkout.paymentNotCompletedTitle", "Payment not completed"),
-                t("checkout.paymentNotCompletedBody", "Your booking has not been confirmed."),
-              );
-              return;
+              returnedRedirectStatus = parsedReturn.status;
             }
           }
         } else {
@@ -3089,11 +3181,14 @@ export default function BookCheckoutScreen() {
         if (saveCard) refreshCards();
 
         let paymentConfirmed = false;
+        let verifyStatus: string | null = null;
         if (returnedPaymentReference) {
           const verifyResult = await verifyPaystackWithRetry(returnedPaymentReference, {
             sessionId: returnedCheckoutSessionId,
             transactionId: returnedFlutterwaveTransactionId,
+            redirectStatus: returnedRedirectStatus,
           });
+          verifyStatus = verifyResult.status;
           if (verifyResult.status === "success") {
             paymentConfirmed = true;
           } else if (verifyResult.data && bookingPaidFromPaystackVerifyBody(verifyResult.data)) {
@@ -3122,10 +3217,14 @@ export default function BookCheckoutScreen() {
         if (!paymentConfirmed) {
           setProcessingPayment(false);
           setProcessingStep(undefined);
+          if (verifyStatus === "failed") {
+            Alert.alert(
+              t("checkout.paymentNotCompletedTitle", "Payment not completed"),
+              t("checkout.paymentNotCompletedBody", "Your booking has not been confirmed."),
+            );
+            return;
+          }
           if (bookingId) {
-            trackBookingConfirmed(bookingId, paymentMethod, total);
-            trackPaymentSuccess(bookingId, amountPaidOnCompletion, paymentMethod, marketGateway);
-            notifyRecurringSubscription({ bookingIdForSeriesCheck: bookingId });
             navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined, "pending_payment");
           } else {
             Alert.alert(
@@ -3209,6 +3308,9 @@ export default function BookCheckoutScreen() {
     bookingCustomValues,
     providerForms,
     providerFormValues,
+    checkoutResources,
+    selectedResourceIds,
+    resourceAvailability,
     specialRequests,
     houseCallInstructionsPrefill,
     promotionCode,
@@ -5133,6 +5235,69 @@ export default function BookCheckoutScreen() {
               </View>
             )}
 
+            {/* ═══ Rooms and equipment (same public list as the website) ═══ */}
+            {checkoutResources.length > 0 && (
+              <View style={{ marginBottom: 16 }}>
+                <Text
+                  style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}
+                >
+                  {bc("resourcesTitle")}
+                </Text>
+                {checkoutResources.map((resource) => {
+                  const selected = selectedResourceIds.includes(resource.id);
+                  const unavailable = resourceAvailability[resource.id] === false;
+                  return (
+                    <Pressable
+                      key={resource.id}
+                      onPress={() => {
+                        if (resource.is_required) return;
+                        setSelectedResourceIds((prev) =>
+                          prev.includes(resource.id)
+                            ? prev.filter((id) => id !== resource.id)
+                            : [...prev, resource.id]
+                        );
+                      }}
+                      style={{
+                        marginBottom: 8,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: selected ? Colors.primary : "#E5E7EB",
+                        backgroundColor: selected ? "#FFF5FA" : "#fff",
+                        padding: 12,
+                        opacity: unavailable ? 0.55 : 1,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Ionicons
+                          name={selected ? "checkbox" : "square-outline"}
+                          size={20}
+                          color={selected ? Colors.primary : "#9CA3AF"}
+                        />
+                        <Text style={{ marginStart: 8, flex: 1, fontSize: 14, fontWeight: "600", color: "#111827" }}>
+                          {resource.name}
+                        </Text>
+                        {resource.is_required ? (
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#B45309" }}>
+                            {bc("resourcesRequired")}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {resource.description ? (
+                        <Text style={{ marginTop: 4, marginStart: 28, fontSize: 12, color: "#6B7280" }}>
+                          {resource.description}
+                        </Text>
+                      ) : null}
+                      {unavailable ? (
+                        <Text style={{ marginTop: 4, marginStart: 28, fontSize: 12, color: "#B45309" }}>
+                          {bc("resourcesUnavailable")}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
             {/* ═══ Provider forms ═══ */}
             {providerForms.length > 0 && (
               <View style={{ marginBottom: 16 }}>
@@ -5157,6 +5322,11 @@ export default function BookCheckoutScreen() {
                       {form.title}
                       {form.is_required ? " *" : ""}
                     </Text>
+                    {form.description ? (
+                      <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
+                        {form.description}
+                      </Text>
+                    ) : null}
                     {(form.fields || []).map((field) => (
                       <View key={field.id} style={{ marginBottom: 10 }}>
                         <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 4 }}>
@@ -5203,14 +5373,20 @@ export default function BookCheckoutScreen() {
                             onChangeText={(v) =>
                               setProviderFormValues((prev) => ({
                                 ...prev,
-                                [form.id]: { ...(prev[form.id] ?? {}), [field.id]: v },
+                                [form.id]: {
+                                  ...(prev[form.id] ?? {}),
+                                  [field.id]: field.field_type === "date" ? maskIsoDate(v) : v,
+                                },
                               }))
                             }
                             placeholder={
                               field.field_type === "signature"
-                                ? "Type your name to sign"
-                                : undefined
+                                ? bc("signPlaceholder")
+                                : field.field_type === "date"
+                                  ? bc("formDatePlaceholder")
+                                  : undefined
                             }
+                            keyboardType={field.field_type === "date" ? "number-pad" : "default"}
                             style={{
                               backgroundColor: "#fff",
                               borderWidth: 1,

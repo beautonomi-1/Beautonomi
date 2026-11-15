@@ -33,6 +33,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { useTranslation } from "@beautonomi/i18n";
+import { sharePayrollFile } from "@/lib/open-payroll-file";
 
 interface PayRunItem {
   id: string;
@@ -206,7 +207,7 @@ export default function PayRunDetailScreen() {
           manual_deductions: parseMoneyInput(manualInput),
           tax_deduction: parseMoneyInput(taxInput),
           uif_contribution: parseMoneyInput(uifInput),
-          notes: notesInput.trim() || undefined,
+          notes: notesInput.trim(),
         },
       ],
     };
@@ -302,10 +303,10 @@ export default function PayRunDetailScreen() {
     );
   }
 
-  const totalGross = Number(data.total_gross_pay ?? items.reduce((s, i) => addMoney(s, Number(i.gross_pay || 0)), 0));
-  const totalNet = Number(data.total_net_pay ?? items.reduce((s, i) => addMoney(s, Number(i.net_pay || 0)), 0));
-  const totalTax = Number(data.total_tax_deductions ?? items.reduce((s, i) => addMoney(s, Number(i.tax_deduction || 0)), 0));
-  const totalUif = Number(data.total_uif ?? items.reduce((s, i) => addMoney(s, Number(i.uif_contribution || 0)), 0));
+  const totalGross = items.reduce((s, i) => addMoney(s, Number(i.gross_pay || 0)), 0);
+  const totalNet = items.reduce((s, i) => addMoney(s, Number(i.net_pay || 0)), 0);
+  const totalTax = items.reduce((s, i) => addMoney(s, Number(i.tax_deduction || 0)), 0);
+  const totalUif = items.reduce((s, i) => addMoney(s, Number(i.uif_contribution || 0)), 0);
 
   return (
     <ScreenContainer scrollable={false}>
@@ -345,6 +346,11 @@ export default function PayRunDetailScreen() {
               </Text>
             </View>
           </View>
+          {!canManagePayroll ? (
+            <Text style={twStyle("mt-3 text-sm text-gray-600")}>
+              You only see your own line. Your payslip opens after this pay run is approved.
+            </Text>
+          ) : null}
           <View style={twStyle("mt-3 flex-row flex-wrap")}>
             <View style={twStyle("w-1/2 pe-2 pb-2")}>
               <Text style={twStyle("text-xs text-gray-500")}>{pr("gross")}</Text>
@@ -453,7 +459,7 @@ export default function PayRunDetailScreen() {
                   )}
                   {Number(item.carry_forward_out ?? 0) !== 0 && (
                     <Text style={twStyle("text-xs text-gray-600")}>
-                      {pr("carryForwardOut", { amount: formatMoneySafe(item.carry_forward_out) })}
+                      {pr("carryForwardOut", { amount: formatMoneySafe(Math.abs(Number(item.carry_forward_out ?? 0))) })}
                     </Text>
                   )}
                 </View>
@@ -497,6 +503,25 @@ export default function PayRunDetailScreen() {
                   <Text style={twStyle("text-xs text-gray-600")}>{item.notes}</Text>
                 </View>
               ) : null}
+              {data.status !== "draft" ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    void sharePayrollFile(
+                      `/api/provider/pay-runs/items/${item.id}/payslip`,
+                      `payslip-${item.id.slice(0, 8)}.html`,
+                      "text/html",
+                    ).then((err) => {
+                      if (err) Alert.alert(pr("payslip", { defaultValue: "Payslip" }), err);
+                    });
+                  }}
+                  style={twStyle("mt-3 self-start rounded-lg border border-gray-300 px-3 py-2")}
+                  accessibilityRole="button"
+                >
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                    {pr("payslip", { defaultValue: "Payslip" })}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </TouchableOpacity>
           ))
         )}
@@ -510,6 +535,25 @@ export default function PayRunDetailScreen() {
           >
             <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
             <Text style={twStyle("ms-2 text-sm font-semibold text-white")}>{pr("approveCta")}</Text>
+          </TouchableOpacity>
+        )}
+        {data.status !== "draft" && canManagePayroll && (
+          <TouchableOpacity
+            onPress={() => {
+              void sharePayrollFile(
+                `/api/provider/pay-runs/${data.id}/export/emp201`,
+                `emp201-${data.pay_period_start}-${data.pay_period_end}.csv`,
+                "text/csv",
+              ).then((err) => {
+                if (err) Alert.alert(pr("emp201", { defaultValue: "EMP201" }), err);
+              });
+            }}
+            style={twStyle("mt-2 flex-row items-center justify-center rounded-xl border border-gray-300 bg-white py-3.5")}
+            accessibilityRole="button"
+          >
+            <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+              {pr("emp201", { defaultValue: "EMP201" })}
+            </Text>
           </TouchableOpacity>
         )}
         {data.status === "approved" && canManagePayroll && (

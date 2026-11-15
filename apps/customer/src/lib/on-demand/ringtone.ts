@@ -5,7 +5,7 @@
  */
 
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
-import type { OnDemandModuleConfig } from "@/lib/config-bundle";
+import { getActiveConfigEnvironment, type OnDemandModuleConfig } from "@/lib/config-bundle";
 import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 
 export interface RingtoneController {
@@ -23,7 +23,7 @@ export async function playRingtone(
   let source = signedUrl ?? (config.ringtone_asset_path?.startsWith("http") ? config.ringtone_asset_path : null);
   if (!source && config.ringtone_asset_path) {
     try {
-      const env = __DEV__ ? "development" : "production";
+      const env = getActiveConfigEnvironment();
       const base = (APP_URL?.trim() || (__DEV__ ? "http://localhost:3000" : "")).replace(/\/$/, "");
       if (base) {
         const res = await fetch(
@@ -55,18 +55,14 @@ export async function playRingtone(
     player.play();
 
     const durationSec = config.ring_duration_seconds ?? 20;
-    let stopTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    if (config.ring_repeat && durationSec > 0) {
-      stopTimeout = setTimeout(() => {
-        try {
-          player.pause();
-          player.remove();
-        } catch {
-          // ignore
-        }
-      }, durationSec * 1000);
-    }
+    const stopTimeout = setTimeout(() => {
+      try {
+        player.pause();
+        player.remove();
+      } catch {
+        // ignore
+      }
+    }, Math.max(1000, durationSec * 1000));
 
     return {
       stop: () => {

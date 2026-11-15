@@ -12,6 +12,7 @@ import {
 import {
   buildBadgeLadder,
   buildProgressToNextBadge,
+  pointsInCurrentProviderTier,
   resolveJoinedBadge,
 } from "@/lib/provider/build-gamification-view";
 
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
       points: {
         total: currentPoints,
         lifetime: effectivePointsData?.lifetime_points || 0,
-        current_tier: effectivePointsData?.current_tier_points || 0,
+        current_tier: pointsInCurrentProviderTier(currentPoints, badge),
         last_calculated: effectivePointsData?.last_calculated_at,
       },
       badge_ladder: badgeLadder,

@@ -1,10 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateStaffCommission } from "./commission-calculator";
-import { getTipsByStaff } from "./tips-helper";
+import { getTipsByStaff, posSaleTipsByStaff } from "./tips-helper";
 import { sumStaffEarningsLines } from "./staff-earnings-from-lines";
 import { resolvePayPeriodBounds, toPayPeriodDateString } from "./period-bounds";
 import { getProviderPayrollCountry, getProviderPayrollTimezone } from "./provider-payroll-context";
-import { assembleStaffPayRunGross } from "./assemble-staff-pay-run-gross";
+import { assembleStaffPayRunGross, staffCommissionCalcFromResult } from "./assemble-staff-pay-run-gross";
 import { applyStatutoryToPayRunItems } from "./apply-statutory";
 import { loadStaffPayrollMetaBatch } from "./resolve-staff-payroll-meta";
 import { resolvePayrollV2Enabled } from "./payroll-v2-gate";
@@ -59,7 +59,7 @@ async function loadStaffCarryForwardBalances(
     .select("staff_id, carry_forward_out, pay_run_id")
     .in("staff_id", staffIds)
     .in("pay_run_id", runIds)
-    .gt("carry_forward_out", 0);
+    .neq("carry_forward_out", 0);
 
   const runOrder = new Map(runIds.map((id, i) => [id, i]));
   const best = new Map<string, { order: number; out: number }>();
@@ -67,7 +67,8 @@ async function loadStaffCarryForwardBalances(
     const sid = (row as { staff_id: string }).staff_id;
     const rid = (row as { pay_run_id: string }).pay_run_id;
     const order = runOrder.get(rid) ?? 999;
-    const cfOut = Number((row as { carry_forward_out?: number }).carry_forward_out ?? 0);
+    const cfOut = Math.abs(Number((row as { carry_forward_out?: number }).carry_forward_out ?? 0));
+    if (cfOut === 0) continue;
     const prev = best.get(sid);
     if (!prev || order < prev.order) {
       best.set(sid, { order, out: cfOut });
@@ -141,12 +142,12 @@ export async function calculatePayRun(
     return staffWithActivity.has(s.id);
   });
 
-  const tipsByStaff = await getTipsByStaff(
-    supabaseAdmin,
-    providerId,
-    periodFrom,
-    periodTo,
-  );
+  const [tipsByStaff, posTipsByStaff] = await Promise.all([
+    getTipsByStaff(supabaseAdmin, providerId, periodFrom, periodTo),
+    posSaleTipsByStaff(supabaseAdmin, providerId, periodFrom, periodTo).catch(
+      () => new Map<string, number>(),
+    ),
+  ]);
 
   const [payrollV2Resolved, providerCountry] = await Promise.all([
     resolvePayrollV2Enabled(supabaseAdmin, providerId),
@@ -184,13 +185,6 @@ export async function calculatePayRun(
       continue;
     }
 
-    const linesSummary = await sumStaffEarningsLines(
-      supabaseAdmin,
-      staff.id,
-      periodFrom,
-      periodTo,
-    ).catch(() => null);
-
     const productCalc = await calculateStaffCommission(
       supabaseAdmin,
       providerId,
@@ -198,6 +192,18 @@ export async function calculatePayRun(
       periodFrom,
       periodTo,
     );
+
+    const linesSummary = await sumStaffEarningsLines(
+      supabaseAdmin,
+      staff.id,
+      periodFrom,
+      periodTo,
+      {
+        omitCommissionClawbackBookingIds: productCalc.refundsNettedBookingIds,
+        keepServiceClawbacks: true,
+        adjustedBookingIds: productCalc.serviceAdjustedBookingIds,
+      },
+    ).catch(() => null);
 
     const assembled = assembleStaffPayRunGross({
       staffId: staff.id,
@@ -212,15 +218,10 @@ export async function calculatePayRun(
       periodStart,
       periodEnd,
       payPlan: meta?.payPlan ?? null,
-      productCalc: {
-        totalCommission: productCalc.totalCommission,
-        serviceCommission: productCalc.serviceCommission,
-        productCommission: productCalc.productCommission,
-        serviceRevenue: productCalc.serviceRevenue,
-        productRevenue: productCalc.productRevenue,
-      },
+      productCalc: staffCommissionCalcFromResult(productCalc),
       linesSummary,
       tipsFromPeriod: tipsByStaff.get(staff.id) || 0,
+      posSaleTips: posTipsByStaff.get(staff.id) || 0,
       carryForwardBalance: carryForwardByStaff.get(staff.id),
     });
 

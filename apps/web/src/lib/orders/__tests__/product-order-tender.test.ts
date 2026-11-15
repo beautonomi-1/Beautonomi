@@ -5,6 +5,7 @@ import {
   displayedProductOrderAmountStillDue,
   computeInPersonProductOrderRefundDue,
   computeProductOrderCancelWalletCredit,
+  productOrderKeptAmount,
   productOrderCancelIncludesGiftInWallet,
   computeProviderCollectedStoreCreditClawback,
 } from "../product-order-tender";
@@ -104,6 +105,12 @@ describe("product order tender splits", () => {
     expect(productOrderCancelIncludesGiftInWallet("missing")).toBe(true);
     expect(productOrderCancelIncludesGiftInWallet("restored")).toBe(false);
     expect(productOrderCancelIncludesGiftInWallet("failed")).toBe(false);
+  });
+
+  it("keeps the bill after a refund and leaves a full refund at zero", () => {
+    expect(productOrderKeptAmount({ total_amount: 130, refunded_amount: 50 })).toBe(80);
+    expect(productOrderKeptAmount({ total_amount: 130, refunded_amount: 130 })).toBe(0);
+    expect(productOrderKeptAmount({ total_amount: 130 })).toBe(130);
   });
 
   it("preserves the legacy remainder when the tender method was not stored", () => {

@@ -32,11 +32,15 @@ vi.mock("@/lib/bookings/sync-booking-after-paystack-success", () => ({
   syncBookingAfterPaystackSuccess: vi.fn(async () => undefined),
 }));
 
-vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", () => ({
-  ensureWalletGiftBookingPayments: vi.fn(async () => undefined),
-  completeWalletGiftSyntheticPayments: vi.fn(async () => undefined),
-  sumPendingWalletGiftBookingPayments: vi.fn(async () => 0),
-}));
+vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/bookings/ensure-wallet-gift-booking-payments")>();
+  return {
+    ...actual,
+    ensureWalletGiftBookingPayments: vi.fn(async () => undefined),
+    completeWalletGiftSyntheticPayments: vi.fn(async () => undefined),
+    sumPendingWalletGiftBookingPayments: vi.fn(async () => 0),
+  };
+});
 
 vi.mock("@/lib/finance/resolve-commission-percentage-for-booking", () => ({
   resolveCommissionPercentageForBooking: vi.fn(async () => 10),
@@ -207,25 +211,32 @@ function makeProcessPaymentSupabase(options: {
         };
       }
       if (table === "booking_payments") {
+        const pendingPayment = vi.fn(async () => ({
+          data: options.existingBookingPayment ?? null,
+          error: null,
+        }));
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
               eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: pendingPayment,
+                })),
+                maybeSingle: pendingPayment,
+              })),
+            })),
+          })),
+          insert: vi.fn(() => {
+            const inserted = Promise.resolve({ data: null, error: null });
+            return Object.assign(inserted, {
+              select: vi.fn(() => ({
                 maybeSingle: vi.fn(async () => ({
-                  data: options.existingBookingPayment ?? null,
+                  data: { id: "bp-remain-1" },
                   error: null,
                 })),
               })),
-            })),
-          })),
-          insert: vi.fn(() => ({
-            select: vi.fn(() => ({
-              maybeSingle: vi.fn(async () => ({
-                data: { id: "bp-remain-1" },
-                error: null,
-              })),
-            })),
-          })),
+            });
+          }),
           delete: vi.fn(() => {
             const chain: { eq: ReturnType<typeof vi.fn>; then: Promise<{ data: null; error: null }>["then"] } = {
               eq: vi.fn(() => chain),

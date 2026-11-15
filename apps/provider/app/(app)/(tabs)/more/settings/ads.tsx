@@ -117,6 +117,7 @@ type AdsCampaignCreateData = Campaign | {
   requires_payment?: boolean;
   payment_url?: string | null;
   order_id?: string;
+  reference?: string | null;
 };
 
 function pickCampaignFromAdsCreate(data: AdsCampaignCreateData | undefined): Campaign | undefined {
@@ -132,6 +133,12 @@ function adsCreatePaymentUrl(data: AdsCampaignCreateData | undefined): string | 
   }
   const url = "payment_url" in data ? data.payment_url : null;
   return typeof url === "string" && url.trim() ? url : null;
+}
+
+function adsCreateReference(data: AdsCampaignCreateData | undefined): string | undefined {
+  if (!data || typeof data !== "object" || !("reference" in data)) return undefined;
+  const reference = data.reference;
+  return typeof reference === "string" && reference.trim() ? reference.trim() : undefined;
 }
 
 function adsCreateOrderId(data: AdsCampaignCreateData | undefined): string | undefined {
@@ -680,6 +687,7 @@ export default function AdsSettingsScreen() {
       opts?: {
         campaignId?: string;
         orderId?: string;
+        reference?: string;
         amount?: number;
         currency?: string;
         productLabel?: string;
@@ -705,14 +713,18 @@ export default function AdsSettingsScreen() {
         return;
       }
 
-      if (result?.outcome === "cancel" || result?.outcome === "closed") {
+      if (result?.outcome === "cancel") {
+        if (opts?.reference) {
+          void verifyPaystackWithRetry(opts.reference, { redirectStatus: "cancelled", maxAttempts: 1 });
+        }
         const failed = adsFailedCopy(ads("paymentNotCompleted"));
         setPaymentOutcome({ phase: "failed", campaignId, ...failed });
         await loadAll();
         return;
       }
 
-      if (result?.outcome !== "success") {
+      const sheetClosed = result?.outcome === "closed";
+      if (result?.outcome !== "success" && !sheetClosed) {
         await loadAll();
         return;
       }
@@ -721,23 +733,39 @@ export default function AdsSettingsScreen() {
       setProcessingMessage(ads("confirmingPayment"));
       setProcessingHint(ads("verifyingPaystackHint"));
       try {
-        const parsed = parseOnlineCheckoutReturnUrl(result.url);
-        if (parsed.status === "failed" || parsed.status === "cancelled") {
-          const failed = adsFailedCopy(ads("paymentNotCompleted"));
-          setPaymentOutcome({ phase: "failed", campaignId, ...failed });
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          await loadAll();
-          return;
+        let reference = opts?.reference?.trim() || null;
+        let checkoutSessionId: string | null = null;
+        let checkoutTransactionId: string | null = null;
+        if (result?.outcome === "success" && result.url) {
+          const parsed = parseOnlineCheckoutReturnUrl(result.url);
+          if (parsed.status === "failed" || parsed.status === "cancelled") {
+            const failRef = parsed.reference || opts?.reference;
+            if (failRef) {
+              void verifyPaystackWithRetry(failRef, {
+                redirectStatus: parsed.status,
+                sessionId: parsed.sessionId,
+                transactionId: parsed.transactionId,
+                maxAttempts: 1,
+              });
+            }
+            const failed = adsFailedCopy(ads("paymentNotCompleted"));
+            setPaymentOutcome({ phase: "failed", campaignId, ...failed });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            await loadAll();
+            return;
+          }
+          if (parsed.reference) reference = parsed.reference;
+          checkoutSessionId = parsed.sessionId;
+          checkoutTransactionId = parsed.transactionId;
         }
-        const reference = parsed.reference;
         const verifyResult = reference
           ? await verifyPaystackWithRetry<{
               adsBudgetOrderId?: string;
               campaignId?: string;
               type?: string;
             }>(reference, {
-              sessionId: parsed.sessionId,
-              transactionId: parsed.transactionId,
+              sessionId: checkoutSessionId,
+              transactionId: checkoutTransactionId,
             })
           : null;
 
@@ -977,6 +1005,7 @@ export default function AdsSettingsScreen() {
         await openAdsPaystack(payUrl, {
           campaignId: campaign?.id,
           orderId: adsCreateOrderId(data),
+          reference: adsCreateReference(data),
           amount: budgetNum,
           currency: tenantCurrency,
           productLabel: ads("cpcBudget"),
@@ -1063,6 +1092,7 @@ export default function AdsSettingsScreen() {
           await openAdsPaystack(payUrl, {
             campaignId: campaign?.id,
             orderId: adsCreateOrderId(data),
+            reference: adsCreateReference(data),
             amount: adPackAmountMajor(pack),
             currency:
               typeof pack.currency === "string" && pack.currency.trim()
@@ -1190,6 +1220,7 @@ export default function AdsSettingsScreen() {
           payment_url?: string | null;
           order_id?: string;
           campaign_id?: string;
+          reference?: string | null;
         }>(
           `/api/provider/ads/campaigns/${campaign.id}/checkout`,
           ADS_NATIVE_PAYMENT,
@@ -1210,6 +1241,7 @@ export default function AdsSettingsScreen() {
         await openAdsPaystack(payUrl, {
           campaignId: campaign.id,
           orderId,
+          reference: res.data?.reference ?? undefined,
           amount,
           currency: campaign.latest_budget_order?.currency ?? tenantCurrency,
           productLabel: campaignModelLabel(campaign, ads),
@@ -1699,6 +1731,7 @@ export default function AdsSettingsScreen() {
                           await openAdsPaystack(payUrl, {
                             campaignId: campaign?.id,
                             orderId: adsCreateOrderId(data),
+                            reference: adsCreateReference(data),
                             amount: adPackAmountMajor(tp),
                             currency:
                               typeof tp.currency === "string" && tp.currency.trim()

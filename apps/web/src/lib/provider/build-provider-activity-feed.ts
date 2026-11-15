@@ -7,6 +7,7 @@ import {
   filterLedgerRowsForLocation,
   filterProductOrdersForLocation,
 } from "@/lib/reports/provider-report-utils";
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 import { isProviderCollectedRetailOrder } from "@/lib/reports/provider-retail-order-scope";
 import { ledgerRowDisplaySign } from "@/lib/provider/provider-ledger-transaction-view";
 import {
@@ -487,10 +488,10 @@ export async function buildProviderActivityFeed(
   const productOrdersQuery = supabaseAdmin
     .from("product_orders")
     .select(
-      "id, order_number, order_source, payment_method, total_amount, paid_at, customer_name, fulfillment_type, collection_location_id",
+      "id, order_number, order_source, payment_method, total_amount, refunded_amount, paid_at, customer_name, fulfillment_type, collection_location_id",
     )
     .eq("provider_id", providerId)
-    .eq("payment_status", "paid")
+    .in("payment_status", ["paid", "partially_refunded", "refunded"])
     .or("order_source.is.null,order_source.neq.appointment")
     .gte("paid_at", since.toISOString())
     .order("paid_at", { ascending: false })
@@ -544,6 +545,7 @@ export async function buildProviderActivityFeed(
     order_source?: string | null;
     payment_method?: string | null;
     total_amount?: number | string | null;
+    refunded_amount?: number | string | null;
     paid_at?: string | null;
     customer_name?: string | null;
     fulfillment_type?: string | null;
@@ -701,7 +703,8 @@ export async function buildProviderActivityFeed(
     if (ledgerRecognizedProductOrderIds.has(po.id)) continue;
 
     const orderNumber = String(po.order_number ?? po.id);
-    const amount = Number(po.total_amount ?? 0);
+    const amount = productOrderKeptAmount(po);
+    if (amount <= 0) continue;
     const isWalkIn = String(po.order_source ?? "") === "walk_in";
     const label = productOrderActivityLabel(po);
     activities.push({

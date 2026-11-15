@@ -5,6 +5,7 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
+  PAST_DUE_ENTITLED_OR,
   SCHEDULED_DOWNGRADE_ENTITLED_OR,
   SUBSCRIPTION_ENTITLED_STATUSES,
   SUBSCRIPTION_PAST_DUE_GRACE_DAYS,
@@ -28,11 +29,11 @@ export async function determineProviderPlan(providerId: string): Promise<string 
   ).toISOString();
   const { data } = await supabase
     .from("provider_subscriptions")
-    .select("plan_id, status, updated_at, billing_provider, apple_grace_period_expires_at")
+    .select("plan_id, status, updated_at, past_due_since, billing_provider, apple_grace_period_expires_at")
     .eq("provider_id", providerId)
     .in("status", SUBSCRIPTION_ENTITLED_STATUSES as unknown as string[])
     .or(
-      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso},${SCHEDULED_DOWNGRADE_ENTITLED_OR}`,
+      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso},${PAST_DUE_ENTITLED_OR},${SCHEDULED_DOWNGRADE_ENTITLED_OR}`,
     )
     .order("status", { ascending: true })
     .limit(1)
@@ -41,6 +42,7 @@ export async function determineProviderPlan(providerId: string): Promise<string 
     plan_id?: string;
     status?: string;
     updated_at?: string;
+    past_due_since?: string | null;
     billing_provider?: string | null;
     apple_grace_period_expires_at?: string | null;
   } | null;
@@ -49,6 +51,7 @@ export async function determineProviderPlan(providerId: string): Promise<string 
     if (row.status === "past_due") {
       const entitled = isPastDueWithinGrace({
         billingProvider: row.billing_provider,
+        pastDueSince: row.past_due_since,
         updatedAt: row.updated_at,
         appleGracePeriodExpiresAt: row.apple_grace_period_expires_at,
         nowIso,

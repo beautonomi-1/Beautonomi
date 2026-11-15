@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { subtractMoney } from "@beautonomi/utils";
 import { Link, useParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_ECOMMERCE } from "@beautonomi/admin-access";
@@ -39,7 +40,26 @@ function formatAddress(a: Record<string, unknown> | null | undefined): string {
   return parts.length ? parts.map((p) => str(p)).join(" · ") : "—";
 }
 
-const ORDER_STATUSES = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"] as const;
+const ORDER_STATUSES = [
+  "pending",
+  "confirmed",
+  "processing",
+  "ready_for_collection",
+  "shipped",
+  "delivered",
+  "cancelled",
+  "refunded",
+] as const;
+
+function orderStatusChoices(fulfillmentType: string, current: string): string[] {
+  const collection = fulfillmentType === "collection" || fulfillmentType === "pickup";
+  return ORDER_STATUSES.filter((status) => {
+    if (status === current) return true;
+    if (status === "shipped") return !collection;
+    if (status === "ready_for_collection") return collection;
+    return true;
+  });
+}
 const PAYMENT_STATUSES = ["pending", "paid", "refunded", "partially_refunded", "failed"] as const;
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800",
@@ -220,8 +240,8 @@ export function ProductOrderDetailPage() {
                 });
               }}
             >
-              {ORDER_STATUSES.map((s) => (
-                <option key={s} value={s}>{s}</option>
+              {orderStatusChoices(str(order.fulfillment_type), str(order.status)).map((s) => (
+                <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
               ))}
             </select>
           </div>
@@ -247,6 +267,7 @@ export function ProductOrderDetailPage() {
               ))}
             </select>
           </div>
+          {str(order.fulfillment_type) === "delivery" ? (
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Tracking Number</label>
             <div className="flex gap-1">
@@ -269,6 +290,7 @@ export function ProductOrderDetailPage() {
               </button>
             </div>
           </div>
+          ) : null}
         </div>
         {updateOrder.isError && (
           <p className="mt-2 text-sm text-red-600">
@@ -303,9 +325,15 @@ export function ProductOrderDetailPage() {
             <div className="sm:col-span-2">
               <dt className="text-gray-500">Total</dt>
               <dd className="text-lg font-semibold tabular-nums">
-                {str(order.currency)} {Number(order.total_amount ?? 0).toFixed(2)}
+                {str(order.currency)} {Math.max(0, subtractMoney(Number(order.total_amount ?? 0), Math.max(0, Number(order.refunded_amount ?? 0)))).toFixed(2)}
               </dd>
             </div>
+            {Number(order.refunded_amount ?? 0) > 0 ? (
+              <div className="sm:col-span-2">
+                <dt className="text-gray-500">Refunded</dt>
+                <dd className="font-medium tabular-nums">{Number(order.refunded_amount).toFixed(2)}</dd>
+              </div>
+            ) : null}
             <div>
               <dt className="text-gray-500">Fulfillment</dt>
               <dd className="font-medium">{str(order.fulfillment_type)}</dd>
@@ -383,7 +411,7 @@ export function ProductOrderDetailPage() {
             Open map
           </a>
         ) : null}
-        {order.tracking_number ? (
+        {str(order.fulfillment_type) === "delivery" && order.tracking_number ? (
           <p className="mt-3 text-sm">
             <span className="text-gray-500">Tracking: </span>
             <span className="font-mono">{str(order.tracking_number)}</span>

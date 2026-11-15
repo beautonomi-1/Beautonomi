@@ -1491,12 +1491,16 @@ export default function ChatScreen() {
             ) : (() => {
               const d = offerDetailData;
               const req = d.request;
-              const isExpired = d.status === "expired";
+              const pastExpiration =
+                !!d.expiration_at && new Date(d.expiration_at).getTime() <= Date.now();
               const isWithdrawn = d.status === "withdrawn";
-              const isPaid = d.status === "paid" || Boolean(d.booking_id);
-              const isFinalizeFailed = d.status === "finalize_failed";
-              const isPending =
-                (d.status === "pending" || d.status === "payment_pending") && !isFinalizeFailed;
+              const isPaid = d.status === "paid" || (d.status === "accepted" && Boolean(d.booking_id));
+              const isFinalizeFailed = d.status === "finalize_failed" || (d.status === "accepted" && !d.booking_id);
+              const isExpired =
+                d.status === "expired" ||
+                (pastExpiration && !isPaid && !isFinalizeFailed && !isWithdrawn && d.status !== "declined");
+              const canWithdraw =
+                (d.status === "pending" || d.status === "changes_requested") && !isExpired && !isPaid;
 
               const formatDate = (iso: string | null | undefined) => {
                 if (!iso) return mt("emptyValue");
@@ -1512,8 +1516,12 @@ export default function ChatScreen() {
 
               const statusBadge = isWithdrawn
                 ? { label: mt("statusWithdrawn"), bg: "#FEF3C7", text: "#92400E" }
+                : d.status === "declined"
+                ? { label: t("provider.mobile.screens.messagingThread.statusDeclined", { defaultValue: "Declined" }) as string, bg: "#F3F4F6", text: "#6B7280" }
                 : isExpired
                 ? { label: mt("statusExpired"), bg: "#F3F4F6", text: "#6B7280" }
+                : d.status === "changes_requested"
+                ? { label: t("provider.mobile.screens.messagingThread.statusChangesRequested", { defaultValue: "Changes requested" }) as string, bg: "#DBEAFE", text: "#1D4ED8" }
                 : isFinalizeFailed
                 ? { label: mt("statusFinalizeFailed"), bg: "#FEE2E2", text: "#991B1B" }
                 : isPaid
@@ -1612,7 +1620,7 @@ export default function ChatScreen() {
                       <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>{mt("viewBooking")}</Text>
                     </TouchableOpacity>
                   ) : null}
-                  {isPending && !isPaid && d.id ? (
+                  {canWithdraw && d.id ? (
                     <TouchableOpacity
                       onPress={() => {
                         setOfferDetailVisible(false);

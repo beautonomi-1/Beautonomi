@@ -26,7 +26,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions/ensure-provider-free-subscription";
-import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
+import { clearAppleMerchantOnFree, computePaidPeriodExpiresAt, paystackChargeAlreadyReturned, paystackCodeAfterStop, stopPaystackSubscriptionBeforeClear } from "@/lib/subscriptions/provider-billing-merchant";
+import { createRefund } from "@/lib/payments/paystack-complete";
 import { buildProviderSubscriptionReceiptUrl } from "@/lib/receipts/receipt-download-token";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -42,7 +43,62 @@ export type RecordProviderSubscriptionPaymentResult = {
   reference: string;
   /** finance_transactions.id of the recognized payment (null when not recorded). */
   financeTransactionId: string | null;
+  /** The Paystack charge was already returned. Do not open a period for it. */
+  chargeReturned?: boolean;
+  /** Recognition end. The plan uses this when the store date is no longer ahead. */
+  termEnd: string | null;
 };
+
+/** The access end replaced the recognized term. Keep the payment term on that date. */
+export async function alignRecognizedSubscriptionTerm(
+  supabase: SupabaseClient,
+  input: {
+    financeTransactionId?: string | null;
+    providerId?: string | null;
+    reference?: string | null;
+    recognizedEnd: string | null;
+    accessEnd: string;
+  },
+): Promise<void> {
+  if (input.recognizedEnd === input.accessEnd) return;
+  let financeId = input.financeTransactionId ?? null;
+  if (!financeId && input.providerId && input.reference) {
+    const { data: found, error: lookupError } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("provider_id", input.providerId)
+      .eq("transaction_type", "provider_subscription_payment")
+      .contains("metadata", { reference: input.reference })
+      .maybeSingle();
+    if (lookupError) {
+      console.error("[provider_subscription] recognized term was not found:", lookupError);
+      return;
+    }
+    financeId = (found as { id?: string } | null)?.id ?? null;
+  }
+  if (!financeId) return;
+  const { data: financeRow, error: readError } = await supabase
+    .from("finance_transactions")
+    .select("metadata")
+    .eq("id", financeId)
+    .maybeSingle();
+  if (readError) {
+    console.error("[provider_subscription] recognized term was not read:", readError);
+    return;
+  }
+  const stored = (financeRow as { metadata?: unknown } | null)?.metadata;
+  const metadata =
+    stored && typeof stored === "object" && !Array.isArray(stored)
+      ? (stored as Record<string, unknown>)
+      : {};
+  const { error: termError } = await supabase
+    .from("finance_transactions")
+    .update({ metadata: { ...metadata, term_end: input.accessEnd } })
+    .eq("id", financeId);
+  if (termError) {
+    console.error("[provider_subscription] recognized term was not aligned:", termError);
+  }
+}
 
 export type ReverseProviderSubscriptionPaymentResult = {
   reversed: boolean;
@@ -274,11 +330,204 @@ export function splitSubscriptionRefundComponents(
 }
 
 /**
- * Idempotently record one recognized subscription payment. Returns
- * `alreadyRecorded: true` (without posting) when a payment_transactions row for
- * the same Paystack reference already exists, so every caller (authorization
- * charge, renewal order, recurring invoice, verify path) is safe to call more
- * than once for the same money event.
+ * Post the subscription finance row once. A payment that was already saved
+ * still gets this row, and the VAT line, when they were missing.
+ */
+async function ensureProviderSubscriptionFinance(
+  supabase: SupabaseClient,
+  input: {
+    providerId: string;
+    planId: string | null;
+    orderId: string | null;
+    reference: string;
+    amountMajor: number;
+    feesMajor: number;
+    kind: string;
+    description: string;
+    paymentProvider: "paystack" | "apple" | "stripe" | "flutterwave";
+    paymentMetadata: Record<string, unknown>;
+    subscriptionCode: string | null;
+    invoiceCode: string | null;
+    tenantIdHint: string | null;
+    currencyHint: string | null;
+    billingPeriod: "monthly" | "yearly";
+    termEndsAt: string | null;
+    paidAt: Date;
+  },
+): Promise<{ id: string | null; inserted: boolean; termStart: string; termEnd: string }> {
+  const termStart = input.paidAt.toISOString();
+  const explicitEnd = input.termEndsAt ? new Date(input.termEndsAt) : null;
+  const termEnd =
+    explicitEnd && Number.isFinite(explicitEnd.getTime())
+      ? explicitEnd.toISOString()
+      : computePaidPeriodExpiresAt(input.billingPeriod, input.paidAt);
+
+  const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: input.tenantIdHint,
+    provider_id: input.providerId,
+  });
+
+  let resolvedCurrency: string | null = input.currencyHint;
+  try {
+    if (!resolvedCurrency && input.planId) {
+      const { data: planRow } = await supabase
+        .from("subscription_plans")
+        .select("currency")
+        .eq("id", input.planId)
+        .maybeSingle();
+      resolvedCurrency = (planRow as { currency?: string | null } | null)?.currency ?? null;
+    }
+    if (!resolvedCurrency && financeTenantId) {
+      const { data: tenantRow } = await supabase
+        .from("tenants")
+        .select("default_currency")
+        .eq("id", financeTenantId)
+        .maybeSingle();
+      resolvedCurrency = (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? null;
+    }
+  } catch (err) {
+    console.warn("[recordProviderSubscriptionPayment] currency lookup failed; using fallback", err);
+  }
+  resolvedCurrency = resolvedCurrency || LAST_RESORT_CURRENCY;
+
+  const vatRate = await getPlatformDefaultTaxRate();
+  const vatBreakdown = computeVatInclusiveBreakdown(input.amountMajor, vatRate);
+  const vatMetadata =
+    vatBreakdown.ratePercent > 0
+      ? {
+          vat_rate_percent: vatBreakdown.ratePercent,
+          vat_amount: vatBreakdown.vatAmount,
+          subtotal_excl_vat: vatBreakdown.subtotalExclVat,
+        }
+      : {};
+
+  const { data: existingFinance, error: lookupError } = await supabase
+    .from("finance_transactions")
+    .select("id")
+    .eq("provider_id", input.providerId)
+    .eq("transaction_type", "provider_subscription_payment")
+    .contains("metadata", { reference: input.reference })
+    .maybeSingle();
+  if (lookupError) {
+    console.error("[provider_subscription] finance lookup failed:", lookupError);
+    return { id: null, inserted: false, termStart, termEnd };
+  }
+  let financeId = (existingFinance as { id?: string } | null)?.id ?? null;
+  let inserted = false;
+  if (!financeId) {
+    const { data: financeRow, error: financeError } = await supabase
+      .from("finance_transactions")
+      .insert({
+        booking_id: null,
+        provider_id: input.providerId,
+        tenant_id: financeTenantId,
+        transaction_type: "provider_subscription_payment",
+        amount: input.amountMajor,
+        fees: input.feesMajor,
+        commission: 0,
+        net: 0,
+        currency: resolvedCurrency,
+        description: input.description,
+        metadata: {
+          kind: input.kind,
+          reference: input.reference,
+          provider_subscription_order_id: input.orderId,
+          plan_id: input.planId,
+          subscription_code: input.subscriptionCode,
+          invoice_code: input.invoiceCode,
+          fee_source:
+            input.paymentProvider === "paystack"
+              ? "paystack"
+              : input.paymentProvider === "stripe"
+                ? "stripe"
+                : input.paymentProvider === "flutterwave"
+                  ? "flutterwave"
+                  : "apple_commission",
+          payment_provider: input.paymentProvider,
+          recognition_basis: "term",
+          term_start: termStart,
+          term_end: termEnd,
+          billing_period: input.billingPeriod,
+          ...vatMetadata,
+          ...input.paymentMetadata,
+        },
+        created_at: termStart,
+      })
+      .select("id")
+      .single();
+    if (financeError) {
+      console.error("[provider_subscription] finance insert failed:", financeError);
+      return { id: null, inserted: false, termStart, termEnd };
+    }
+    financeId = (financeRow as { id?: string } | null)?.id ?? null;
+    inserted = Boolean(financeId);
+  }
+
+  if (financeId && vatBreakdown.ratePercent > 0 && vatBreakdown.vatAmount > 0) {
+    await postSubscriptionVatLeg(supabase, {
+      providerId: input.providerId,
+      tenantId: financeTenantId,
+      currency: resolvedCurrency,
+      amount: vatBreakdown.vatAmount,
+      ratePercent: vatBreakdown.ratePercent,
+      sourcePaymentId: financeId,
+      reference: input.reference,
+      vatSource: "provider_subscription_payment",
+      createdAtIso: termStart,
+    });
+  }
+
+  if (inserted && financeId && input.paymentProvider !== "apple") {
+    await sendSubscriptionReceiptEmailSafe({
+      supabase,
+      providerId: input.providerId,
+      planId: input.planId,
+      amountMajor: input.amountMajor,
+      financeTransactionId: financeId,
+      reference: input.reference,
+      tenantIdHint: financeTenantId,
+      paidAtIso: termStart,
+      isRenewal: input.kind === "subscription_renewal",
+    });
+  }
+
+  if (inserted && financeId && input.amountMajor > 0 && input.planId) {
+    const { data: planRow } = await supabase
+      .from("subscription_plans")
+      .select("is_free")
+      .eq("id", input.planId)
+      .maybeSingle();
+    if (planRow && (planRow as { is_free?: boolean }).is_free !== true) {
+      let reactTenantId = financeTenantId ?? input.tenantIdHint ?? null;
+      if (!reactTenantId) {
+        const { data: provRow } = await supabase
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", input.providerId)
+          .maybeSingle();
+        reactTenantId = (provRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+      }
+      if (reactTenantId) {
+        void import("@/lib/provider-ops/ops-case")
+          .then(({ reactivateChurnedCase }) =>
+            reactivateChurnedCase(supabase, {
+              tenantId: reactTenantId as string,
+              providerId: input.providerId,
+              source: "payment",
+            }),
+          )
+          .catch(() => undefined);
+      }
+    }
+  }
+
+  return { id: financeId, inserted, termStart, termEnd };
+}
+
+/**
+ * Idempotently record one recognized subscription payment. A payment row that
+ * already exists is not posted again. A missing finance row for that payment
+ * is posted on the next delivery.
  */
 export async function recordProviderSubscriptionPayment(params: {
   supabase: SupabaseClient;
@@ -303,7 +552,14 @@ export async function recordProviderSubscriptionPayment(params: {
   paymentMetadata?: Record<string, unknown>;
   /** Billing term for recognition (defaults to monthly from paid-at). */
   billingPeriod?: "monthly" | "yearly" | null;
+  /** Access end already granted by the store. Recognition uses this instead of a new month from now. */
+  termEndsAt?: string | null;
   currency?: string | null;
+  /**
+   * A period that is already on the subscription must keep its recognition window.
+   * The payment row is still stored.
+   */
+  updateBillingPeriod?: boolean;
 }): Promise<RecordProviderSubscriptionPaymentResult> {
   const {
     supabase,
@@ -322,7 +578,9 @@ export async function recordProviderSubscriptionPayment(params: {
     paymentProvider = "paystack",
     paymentMetadata = {},
     billingPeriod = "monthly",
+    termEndsAt = null,
     currency: currencyHint = null,
+    updateBillingPeriod = true,
   } = params;
 
   let resolvedFeesMajor = feesMajor;
@@ -341,7 +599,7 @@ export async function recordProviderSubscriptionPayment(params: {
       reference,
       providerId,
     });
-    return { recorded: false, alreadyRecorded: false, netAmount, reference, financeTransactionId: null };
+    return { recorded: false, alreadyRecorded: false, netAmount, reference, financeTransactionId: null, termEnd: null };
   }
 
   // Idempotency: one recognized payment per Paystack reference.
@@ -349,7 +607,7 @@ export async function recordProviderSubscriptionPayment(params: {
   // a later successful recognition of the same reference — clear it and proceed.
   const { data: existingTx } = await supabase
     .from("payment_transactions")
-    .select("id, status")
+    .select("id, status, created_at")
     .eq("provider", paymentProvider)
     .eq("reference", reference)
     .maybeSingle();
@@ -357,8 +615,46 @@ export async function recordProviderSubscriptionPayment(params: {
     const existingStatus = String(
       (existingTx as { status?: string }).status ?? "",
     ).toLowerCase();
+    if (existingStatus === "refunded" || existingStatus === "partially_refunded") {
+      return {
+        recorded: false,
+        alreadyRecorded: true,
+        chargeReturned: true,
+        netAmount,
+        reference,
+        financeTransactionId: null,
+        termEnd: null,
+      };
+    }
     if (existingStatus === "success") {
-      return { recorded: false, alreadyRecorded: true, netAmount, reference, financeTransactionId: null };
+      const paidAtRaw = (existingTx as { created_at?: string }).created_at;
+      const finance = await ensureProviderSubscriptionFinance(supabase, {
+        providerId,
+        planId,
+        orderId,
+        reference,
+        amountMajor,
+        feesMajor: resolvedFeesMajor,
+        kind,
+        description,
+        paymentProvider,
+        paymentMetadata,
+        subscriptionCode,
+        invoiceCode,
+        tenantIdHint,
+        currencyHint,
+        billingPeriod: billingPeriod === "yearly" ? "yearly" : "monthly",
+        termEndsAt,
+        paidAt: paidAtRaw ? new Date(paidAtRaw) : new Date(),
+      });
+      return {
+        recorded: false,
+        alreadyRecorded: true,
+        netAmount,
+        reference,
+        financeTransactionId: finance.id,
+        termEnd: finance.termEnd,
+      };
     }
     if (existingStatus === "failed") {
       await supabase
@@ -366,56 +662,11 @@ export async function recordProviderSubscriptionPayment(params: {
         .delete()
         .eq("id", (existingTx as { id: string }).id);
     } else {
-      return { recorded: false, alreadyRecorded: true, netAmount, reference, financeTransactionId: null };
+      return { recorded: false, alreadyRecorded: true, netAmount, reference, financeTransactionId: null, termEnd: null };
     }
   }
-
-  const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-    tenant_id: tenantIdHint,
-    provider_id: providerId,
-  });
 
   const nowIso = new Date().toISOString();
-  const termStart = nowIso;
-  const termEnd = new Date(
-    Date.now() + (billingPeriod === "yearly" ? 365 : 30) * 86400000,
-  ).toISOString();
-
-  // Currency resolution is best-effort: a lookup failure must not block
-  // recording a payment that Paystack already captured.
-  let resolvedCurrency = currencyHint;
-  try {
-    if (!resolvedCurrency && planId) {
-      const { data: planRow } = await supabase
-        .from("subscription_plans")
-        .select("currency")
-        .eq("id", planId)
-        .maybeSingle();
-      resolvedCurrency = (planRow as { currency?: string | null } | null)?.currency ?? null;
-    }
-    if (!resolvedCurrency && financeTenantId) {
-      const { data: tenantRow } = await supabase
-        .from("tenants")
-        .select("default_currency")
-        .eq("id", financeTenantId)
-        .maybeSingle();
-      resolvedCurrency = (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? null;
-    }
-  } catch (err) {
-    console.warn("[recordProviderSubscriptionPayment] currency lookup failed; using fallback", err);
-  }
-  resolvedCurrency = resolvedCurrency || LAST_RESORT_CURRENCY;
-
-  const vatRate = await getPlatformDefaultTaxRate();
-  const vatBreakdown = computeVatInclusiveBreakdown(amountMajor, vatRate);
-  const vatMetadata =
-    vatBreakdown.ratePercent > 0
-      ? {
-          vat_rate_percent: vatBreakdown.ratePercent,
-          vat_amount: vatBreakdown.vatAmount,
-          subtotal_excl_vat: vatBreakdown.subtotalExclVat,
-        }
-      : {};
 
   const { error: ptError } = await supabase.from("payment_transactions").insert({
     booking_id: null,
@@ -441,144 +692,343 @@ export async function recordProviderSubscriptionPayment(params: {
 
   if (ptError) {
     // 23505 = unique_violation on (provider, reference): a concurrent webhook
-    // (e.g. charge.success racing invoice.update for the same renewal) already
-    // inserted this payment. Bail out BEFORE posting finance_transactions so
-    // revenue is never double-recognized. Non-idempotency errors are surfaced.
+    // already inserted this payment. Post the finance row only when it is missing.
     if ((ptError as { code?: string }).code === "23505") {
-      return { recorded: false, alreadyRecorded: true, netAmount, reference, financeTransactionId: null };
+      const { data: racedTx } = await supabase
+        .from("payment_transactions")
+        .select("status, created_at")
+        .eq("provider", paymentProvider)
+        .eq("reference", reference)
+        .maybeSingle();
+      const racedStatus = String(
+        (racedTx as { status?: string } | null)?.status ?? "",
+      ).toLowerCase();
+      if (racedStatus === "refunded" || racedStatus === "partially_refunded") {
+        return {
+          recorded: false,
+          alreadyRecorded: true,
+          chargeReturned: true,
+          netAmount,
+          reference,
+          financeTransactionId: null,
+          termEnd: null,
+        };
+      }
+      const racedAt = (racedTx as { created_at?: string } | null)?.created_at;
+      const finance = await ensureProviderSubscriptionFinance(supabase, {
+        providerId,
+        planId,
+        orderId,
+        reference,
+        amountMajor,
+        feesMajor: resolvedFeesMajor,
+        kind,
+        description,
+        paymentProvider,
+        paymentMetadata,
+        subscriptionCode,
+        invoiceCode,
+        tenantIdHint,
+        currencyHint,
+        billingPeriod: billingPeriod === "yearly" ? "yearly" : "monthly",
+        termEndsAt,
+        paidAt: racedAt ? new Date(racedAt) : new Date(),
+      });
+      return {
+        recorded: false,
+        alreadyRecorded: true,
+        netAmount,
+        reference,
+        financeTransactionId: finance.id,
+        termEnd: finance.termEnd,
+      };
     }
     console.error("[provider_subscription] payment_transactions insert failed:", ptError);
-    return { recorded: false, alreadyRecorded: false, netAmount, reference, financeTransactionId: null };
+    return { recorded: false, alreadyRecorded: false, netAmount, reference, financeTransactionId: null, termEnd: null };
   }
 
-  const { data: financeRow } = await supabase
+  const finance = await ensureProviderSubscriptionFinance(supabase, {
+    providerId,
+    planId,
+    orderId,
+    reference,
+    amountMajor,
+    feesMajor: resolvedFeesMajor,
+    kind,
+    description,
+    paymentProvider,
+    paymentMetadata,
+    subscriptionCode,
+    invoiceCode,
+    tenantIdHint,
+    currencyHint,
+    billingPeriod: billingPeriod === "yearly" ? "yearly" : "monthly",
+    termEndsAt,
+    paidAt: new Date(nowIso),
+  });
+
+  if (updateBillingPeriod) {
+    await supabase
+      .from("provider_subscriptions")
+      .update({
+        billing_period_start: finance.termStart,
+        billing_period_end: finance.termEnd,
+        last_payment_date: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("provider_id", providerId);
+  }
+
+  return {
+    recorded: true,
+    alreadyRecorded: false,
+    netAmount,
+    reference,
+    financeTransactionId: finance.id,
+    termEnd: finance.termEnd,
+  };
+}
+
+/**
+ * The provider (or an admin) has moved this account onto the free plan.
+ * Stamp open payments so the repair job does not put the paid plan back.
+ */
+export async function markProviderSubscriptionPaymentsRelinquished(
+  supabase: SupabaseClient,
+  providerId: string,
+  atIso: string = new Date().toISOString(),
+): Promise<void> {
+  const id = providerId.trim();
+  if (!id) return;
+  const { data, error } = await supabase
     .from("finance_transactions")
-    .insert({
-      booking_id: null,
-      provider_id: providerId,
-      tenant_id: financeTenantId,
-      transaction_type: "provider_subscription_payment",
-      amount: amountMajor,
-      fees: resolvedFeesMajor,
-      commission: 0,
-      net: 0,
-      currency: resolvedCurrency,
-      description,
-      metadata: {
-        kind,
-        reference,
-        provider_subscription_order_id: orderId,
-        plan_id: planId,
-        subscription_code: subscriptionCode,
-        invoice_code: invoiceCode,
-        fee_source:
-          paymentProvider === "paystack"
-            ? "paystack"
-            : paymentProvider === "stripe"
-              ? "stripe"
-              : paymentProvider === "flutterwave"
-                ? "flutterwave"
-                : "apple_commission",
-        payment_provider: paymentProvider,
-        recognition_basis: "term",
-        term_start: termStart,
-        term_end: termEnd,
-        billing_period: billingPeriod,
-        ...vatMetadata,
-        ...paymentMetadata,
-      },
-      created_at: nowIso,
-    })
+    .select("id, metadata")
+    .eq("provider_id", id)
+    .eq("transaction_type", "provider_subscription_payment");
+  if (error) {
+    console.error("[provider_subscription] could not load payments to relinquish:", error);
+    return;
+  }
+  for (const row of (data ?? []) as Array<{ id?: string; metadata?: Record<string, unknown> | null }>) {
+    if (!row.id) continue;
+    const meta = (row.metadata ?? {}) as Record<string, unknown>;
+    if (typeof meta.reversed_at === "string" && meta.reversed_at.trim()) continue;
+    if (typeof meta.access_relinquished_at === "string" && meta.access_relinquished_at.trim()) continue;
+    const { error: updateError } = await supabase
+      .from("finance_transactions")
+      .update({ metadata: { ...meta, access_relinquished_at: atIso } })
+      .eq("id", row.id);
+    if (updateError) {
+      console.error("[provider_subscription] could not mark payment relinquished:", updateError);
+    }
+  }
+}
+
+/**
+ * The Paystack charge was returned and the plan was left with its current owner.
+ * Post the recognition offset. Do not change the subscription row.
+ */
+export async function rememberReturnedProviderSubscriptionCharge(params: {
+  supabase: SupabaseClient;
+  providerId: string;
+  reference: string;
+  financeTransactionId?: string | null;
+  tenantId?: string | null;
+  reason: string;
+}): Promise<void> {
+  const providerId = params.providerId.trim();
+  const reference = params.reference.trim();
+  if (!providerId || !reference) return;
+
+  const { data: existingReversal } = await params.supabase
+    .from("finance_transactions")
     .select("id")
-    .single();
+    .eq("provider_id", providerId)
+    .eq("transaction_type", "provider_subscription_refund")
+    .contains("metadata", { reference })
+    .maybeSingle();
+  if (existingReversal) return;
 
-  const financeTransactionId = (financeRow as { id?: string } | null)?.id ?? null;
+  const columns = "id, amount, net, currency, metadata";
+  let original: {
+    id?: string;
+    amount?: number | null;
+    net?: number | null;
+    currency?: string | null;
+    metadata?: Record<string, unknown> | null;
+  } | null = null;
+  if (params.financeTransactionId) {
+    const { data } = await params.supabase
+      .from("finance_transactions")
+      .select(columns)
+      .eq("id", params.financeTransactionId)
+      .maybeSingle();
+    original = data as typeof original;
+  }
+  if (!original?.id) {
+    const { data } = await params.supabase
+      .from("finance_transactions")
+      .select(columns)
+      .eq("provider_id", providerId)
+      .eq("transaction_type", "provider_subscription_payment")
+      .contains("metadata", { reference })
+      .maybeSingle();
+    original = data as typeof original;
+  }
+  const originalId = typeof original?.id === "string" ? original.id : "";
+  if (!originalId) return;
 
-  // VAT output-tax leg (Part C1/C2). The platform is the supplier of the
-  // subscription, so VAT is due when the platform's configured rate
-  // (getPlatformDefaultTaxRate — the platform's VAT-registration signal) is > 0.
-  // Posting rule, consistent with how 863 treats `tax` rows (amount = VAT,
-  // net = 0 → never counted as revenue by the aggregator): a separate `tax`
-  // finance row with metadata.vat_source = 'provider_subscription_payment'.
-  // The shadow GL (migration 870) reclasses it DR Subscription revenue 3100 /
-  // CR VAT payable 2100 so that once the term is fully recognized, revenue =
-  // gross − VAT and VAT payable = VAT; the cash leg is untouched (cash already
-  // includes VAT via the payment row). The aggregator excludes vat_source rows
-  // from booking `taxes_gross` and reports them as `subscription_vat`.
-  if (financeTransactionId && vatBreakdown.ratePercent > 0 && vatBreakdown.vatAmount > 0) {
-    await postSubscriptionVatLeg(supabase, {
+  const reversalAmount =
+    toNumber(original?.net) !== 0 ? toNumber(original?.net) : toNumber(original?.amount);
+  if (reversalAmount <= 0) return;
+
+  const financeTenantId = await resolveTenantIdForFinanceLedger(params.supabase, {
+    tenant_id: params.tenantId ?? null,
+    provider_id: providerId,
+  });
+  const recognizedSoFar = await sumRecognizedForSubscriptionPayment(params.supabase, originalId);
+  const split = splitSubscriptionRefundComponents(reversalAmount, recognizedSoFar);
+  const nowIso = new Date().toISOString();
+  const { error: refundInsertError } = await params.supabase.from("finance_transactions").insert({
+    booking_id: null,
+    provider_id: providerId,
+    tenant_id: financeTenantId,
+    transaction_type: "provider_subscription_refund",
+    amount: -reversalAmount,
+    fees: 0,
+    commission: 0,
+    net: -reversalAmount,
+    currency: original?.currency ?? null,
+    description: `Provider subscription payment reversed (${params.reason})`,
+    metadata: {
+      kind: "provider_subscription_refund",
+      reference,
+      source_payment_id: originalId,
+      deferred_reversed: split.deferred_reversed,
+      recognized_reversed: split.recognized_reversed,
+      reason: params.reason,
+    },
+    created_at: nowIso,
+  });
+  if (refundInsertError) throw refundInsertError;
+
+  const originalVat = toNumber(original?.metadata?.vat_amount as number | string | null | undefined);
+  const originalVatRate = toNumber(
+    original?.metadata?.vat_rate_percent as number | string | null | undefined,
+  );
+  if (originalVat > 0) {
+    await postSubscriptionVatLeg(params.supabase, {
       providerId,
       tenantId: financeTenantId,
-      currency: resolvedCurrency,
-      amount: vatBreakdown.vatAmount,
-      ratePercent: vatBreakdown.ratePercent,
-      sourcePaymentId: financeTransactionId,
+      currency: original?.currency ?? null,
+      amount: originalVat,
+      ratePercent: originalVatRate,
+      sourcePaymentId: originalId,
       reference,
-      vatSource: "provider_subscription_payment",
+      vatSource: "provider_subscription_refund",
       createdAtIso: nowIso,
     });
   }
+}
 
-  await supabase
-    .from("provider_subscriptions")
-    .update({
-      billing_period_start: termStart,
-      billing_period_end: termEnd,
-      last_payment_date: nowIso,
-      updated_at: nowIso,
-    })
-    .eq("provider_id", providerId);
+const OTHER_OWNER_RETURN_NOTE =
+  "Another billing account owns this subscription. This Paystack charge was returned.";
 
-  // Email the provider a receipt for every recognized charge (initial order,
-  // authorization, and recurring renewal all flow through here exactly once).
-  // Best-effort: a notification failure must never fail payment recognition.
-  if (financeTransactionId) {
-    if (paymentProvider !== "apple") {
-      await sendSubscriptionReceiptEmailSafe({
-      supabase,
+/**
+ * Return a Paystack saved-card charge when another account owns the plan.
+ * A payment already on the ledger is offset. The subscription row is left as it is.
+ */
+export async function returnRecordedPaystackSubscriptionCharge(params: {
+  supabase: SupabaseClient;
+  reference: string;
+  providerId: string;
+  tenantId?: string | null;
+  amountMajor?: number;
+  financeTransactionId?: string | null;
+}): Promise<void> {
+  const reference = params.reference.trim();
+  const providerId = params.providerId.trim();
+  if (!reference || !providerId) return;
+
+  const { data: existingPayment } = await params.supabase
+    .from("payment_transactions")
+    .select("status")
+    .eq("provider", "paystack")
+    .eq("reference", reference)
+    .maybeSingle();
+  const status = String(
+    (existingPayment as { status?: string } | null)?.status ?? "",
+  ).toLowerCase();
+  if (status === "refunded" || status === "partially_refunded") return;
+
+  try {
+    await createRefund(
+      { transaction: reference, merchant_note: OTHER_OWNER_RETURN_NOTE },
+      { tenantId: params.tenantId },
+    );
+  } catch (error) {
+    if (!paystackChargeAlreadyReturned(error)) throw error;
+  }
+
+  const refundedAt = new Date().toISOString();
+  const refundPatch = {
+    status: "refunded",
+    refund_amount: params.amountMajor ?? null,
+    refund_reason: OTHER_OWNER_RETURN_NOTE,
+    refunded_at: refundedAt,
+  };
+  if (status === "success") {
+    await rememberReturnedProviderSubscriptionCharge({
+      supabase: params.supabase,
       providerId,
-      planId,
-      amountMajor,
-      financeTransactionId,
       reference,
-      tenantIdHint: financeTenantId,
-      paidAtIso: nowIso,
-      isRenewal: kind === "subscription_renewal",
+      financeTransactionId: params.financeTransactionId,
+      tenantId: params.tenantId,
+      reason: "Another billing account owns this subscription",
     });
-    }
+    const { error: markError } = await params.supabase
+      .from("payment_transactions")
+      .update(refundPatch)
+      .eq("provider", "paystack")
+      .eq("reference", reference)
+      .eq("status", "success");
+    if (markError) throw markError;
+    return;
   }
 
-  if (financeTransactionId && amountMajor > 0 && planId) {
-    const { data: planRow } = await supabase
-      .from("subscription_plans")
-      .select("is_free")
-      .eq("id", planId)
-      .maybeSingle();
-    if (planRow && (planRow as { is_free?: boolean }).is_free !== true) {
-      let reactTenantId = financeTenantId ?? tenantIdHint ?? null;
-      if (!reactTenantId) {
-        const { data: provRow } = await supabase
-          .from("providers")
-          .select("tenant_id")
-          .eq("id", providerId)
-          .maybeSingle();
-        reactTenantId = (provRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
-      }
-      if (reactTenantId) {
-        void import("@/lib/provider-ops/ops-case")
-          .then(({ reactivateChurnedCase }) =>
-            reactivateChurnedCase(supabase, {
-              tenantId: reactTenantId as string,
-              providerId,
-              source: "payment",
-            }),
-          )
-          .catch(() => undefined);
-      }
-    }
+  if (status) {
+    const { error: markError } = await params.supabase
+      .from("payment_transactions")
+      .update(refundPatch)
+      .eq("provider", "paystack")
+      .eq("reference", reference)
+      .neq("status", "refunded");
+    if (markError) throw markError;
+    return;
   }
 
-  return { recorded: true, alreadyRecorded: false, netAmount, reference, financeTransactionId };
+  const amount = Number(params.amountMajor ?? 0);
+  const { error } = await params.supabase.from("payment_transactions").insert({
+    booking_id: null,
+    reference,
+    amount,
+    fees: 0,
+    net_amount: amount,
+    status: "refunded",
+    provider: "paystack",
+    transaction_type: "provider_subscription_payment",
+    refund_amount: amount,
+    refund_reason: OTHER_OWNER_RETURN_NOTE,
+    refunded_at: new Date().toISOString(),
+    metadata: {
+      kind: "paystack_charge_returned_other_merchant",
+      provider_id: providerId,
+    },
+    created_at: new Date().toISOString(),
+  });
+  if (error && (error as { code?: string }).code !== "23505") {
+    throw new Error(`could not remember returned Paystack charge ${reference}`);
+  }
 }
 
 /**
@@ -683,10 +1133,6 @@ export async function reverseProviderSubscriptionPayment(params: {
     .contains("metadata", refundMetadataMatch as Record<string, unknown>)
     .maybeSingle();
 
-  if (existingReversal) {
-    return { reversed: false, alreadyReversed: true, ledgerReversed: false, providerId: resolvedProviderId };
-  }
-
   // 4) Load the current subscription (for Paystack code + tenant).
   const { data: subRow } = await supabase
     .from("provider_subscriptions")
@@ -696,6 +1142,43 @@ export async function reverseProviderSubscriptionPayment(params: {
   const subscription = subRow as
     | { id: string; tenant_id: string | null; paystack_subscription_code: string | null }
     | null;
+
+  const revokeReversedAccess = async () => {
+    if (!subscription) return;
+    const freePlanId = await resolveCatalogPlanIdForProviderSubscription(supabase);
+    const paystackStop = await stopPaystackSubscriptionBeforeClear({
+      supabase,
+      code: subscription.paystack_subscription_code ?? subscriptionCode,
+      tenantId: subscription.tenant_id,
+      providerId: resolvedProviderId,
+    });
+    const update: Record<string, unknown> = {
+      status: "active",
+      expires_at: null,
+      cancelled_at: nowIso,
+      auto_renew: false,
+      past_due_since: null,
+      paystack_authorization_code: null,
+      billing_period_start: null,
+      billing_period_end: null,
+      next_payment_date: null,
+      ...paystackCodeAfterStop(paystackStop),
+      ...clearAppleMerchantOnFree(),
+    };
+    if (freePlanId) update.plan_id = freePlanId;
+    await supabase.from("provider_subscriptions").update(update).eq("id", subscription.id);
+  };
+
+  if (existingReversal) {
+    await revokeReversedAccess();
+    if (orderRow && orderRow.status !== "refunded") {
+      await supabase
+        .from("provider_subscription_orders")
+        .update({ status: "refunded", updated_at: nowIso })
+        .eq("id", orderRow.id);
+    }
+    return { reversed: false, alreadyReversed: true, ledgerReversed: false, providerId: resolvedProviderId };
+  }
 
   // 5) Ledger reversal — only if revenue had been recognized.
   let ledgerReversed = false;
@@ -769,32 +1252,18 @@ export async function reverseProviderSubscriptionPayment(params: {
     }
   }
 
-  // 6) Stop Paystack recurring billing (best effort).
-  const paystackCode = subscription?.paystack_subscription_code ?? subscriptionCode ?? null;
-  if (paystackCode) {
-    try {
-      const { disableSubscriptionByCode } = await import("@/lib/payments/paystack-complete");
-      await disableSubscriptionByCode(paystackCode, { tenantId: subscription?.tenant_id ?? null });
-    } catch (disableError) {
-      console.warn("[provider_subscription] failed to disable Paystack subscription on reversal:", disableError);
-    }
+  // 6) The paid term is closed. Stamp the original payment so a later repair
+  // does not treat it as an open term, then drop access to the free plan.
+  if (typeof original?.id === "string" && original.id) {
+    const priorMeta = (original.metadata ?? {}) as Record<string, unknown>;
+    await supabase
+      .from("finance_transactions")
+      .update({
+        metadata: { ...priorMeta, reversed_at: nowIso, reversal_reason: reason },
+      })
+      .eq("id", original.id);
   }
-
-  // 7) Revoke paid access: fall the provider back to the free catalog plan.
-  if (subscription) {
-    const freePlanId = await resolveCatalogPlanIdForProviderSubscription(supabase);
-    const update: Record<string, unknown> = {
-      status: "active",
-      expires_at: null,
-      cancelled_at: nowIso,
-      auto_renew: false,
-      paystack_subscription_code: null,
-      paystack_authorization_code: null,
-      ...clearAppleMerchantOnFree(),
-    };
-    if (freePlanId) update.plan_id = freePlanId;
-    await supabase.from("provider_subscriptions").update(update).eq("id", subscription.id);
-  }
+  await revokeReversedAccess();
 
   // 8) Mark the order refunded (when this reversal traces to an order).
   if (orderRow && orderRow.status !== "refunded") {

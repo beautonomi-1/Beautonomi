@@ -10,17 +10,24 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import {
   sumStaffEarningsLines,
+  liveEarningsTotals,
   summarizeStaffEarningsLines,
   splitStaffEarningsLinesBySettlement,
   describeEarningsAdjustment,
   isAdjustmentLine,
+  applyTillTips,
+  displayStaffEarnings,
+  liveEarningsFromPayRun,
   type StaffEarningsLineLite,
   type PayRunPeriod,
 } from "@/lib/payroll/staff-earnings-from-lines";
-import { startOfDay, startOfWeek, startOfMonth, endOfDay, subDays } from "date-fns";
+import { startOfDay, startOfWeek, startOfMonth, endOfDay, subDays, format } from "date-fns";
 import { getProviderPayrollTimezone } from "@/lib/payroll/provider-payroll-context";
 import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
-
+import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
+import { assembleStaffPayRunGross, staffCommissionCalcFromResult } from "@/lib/payroll/assemble-staff-pay-run-gross";
+import { loadStaffPayrollMetaBatch } from "@/lib/payroll/resolve-staff-payroll-meta";
+import { getTipsByStaff, posSaleTipsByStaff } from "@/lib/payroll/tips-helper";
 const SETTLEMENT_LOOKBACK_DAYS = 120;
 
 /**
@@ -36,7 +43,7 @@ export async function GET(request: NextRequest) {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
     const supabaseAdmin = getSupabaseAdmin();
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
     const payrollBlocked = await payrollDisabledMessage(supabaseAdmin, providerId);
     if (payrollBlocked) {
@@ -51,14 +58,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: staff } = await supabaseAdmin
+    const { data: staffRows } = await supabaseAdmin
       .from("provider_staff")
-      .select("id")
+      .select("id, is_active, deleted_at, tips_enabled, commission_enabled")
       .eq("user_id", user.id)
       .eq("provider_id", providerId)
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .maybeSingle();
+      .order("created_at", { ascending: false });
+    const rows = (staffRows ?? []) as Array<{
+      id: string;
+      is_active?: boolean | null;
+      deleted_at?: string | null;
+      tips_enabled?: boolean | null;
+      commission_enabled?: boolean | null;
+    }>;
+    const staff =
+      rows.find((row) => row.is_active !== false && !row.deleted_at) ??
+      rows.find((row) => !row.deleted_at) ??
+      rows[0];
 
     if (!staff) {
       return successResponse({ pay_stubs: [], live: null, settlement: null, adjustments: [] });
@@ -71,14 +87,79 @@ export async function GET(request: NextRequest) {
       month: { from: startOfMonth(now), to: endOfDay(now) },
     };
 
+    const payrollMeta = await loadStaffPayrollMetaBatch(
+      supabaseAdmin,
+      providerId,
+      [staff.id],
+      format(now, "yyyy-MM-dd"),
+      null,
+    );
+    const payPlan = payrollMeta.get(staff.id)?.payPlan ?? null;
+
     const live: Record<string, Awaited<ReturnType<typeof sumStaffEarningsLines>>> = {};
     for (const [key, range] of Object.entries(periods)) {
-      live[key] = await sumStaffEarningsLines(
+      const calculated = await calculateStaffCommission(
+        supabaseAdmin,
+        providerId,
+        staff.id,
+        range.from,
+        range.to,
+      ).catch(() => null);
+      const lines = await sumStaffEarningsLines(
         supabaseAdmin,
         staff.id,
         range.from,
         range.to,
-      ).catch(() => ({ commission: 0, tips: 0, adjustments: 0, total: 0 }));
+        {
+          omitCommissionClawbackBookingIds: calculated?.refundsNettedBookingIds,
+          keepServiceClawbacks: true,
+          adjustedBookingIds: calculated?.serviceAdjustedBookingIds,
+        },
+      ).catch(() => ({
+        commission: 0,
+        tips: 0,
+        adjustments: 0,
+        total: 0,
+        adjustment_breakdown: { commission: 0, tips: 0 },
+      }));
+      const recordedTipAdjustment = lines.adjustment_breakdown?.tips ?? 0;
+      const paidTips =
+        lines.tips === 0 && recordedTipAdjustment === 0
+          ? await getTipsByStaff(supabaseAdmin, providerId, range.from, range.to)
+              .then((tips) => tips.get(staff.id) ?? 0)
+              .catch(() => null)
+          : null;
+      const tillTips = await posSaleTipsByStaff(supabaseAdmin, providerId, range.from, range.to)
+        .then((tips) => tips.get(staff.id) ?? 0)
+        .catch(() => 0);
+      if (calculated) {
+        const assembled = assembleStaffPayRunGross({
+          staffId: staff.id,
+          staffName: "Staff",
+          commissionEnabled: staff.commission_enabled !== false,
+          tipsEnabled: staff.tips_enabled !== false,
+          hoursWorked: 0,
+          hourlyRateFallback: 0,
+          salaryFallback: 0,
+          periodStart: format(range.from, "yyyy-MM-dd"),
+          periodEnd: format(range.to, "yyyy-MM-dd"),
+          payPlan,
+          productCalc: staffCommissionCalcFromResult(calculated),
+          linesSummary: lines,
+          tipsFromPeriod: paidTips ?? 0,
+          posSaleTips: tillTips,
+          ignoreBasePay: true,
+        });
+        live[key] = liveEarningsFromPayRun({
+          commissionAmount: assembled.commissionAmount,
+          tipsAmount: assembled.tipsAmount,
+          commissionAdjustments: assembled.includedAdjustments,
+        });
+      } else {
+        live[key] = displayStaffEarnings(
+          applyTillTips(liveEarningsTotals(lines, null, paidTips), tillTips, staff.tips_enabled !== false),
+        );
+      }
     }
 
     // Lines in the lookback window → pending / approved / paid split + adjustments.
@@ -144,6 +225,7 @@ export async function GET(request: NextRequest) {
         const pr = payRunMap.get(i.pay_run_id as string);
         if (!pr) return null;
         return {
+          item_id: i.id,
           pay_run_id: pr.id,
           pay_period_start: pr.pay_period_start,
           pay_period_end: pr.pay_period_end,

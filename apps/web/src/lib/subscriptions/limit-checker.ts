@@ -34,6 +34,7 @@ type BookingPlanRow = {
 type SubscriptionAllowanceRow = {
   status?: string | null;
   updated_at?: string | null;
+  past_due_since?: string | null;
   expires_at?: string | null;
   billing_provider?: string | null;
   apple_grace_period_expires_at?: string | null;
@@ -187,14 +188,24 @@ export function subscriptionRowIsEntitled(
     : null;
   const appleGraceOpen =
     row.billing_provider === "apple" && appleGrace != null && Number.isFinite(appleGrace) && appleGrace > nowMs;
-  const expiresOk = expiresAt == null || (Number.isFinite(expiresAt) && expiresAt > nowMs) || appleGraceOpen;
+  const anchorRaw = row.past_due_since ?? row.updated_at;
+  const anchor = anchorRaw ? Date.parse(anchorRaw) : Number.NaN;
+  const cardGraceOpen =
+    row.billing_provider !== "apple" &&
+    row.status === "past_due" &&
+    Number.isFinite(anchor) &&
+    anchor >= nowMs - 3 * 24 * 60 * 60 * 1000;
+  const expiresOk =
+    expiresAt == null ||
+    (Number.isFinite(expiresAt) && expiresAt > nowMs) ||
+    appleGraceOpen ||
+    cardGraceOpen;
   if (!expiresOk) return false;
   if (row.status === "active" || row.status === "trialing") return true;
   if (row.status !== "past_due") return false;
   if (row.billing_provider === "apple") return appleGraceOpen;
-  const updated = row.updated_at ? Date.parse(row.updated_at) : Number.NaN;
-  if (!Number.isFinite(updated)) return false;
-  return updated >= nowMs - 3 * 24 * 60 * 60 * 1000;
+  if (!Number.isFinite(anchor)) return false;
+  return anchor >= nowMs - 3 * 24 * 60 * 60 * 1000;
 }
 
 function pickFreePlan(plans: BookingPlanRow[]): BookingPlanRow | null {
@@ -250,6 +261,7 @@ async function checkBookingLimitFromTables(
       `
       status,
       updated_at,
+      past_due_since,
       expires_at,
       billing_provider,
       apple_grace_period_expires_at,

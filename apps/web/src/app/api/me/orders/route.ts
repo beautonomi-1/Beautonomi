@@ -618,17 +618,18 @@ export async function POST(request: NextRequest) {
           stockErr = error;
         }
         if (stockErr) {
+          const { incrementStockQuantity } = await import("@/lib/orders/product-order-lifecycle");
           for (const applied of appliedStock) {
-            if (applied.product_variant_id) {
-              await (adminSupabase.rpc as any)("increment_product_variant_stock", {
-                p_variant_id: applied.product_variant_id,
-                p_quantity: applied.quantity,
-              }).catch(() => undefined);
-            } else {
-              await (adminSupabase.rpc as any)("increment_product_stock", {
-                p_product_id: applied.product_id,
-                p_quantity: applied.quantity,
-              }).catch(() => undefined);
+            const restored = await incrementStockQuantity(
+              adminSupabase,
+              {
+                variantId: applied.product_variant_id,
+                productId: applied.product_id,
+              },
+              applied.quantity,
+            );
+            if (!restored) {
+              console.error("[me/orders] stock put-back failed after a later line failed", applied);
             }
           }
           throw new Error(stockErr.message || "Insufficient stock");

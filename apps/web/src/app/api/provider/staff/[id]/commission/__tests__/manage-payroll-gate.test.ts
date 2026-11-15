@@ -1,6 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
+vi.mock("@/lib/payroll/payroll-access", () => ({
+  userCanManagePayroll: async () => false,
+}));
+
 vi.mock("@/lib/auth/permissions", () => ({
   getStaffPermissions: vi.fn(),
   isProviderOwner: vi.fn(),
@@ -87,6 +91,7 @@ function commissionReadClient(userId: string) {
     }),
   );
   chain.order = vi.fn(() => Promise.resolve({ data: [], error: null }));
+  chain.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));
   return { from: vi.fn(() => chain) };
 }
 

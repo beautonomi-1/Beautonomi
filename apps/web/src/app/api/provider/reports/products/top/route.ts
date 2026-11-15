@@ -17,13 +17,22 @@ import {
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { addMoney, multiplyMoney } from "@beautonomi/utils";
+import { saleLineKeptAmounts } from "@/lib/payroll/commission-calculator";
 
 /** Orders query shape — ids preserved through location filter */
-type ProductOrderTopRow = LocationLinkedProductOrderRow & { id: string };
+type ProductOrderTopRow = LocationLinkedProductOrderRow & {
+  id: string;
+  subtotal?: number | null;
+  discount_amount?: number | null;
+  total_amount?: number | null;
+  refunded_amount?: number | null;
+};
 
-function lineRevenue(qty: number, unitPrice: number, totalPrice: number): number {
-  const total = Number(totalPrice) || 0;
-  if (total > 0) return total;
+function lineRevenue(qty: number, unitPrice: number, totalPrice: unknown): number {
+  if (totalPrice != null && totalPrice !== "") {
+    const n = Number(totalPrice);
+    if (Number.isFinite(n)) return n;
+  }
   return multiplyMoney(Number(unitPrice) || 0, qty);
 }
 
@@ -80,9 +89,9 @@ export async function GET(request: NextRequest) {
       fetchAllPaged<ProductOrderTopRow>(async (from, to) => {
         const { data, error } = await supabaseAdmin
           .from("product_orders")
-          .select("id, created_at, fulfillment_type, collection_location_id")
+          .select("id, created_at, fulfillment_type, collection_location_id, subtotal, discount_amount, total_amount, refunded_amount")
           .eq("provider_id", providerId)
-          .eq("payment_status", "paid")
+          .in("payment_status", ["paid", "partially_refunded", "refunded"])
           .or("order_source.is.null,order_source.neq.appointment")
           .gte("created_at", fromDate.toISOString())
           .lte("created_at", toDate.toISOString())
@@ -139,6 +148,7 @@ export async function GET(request: NextRequest) {
               .from("product_order_items")
               .select(`
         id,
+        order_id,
         product_id,
         product_name,
         quantity,
@@ -222,7 +232,31 @@ export async function GET(request: NextRequest) {
       productMap.set(productId, existing);
     });
 
-    orderItems?.forEach((item: Record<string, unknown>) => {
+    const keptByLine = new Map<string, number>();
+    const itemsByOrder = new Map<string, Array<Record<string, unknown>>>();
+    for (const item of orderItems) {
+      const orderId = String(item.order_id || "");
+      const list = itemsByOrder.get(orderId) || [];
+      list.push(item);
+      itemsByOrder.set(orderId, list);
+    }
+    const orderById = new Map(orders.map((order) => [order.id, order]));
+    for (const [orderId, rows] of itemsByOrder) {
+      const order = orderById.get(orderId);
+      const kept = saleLineKeptAmounts({
+        lines: rows.map((row, index) => ({
+          id: String(row.id ?? index),
+          lineTotal: lineRevenue(Number(row.quantity || 0), Number(row.unit_price || 0), row.total_price),
+        })),
+        subtotal: Number(order?.subtotal || 0),
+        discountAmount: Number(order?.discount_amount || 0),
+        totalAmount: Number(order?.total_amount || 0),
+        refundedAmount: Number(order?.refunded_amount || 0),
+      });
+      for (const [lineId, amount] of kept) keptByLine.set(orderId + ":" + lineId, amount);
+    }
+
+    orderItems?.forEach((item: Record<string, unknown>, index: number) => {
       if (!item.product_id) return;
 
       const productInfo = orderItemProductMap.get(item.product_id as string);
@@ -238,7 +272,9 @@ export async function GET(request: NextRequest) {
       };
 
       const quantity = Number(item.quantity || 1);
-      const price = lineRevenue(quantity, Number(item.unit_price || 0), Number(item.total_price || 0));
+      const gross = lineRevenue(quantity, Number(item.unit_price || 0), item.total_price);
+      const price = gross > 0 ? (keptByLine.get(`${String(item.order_id || "")}:${String(item.id ?? index)}`) ?? 0) : 0;
+      if (gross > 0 && price <= 0) return;
 
       existing.totalQuantity += quantity;
       existing.totalRevenue = addMoney(existing.totalRevenue, price);
@@ -261,8 +297,8 @@ export async function GET(request: NextRequest) {
     const reportBasis =
       `Period ${fromYmd}–${toYmd} (${reportContext.timezone}). Products ranked by total line revenue from ` +
       `booking_products on appointments with scheduled_at in range (status completed, confirmed, in_progress, checked_in) ` +
-      `plus product_order_items on paid orders with created_at in range (appointment-mirror orders excluded). ` +
-      `Line revenue uses total_price when present, otherwise quantity × unit_price. ` +
+      `plus product_order_items on paid, partly refunded, or refunded orders with created_at in range (appointment-mirror orders excluded). ` +
+      `A stored line total of 0 stays 0. An order discount or refund is shared across its lines, and a line whose kept amount is 0 is left out. ` +
       `Summary totals are across every distinct product with sales in the window; the table shows the top ${limit} by revenue.`;
 
     return successResponse({
@@ -275,8 +311,8 @@ export async function GET(request: NextRequest) {
         bookingLines:
           "booking_products rows tied to bookings whose scheduled_at falls in the filter window (and booking location when location_id is set).",
         orderLines:
-          "product_order_items on paid orders whose created_at falls in the window; appointment-source orders excluded.",
-        revenue: "Per line: total_price if set, else quantity × unit_price.",
+          "product_order_items on paid, partly refunded, or refunded orders whose created_at falls in the window; appointment-source orders excluded.",
+        revenue: "Per line: the stored total, including 0. A walk-in order then keeps only the share left after its discount and refund.",
         ranking: `Products sorted by sum of line revenue; list truncated to ${limit} (max 200 via limit query param).`,
         timesSold:
           "Increments once per booking_products row or product_order_items row for this SKU — not bookings or orders.",

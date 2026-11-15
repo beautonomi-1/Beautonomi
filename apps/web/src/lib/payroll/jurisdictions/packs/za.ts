@@ -64,8 +64,11 @@ export function calculateZaStatutory(
     sdl?: { rate?: number; annualThreshold?: number };
   },
 ): StatutoryResult {
-  if (ctx.statutoryMode === "none" || ctx.employmentType === "contractor") {
+  if (ctx.employmentType === "contractor") {
     return { mode: "auto", reason: "contractor_exempt", lines: [] };
+  }
+  if (ctx.statutoryMode === "none") {
+    return { mode: "auto", reason: "statutory_none", lines: [] };
   }
   if (ctx.statutoryMode === "manual") {
     return { mode: "manual", reason: "staff_manual_mode", lines: [] };
@@ -78,7 +81,7 @@ export function calculateZaStatutory(
     ctx.periodsPerYearOverride ?? ruleData.incomeTax?.payPeriodsPerYear ?? 12;
   const uifCeilingPeriod =
     periodsPerYear > 0 ? multiplyMoney(uifCeilingMonthly, 12 / periodsPerYear) : uifCeilingMonthly;
-  const uifBase = Math.min(ctx.periodGross, uifCeilingPeriod);
+  const uifBase = Math.min(Math.max(0, ctx.periodGross), uifCeilingPeriod);
   const uif = multiplyMoney(uifBase, uifRate);
   if (uif > 0) {
     lines.push({

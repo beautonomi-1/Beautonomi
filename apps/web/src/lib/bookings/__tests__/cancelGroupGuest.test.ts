@@ -95,6 +95,10 @@ function makeAdmin(state: {
             resolve({ data: state.refunds ?? [], error: null });
             return;
           }
+          if (table === "bookings") {
+            resolve({ data: [state.booking], error: null });
+            return;
+          }
           resolve({ data: null, error: null });
         },
       };
@@ -197,6 +201,39 @@ describe("cancelGroupGuest", () => {
     });
     expect(walletRefund).not.toHaveBeenCalled();
     expect(state.lines.map((l) => l.id)).toEqual(["l1"]);
+  });
+
+  it("a gift the sweep still owes is not returned in cash when a guest leaves", async () => {
+    const state = taggedState("cash");
+    state.booking.gift_card_amount = 50;
+    state.booking.cancellation_settlement_error = "Gift card value could not be returned: 50.00";
+    const { admin } = makeAdmin(state);
+    const res = await cancelGroupGuest(admin, { participantId: "p3", groupBookingId: "g1", cancelledBy: "u1" });
+    expect(res).toMatchObject({
+      ok: true,
+      walletCredited: 0,
+      overpaidAmount: 50,
+      in_person_refund_due: 50,
+    });
+    expect(walletRefund).not.toHaveBeenCalled();
+  });
+
+  it("a gift the sweep still owes is not handed back when a guest leaves", async () => {
+    const state = taggedState();
+    state.booking.gift_card_amount = 50;
+    state.booking.cancellation_settlement_error = "Gift card value could not be returned: 50.00";
+    const { admin } = makeAdmin(state);
+    const res = await cancelGroupGuest(admin, { participantId: "p3", groupBookingId: "g1", cancelledBy: "u1" });
+    expect(res).toMatchObject({
+      ok: true,
+      walletCredited: 50,
+      overpaidAmount: 0,
+      in_person_refund_due: 0,
+    });
+    expect(walletRefund).toHaveBeenCalledWith("lead-1", 50, "ZAR", expect.anything(), {
+      isLateCancellation: false,
+      maxWalletCredit: 50,
+    });
   });
 
   it("organizer paid for the guest: removes lines and credits the organizer's wallet", async () => {

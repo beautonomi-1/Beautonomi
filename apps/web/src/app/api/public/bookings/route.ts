@@ -14,7 +14,7 @@ import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/a
 import { assertTransactionalMarketAllowed } from "@/lib/tenant/market-availability";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
-import { createBookingRecord } from "./_helpers/create-booking-record";
+import { createBookingRecord, releasedBookingIdFromResponse } from "./_helpers/create-booking-record";
 import { ensureUserProfileForAuthUser } from "./_helpers/ensure-user-profile";
 import { postBookingEffects } from "./_helpers/post-booking";
 import { processPayment } from "./_helpers/process-payment";
@@ -23,6 +23,7 @@ import {
   borrowPackageSessionForReschedule,
   loadRescheduleCarryOver,
   returnBorrowedPackageSession,
+  returnBorrowedSessionIfReleased,
   type RescheduleCarryOver,
 } from "@/lib/bookings/reschedule-carry-over";
 import { validateBooking } from "./_helpers/validate-booking";
@@ -319,7 +320,7 @@ export async function POST(request: NextRequest) {
           // coverage fields before cancelling.
           const { data: staleBookings } = await supabaseAdmin
             .from("bookings")
-            .select("id")
+            .select("id, customer_id, customer_package_entitlement_id, rescheduled_from_booking_id")
             .eq("customer_id", user.id)
             .eq("provider_id", draft.provider_id)
             .eq("booking_source", "online")
@@ -329,20 +330,39 @@ export async function POST(request: NextRequest) {
             .gte("scheduled_at", windowStart.toISOString())
             .lte("scheduled_at", windowEnd.toISOString());
 
-          const staleIds = ((staleBookings as Array<{ id: string }> | null) ?? []).map((b) => b.id);
-          if (staleIds.length > 0) {
+          const staleRows = (staleBookings as Array<{
+            id: string;
+            customer_id?: string | null;
+            customer_package_entitlement_id?: string | null;
+            rescheduled_from_booking_id?: string | null;
+          }> | null) ?? [];
+          if (staleRows.length > 0) {
             await Promise.all(
-              staleIds.map((staleId) =>
-                releaseBookingSlotAfterPaymentFailure(supabaseAdmin, staleId, user.id).catch(
-                  (releaseErr) => {
-                    console.error(
-                      "[stale_pending_cancel] failed to release stale booking",
-                      staleId,
-                      releaseErr,
-                    );
-                  },
-                ),
-              ),
+              staleRows.map(async (stale) => {
+                try {
+                  await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, stale.id, user.id);
+                } catch (releaseErr) {
+                  console.error(
+                    "[stale_pending_cancel] failed to release stale booking",
+                    stale.id,
+                    releaseErr,
+                  );
+                }
+                try {
+                  await returnBorrowedSessionIfReleased(supabaseAdmin, {
+                    id: stale.id,
+                    customer_id: stale.customer_id ?? user.id,
+                    customer_package_entitlement_id: stale.customer_package_entitlement_id,
+                    rescheduled_from_booking_id: stale.rescheduled_from_booking_id,
+                  }, borrowedEntitlementId);
+                } catch (sessionErr) {
+                  console.error(
+                    "[stale_pending_cancel] failed to keep the borrowed package session",
+                    stale.id,
+                    sessionErr,
+                  );
+                }
+              }),
             );
           }
         }
@@ -413,7 +433,28 @@ export async function POST(request: NextRequest) {
 
         if (createResult instanceof Response) {
           if (borrowedEntitlementId) {
-            await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+            try {
+              const releasedId = releasedBookingIdFromResponse(createResult);
+              if (releasedId) {
+                await returnBorrowedSessionIfReleased(
+                  supabaseAdmin,
+                  {
+                    id: releasedId,
+                    customer_id: user.id,
+                    customer_package_entitlement_id: borrowedEntitlementId,
+                    rescheduled_from_booking_id: rescheduleBookingId ?? null,
+                  },
+                  borrowedEntitlementId,
+                );
+              } else {
+                await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+              }
+            } catch (sessionErr) {
+              console.error(
+                "[public bookings] could not keep the borrowed package session",
+                sessionErr,
+              );
+            }
           }
           return createResult;
         }
@@ -513,9 +554,29 @@ export async function POST(request: NextRequest) {
           });
 
           if (paymentResult instanceof Response) {
-            await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, booking.id, user.id);
-            if (borrowedEntitlementId) {
-              await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+            try {
+              await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, booking.id, user.id);
+            } finally {
+              if (borrowedEntitlementId) {
+                try {
+                  await returnBorrowedSessionIfReleased(
+                    supabaseAdmin,
+                    {
+                      id: booking.id,
+                      customer_id: user.id,
+                      customer_package_entitlement_id: borrowedEntitlementId,
+                      rescheduled_from_booking_id: rescheduleBookingId ?? null,
+                    },
+                    borrowedEntitlementId,
+                  );
+                } catch (sessionErr) {
+                  console.error(
+                    "[public bookings] could not keep the borrowed package session",
+                    booking.id,
+                    sessionErr,
+                  );
+                }
+              }
             }
             bookingIdPendingRelease = "";
             return paymentResult;
@@ -619,9 +680,31 @@ export async function POST(request: NextRequest) {
           return successResponse(responseData);
         } catch (paymentOrPostError) {
           if (bookingIdPendingRelease) {
-            await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, bookingIdPendingRelease, user.id);
-            if (borrowedEntitlementId) {
-              await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+            const releasedId = bookingIdPendingRelease;
+            bookingIdPendingRelease = "";
+            try {
+              await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, releasedId, user.id);
+            } finally {
+              if (borrowedEntitlementId) {
+                try {
+                  await returnBorrowedSessionIfReleased(
+                    supabaseAdmin,
+                    {
+                      id: releasedId,
+                      customer_id: user.id,
+                      customer_package_entitlement_id: borrowedEntitlementId,
+                      rescheduled_from_booking_id: rescheduleBookingId ?? null,
+                    },
+                    borrowedEntitlementId,
+                  );
+                } catch (sessionErr) {
+                  console.error(
+                    "[public bookings] could not keep the borrowed package session",
+                    releasedId,
+                    sessionErr,
+                  );
+                }
+              }
             }
           }
           throw paymentOrPostError;

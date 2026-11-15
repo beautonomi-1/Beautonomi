@@ -13,7 +13,12 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { providerTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
-import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
+import {
+  clearAppleMerchantOnFree,
+  paystackCodeAfterStop,
+  stopPaystackSubscriptionBeforeClear,
+} from "@/lib/subscriptions/provider-billing-merchant";
+import { markProviderSubscriptionPaymentsRelinquished } from "@/lib/subscriptions/provider-subscription-payment";
 import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 
 export async function POST(request: NextRequest) {
@@ -103,24 +108,23 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     const currentPaystackCode = (currentSub as { paystack_subscription_code?: string | null } | null)
       ?.paystack_subscription_code;
-    if (currentPaystackCode) {
-      try {
-        const { disableSubscriptionByCode } = await import("@/lib/payments/paystack-complete");
-        await disableSubscriptionByCode(currentPaystackCode, { tenantId: subscriptionTenantId });
-      } catch (disableError) {
-        console.warn("[subscription/change] failed to disable Paystack subscription:", disableError);
-      }
-    }
+    const paystackStop = await stopPaystackSubscriptionBeforeClear({
+      supabase: supabaseAdmin,
+      code: currentPaystackCode,
+      tenantId: subscriptionTenantId,
+      providerId,
+    });
+
+    await markProviderSubscriptionPaymentsRelinquished(supabaseAdmin, providerId);
 
     const reactivatePatch = {
       plan_id,
       status: "active" as const,
+      past_due_since: null,
       cancelled_at: null,
       auto_renew: false,
       expires_at: null,
-      paystack_sync_pending: false,
-      paystack_sync_note: null,
-      paystack_subscription_code: null,
+      ...paystackCodeAfterStop(paystackStop),
       next_payment_date: null,
       scheduled_plan_id: null,
       scheduled_change_at: null,

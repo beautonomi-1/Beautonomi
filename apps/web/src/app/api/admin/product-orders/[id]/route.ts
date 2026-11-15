@@ -17,13 +17,20 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
   applyProductOrderCancelRefundSideEffects,
   releaseUnpaidProductOrderHolds,
+  ABANDONED_ORDER_REFUND_STILL_DUE,
   restockProductOrderLineItems,
+  productOrderHasStockStillOut,
 } from "@/lib/orders/product-order-lifecycle";
 import { splitProductOrderRefundTender } from "@/lib/ecommerce/product-order-refund-tender";
+import { fulfillWalkInProductOrderDelivery } from "@/lib/provider-sales/fulfill-walk-in-product-order-delivery";
 import {
   dispatchProductOrderStatusNotification,
   type ProductOrderNotifyStatus,
 } from "@/lib/notifications/notify-product-order-status";
+import {
+  productOrderStatusFitsFulfillment,
+  syncProductOrderLinesToOrderStatus,
+} from "@/lib/ecommerce/product-order-line-fulfilment";
 
 const patchOrderSchema = z.object({
   status: z
@@ -215,6 +222,23 @@ export async function PATCH(
     }
 
     if (
+      parsed.status &&
+      parsed.status !== orderRow.status &&
+      !productOrderStatusFitsFulfillment(
+        parsed.status,
+        (order as { fulfillment_type?: string | null }).fulfillment_type,
+      )
+    ) {
+      return errorResponse(
+        parsed.status === "shipped"
+          ? "Collection orders are marked ready for collection, then collected. They are not shipped."
+          : "Delivery orders are marked shipped, then delivered. They are not ready for collection.",
+        "FULFILLMENT_STATUS_MISMATCH",
+        400,
+      );
+    }
+
+    if (
       parsed.status === "cancelled" &&
       orderRow.payment_status === "partially_refunded"
     ) {
@@ -223,6 +247,28 @@ export async function PATCH(
         "PARTIALLY_REFUNDED_REFUND_REMAINING",
         400,
       );
+    }
+
+    if (
+      parsed.status === "delivered" &&
+      orderRow.status !== "delivered" &&
+      String((order as { order_source?: string | null }).order_source ?? "") === "walk_in"
+    ) {
+      const delivery = await fulfillWalkInProductOrderDelivery({
+        supabase: getSupabaseAdmin() as never,
+        providerId: orderRow.provider_id,
+        orderId: id,
+        actorUserId: user.id,
+      });
+      if (delivery.ok === false) {
+        return errorResponse(
+          delivery.reason === "payment_not_settled"
+            ? "The sale is not paid, so the products were not taken."
+            : delivery.reason,
+          "STOCK_ERROR",
+          409,
+        );
+      }
     }
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -256,6 +302,10 @@ export async function PATCH(
     if (error) throw error;
     if (!data) return notFoundResponse("Order not found");
 
+    if (parsed.status && parsed.status !== orderRow.status && updates.status) {
+      await syncProductOrderLinesToOrderStatus(supabase, id, parsed.status);
+    }
+
     // Restock and cancel the courier shipment only once the cancel/refund is committed:
     // restocking is not idempotent, so running it before a wallet-failure rollback would
     // restock again when the refund is retried.
@@ -264,6 +314,18 @@ export async function PATCH(
     const enteringTerminal =
       (parsed.status === "cancelled" || parsed.status === "refunded") &&
       parsed.status !== orderRow.status;
+
+    if (
+      !enteringTerminal &&
+      (orderRow.status === "refunded" || orderRow.status === "cancelled") &&
+      parsed.status === orderRow.status &&
+      (await productOrderHasStockStillOut(supabase, id))
+    ) {
+      await restockProductOrderLineItems(supabase, id, {
+        movementType: parsed.status === "refunded" ? "return" : "cancel",
+        actorUserId: user.id,
+      });
+    }
 
     const applyTerminalStockAndShipping = async () => {
       if (!enteringTerminal) return;
@@ -303,6 +365,21 @@ export async function PATCH(
         idempotencyKey: `product_order_refund_online:${id}`,
       });
       onlineRefundedAmount = tender.onlineRefundedAmount;
+      if (tender.giftVoidFailed) {
+        await (supabase.from("product_orders") as any)
+          .update({
+            status: orderRow.status,
+            payment_status: orderRow.payment_status,
+            refunded_amount: null,
+            refunded_at: null,
+          })
+          .eq("id", id);
+        return errorResponse(
+          "The gift card was not returned. The refund was not recorded.",
+          "GIFT_CARD_NOT_RETURNED",
+          502,
+        );
+      }
       if (tender.onlineRefundFailed) {
         console.warn(
           `[admin product-order refund] gateway refund failed for ${id}; wallet fallback`,
@@ -350,6 +427,7 @@ export async function PATCH(
     await applyTerminalStockAndShipping();
 
     let cancelRefundWalletFailed = false;
+    let cancelRefundGiftFailed = false;
     if (
       enteringTerminal &&
       (parsed.status === "refunded" ||
@@ -371,6 +449,27 @@ export async function PATCH(
         },
       );
       cancelRefundWalletFailed = sideEffects.walletCreditFailed;
+      cancelRefundGiftFailed = sideEffects.giftRestoreFailed;
+    } else if (
+      !enteringTerminal &&
+      parsed.status === "cancelled" &&
+      orderRow.status === "cancelled" &&
+      orderRow.payment_status === "paid"
+    ) {
+      const sideEffects = await applyProductOrderCancelRefundSideEffects(
+        supabase,
+        getSupabaseAdmin(),
+        orderRow,
+        {
+          newStatus: "cancelled",
+          cancellationReason:
+            parsed.cancellation_reason?.trim() ||
+            parsed.admin_notes?.trim() ||
+            "Cancelled by admin",
+        },
+      );
+      cancelRefundWalletFailed = sideEffects.walletCreditFailed;
+      cancelRefundGiftFailed = sideEffects.giftRestoreFailed;
     } else if (
       enteringTerminal &&
       parsed.status === "cancelled" &&
@@ -382,11 +481,31 @@ export async function PATCH(
         `Wallet refund (order cancelled before payment) ${orderRow.order_number || id.slice(0, 8)}`,
       );
       cancelRefundWalletFailed = released.failed;
+      if (released.failed || released.giftRestoreFailed) {
+        cancelRefundGiftFailed = true;
+        await (getSupabaseAdmin().from("product_orders") as any)
+          .update({
+            cancellation_reason: ABANDONED_ORDER_REFUND_STILL_DUE,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", id);
+      }
     }
 
+    if (cancelRefundGiftFailed) {
+      return errorResponse(
+        orderRow.payment_status === "paid"
+          ? "The order was cancelled, but the gift card was not returned yet. Cancel again to finish the return."
+          : "The order was cancelled, but the gift card was not returned yet. The next check returns it.",
+        "GIFT_CARD_NOT_RETURNED",
+        502,
+      );
+    }
     if (cancelRefundWalletFailed) {
       return errorResponse(
-        "The order was cancelled, but the customer's wallet refund failed. Support will complete it — do not cancel again.",
+        orderRow.payment_status === "paid"
+          ? "The order was cancelled, but the customer's wallet refund was not finished. Cancel again to finish the return."
+          : "The order was cancelled, but the refund was not finished yet. The next check returns it.",
         "REFUND_PENDING",
         502,
       );

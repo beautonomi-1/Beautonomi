@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addMoney, multiplyMoney, percentOf, roundCurrency } from "@beautonomi/utils";
+import { addMoney, percentOf, roundCurrency } from "@beautonomi/utils";
+import { pooledShare } from "./commission-calculator";
+import { resolveStaffRates } from "./resolve-staff-rates";
+import { insertStaffEarningsLinesIgnoreDuplicates } from "./insert-staff-earnings-lines";
 
 export type CancellationFeeShareParams = {
   providerId: string;
@@ -25,26 +28,43 @@ type StaffLineInput = {
 };
 
 /**
- * Pure split (unit-testable): proportional to each staff's service price on
- * the booking, at the staff commission rate.
+ * Pure split: proportional to each staff member's service price, at that
+ * person's service rate. A complimentary service has no price, so the booked
+ * stylists share the fee equally. A priced service beside a complimentary one
+ * still takes the fee by price.
  */
 export function planCancellationFeeShareLines(
   inputs: StaffLineInput[],
   providerEarningsAmount: number,
 ): Array<{ staff_id: string; base_amount: number; rate: number; amount: number }> {
-  const eligible = inputs.filter((i) => i.price > 0 && i.commission_enabled !== false && i.rate > 0);
-  const totalPrice = eligible.reduce((s, i) => addMoney(s, i.price), 0);
-  if (totalPrice <= 0 || providerEarningsAmount <= 0) return [];
-  const byStaff = new Map<string, { price: number; rate: number }>();
-  for (const i of eligible) {
-    const cur = byStaff.get(i.staff_id) ?? { price: 0, rate: i.rate };
+  if (providerEarningsAmount <= 0) return [];
+  const withStaff = inputs.filter((i) => i.staff_id);
+  if (withStaff.length === 0) return [];
+  const priced = withStaff.some((i) => i.price > 0);
+  const byStaff = new Map<string, { price: number; rate: number; pays: boolean }>();
+  for (const i of withStaff) {
+    const pays = i.commission_enabled !== false && i.rate > 0;
+    const cur = byStaff.get(i.staff_id) ?? { price: 0, rate: 0, pays: false };
     cur.price = addMoney(cur.price, i.price);
-    cur.rate = Math.max(cur.rate, i.rate);
+    if (pays) {
+      cur.rate = Math.max(cur.rate, i.rate);
+      cur.pays = true;
+    }
     byStaff.set(i.staff_id, cur);
   }
+  const totalPrice = priced
+    ? [...byStaff.values()].reduce((sum, row) => addMoney(sum, row.price), 0)
+    : 0;
+  if (priced && totalPrice <= 0) return [];
+  const seats = [...byStaff.entries()];
+  const parts = (priced ? seats.filter(([, row]) => row.price > 0) : seats).map(([id, row]) => ({
+    id,
+    weight: priced ? row.price : 1,
+  }));
   const out: Array<{ staff_id: string; base_amount: number; rate: number; amount: number }> = [];
   for (const [staffId, v] of byStaff) {
-    const base = multiplyMoney(providerEarningsAmount, v.price / totalPrice);
+    if (!v.pays) continue;
+    const base = pooledShare({ amount: providerEarningsAmount, parts, id: staffId });
     const amount = percentOf(base, v.rate);
     if (amount > 0) out.push({ staff_id: staffId, base_amount: base, rate: v.rate, amount });
   }
@@ -52,9 +72,106 @@ export function planCancellationFeeShareLines(
 }
 
 /**
+ * Service commission still left on a cancelled visit after the refund.
+ * The fee share replaces it, so each person is reversed by what remains.
+ */
+export function commissionLeftAfterFeeShare(
+  lines: readonly {
+    staff_id?: string | null;
+    kind?: string | null;
+    amount?: number | null;
+    metadata?: Record<string, unknown> | null;
+  }[],
+): Array<{ staff_id: string; amount: number }> {
+  const byStaff = new Map<string, number>();
+  for (const line of lines) {
+    const staffId = line.staff_id ?? "";
+    if (!staffId) continue;
+    const kind = line.kind ?? "";
+    if (kind === "reversal") {
+      const reversed = String(line.metadata?.reversed_kind ?? "commission");
+      if (reversed === "tip") continue;
+    } else if (kind !== "commission" && kind !== "product_commission") {
+      continue;
+    }
+    byStaff.set(staffId, addMoney(byStaff.get(staffId) ?? 0, Number(line.amount ?? 0)));
+  }
+  const out: Array<{ staff_id: string; amount: number }> = [];
+  for (const [staffId, net] of byStaff) {
+    if (net > 0.009) out.push({ staff_id: staffId, amount: roundCurrency(-net) });
+  }
+  return out;
+}
+
+/** A salary, hourly wage, booth rent, or guarantee is not reduced by commission the pay run did not pay. */
+export function feeShareReplacesStoredCommission(payModel: string | null | undefined): boolean {
+  if (!payModel) return true;
+  return (
+    payModel !== "salary" &&
+    payModel !== "hourly" &&
+    payModel !== "booth_renter" &&
+    payModel !== "base_or_commission_higher"
+  );
+}
+
+export async function reverseCommissionReplacedByFeeShare(
+  admin: SupabaseClient,
+  params: { bookingId: string; providerId: string; tenantId?: string | null; financeTransactionId: string },
+): Promise<void> {
+  const { data, error } = await admin
+    .from("staff_earnings_lines")
+    .select("staff_id, kind, amount, metadata")
+    .eq("booking_id", params.bookingId);
+  if (error) throw error;
+  const reversals = commissionLeftAfterFeeShare(
+    (data ?? []) as Array<{
+      staff_id?: string | null;
+      kind?: string | null;
+      amount?: number | null;
+      metadata?: Record<string, unknown> | null;
+    }>,
+  );
+  if (reversals.length === 0) return;
+  const staffIds = reversals.map((row) => row.staff_id);
+  const { data: plans, error: planError } = await admin
+    .from("staff_pay_plans")
+    .select("staff_id, pay_model, effective_from")
+    .eq("provider_id", params.providerId)
+    .in("staff_id", staffIds)
+    .order("effective_from", { ascending: false });
+  if (planError) return;
+  const modelByStaff = new Map<string, string>();
+  for (const plan of (plans ?? []) as Array<{ staff_id?: string; pay_model?: string }>) {
+    const staffId = plan.staff_id ?? "";
+    if (staffId && !modelByStaff.has(staffId) && plan.pay_model) {
+      modelByStaff.set(staffId, plan.pay_model);
+    }
+  }
+  const owed = reversals.filter((row) => feeShareReplacesStoredCommission(modelByStaff.get(row.staff_id)));
+  if (owed.length === 0) return;
+  await insertStaffEarningsLinesIgnoreDuplicates(
+    admin,
+    owed.map((row) => ({
+      booking_id: params.bookingId,
+      staff_id: row.staff_id,
+      provider_id: params.providerId,
+      tenant_id: params.tenantId ?? null,
+      source_finance_transaction_id: params.financeTransactionId,
+      kind: "reversal",
+      base_amount: 0,
+      rate: 0,
+      amount: row.amount,
+      rate_source: "staff",
+      reason: "Cancellation fee replaces service commission",
+      metadata: { reversed_kind: "commission" },
+    })),
+  );
+}
+
+/**
  * Post `cancellation_fee_share` staff_earnings_lines when the provider setting
  * `provider_settings.staff_share_cancellation_fee` is on (default off).
- * Idempotent on UNIQUE(source_finance_transaction_id, staff_id, kind).
+ * Idempotent when the earnings unique key already has this line.
  *
  * Call site (owned by the cancellation settlement): right after the
  * cancellation / no-show fee `provider_earnings` finance_transactions row is
@@ -75,7 +192,7 @@ export async function postCancellationFeeShareLines(
 
   const { data: lines, error } = await admin
     .from("booking_services")
-    .select("staff_id, price, provider_staff:staff_id(commission_enabled, commission_rate, service_commission_rate)")
+    .select("staff_id, price, provider_staff:staff_id(commission_enabled, commission_rate, commission_percentage, service_commission_rate)")
     .eq("booking_id", params.bookingId)
     .not("staff_id", "is", null);
   if (error) throw error;
@@ -86,12 +203,19 @@ export async function postCancellationFeeShareLines(
       staff_id: l.staff_id as string,
       price: Number(l.price ?? 0),
       commission_enabled: ps?.commission_enabled ?? null,
-      rate: Number(ps?.service_commission_rate ?? ps?.commission_rate ?? 0),
+      rate: resolveStaffRates(ps ?? {}).serviceRate,
     };
   });
 
   const plan = planCancellationFeeShareLines(inputs, params.providerEarningsAmount);
   if (plan.length === 0) return { enabled: true, linesCreated: 0, totalShared: 0 };
+
+  await reverseCommissionReplacedByFeeShare(admin, {
+    bookingId: params.bookingId,
+    providerId: params.providerId,
+    tenantId: params.tenantId,
+    financeTransactionId: params.financeTransactionId,
+  });
 
   const rows = plan.map((p) => ({
     booking_id: params.bookingId,
@@ -107,15 +231,19 @@ export async function postCancellationFeeShareLines(
     reason: "Cancellation / no-show fee share",
   }));
 
-  const { data: inserted, error: insErr } = await admin
-    .from("staff_earnings_lines")
-    .upsert(rows, { onConflict: "source_finance_transaction_id,staff_id,kind", ignoreDuplicates: true })
-    .select("id, amount");
-  if (insErr) throw insErr;
+  let linesCreated = 0;
+  let totalShared = 0;
+  for (const row of rows) {
+    const inserted = await insertStaffEarningsLinesIgnoreDuplicates(admin, [row]);
+    if (inserted > 0) {
+      linesCreated += inserted;
+      totalShared = addMoney(totalShared, Number(row.amount ?? 0));
+    }
+  }
 
   return {
     enabled: true,
-    linesCreated: (inserted ?? []).length,
-    totalShared: (inserted ?? []).reduce((s: number, r: any) => addMoney(s, Number(r.amount ?? 0)), 0),
+    linesCreated,
+    totalShared: roundCurrency(totalShared),
   };
 }

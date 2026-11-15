@@ -8,6 +8,13 @@ import {
   getProviderBookingStatusTransitionBlockReason,
   isValidProviderBookingStatusTransition,
 } from "@/lib/bookings/booking-status-transitions";
+import {
+  deductBookingRetailStock,
+  restoreBookingRetailStock,
+  lineUpBookingStockWithSavedStatus,
+  type BookingRetailStockLine,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
 
 /** Booking row shape from bulk select (id, status, version, customer_id, loyalty_points_earned, booking_number; subtotal/currency optional if expanded) */
 type BulkBookingRow = {
@@ -99,9 +106,26 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        const stockTaken: BookingRetailStockLine[] = [];
+        const stockReturned: BookingRetailStockLine[] = [];
+        if (
+          (targetStatus === "cancelled" && row.status !== "cancelled") ||
+          (targetStatus === "no_show" && row.status !== "no_show")
+        ) {
+          try {
+            stockReturned.push(...(await restoreBookingRetailStock(supabaseAdmin, booking.id)));
+          } catch (stockErr) {
+            results.failed.push({
+              id: booking.id,
+              reason: stockErr instanceof Error ? stockErr.message : "Product stock could not be restored",
+            });
+            continue;
+          }
+        }
+
         if (action.toLowerCase() === "delete") {
           // Soft delete by updating status
-          const { error: deleteError } = await supabaseAdmin
+          const { data: deletedRows, error: deleteError } = await supabaseAdmin
             .from("bookings")
             .update({
               status: "cancelled",
@@ -109,37 +133,45 @@ export async function POST(request: NextRequest) {
               cancelled_by: user.id,
               updated_at: new Date().toISOString(),
             })
-            .eq("id", booking.id);
+            .eq("id", booking.id)
+            .select("id");
 
-          if (deleteError) {
-            results.failed.push({ id: booking.id, reason: deleteError.message });
+          if (deleteError || !deletedRows?.length) {
+            try {
+              await lineUpBookingStockWithSavedStatus(supabaseAdmin, booking.id, stockTaken, stockReturned);
+            } catch (undoErr) {
+              results.failed.push({
+                id: booking.id,
+                reason: "Product stock could not be put back in line with this booking.",
+              });
+              console.error("[provider bookings bulk] stock undo failed:", undoErr);
+              continue;
+            }
+            results.failed.push({
+              id: booking.id,
+              reason: deleteError?.message ?? "Booking was modified concurrently",
+            });
             continue;
           }
+          await returnPackageSessionAfterCancel(supabaseAdmin, booking.id);
           const deleteCustomerId = row.customer_id;
           if (deleteCustomerId) {
             try {
-              const { refundRedeemedLoyaltyPoints } = await import(
-                "@/lib/loyalty/refund-redeemed-points"
+              const { finishCancellationLoyalty, markLoyaltyStillDue } = await import(
+                "@/lib/bookings/settle-booking-cancellation"
               );
-              await refundRedeemedLoyaltyPoints(supabaseAdmin, {
-                bookingId: booking.id,
-                customerId: deleteCustomerId,
-                reason: "provider_bulk_delete",
-              });
+              const loyalty = await finishCancellationLoyalty(
+                supabaseAdmin,
+                {
+                  id: booking.id,
+                  customer_id: deleteCustomerId,
+                  booking_number: row.booking_number ?? booking.id,
+                },
+                "provider",
+              );
+              await markLoyaltyStillDue(supabaseAdmin, booking.id, loyalty.stillDue);
             } catch (loyaltyRestoreErr) {
               console.error(`Failed to restore loyalty for booking ${booking.id}:`, loyaltyRestoreErr);
-            }
-            try {
-              const { clawBackEarnedLoyaltyForBooking } = await import(
-                "@/lib/loyalty/claw-back-earned-for-booking"
-              );
-              await clawBackEarnedLoyaltyForBooking(supabaseAdmin, {
-                bookingId: booking.id,
-                customerId: deleteCustomerId,
-                bookingNumber: row.booking_number ?? booking.id,
-              });
-            } catch (loyaltyError) {
-              console.error(`Failed to reverse loyalty points for booking ${booking.id}:`, loyaltyError);
             }
           }
         } else {
@@ -161,6 +193,15 @@ export async function POST(request: NextRequest) {
             if (completionCheck && !completionCheck.allowed) {
               const primary = completionCheck.blockers[0]!;
               results.failed.push({ id: booking.id, reason: `${primary.code}: ${primary.message}` });
+              continue;
+            }
+            try {
+              stockTaken.push(...(await deductBookingRetailStock(supabaseAdmin, booking.id)));
+            } catch (stockErr) {
+              results.failed.push({
+                id: booking.id,
+                reason: stockErr instanceof Error ? stockErr.message : "Product stock could not be deducted",
+              });
               continue;
             }
           }
@@ -186,40 +227,45 @@ export async function POST(request: NextRequest) {
             .eq("version", currentVersion)
             .select("id");
 
-          if (updateError) {
-            results.failed.push({ id: booking.id, reason: updateError.message });
+          if (updateError || !updatedRows || updatedRows.length === 0) {
+            try {
+              await lineUpBookingStockWithSavedStatus(supabaseAdmin, booking.id, stockTaken, stockReturned);
+            } catch (undoErr) {
+              results.failed.push({
+                id: booking.id,
+                reason: "Product stock could not be put back in line with this booking.",
+              });
+              console.error("[provider bookings bulk] stock undo failed:", undoErr);
+              continue;
+            }
+            results.failed.push({
+              id: booking.id,
+              reason: updateError?.message ?? "Booking was modified concurrently",
+            });
             continue;
           }
-          if (!updatedRows || updatedRows.length === 0) {
-            results.failed.push({ id: booking.id, reason: "Booking was modified concurrently" });
-            continue;
+          if (newStatus === "cancelled") {
+            await returnPackageSessionAfterCancel(supabaseAdmin, booking.id);
           }
 
           const customerId = row.customer_id;
           if (newStatus === "cancelled" && customerId) {
             try {
-              const { refundRedeemedLoyaltyPoints } = await import(
-                "@/lib/loyalty/refund-redeemed-points"
+              const { finishCancellationLoyalty, markLoyaltyStillDue } = await import(
+                "@/lib/bookings/settle-booking-cancellation"
               );
-              await refundRedeemedLoyaltyPoints(supabaseAdmin, {
-                bookingId: booking.id,
-                customerId,
-                reason: "provider_bulk_cancel",
-              });
+              const loyalty = await finishCancellationLoyalty(
+                supabaseAdmin,
+                {
+                  id: booking.id,
+                  customer_id: customerId,
+                  booking_number: row.booking_number ?? booking.id,
+                },
+                "provider",
+              );
+              await markLoyaltyStillDue(supabaseAdmin, booking.id, loyalty.stillDue);
             } catch (loyaltyRestoreErr) {
               console.error(`Failed to restore loyalty for booking ${booking.id}:`, loyaltyRestoreErr);
-            }
-            try {
-              const { clawBackEarnedLoyaltyForBooking } = await import(
-                "@/lib/loyalty/claw-back-earned-for-booking"
-              );
-              await clawBackEarnedLoyaltyForBooking(supabaseAdmin, {
-                bookingId: booking.id,
-                customerId,
-                bookingNumber: row.booking_number ?? booking.id,
-              });
-            } catch (loyaltyError) {
-              console.error(`Failed to reverse loyalty points for booking ${booking.id}:`, loyaltyError);
             }
           }
         }

@@ -248,6 +248,13 @@ function buildSupabaseMocks(options: {
           }),
         };
       }
+      if (table === "booking_products") {
+        const productChain: Record<string, unknown> = {};
+        productChain.select = vi.fn().mockReturnValue(productChain);
+        productChain.eq = vi.fn().mockReturnValue(productChain);
+        productChain.not = vi.fn().mockResolvedValue({ data: [], error: null });
+        return productChain;
+      }
       return {
         insert: vi.fn().mockResolvedValue({ error: null }),
         from: vi.fn(),
@@ -362,6 +369,47 @@ describe("POST /api/me/bookings/[id]/cancel — group bookings", () => {
     expect(mockCancelGroupBooking).not.toHaveBeenCalled();
   }, ROUTE_TEST_TIMEOUT_MS);
 
+  it("tells the group lead the wallet amount the group settlement credited", async () => {
+    const { serverClient, adminClient } = buildSupabaseMocks({
+      booking: bookingRow(),
+      primaryGroup: { id: GROUP_ID },
+    });
+    mockGetSupabaseServer.mockResolvedValue(serverClient);
+    mockGetSupabaseAdmin.mockReturnValue(adminClient);
+    mockCancelGroupBooking.mockResolvedValue([
+      {
+        bookingId: BOOKING_ID,
+        walletRefund: 150,
+        inPersonRefundDue: 0,
+        currency: "ZAR",
+        settlementFailed: false,
+        refundSucceeded: true,
+        giftCardRestored: true,
+        giftValueStillDue: false,
+      },
+    ]);
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      new NextRequest(`http://localhost/api/me/bookings/${BOOKING_ID}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: BOOKING_ID }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockSendCancellationNotification).toHaveBeenCalledTimes(1);
+    expect(mockSendCancellationNotification).toHaveBeenCalledWith(
+      BOOKING_ID,
+      expect.objectContaining({
+        walletRefund: 150,
+        refundInfo:
+          "A refund of ZAR 150.00 was credited to your wallet. Your gift card was returned to the card.",
+      }),
+    );
+  }, ROUTE_TEST_TIMEOUT_MS);
+
   it("sends the guest cancellation notice for guests without accounts", async () => {
     const { serverClient, adminClient } = buildSupabaseMocks({
       booking: bookingRow(),
@@ -384,6 +432,71 @@ describe("POST /api/me/bookings/[id]/cancel — group bookings", () => {
     expect(mockNotifyGuestsWithoutAccounts).toHaveBeenCalledWith(
       adminClient,
       expect.objectContaining({ providerId: PROVIDER_ID, bookingRef: "1001", cancelledBy: "customer" }),
+    );
+  }, ROUTE_TEST_TIMEOUT_MS);
+
+  it("tells the customer the wallet amount settlement credited and a restored gift card", async () => {
+    const { serverClient, adminClient } = buildSupabaseMocks({
+      booking: bookingRow(),
+    });
+    mockGetSupabaseServer.mockResolvedValue(serverClient);
+    mockGetSupabaseAdmin.mockReturnValue(adminClient);
+    mockSettleBookingCancellation.mockResolvedValue({
+      walletRefundAmount: 200,
+      refundResult: { success: true, amount: 200 },
+      giftCardVoidAttempted: true,
+      giftValueStillDue: false,
+      inPersonCashRefundDue: 0,
+      cancellationFeeApplied: 0,
+    });
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      new NextRequest(`http://localhost/api/me/bookings/${BOOKING_ID}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: BOOKING_ID }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockSendCancellationNotification).toHaveBeenCalledTimes(1);
+    expect(mockSendCancellationNotification).toHaveBeenCalledWith(
+      BOOKING_ID,
+      expect.objectContaining({
+        walletRefund: 200,
+        refundInfo:
+          "A refund of ZAR 200.00 was credited to your wallet. Your gift card was returned to the card.",
+      }),
+    );
+  }, ROUTE_TEST_TIMEOUT_MS);
+
+  it("does not quote a wallet credit when settlement has not finished", async () => {
+    const { serverClient, adminClient } = buildSupabaseMocks({
+      booking: bookingRow(),
+    });
+    mockGetSupabaseServer.mockResolvedValue(serverClient);
+    mockGetSupabaseAdmin.mockReturnValue(adminClient);
+    mockSettleBookingCancellation.mockRejectedValue(new Error("wallet down"));
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      new NextRequest(`http://localhost/api/me/bookings/${BOOKING_ID}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: BOOKING_ID }) },
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(JSON.stringify(body)).toMatch(/still processing/);
+    expect(mockSendCancellationNotification).toHaveBeenCalledWith(
+      BOOKING_ID,
+      expect.objectContaining({
+        walletRefund: undefined,
+        refundInfo: "Your refund is still processing and will be credited once it completes.",
+      }),
     );
   }, ROUTE_TEST_TIMEOUT_MS);
 });

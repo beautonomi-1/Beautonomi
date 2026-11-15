@@ -222,7 +222,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
     const adsContext = paymentRedirect === "provider_inapp" ? "app" : "web";
     const callbackUrl = `${baseUrl}/provider/settings/ads/payment-return?success=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaignId)}&context=${adsContext}`;
-    const cancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaignId)}&context=${adsContext}`;
+    const cancelAction = `${baseUrl}/provider/settings/ads/payment-return?cancelled=1&order_id=${encodeURIComponent(order.id)}&campaign_id=${encodeURIComponent(campaignId)}&reference=${encodeURIComponent(reference)}&context=${adsContext}`;
 
     const onlineInit = await initializeOnlinePayment({
       tenantId,
@@ -255,6 +255,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       payment_url: paymentUrl,
       order_id: order.id,
       campaign_id: campaignId,
+      reference,
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to start payment");

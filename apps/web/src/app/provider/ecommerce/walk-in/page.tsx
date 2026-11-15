@@ -4,6 +4,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { addMoney, computeVat, multiplyMoney } from "@beautonomi/utils";
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 import {
   Search,
   Plus,
@@ -146,6 +147,7 @@ interface WalkInOrder {
   id: string;
   order_number: string;
   total_amount: number;
+  refunded_amount?: number | null;
   payment_method: string;
   customer_name: string | null;
   created_at: string;
@@ -555,7 +557,7 @@ export default function WalkInSalePage() {
                     </div>
                     <div className="text-end">
                       <p className="font-bold text-pink-600">
-                        {formatMoney(Number(sale.total_amount))}
+                        {formatMoney(productOrderKeptAmount(sale))}
                       </p>
                       <p className="text-xs text-gray-400">
                         {new Date(sale.created_at).toLocaleString(locale)}

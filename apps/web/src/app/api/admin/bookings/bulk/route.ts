@@ -6,6 +6,12 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
+import {
+  deductBookingRetailStock,
+  restoreBookingRetailStock,
+  lineUpBookingStockWithSavedStatus,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
 
 const bulkActionSchema = z.object({
   booking_ids: z.array(z.string().uuid()).min(1, "At least one booking ID is required"),
@@ -74,7 +80,74 @@ export async function POST(request: NextRequest) {
     }
 
     const bookingsAdmin = getBookingsAdminClient();
-    if (action !== "cancel") {
+    if (action === "complete") {
+      results.success = 0;
+      const now = new Date().toISOString();
+      for (const bid of booking_ids) {
+        const { data: row, error: rowError } = await bookingsAdmin
+          .from("bookings")
+          .select("status")
+          .eq("id", bid)
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        if (rowError) {
+          results.failed += 1;
+          results.errors.push(`${bid}: ${rowError.message}`);
+          continue;
+        }
+        const currentStatus = String((row as { status?: string } | null)?.status ?? "");
+        if (!row || currentStatus === "cancelled" || currentStatus === "no_show") {
+          results.failed += 1;
+          results.errors.push(`${bid}: skipped (status ${currentStatus || "unknown"})`);
+          continue;
+        }
+        if (currentStatus !== "completed") {
+          let stockTaken: Awaited<ReturnType<typeof deductBookingRetailStock>> = [];
+          try {
+            stockTaken = await deductBookingRetailStock(bookingsAdmin, bid);
+          } catch (stockErr) {
+            results.failed += 1;
+            results.errors.push(
+              `${bid}: ${stockErr instanceof Error ? stockErr.message : "Product stock could not be deducted"}`,
+            );
+            continue;
+          }
+          const { data: completedRows, error: completeError } = await bookingsAdmin
+            .from("bookings")
+            .update({ status: "completed", completed_at: now, updated_at: now })
+            .eq("id", bid)
+            .eq("tenant_id", tenantId)
+            .not("status", "in", "(cancelled,no_show)")
+            .select("id");
+          if (completeError || !completedRows?.length) {
+            try {
+              await lineUpBookingStockWithSavedStatus(bookingsAdmin, bid, stockTaken, []);
+            } catch (undoErr) {
+              results.failed += 1;
+              results.errors.push(`${bid}: Product stock could not be put back in line with this booking.`);
+              console.error("[admin bulk complete] stock undo failed:", undoErr);
+              continue;
+            }
+            results.failed += 1;
+            results.errors.push(
+              `${bid}: ${completeError?.message ?? "skipped (status changed)"}`,
+            );
+            continue;
+          }
+        } else {
+          try {
+            await deductBookingRetailStock(bookingsAdmin, bid);
+          } catch (stockErr) {
+            results.failed += 1;
+            results.errors.push(
+              `${bid}: ${stockErr instanceof Error ? stockErr.message : "Product stock could not be deducted"}`,
+            );
+            continue;
+          }
+        }
+        results.success += 1;
+      }
+    } else if (action !== "cancel") {
       const { error: updateError } = await bookingsAdmin
         .from("bookings")
         .update(updateData)
@@ -84,9 +157,8 @@ export async function POST(request: NextRequest) {
       if (updateError) {
         throw updateError;
       }
+      results.success = booking_ids.length;
     }
-
-    results.success = booking_ids.length;
 
     // Log audit trail
     await writeAuditLog({
@@ -104,13 +176,11 @@ export async function POST(request: NextRequest) {
         const { loadCancellationOutcomeForBooking } = await import(
           "@/lib/bookings/load-cancellation-outcome"
         );
-        const { settleParamsFromCancellationOutcome } = await import(
-          "@/lib/bookings/cancellation-outcome-bridge"
-        );
+        const { cancellationNoticeFromSettlement, settleParamsFromCancellationOutcome } =
+          await import("@/lib/bookings/cancellation-outcome-bridge");
         const { settleBookingCancellation } = await import(
           "@/lib/bookings/settle-booking-cancellation"
         );
-        const { describeRefundFromOutcome } = await import("@/lib/bookings/cancellation-outcome-bridge");
         const { notifyBookingCancelled } = await import("@/lib/notifications/notification-service");
         const { customerBookingChannels } = await import("@/lib/notifications/customer-booking-channels");
         const channels = await customerBookingChannels(tenantId);
@@ -137,7 +207,17 @@ export async function POST(request: NextRequest) {
             results.errors.push(`${bid}: ${outcome?.blockReason ?? "could not load booking"}`);
             continue;
           }
-          const { error: cancelErr } = await adminClient
+          let stockReturned: Awaited<ReturnType<typeof restoreBookingRetailStock>> = [];
+          try {
+            stockReturned = await restoreBookingRetailStock(adminClient, bid);
+          } catch (stockErr) {
+            results.failed += 1;
+            results.errors.push(
+              `${bid}: ${stockErr instanceof Error ? stockErr.message : "Product stock could not be restored"}`,
+            );
+            continue;
+          }
+          const { data: cancelledRows, error: cancelErr } = await adminClient
             .from("bookings")
             .update({
               status: "cancelled",
@@ -149,17 +229,32 @@ export async function POST(request: NextRequest) {
             })
             .eq("id", bid)
             .eq("tenant_id", tenantId)
-            .neq("status", "cancelled");
-          if (cancelErr) {
+            .neq("status", "cancelled")
+            .select("id");
+          if (cancelErr || !cancelledRows?.length) {
+            try {
+              await lineUpBookingStockWithSavedStatus(adminClient, bid, [], stockReturned);
+            } catch (undoErr) {
+              results.failed += 1;
+              results.errors.push(`${bid}: Product stock could not be put back in line with this booking.`);
+              console.error("[admin bulk cancel] stock undo failed:", undoErr);
+              continue;
+            }
             results.failed += 1;
-            results.errors.push(`${bid}: ${cancelErr.message}`);
+            results.errors.push(`${bid}: ${cancelErr?.message ?? "skipped (status changed)"}`);
             continue;
           }
+          await returnPackageSessionAfterCancel(adminClient, bid);
           results.success += 1;
 
           const grossTotal = Number(finRow.total_amount ?? 0);
           const currency = (finRow.currency as string) || "ZAR";
-          let walletRefund = outcome.walletRefund;
+          let notice = cancellationNoticeFromSettlement({
+            currency,
+            walletRefundAmount: 0,
+            refundSucceeded: false,
+            settlementFailed: true,
+          });
           try {
             const { status: _status, ...financial } = finRow;
             const settlement = await settleBookingCancellation(
@@ -169,24 +264,25 @@ export async function POST(request: NextRequest) {
                 refundBookingTotal: grossTotal,
               }),
             );
-            walletRefund = settlement.walletRefundAmount;
+            notice = cancellationNoticeFromSettlement({
+              currency,
+              walletRefundAmount: settlement.walletRefundAmount ?? 0,
+              refundSucceeded: settlement.refundResult.success === true,
+              giftCardRestored: settlement.giftCardVoidAttempted === true,
+              giftValueStillDue: settlement.giftValueStillDue === true,
+              inPersonRefundDue: settlement.inPersonCashRefundDue,
+            });
           } catch (settleErr) {
             console.error("[admin bulk cancel] settlement failed for", bid, settleErr);
           }
 
           try {
-            await notifyBookingCancelled(
-              bid,
-              "system",
-              describeRefundFromOutcome({ ...outcome, walletRefund }, grossTotal, currency),
-              channels,
-              {
-                cancellationReason: reason ?? null,
-                feeRetained: outcome.feeRetained,
-                walletRefund,
-                currency,
-              },
-            );
+            await notifyBookingCancelled(bid, "system", notice.refundInfo, channels, {
+              cancellationReason: reason ?? null,
+              feeRetained: outcome.feeRetained,
+              walletRefund: notice.walletRefund,
+              currency,
+            });
           } catch (notifyErr) {
             console.error("[admin bulk cancel] notification failed for", bid, notifyErr);
           }

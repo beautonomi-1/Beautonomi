@@ -6,6 +6,7 @@ export type CustomOfferSummary = {
   expiration_at: string;
   notes?: string | null;
   status: string;
+  booking_id?: string | null;
   payment_url?: string | null;
   paid_at?: string | null;
   change_request_note?: string | null;

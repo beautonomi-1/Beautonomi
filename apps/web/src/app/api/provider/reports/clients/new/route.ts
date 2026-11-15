@@ -1,4 +1,4 @@
-import { addMoney } from "@beautonomi/utils";
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -124,7 +124,8 @@ export async function GET(request: NextRequest) {
     const returnedClients = enrichedNewClients.filter((c) => c.hasReturned).length;
     const returnRate = totalNewClients > 0 ? (returnedClients / totalNewClients) * 100 : 0;
     const totalFirstBookingValue = enrichedNewClients.reduce((sum, c) => addMoney(sum, c.firstBookingValue), 0);
-    const averageFirstBookingValue = totalNewClients > 0 ? totalFirstBookingValue / totalNewClients : 0;
+    const averageFirstBookingValue =
+      totalNewClients > 0 ? multiplyMoney(totalFirstBookingValue, 1 / totalNewClients) : 0;
 
     // Group by month
     const monthlyNewClients = new Map<string, number>();

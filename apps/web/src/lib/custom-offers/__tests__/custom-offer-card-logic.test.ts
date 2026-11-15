@@ -57,6 +57,41 @@ describe("getOfferEffectiveStatus", () => {
     expect(shouldShowCustomerAcceptCta(s, false)).toBe(false);
   });
 
+  it("treats accepted without a booking as needing support", () => {
+    const s = getOfferEffectiveStatus(
+      { ...baseAttachment, booking_id: "stale-booking" },
+      { status: "accepted", booking_id: null },
+    );
+    expect(s.isPaid).toBe(false);
+    expect(s.isFinalizeFailed).toBe(true);
+    expect(s.badge?.type).toBe("needs_support");
+    expect(shouldShowCustomerAcceptCta(s, false)).toBe(false);
+    expect(shouldShowViewBookingCta(s)).toBe(false);
+  });
+
+  it("does not treat a booking id on an unpaid offer as paid", () => {
+    const s = getOfferEffectiveStatus(
+      { ...baseAttachment, booking_id: "booking-1" },
+      { status: "payment_pending", booking_id: null },
+    );
+    expect(s.isPaid).toBe(false);
+    expect(s.isPaymentPending).toBe(true);
+    expect(shouldShowCustomerResumeCta(s, false)).toBe(true);
+    expect(shouldShowViewBookingCta(s)).toBe(false);
+  });
+
+  it("hides pay and resume once the offer time has passed", () => {
+    const s = getOfferEffectiveStatus({
+      ...baseAttachment,
+      status: "pending",
+      expiration_at: "2020-01-01T00:00:00.000Z",
+    });
+    expect(s.isExpired).toBe(true);
+    expect(s.badge?.label).toBe("Expired");
+    expect(shouldShowCustomerAcceptCta(s, false)).toBe(false);
+    expect(shouldShowCustomerResumeCta(s, false)).toBe(false);
+  });
+
   it("shows resume payment CTA during payment_pending", () => {
     const s = getOfferEffectiveStatus(baseAttachment, {
       status: "payment_pending",

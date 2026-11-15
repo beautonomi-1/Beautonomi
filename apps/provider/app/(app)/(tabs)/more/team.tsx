@@ -31,6 +31,8 @@ type StaffMember = {
   avatar_url?: string | null;
   role: string;
   is_active: boolean;
+  is_service_provider?: boolean | null;
+  clocked_in?: boolean;
   over_cap_grace_until?: string | null;
 };
 
@@ -88,10 +90,8 @@ export default function TeamScreen() {
 
   const totalCount = staff.length;
   const activeCount = staff.filter((s) => s.is_active).length;
-  const serviceProvidersCount = staff.filter(
-    (s) => s.role === "provider_staff" || s.role === "provider_manager",
-  ).length;
-  const onShiftCount = activeCount;
+  const serviceProvidersCount = staff.filter((s) => s.is_service_provider !== false).length;
+  const onShiftCount = staff.filter((s) => s.clocked_in === true).length;
 
   const avgRating = useMemo<number | null>(() => {
     if (!staff.length) return null;

@@ -42,6 +42,8 @@ interface StaffCommission {
   email: string;
   role: string;
   commissionPercentage: number;
+  serviceCommissionRate?: number;
+  productCommissionRate?: number;
   tiers: { id: string; minRevenue: number; commissionRate: number; tierOrder: number }[];
 }
 
@@ -334,6 +336,9 @@ export default function TeamSettingsScreen() {
         ) : (
           staffCommissions.map((member, i, arr) => {
             const isEditing = editingStaffId === member.staffId;
+            const serviceRate = member.serviceCommissionRate ?? member.commissionPercentage;
+            const productRate = member.productCommissionRate ?? member.commissionPercentage;
+            const splitRates = serviceRate !== productRate;
             return (
               <View
                 key={member.staffId}
@@ -350,7 +355,7 @@ export default function TeamSettingsScreen() {
                     </Text>
                   </View>
 
-                  {isEditing ? (
+                  {isEditing && !splitRates ? (
                     <View style={twStyle("flex-row items-center")}>
                       <TextInput
                         style={[twStyle("w-20 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-center text-sm text-gray-900"), { marginEnd: 8 }]}
@@ -391,14 +396,20 @@ export default function TeamSettingsScreen() {
                   ) : (
                     <TouchableOpacity
                       style={twStyle("flex-row items-center rounded-lg bg-gray-50 px-3 py-2")}
-                      onPress={() => setEditingStaffId(member.staffId)}
+                      onPress={() => {
+                        if (!splitRates) setEditingStaffId(member.staffId);
+                      }}
                       accessibilityLabel={`Edit commission for ${member.name}`}
                       accessibilityRole="button"
                     >
                       <Text style={twStyle("me-1 text-sm font-semibold text-indigo-600")}>
-                        {member.commissionPercentage ?? 0}%
+                        {splitRates
+                          ? ts("splitRates", { service: serviceRate, product: productRate })
+                          : `${member.commissionPercentage ?? 0}%`}
                       </Text>
-                      <Ionicons name="create-outline" size={14} color="#6366f1" />
+                      {splitRates ? null : (
+                        <Ionicons name="create-outline" size={14} color="#6366f1" />
+                      )}
                     </TouchableOpacity>
                   )}
                 </View>

@@ -61,6 +61,16 @@ describe("determineProviderPlan status consistency", () => {
     expect(await determineProviderPlan("prov-1")).toBe("free-plan");
   });
 
+  it("falls back to free when the first failure is outside grace even if the row was saved again", async () => {
+    nextRow = {
+      plan_id: "plan-1",
+      status: "past_due",
+      past_due_since: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    expect(await determineProviderPlan("prov-1")).toBe("free-plan");
+  });
+
   it("falls back to free catalog plan when no entitled subscription exists", async () => {
     nextRow = null;
     expect(await determineProviderPlan("prov-1")).toBe("free-plan");

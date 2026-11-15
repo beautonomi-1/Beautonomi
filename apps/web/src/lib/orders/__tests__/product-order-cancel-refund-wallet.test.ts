@@ -1,5 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
-import { applyProductOrderCancelRefundSideEffects } from "../product-order-lifecycle";
+
+vi.mock("@/lib/ecommerce/product-order-gift-card", () => ({
+  voidProductOrderGiftCard: vi.fn(async () => "failed"),
+}));
+
+import { voidProductOrderGiftCard } from "@/lib/ecommerce/product-order-gift-card";
+import {
+  abandonedOrderMoneyStillDue,
+  applyProductOrderCancelRefundSideEffects,
+} from "../product-order-lifecycle";
+
+describe("abandonedOrderMoneyStillDue", () => {
+  it("keeps an unpaid order marked when the wallet, gift card, or card refund is still owed", () => {
+    expect(abandonedOrderMoneyStillDue({ walletFailed: true, giftVoid: "restored" })).toBe(true);
+    expect(abandonedOrderMoneyStillDue({ walletFailed: false, giftVoid: "failed" })).toBe(true);
+    expect(
+      abandonedOrderMoneyStillDue({ walletFailed: false, giftVoid: "missing", cardFailed: true }),
+    ).toBe(true);
+    expect(abandonedOrderMoneyStillDue({ walletFailed: false, giftVoid: "none" })).toBe(false);
+  });
+});
 
 function makeClients(walletError: unknown) {
   const orderUpdates: Record<string, unknown>[] = [];
@@ -52,7 +72,11 @@ describe("applyProductOrderCancelRefundSideEffects wallet credit on cancel", () 
       { newStatus: "cancelled", onlineRefundedAmount: 100 },
     );
 
-    expect(out).toEqual({ walletCreditFailed: false });
+    expect(out).toEqual({
+      walletCreditFailed: false,
+      giftRestoreFailed: false,
+      giftDisposition: "none",
+    });
     expect(admin.rpc).toHaveBeenCalledWith(
       "wallet_credit_admin",
       expect.objectContaining({
@@ -73,8 +97,55 @@ describe("applyProductOrderCancelRefundSideEffects wallet credit on cancel", () 
       { newStatus: "cancelled", onlineRefundedAmount: 100 },
     );
 
-    expect(out).toEqual({ walletCreditFailed: true });
+    expect(out).toEqual({
+      walletCreditFailed: true,
+      giftRestoreFailed: false,
+      giftDisposition: "none",
+    });
     expect(orderUpdates).toEqual([]);
+  });
+
+  it("leaves the order paid when the gift card return does not answer", async () => {
+    vi.mocked(voidProductOrderGiftCard).mockResolvedValue("failed");
+    const { supabase, admin, orderUpdates } = makeClients(null);
+
+    const out = await applyProductOrderCancelRefundSideEffects(
+      supabase as never,
+      admin as never,
+      { ...order, gift_card_amount: 40, total_amount: 40 },
+      { newStatus: "cancelled", onlineRefundedAmount: 0 },
+    );
+
+    expect(out).toEqual({
+      walletCreditFailed: false,
+      giftRestoreFailed: true,
+      giftDisposition: "failed",
+    });
+    expect(orderUpdates).toEqual([]);
+    expect(admin.rpc).not.toHaveBeenCalled();
+  });
+
+  it("pays a gift card with no redemption into the wallet and does not call it restored", async () => {
+    vi.mocked(voidProductOrderGiftCard).mockResolvedValue("missing");
+    const { supabase, admin, orderUpdates } = makeClients(null);
+
+    const out = await applyProductOrderCancelRefundSideEffects(
+      supabase as never,
+      admin as never,
+      { ...order, gift_card_amount: 40, total_amount: 40 },
+      { newStatus: "cancelled", onlineRefundedAmount: 0 },
+    );
+
+    expect(out).toEqual({
+      walletCreditFailed: false,
+      giftRestoreFailed: false,
+      giftDisposition: "wallet",
+    });
+    expect(admin.rpc).toHaveBeenCalledWith(
+      "wallet_credit_admin",
+      expect.objectContaining({ p_amount: 40 }),
+    );
+    expect(orderUpdates).toEqual([expect.objectContaining({ payment_status: "refunded" })]);
   });
 
   it("credits only the wallet leg when the rest was collected in cash", async () => {
@@ -103,7 +174,105 @@ describe("applyProductOrderCancelRefundSideEffects wallet credit on cancel", () 
       { newStatus: "cancelled", onlineRefundedAmount: 0 },
     );
 
-    expect(out).toEqual({ walletCreditFailed: false });
+    expect(out).toEqual({
+      walletCreditFailed: false,
+      giftRestoreFailed: false,
+      giftDisposition: "none",
+    });
     expect(admin.rpc).not.toHaveBeenCalled();
+  });
+
+  it("does not write a second ledger refund for the same cancel", async () => {
+    const inserts: unknown[] = [];
+    let limitedReads = 0;
+    const admin = {
+      from: () => {
+        const chain: Record<string, unknown> = {};
+        const self = () => chain;
+        chain.select = self;
+        chain.eq = self;
+        chain.in = self;
+        chain.limit = async () => {
+          limitedReads += 1;
+          if (limitedReads === 1) return { data: [{ id: "cap", tenant_id: "tenant-1" }], error: null };
+          return { data: [{ refund_component: "provider_earnings" }], error: null };
+        };
+        chain.then = (resolve: (value: unknown) => unknown) =>
+          resolve({
+            data: [{ transaction_type: "provider_earnings", amount: 120, net: 120 }],
+            error: null,
+          });
+        chain.insert = async (rows: unknown) => {
+          inserts.push(rows);
+          return { error: null };
+        };
+        return chain;
+      },
+      rpc: vi.fn(async () => ({ data: null, error: null })),
+    };
+    const supabase = {
+      from: () => {
+        const chain: Record<string, unknown> = {};
+        chain.update = () => chain;
+        chain.eq = async () => ({ error: null });
+        return chain;
+      },
+    };
+
+    await applyProductOrderCancelRefundSideEffects(
+      supabase as never,
+      admin as never,
+      { ...order, payment_method: "paystack", wallet_amount: 0 },
+      { newStatus: "cancelled", cancellationReason: "Changed my mind", onlineRefundedAmount: 150 },
+    );
+
+    expect(inserts).toEqual([]);
+  });
+
+  it("writes a ledger refund for a second return even when the reason text matches", async () => {
+    const inserts: unknown[] = [];
+    const admin = {
+      from: () => {
+        const chain: Record<string, unknown> = {};
+        const self = () => chain;
+        chain.select = self;
+        chain.eq = self;
+        chain.in = self;
+        chain.limit = async () => ({ data: [{ id: "cap", tenant_id: "tenant-1" }], error: null });
+        chain.then = (resolve: (value: unknown) => unknown) =>
+          resolve({
+            data: [{ transaction_type: "provider_earnings", amount: 120, net: 120 }],
+            error: null,
+          });
+        chain.insert = async (rows: unknown) => {
+          inserts.push(rows);
+          return { error: null };
+        };
+        return chain;
+      },
+      rpc: vi.fn(async () => ({ data: null, error: null })),
+    };
+    const supabase = {
+      from: () => {
+        const chain: Record<string, unknown> = {};
+        chain.update = () => chain;
+        chain.eq = async () => ({ error: null });
+        return chain;
+      },
+    };
+
+    await applyProductOrderCancelRefundSideEffects(
+      supabase as never,
+      admin as never,
+      { ...order, payment_method: "paystack", wallet_amount: 0 },
+      {
+        newStatus: "refunded",
+        refundAmount: 50,
+        refundReason: "Return refunded",
+        onlineRefundedAmount: 150,
+      },
+    );
+
+    expect(inserts).toHaveLength(1);
   });
 });

@@ -25,7 +25,7 @@ export async function clawBackEarnedLoyaltyForBooking(
     return false;
   }
 
-  const { data: earnedRow } = await admin
+  const { data: earnedRow, error: earnedErr } = await admin
     .from("loyalty_points_ledger")
     .select("id, points_amount")
     .eq("booking_id", bookingId)
@@ -33,6 +33,8 @@ export async function clawBackEarnedLoyaltyForBooking(
     .eq("transaction_type", "earned")
     .limit(1)
     .maybeSingle();
+
+  if (earnedErr) throw earnedErr;
 
   if (!earnedRow) return false;
 
@@ -51,7 +53,7 @@ export async function clawBackEarnedLoyaltyForBooking(
 
   if (clawErr) {
     console.error("[clawBackEarnedLoyaltyForBooking] failed:", clawErr);
-    return false;
+    throw clawErr;
   }
   return true;
 }

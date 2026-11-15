@@ -72,6 +72,15 @@ describe("resolveProviderNotificationRoute", () => {
     expect(push).toHaveBeenCalledWith("/(app)/(tabs)/more/bookings?status=close_out");
   });
 
+  it("opens my earnings from a pay-run notification", () => {
+    const ok = applyProviderNotificationRoute(router, {
+      type: "system",
+      action_url: "/provider/team/my-earnings",
+    });
+    expect(ok).toBe(true);
+    expect(push).toHaveBeenCalledWith("/(app)/(tabs)/more/team-pay?tab=my-earnings");
+  });
+
   it("returns false for unknown types", () => {
     const ok = applyProviderNotificationRoute(router, { type: "unknown_event_type" });
     expect(ok).toBe(false);

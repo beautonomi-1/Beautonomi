@@ -13883,9 +13883,9 @@
       "declineOfferFailed": "Ayikwazanga uku-Yenqaba this offer.",
       "customOfferAcceptPay": "Yamukela bese ukhokha",
       "customOfferPaymentPending": "inkokhelo in Inqubekela phambili...",
-      "customOfferResumePayment": "Resume Payment",
-      "customOfferBadgeWithdrawn": "Withdrawn",
-      "customOfferBadgeDeclined": "Declined",
+      "customOfferResumePayment": "qhubeka inkokhelo",
+      "customOfferBadgeWithdrawn": "Ikhishiwe",
+      "customOfferBadgeDeclined": "Kwenqatshiwe",
       "customOfferBadgeExpired": "Expired",
       "customOfferBadgeProcessing": "Processing",
       "customOfferPaid": "Booked",
@@ -13929,7 +13929,8 @@
       "requestChangesTitle": "isicelo shintshas",
       "requestChangesBody": "Tshela umhlinzeki ukuthi yini ongathanda ilungiswe.",
       "requestChangesEmpty": "Sicela describe the shintshas you want.",
-      "requestChangesFailed": "Kwehlulekile uku-isicelo shintshas"
+      "requestChangesFailed": "Kwehlulekile uku-isicelo shintshas",
+      "offerStatusNeedsSupport": "Needs usizo"
     },
     "walletScreen": {
       "balanceLabel": "isikhwama ibhalansi",
@@ -15616,7 +15617,7 @@
           "refundAmountLabel": "imali ebuyisiwe inani:",
           "requestedOn": "Kuceliwe ngo-{{date}}",
           "items": "Izinto",
-          "itemQtyPrice": "{{count}} x {{price}}",
+          "itemQtyPrice": "{{count}} × {{price}}",
           "yourDetails": "imininingwane yakho",
           "nameLabel": "Igama",
           "emailLabel": "i-imeyili",
@@ -15663,7 +15664,11 @@
           "accessLabel": "Ukufinyelela",
           "parkingLabel": "Ukupaka",
           "landmarksLabel": "Izikhombisi",
-          "partiallyRefundedContactProvider": "Leli oda libuyiselwe ingxenye yalo. Xhumana nomhlinzeki ukuze ubuyisele imali esele."
+          "partiallyRefundedContactProvider": "Leli oda libuyiselwe ingxenye yalo. Xhumana nomhlinzeki ukuze ubuyisele imali esele.",
+          "refunded": "Imali ibuyiselwe",
+          "messageProvider": "Thumela umyalezo kumhlinzeki",
+          "messageFailedTitle": "umlayezo",
+          "messageFailedBody": "Ayikwazanga ukuqala ingxoxo naleli bhizinisi."
         },
         "customRequestsList": {
           "startPaymentFailed": "Kwehlulekile uku-qala inkokhelo",
@@ -20938,7 +20943,8 @@
         "createOfferFailedShort": "Kwehlulekile uku-dala offer",
         "changeClient": "Shintsha",
         "searchClientPlaceholder": "Sesha ngegama, i-imeyili noma ucingo (isb. 082…)",
-        "searchClientHint": "Thayipha okungenani izinhlamvu ezingu-2"
+        "searchClientHint": "Thayipha okungenani izinhlamvu ezingu-2",
+        "continuePayment": "qhubeka inkokhelo"
       },
       "privacyAndSharing": {
         "tabAccount": "I-akhawunti",
@@ -35565,7 +35571,9 @@
         "editOffer": "Hlela offer",
         "withdrawOfferConfirm": "Is jy seker jy wil hierdie aanbod terugtrek?",
         "withdrawOffer": "Onttrekkingsaanbod",
-        "couldNotLoadOfferDetails": "Ayikwazanga uku-ulayisha offer imininingwane."
+        "couldNotLoadOfferDetails": "Ayikwazanga uku-ulayisha offer imininingwane.",
+        "statusNeedsSupport": "Needs usizo",
+        "resumePayment": "qhubeka inkokhelo"
       },
       "customOfferModal": {
         "loadOfferFailed": "Ayikwazanga uku-ulayisha offer",
@@ -36508,7 +36516,13 @@
         "waitingBody": "Siqinisekisa inkokhelo yakho. Vuselela izicelo zakho zangokwezifiso ngokushesha.",
         "backToRequests": "emuva to Okwezifiso izicelo",
         "changesRequestedTitle": "Okunikezwayo kubuyekezwa",
-        "changesRequestedBody": "Umhlinzeki wakho ubuyekeza lokhu kunikezwa ngemva kwesicelo sakho sokushintsha."
+        "changesRequestedBody": "Umhlinzeki wakho ubuyekeza lokhu kunikezwa ngemva kwesicelo sakho sokushintsha.",
+        "viewBooking": "Buka ukubhuka",
+        "needsSupportTitle": "inkokhelo needs usizo",
+        "resumePayment": "qhubeka inkokhelo",
+        "needsSupportBody": "Sithole inkokhelo, kodwa asikwazanga ukudala ibhukisho. Xhumana nosizo ngenombolo yakho yokukhokha.",
+        "unavailableBody": "Cela ibhizinisi isilinganiso esisha uma usawufuna lo msebenzi.",
+        "unavailableTitle": "Le othi ayisakhokhwa"
       }
     },
     "groupInvite": {

@@ -124,6 +124,7 @@ function setup(existing: { scheduled_plan_id?: string | null; cancelled_at?: str
         return {
           select: () => ({
             eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
               eq: () => ({
                 single: async () => ({
                   data: {

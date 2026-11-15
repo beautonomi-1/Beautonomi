@@ -7,6 +7,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   Alert,
   ActivityIndicator,
@@ -118,6 +119,7 @@ export default function LoyaltyScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [redeeming, setRedeeming] = useState(false);
+  const [redeemInput, setRedeemInput] = useState("");
   /** Same key across double-taps and retries of one redemption; reset once it settles. */
   const redeemIdempotencyKeyRef = useRef<string | null>(null);
 
@@ -157,7 +159,10 @@ export default function LoyaltyScreen() {
   const redemptionValue = data?.redemption_value ?? (rate > 0 ? points / rate : 0);
   const earnDesc = data?.earning_rate_description ?? lp("earnPointsDefault");
   const minRedeem = data?.minimum_redemption ?? data?.config?.min_redemption_points ?? 100;
-  const canRedeem = points > 0 && points >= minRedeem;
+  const parsedRedeem = parseInt(redeemInput.trim(), 10);
+  const redeemPoints = Number.isFinite(parsedRedeem) && parsedRedeem > 0 ? parsedRedeem : points;
+  const redeemValue = rate > 0 ? redeemPoints / rate : 0;
+  const canRedeem = points >= minRedeem && redeemPoints >= minRedeem && redeemPoints <= points;
 
   async function handleRedeem() {
     if (!canRedeem) {
@@ -168,9 +173,9 @@ export default function LoyaltyScreen() {
     Alert.alert(
       lp("redeemConfirmTitle"),
       lp("redeemConfirmBody", {
-        points: String(points),
+        points: String(redeemPoints),
         currency,
-        amount: redemptionValue.toFixed(2),
+        amount: redeemValue.toFixed(2),
       }),
       [
         { text: t("common.cancel"), style: "cancel" },
@@ -182,7 +187,7 @@ export default function LoyaltyScreen() {
             try {
               const idempotencyKey = (redeemIdempotencyKeyRef.current ??= generateRedeemKey());
               const res = await api.post("/api/me/loyalty/redeem", {
-                points,
+                points: redeemPoints,
                 idempotency_key: idempotencyKey,
               });
               // Keep the key only when the outcome is unknown (no HTTP status) or still
@@ -199,6 +204,7 @@ export default function LoyaltyScreen() {
               } else {
                 haptic.success();
                 Alert.alert(lp("redeemSuccessTitle"), lp("redeemSuccessBody"));
+                setRedeemInput("");
                 load(true);
               }
             } catch (e) {
@@ -267,6 +273,27 @@ export default function LoyaltyScreen() {
             <Text style={{ fontSize: 14, color: "#92400E", marginTop: 4 }}>{lp("worthValue", { currency, amount: redemptionValue.toFixed(2) })}</Text>
           )}
           <Text style={{ fontSize: 13, color: "#92400E", marginTop: 8 }}>{earnDesc}</Text>
+          <TextInput
+            value={redeemInput}
+            onChangeText={setRedeemInput}
+            keyboardType="number-pad"
+            placeholder={lp("needMinToRedeem", { min: String(minRedeem) })}
+            placeholderTextColor="#92400E"
+            style={{
+              marginTop: 16,
+              width: "100%",
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: "#FCD34D",
+              backgroundColor: "#fff",
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              fontSize: 16,
+              color: "#78350F",
+              textAlign: "center",
+            }}
+            accessibilityLabel={lp("redeemPointsA11y")}
+          />
           <TouchableOpacity
             onPress={handleRedeem}
             disabled={!canRedeem || redeeming}
@@ -349,10 +376,11 @@ export default function LoyaltyScreen() {
               <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>{lp("howToEarnTitle")}</Text>
               {[
                 { icon: "calendar-outline" as const, label: lp("earnCompleteBookingLabel"), desc: lp("earnCompleteBookingDesc") },
-                { icon: "star-outline" as const, label: lp("earnReviewLabel"), desc: lp("earnReviewDesc") },
+                { icon: "gift-outline" as const, label: t("web.accountSettings.loyaltyPoints.firstBookingBonus"), desc: lp("earnCompleteBookingDesc") },
+                { icon: "star-outline" as const, label: t("web.accountSettings.loyaltyPoints.birthdayBonus"), desc: lp("earnCompleteBookingDesc") },
                 { icon: "people-outline" as const, label: lp("earnReferLabel"), desc: lp("earnReferDesc") },
               ].map((item, i) => (
-                <View key={i} style={{ flexDirection: "row", alignItems: "center", marginBottom: i < 2 ? 12 : 0 }}>
+                <View key={i} style={{ flexDirection: "row", alignItems: "center", marginBottom: i < 3 ? 12 : 0 }}>
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#FDE68A" }}>
                     <Ionicons name={item.icon} size={18} color="#78350F" />
                   </View>
@@ -376,7 +404,7 @@ export default function LoyaltyScreen() {
               </View>
             ) : (
               loyaltyHistoryRowsForDisplay(data).map((tx: any) => {
-                const txType = tx.type ?? (tx.transaction_type === "earned" ? "earn" : tx.transaction_type === "redeemed" ? "redeem" : tx.transaction_type === "expired" ? "expire" : "earn");
+                const txType = tx.type ?? (tx.transaction_type === "redeemed" ? "redeem" : tx.transaction_type === "expired" ? "expire" : tx.transaction_type === "adjusted" ? "adjust" : "earn");
                 const desc = tx.description ?? (txType === "earn" ? lp("pointsEarned") : txType === "redeem" ? lp("pointsRedeemed") : lp("pointsExpired"));
                 const pts = Number(tx.points ?? tx.points_amount ?? 0) || 0;
                 return (
@@ -388,7 +416,7 @@ export default function LoyaltyScreen() {
                       <Text style={{ fontSize: 14, color: Colors.gray[900], fontWeight: "500" }}>{desc}</Text>
                       <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{formatDate(tx.created_at)}</Text>
                     </View>
-                    <Text style={{ fontSize: 14, fontWeight: "700", color: txType === "earn" ? "#B45309" : txType === "redeem" ? "#1D4ED8" : "#B91C1C" }}>{txType === "earn" ? "+" : "-"}{Math.abs(pts)}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: pts < 0 ? "#B91C1C" : txType === "redeem" ? "#1D4ED8" : "#B45309" }}>{pts < 0 ? "-" : "+"}{Math.abs(pts)}</Text>
                   </View>
                 );
               })

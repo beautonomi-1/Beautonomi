@@ -70,6 +70,10 @@ import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invaria
 import { sumPendingWalletGiftByBookingIds } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { sendBookingPaymentLink } from "@/lib/bookings/send-booking-payment-link";
 import { validateProviderBookingProducts } from "@/lib/bookings/validate-provider-booking-products";
+import {
+  deductBookingRetailStock,
+  restoreBookingRetailStock,
+} from "@/lib/bookings/deduct-booking-retail-stock";
 import { resolveCustomServicesInBookingBody } from "@/lib/bookings/resolve-custom-services-in-booking-body";
 import { mapProviderBookingServiceLineForApi } from "@/lib/bookings/walk-in-custom-service";
 import { createOrResolveShadowCustomer } from "@/lib/users/create-shadow-customer";
@@ -2300,7 +2304,6 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     // Create booking_products records for each product
     if (validatedProducts.length > 0) {
-      const primaryStaffId = body.team_member_id || body.staff_id || null;
       const bookingProductsData = validatedProducts.map((product) => ({
         booking_id: booking.id,
         product_id: product.productId,
@@ -2309,7 +2312,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
         unit_price: product.unitPrice,
         total_price: product.totalPrice,
         currency: product.currency || booking.currency || lastResortCurrency,
-        staff_id: primaryStaffId,
+        staff_id: null,
       }));
 
       const { error: bpError } = await supabaseAdmin
@@ -2381,36 +2384,23 @@ async function handleCreateProviderBooking(request: NextRequest) {
             .eq("booking_id", booking.id)
             .is("stock_deducted_at", null);
           if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
-            const deductTs = new Date().toISOString();
-            for (const row of pendingProducts as Array<{
-              id: string;
-              product_id: string | null;
-              product_variant_id?: string | null;
-              quantity: number | null;
-              products?: { track_stock_quantity?: boolean | null } | null;
-            }>) {
-              if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
-              if (row.products?.track_stock_quantity === false) continue;
-              const { error: decErr } = row.product_variant_id
-                ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
-                    p_variant_id: row.product_variant_id,
-                    p_quantity: row.quantity,
-                  })
-                : await supabaseAdmin.rpc("decrement_product_stock", {
-                    p_product_id: row.product_id,
-                    p_quantity: row.quantity,
-                  });
-              if (decErr) {
+            try {
+              await deductBookingRetailStock(supabaseAdmin, booking.id);
+            } catch (deductErr) {
+              try {
+                await restoreBookingRetailStock(supabaseAdmin, booking.id);
+              } catch (restoreErr) {
                 console.error(
-                  `[provider/bookings create] decrement_product_stock failed for booking ${booking.id}, row ${row.id}:`,
-                  decErr
+                  "[provider/bookings create] could not return stock after a failed deduction:",
+                  restoreErr,
                 );
-                throw new Error(decErr.message || "Product stock could not be deducted");
+                return errorResponse(
+                  "Product stock could not be deducted, and the units already taken could not be returned. The visit was kept so the stock can be corrected.",
+                  "INSUFFICIENT_STOCK",
+                  400,
+                );
               }
-              await supabaseAdmin
-                .from("booking_products")
-                .update({ stock_deducted_at: deductTs })
-                .eq("id", row.id);
+              throw deductErr;
             }
             try {
               const { logBookingStockMovements } = await import("@/lib/products/stock-movements");
@@ -2418,8 +2408,19 @@ async function handleCreateProviderBooking(request: NextRequest) {
                 providerId,
                 bookingId: booking.id,
                 actorUserId: user.id,
-                lines: (pendingProducts as Array<{ product_id: string | null; product_variant_id?: string | null; quantity: number | null }>)
-                  .filter((r) => r.product_id && r.quantity && r.quantity > 0)
+                lines: (pendingProducts as Array<{
+                  product_id: string | null;
+                  product_variant_id?: string | null;
+                  quantity: number | null;
+                  products?: { track_stock_quantity?: boolean | null } | null;
+                }>)
+                  .filter(
+                    (r) =>
+                      r.product_id &&
+                      r.quantity &&
+                      r.quantity > 0 &&
+                      r.products?.track_stock_quantity !== false,
+                  )
                   .map((r) => ({
                     productId: r.product_id!,
                     productVariantId: r.product_variant_id ?? null,

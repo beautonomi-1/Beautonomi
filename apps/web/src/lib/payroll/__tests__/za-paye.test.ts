@@ -78,6 +78,12 @@ describe("calculateZaStatutory", () => {
     expect(paye(january)).toBeCloseTo(4681.0, 2);
   });
 
+  it("does not charge UIF when the period's pay is negative", () => {
+    const res = calculateZaStatutory(ctx({ periodGross: -20 }), ruleData);
+    expect(res.lines.find((line) => line.code === "uif_employee")).toBeUndefined();
+    expect(res.lines.find((line) => line.code === "paye_estimate")).toBeUndefined();
+  });
+
   it("caps UIF at the monthly ceiling", () => {
     const res = calculateZaStatutory(ctx({ periodGross: 50_000 }), ruleData);
     expect(res.lines.find((l) => l.code === "uif_employee")?.amount).toBeCloseTo(177.12, 2);
@@ -90,8 +96,12 @@ describe("calculateZaStatutory", () => {
   });
 
   it("exempts contractors and statutory_mode none", () => {
-    expect(calculateZaStatutory(ctx({ employmentType: "contractor" }), ruleData).lines).toEqual([]);
-    expect(calculateZaStatutory(ctx({ statutoryMode: "none" }), ruleData).lines).toEqual([]);
+    const contractor = calculateZaStatutory(ctx({ employmentType: "contractor" }), ruleData);
+    const none = calculateZaStatutory(ctx({ statutoryMode: "none" }), ruleData);
+    expect(contractor.lines).toEqual([]);
+    expect(contractor.reason).toBe("contractor_exempt");
+    expect(none.lines).toEqual([]);
+    expect(none.reason).toBe("statutory_none");
   });
 
   it("returns manual for staff_manual_mode", () => {

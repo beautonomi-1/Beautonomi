@@ -26,6 +26,7 @@ import {
   subscriptionGatewayUsesPaystackCustomer,
 } from "@/lib/subscriptions/resolve-subscription-online-gateway";
 import { appendInAppQuery } from "@/lib/payments/append-in-app-query";
+import { pendingSavedCardChargeRefusal } from "@/lib/iap/apple/billing-active";
 
 const initializePaymentSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -117,6 +118,28 @@ export async function POST(request: NextRequest) {
       throw new Error("Invalid plan amount for selected billing period");
     }
 
+    const { data: currentSubscription } = await supabase
+      .from("provider_subscriptions")
+      .select(
+        "billing_provider, last_dunning_retry_at, dunning_retry_count, trial_ends_at, past_due_since, updated_at, apple_grace_period_expires_at",
+      )
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    const pendingCharge = pendingSavedCardChargeRefusal(
+      (currentSubscription ?? {}) as {
+        billing_provider?: string | null;
+        last_dunning_retry_at?: string | null;
+        dunning_retry_count?: number | null;
+        trial_ends_at?: string | null;
+        past_due_since?: string | null;
+        updated_at?: string | null;
+        apple_grace_period_expires_at?: string | null;
+      },
+    );
+    if (pendingCharge) {
+      return errorResponse(pendingCharge, "SUBSCRIPTION_CHARGE_PENDING", 409);
+    }
+
     const chargeCurrency = String((plan as { currency?: string }).currency || lastResortCurrency).toUpperCase();
     const fxReady = await assertReportingCurrencyReady(supabase, chargeCurrency);
     if (fxReady.ok === false) {
@@ -163,7 +186,7 @@ export async function POST(request: NextRequest) {
     await failPendingProviderSubscriptionOrders(
       supabase,
       providerId,
-      "superseded_by_new_checkout",
+      "This checkout was replaced by a newer one.",
     );
 
     // Create order for tracking
@@ -211,10 +234,10 @@ export async function POST(request: NextRequest) {
     const subCancelAction =
       in_app && isHttpsClientCallback
         ? appendInAppQuery(
-            `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_cancelled=1`,
+            `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_cancelled=1&order_id=${order.id}&${refQuery}`,
             { inApp: true },
           )
-        : `${subAppUrl}/provider/subscription?payment_cancelled=1${inAppParam}`;
+        : `${subAppUrl}/provider/subscription?payment_cancelled=1&order_id=${order.id}&${refQuery}${inAppParam}`;
 
     const planCurrency = (plan as any).currency || lastResortCurrency;
     const onlineInit = await initializeOnlinePayment({

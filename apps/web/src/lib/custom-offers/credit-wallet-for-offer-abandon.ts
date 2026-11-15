@@ -107,3 +107,58 @@ export async function creditWalletForCustomOfferAbandon(
 
   return { credited: outstanding };
 }
+
+export const CUSTOM_OFFER_WALLET_STILL_DUE = "custom_offer_wallet_refund_still_due";
+
+export async function rememberCustomOfferWalletStillDue(
+  supabase: SupabaseClient,
+  offerId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("custom_offers")
+    .update({
+      payment_reference: CUSTOM_OFFER_WALLET_STILL_DUE,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", offerId);
+  if (error) {
+    console.error("[custom offer] could not mark the wallet return", offerId, error);
+  }
+}
+
+export async function retryCustomOfferWalletStillDue(supabase: SupabaseClient): Promise<number> {
+  const { data, error } = await supabase
+    .from("custom_offers")
+    .select("id, provider_id, request:custom_requests(customer_id)")
+    .eq("payment_reference", CUSTOM_OFFER_WALLET_STILL_DUE)
+    .limit(100);
+  if (error) {
+    console.warn("[custom offer] wallet return query failed", error);
+    return 0;
+  }
+
+  let finished = 0;
+  for (const row of (data ?? []) as Array<{
+    id: string;
+    provider_id?: string | null;
+    request?: { customer_id?: string | null } | null;
+  }>) {
+    const customerId = row.request?.customer_id;
+    if (!customerId) continue;
+    try {
+      await creditWalletForCustomOfferAbandon(supabase, row.id, customerId, row.provider_id ?? null, {
+        reason: "failed",
+      });
+      const { data: cleared } = await supabase
+        .from("custom_offers")
+        .update({ payment_reference: null, updated_at: new Date().toISOString() })
+        .eq("id", row.id)
+        .eq("payment_reference", CUSTOM_OFFER_WALLET_STILL_DUE)
+        .select("id");
+      if ((cleared?.length ?? 0) > 0) finished += 1;
+    } catch (err) {
+      console.warn("[custom offer] wallet return still due", row.id, err);
+    }
+  }
+  return finished;
+}

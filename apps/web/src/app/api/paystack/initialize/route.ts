@@ -130,7 +130,8 @@ export async function POST(request: NextRequest) {
         : null;
     const isProductOrder = rawMeta.type === "product_order" || Boolean(productOrderIdForCallback);
 
-    const successQuery: Record<string, string | undefined> = {};
+    const reference = generateTransactionReference("paystack_init", user.id);
+    const successQuery: Record<string, string | undefined> = { reference };
     if (bookingIdForCallback) successQuery.booking_id = bookingIdForCallback;
     if (productOrderIdForCallback) successQuery.product_order_id = productOrderIdForCallback;
     const orderNumberRaw =
@@ -322,7 +323,6 @@ export async function POST(request: NextRequest) {
     const setAsDefault = rawMeta.setAsDefault === "true" || rawMeta.setAsDefault === true;
     const channelExtras = paystackChannelsForInitialize({ saveCard });
 
-    const reference = generateTransactionReference("paystack_init", user.id);
     const lineItemName = bookingIdFromMeta
       ? "Booking payment"
       : productOrderIdRaw

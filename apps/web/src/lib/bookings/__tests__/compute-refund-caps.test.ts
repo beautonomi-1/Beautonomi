@@ -85,6 +85,22 @@ describe("computeRefundCaps", () => {
     expect(caps.maxRefundable).toBe(75);
   });
 
+  it("keeps a gift the sweep still owes out of every refund cap", async () => {
+    const supabase = fakeSupabase({
+      booking_payments: [{ id: "p1", amount: 250, payment_method: "card", payment_provider: "paystack", status: "completed" }],
+      bookings: [{ cancellation_settlement_error: "Gift card value could not be returned: 50.00" }],
+    });
+    const caps = await computeRefundCaps(supabase, "b1", {
+      customer_id: "c1",
+      total_paid: 300,
+      total_refunded: 200,
+      wallet_amount: 0,
+      gift_card_amount: 50,
+    });
+    expect(caps.maxRefundable).toBe(50);
+    expect(caps.onlineCap).toBe(50);
+  });
+
   it("walk-in without a customer account is never offered wallet", async () => {
     const supabase = fakeSupabase({
       booking_payments: [{ id: "p1", amount: 100, payment_method: "card", payment_provider: "paystack", status: "completed" }],
@@ -92,5 +108,46 @@ describe("computeRefundCaps", () => {
     const caps = await computeRefundCaps(supabase, "b1", { customer_id: null, total_paid: 100, total_refunded: 0 });
     expect(caps.hasCustomerAccount).toBe(false);
     expect(caps.suggestedMethod).not.toBe("store_credit");
+  });
+
+  it("holds the gift on a closed visit out of the cap even when the caller omits it", async () => {
+    const supabase = fakeSupabase({
+      booking_payments: [
+        { id: "p1", amount: 100, payment_method: "card", payment_provider: "paystack", status: "completed" },
+      ],
+      bookings: [
+        {
+          status: "cancelled",
+          cancellation_settlement_error: "Gift card could not be returned",
+          gift_card_amount: 40,
+        },
+      ],
+    });
+    const closed = await computeRefundCaps(supabase, "b1", {
+      customer_id: "c1",
+      total_paid: 100,
+      total_refunded: 0,
+    });
+    expect(closed.maxRefundable).toBe(60);
+    expect(closed.onlineCap).toBe(60);
+
+    const openVisit = fakeSupabase({
+      booking_payments: [
+        { id: "p1", amount: 100, payment_method: "card", payment_provider: "paystack", status: "completed" },
+      ],
+      bookings: [
+        {
+          status: "confirmed",
+          cancellation_settlement_error: "Gift card could not be returned",
+          gift_card_amount: 40,
+        },
+      ],
+    });
+    const open = await computeRefundCaps(openVisit, "b1", {
+      customer_id: "c1",
+      total_paid: 100,
+      total_refunded: 0,
+    });
+    expect(open.maxRefundable).toBe(100);
   });
 });

@@ -112,7 +112,8 @@ export async function computeExpectedAmountForEntity(
         .eq("id", entityId)
         .eq("provider_id", providerId)
         .maybeSingle();
-      if (!sale || sale.payment_status === "completed") return null;
+      const saleStatus = String(sale?.payment_status ?? "").toLowerCase();
+      if (!sale || saleStatus === "completed" || saleStatus === "refunded") return null;
       const giftPaid = await sumSaleGiftCardPaid(supabase, entityId);
       const cardTaken =
         (await sumSuccessfulSaleCardTakenBySaleIds(supabase, [entityId])).get(entityId) ?? 0;
@@ -130,7 +131,10 @@ export async function computeExpectedAmountForEntity(
         .maybeSingle();
       if (!order) return null;
       if (order.order_source === "appointment") return null;
-      if (order.payment_status === "paid") return null;
+      const orderPayment = String(order.payment_status ?? "").toLowerCase();
+      if (orderPayment === "paid" || orderPayment === "partially_refunded" || orderPayment === "refunded") {
+        return null;
+      }
       if (order.status === "cancelled" || order.status === "refunded") return null;
       const { productOrderCardAmountStillDue } = await import(
         "@/lib/payments/resolve-paystack-initialize-amount"

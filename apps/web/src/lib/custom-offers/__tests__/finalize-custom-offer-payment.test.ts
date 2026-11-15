@@ -21,11 +21,15 @@ vi.mock("@/lib/bookings/conflict-check", () => ({
   checkBookingConflictForProvider: vi.fn(async () => ({ hasConflict: false })),
 }));
 
-vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", () => ({
-  ensureWalletGiftBookingPayments: vi.fn(async () => undefined),
-  completeWalletGiftSyntheticPayments: vi.fn(async () => undefined),
-  sumPendingWalletGiftBookingPayments: vi.fn(async () => 0),
-}));
+vi.mock("@/lib/bookings/ensure-wallet-gift-booking-payments", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/bookings/ensure-wallet-gift-booking-payments")>();
+  return {
+    ...actual,
+    ensureWalletGiftBookingPayments: vi.fn(async () => undefined),
+    completeWalletGiftSyntheticPayments: vi.fn(async () => undefined),
+    sumPendingWalletGiftBookingPayments: vi.fn(async () => 0),
+  };
+});
 
 vi.mock("@/lib/loyalty/record-redemption", () => ({
   recordLoyaltyRedemption: vi.fn(async () => ({ recorded: true })),

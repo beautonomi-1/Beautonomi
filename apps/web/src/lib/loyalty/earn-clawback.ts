@@ -19,7 +19,7 @@ export async function hasBookingEarnClawback(
   bookingId: string,
   customerId: string,
 ): Promise<boolean> {
-  const { data } = await admin
+  const { data, error } = await admin
     .from("loyalty_points_ledger")
     .select("id")
     .eq("booking_id", bookingId)
@@ -29,5 +29,6 @@ export async function hasBookingEarnClawback(
     .limit(1)
     .maybeSingle();
 
+  if (error) throw error;
   return Boolean(data);
 }

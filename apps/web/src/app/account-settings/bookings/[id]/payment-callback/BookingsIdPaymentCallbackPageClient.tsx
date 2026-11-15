@@ -50,11 +50,6 @@ export default function BookingPaymentCallbackPage() {
   const [message, setMessage] = useState("");
 
   const verify = useCallback(async () => {
-    if (isHostedCheckoutFailureStatus(hostedStatus)) {
-      setStatus("error");
-      setMessage(t(`${prefix}.confirmFailed`));
-      return;
-    }
     if (!reference?.trim()) {
       setStatus("error");
       setMessage(t(`${prefix}.noReference`));
@@ -62,12 +57,14 @@ export default function BookingPaymentCallbackPage() {
     }
 
     try {
+      const failedReturn = isHostedCheckoutFailureStatus(hostedStatus);
       const res = await verifyWithRetry<VerifyResponse>(reference.trim(), {
         endpoint: `/api/paystack/verify-reference?booking_id=${encodeURIComponent(bookingId)}`,
-        maxAttempts: 5,
+        maxAttempts: failedReturn ? 1 : 5,
         delayMs: 1500,
         sessionId,
         transactionId: flutterwaveTransactionId,
+        redirectStatus: hostedStatus,
       });
       const data = res.data;
       if (res.status === "success" || data?.verified) {

@@ -1,9 +1,6 @@
-import { multiplyMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { STAFF_COMMISSION_REVENUE_TYPES } from "@/lib/reports/constants";
 import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
 import { getTipsByStaff } from "@/lib/payroll/tips-helper";
 import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
@@ -117,35 +114,6 @@ export async function GET(request: NextRequest) {
       return successResponse([]);
     }
 
-    // Allocate booking-level provider earnings only. Tips are reported in the
-    // separate `tips` column (getTipsByStaff) and would otherwise double-count if
-    // we used the default LEDGER_FULL_PROVIDER_NET_TYPES here. Travel fees are
-    // a pass-through to the provider and not part of a staff member's service revenue.
-    const { revenueByBooking } = await getProviderRevenue(
-      supabaseAdmin,
-      providerId,
-      fromDate,
-      toDate,
-      locationId,
-      { transactionTypes: STAFF_COMMISSION_REVENUE_TYPES, timezone: tz }
-    );
-
-    let bookingsQuery = supabaseAdmin
-      .from("bookings")
-      .select(`
-        id,
-        status,
-        booking_services(id, staff_id, price)
-      `)
-      .eq("provider_id", providerId)
-      .gte("scheduled_at", fromDate.toISOString())
-      .lte("scheduled_at", toDate.toISOString())
-      .in("status", ["confirmed", "completed"]);
-    if (locationId) {
-      bookingsQuery = bookingsQuery.eq("location_id", locationId);
-    }
-    const { data: bookings } = await bookingsQuery;
-
     const { data: timeCards } = await supabaseAdmin
       .from("staff_time_cards")
       .select("staff_id, total_hours")
@@ -181,30 +149,14 @@ export async function GET(request: NextRequest) {
         locationId
       );
 
-      let appointmentsCount = 0;
-      let revenue = 0;
-      type BookingWithServices = { id: string; booking_services?: Array<{ staff_id?: string; price?: number }> };
-      for (const b of bookings ?? []) {
-        const row = b as BookingWithServices;
-        const services = row.booking_services ?? [];
-        const staffServices = services.filter((s: { staff_id?: string }) => s.staff_id === staffRow.id);
-        if (staffServices.length === 0) continue;
-        appointmentsCount += 1;
-        const totalPrice = services.reduce((sum: number, x: { price?: number }) => addMoney(sum, Number(x.price ?? 0)), 0);
-        const staffPrice = staffServices.reduce((sum: number, x: { price?: number }) => addMoney(sum, Number(x.price ?? 0)), 0);
-        if (totalPrice > 0) {
-          revenue = addMoney(revenue, multiplyMoney(revenueByBooking.get(row.id) ?? 0, staffPrice / totalPrice));
-        }
-      }
-
       const tipsEligible = staffRow.tips_enabled !== false;
       const commissionEligible = staffRow.commission_enabled !== false;
 
       results.push({
         team_member_id: staffRow.id,
         team_member_name: (staff.users as { full_name?: string } | null)?.full_name ?? "Unknown",
-        appointments_count: appointmentsCount,
-        revenue,
+        appointments_count: commission.totalBookings,
+        revenue: commission.totalRevenue,
         tips: tipsEligible ? tipsByStaff.get(staffRow.id) || 0 : 0,
         hours_worked: hoursByStaff.get(staffRow.id) || 0,
         commission: commissionEligible ? commission.totalCommission : 0,

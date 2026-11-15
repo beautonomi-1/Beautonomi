@@ -9618,7 +9618,7 @@
           "markPaid": "Mark kukhokhelwe",
           "sectionTitle": "Kukhokha",
           "ownerHint": "Dala ukukhokha kwesikhathi, bese uthepha okusalungiswa ukuze ulungise i-PAYE, i-UIF, nezinye ukwehliswa ngabasebenzi. Gcizelela futhi umakwe ukukhokhelwe uma usulungele.",
-          "staffHint": "Buka khokha runs for your workplace. Only the Libhizinisi mnikati can yakha runs, vuma, or mark them kukhokhelwe.",
+          "staffHint": "Ubuka kuphela liphepha lakho leholo. Umnikati webhizinisi, noma lowo aniketwe imvume yeholo, wakha iholo, uyavuma, bese uyaliphawula likhokhelwe.",
           "emptyTitle": "Awekho khokha runs kwanyalo",
           "emptyOwner": "Dala umgijimo wekukhokha sikhatsi seliviki noma senyanga. Ngemuva kwaloko uvume bese umaka kutsi ukhokhelwe lapha.",
           "emptyStaff": "Umnikati wakho akakadali umgijimo wekukhokha. Bacele kutsi bacale sinye kulesikrini.",
@@ -13913,7 +13913,8 @@
       "requestChangesTitle": "sicelo guculas",
       "requestChangesBody": "Vertel die verskaffer wat jy wil hê moet aangepas word.",
       "requestChangesEmpty": "Sicela describe the guculas you want.",
-      "requestChangesFailed": "Kwehlulekile ku-sicelo guculas"
+      "requestChangesFailed": "Kwehlulekile ku-sicelo guculas",
+      "offerStatusNeedsSupport": "Needs lusito"
     },
     "walletScreen": {
       "balanceLabel": "sikhwama libhalansi",
@@ -15534,7 +15535,7 @@
           "emailRequiredTitle": "i-imeyili kuyadingeka",
           "emailRequiredBody": "Engeza ikheli le-imeyili ku-akhawunti yakho ngaphambi kokukhokha leli oda ku-inthanethi.",
           "paymentUnavailableTitle": "inkokhelo ayatfolakali",
-          "paymentUnavailableBody": "We could not cala inkokhelo for this i-oda. Sicela uzame futsi.",
+          "paymentUnavailableBody": "Asikwazanga kucala inkokhelo yaleli oda. Linga futsi.",
           "shareErrorTitle": "Yabelana",
           "shareErrorBody": "Couldn't yabelana this irisidi.",
           "downloadReceiptTitle": "Layisha irisidi",
@@ -15600,7 +15601,7 @@
           "refundAmountLabel": "imali lebuye linani:",
           "requestedOn": "Kucolile nge-{{date}}",
           "items": "Tintfo",
-          "itemQtyPrice": "{{count}} x {{price}}",
+          "itemQtyPrice": "{{count}} × {{price}}",
           "yourDetails": "imininingwane yakho",
           "nameLabel": "Ligama",
           "emailLabel": "i-imeyili",
@@ -15636,10 +15637,10 @@
           "promotion": "Kuphakanyiswa",
           "calculatedTotal": "Calculated siphelele",
           "chargedTotal": "Charged siphelele",
-          "totalDifferenceHint": "Small differences can come from rounding or phromoshinitions applied at kukhokha.",
+          "totalDifferenceHint": "Umehluko lomncane ungavela ekugobeni noma kuticoco lokusetjentiswe nasekubhadala.",
           "soldBy": "Kutsetsengisiwe ngu",
           "requestReturnCta": "sicelo Return / imali lebuye",
-          "returnWindowPassed": "Return window ({{days}} emalanga) has passed. For lusito, vula liphrofayili → Lusito centre → New lithikithi.",
+          "returnWindowPassed": "Sikhatsi sekubuyisa (emalanga e-{{days}}) sesendlulile. Kutfolakusita, vula Iphrofayela → Sikhatsi sekusita → Lithikithi lelisha.",
           "readyForPickupTitle": "Ilungele kutsatfwa",
           "lineFulfilment": "Kugcwalisa: {{status}}",
           "unitLabel": "Iyunithi",
@@ -15647,7 +15648,11 @@
           "accessLabel": "Kungena",
           "parkingLabel": "Kupaka",
           "landmarksLabel": "Tikhombiso",
-          "partiallyRefundedContactProvider": "Le oda labuyiselwa kancane. Tihlanganise nemhlinzeki kute ubuyisele imali lesele."
+          "partiallyRefundedContactProvider": "Le oda labuyiselwa kancane. Tihlanganise nemhlinzeki kute ubuyisele imali lesele.",
+          "refunded": "Imali ibuyisiwe",
+          "messageProvider": "Tfumela umlayeto kumniketi",
+          "messageFailedTitle": "umlayeto",
+          "messageFailedBody": "Ayikwazanga kucala ingcoco naleli bhizinisi."
         },
         "customRequestsList": {
           "startPaymentFailed": "Kwehlulekile ku-cala inkokhelo",
@@ -20926,7 +20931,8 @@
         "createOfferFailedShort": "Kwehlulekile ku-yakha offer",
         "changeClient": "Shintja",
         "searchClientPlaceholder": "Sesha ngegama, i-imeyili noma lucingo (sib. 082…)",
-        "searchClientHint": "Thayipha lokungenani tinhla leti-2"
+        "searchClientHint": "Thayipha lokungenani tinhla leti-2",
+        "continuePayment": "chubeka inkokhelo"
       },
       "privacyAndSharing": {
         "tabAccount": "Li-akhawunti",
@@ -35519,7 +35525,9 @@
         "editOffer": "Hlela offer",
         "withdrawOfferConfirm": "Ucinisekile kutsi ufuna kuhoxisa lesipho?",
         "withdrawOffer": "Khipha Sipho",
-        "couldNotLoadOfferDetails": "Ayikhonanga ku-layisha offer imininingwane."
+        "couldNotLoadOfferDetails": "Ayikhonanga ku-layisha offer imininingwane.",
+        "statusNeedsSupport": "Needs lusito",
+        "resumePayment": "chubeka inkokhelo"
       },
       "customOfferModal": {
         "loadOfferFailed": "Ayikhonanga ku-layisha offer",
@@ -36462,7 +36470,13 @@
         "waitingBody": "Siyacinisekisa inkhokhelo yakho. Vuselela ticelo takho letikhetsekile ngesikhatsi lesincane.",
         "backToRequests": "emuva to Lwekhefiso ticelo",
         "changesRequestedTitle": "Sipho siyabuyeketwa",
-        "changesRequestedBody": "Umhlinzeki wakho uvuselela lesipho ngemuva kwesicelo sakho sekushintja."
+        "changesRequestedBody": "Umhlinzeki wakho uvuselela lesipho ngemuva kwesicelo sakho sekushintja.",
+        "viewBooking": "Buka kubhuka",
+        "needsSupportTitle": "inkokhelo needs lusito",
+        "resumePayment": "chubeka inkokhelo",
+        "needsSupportBody": "Sitfole inkokhelo, kodvwa asikwazanga kwakha ibhukisho. Tsintsana nelusito ngenombolo yakho yekukhokha.",
+        "unavailableBody": "Cela libhizinisi sicatulo lesisha uma usalitfuna lesevisi.",
+        "unavailableTitle": "Lomnikelo awusakhokhelwa"
       }
     },
     "groupInvite": {

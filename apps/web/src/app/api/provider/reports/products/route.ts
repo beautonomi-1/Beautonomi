@@ -12,6 +12,7 @@ import { effectiveStockQuantity } from "@/lib/provider-portal/product-inventory-
 import { filterProductOrdersForLocation, getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import { addMoney, multiplyMoney } from "@beautonomi/utils";
+import { saleLineKeptAmounts } from "@/lib/payroll/commission-calculator";
 
 type CatalogRow = {
   id: string;
@@ -30,9 +31,11 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-function lineRevenue(qty: number, unitPrice: number, totalPrice: number): number {
-  const total = Number(totalPrice) || 0;
-  if (total > 0) return total;
+function lineRevenue(qty: number, unitPrice: number, totalPrice: unknown): number {
+  if (totalPrice != null && totalPrice !== "") {
+    const n = Number(totalPrice);
+    if (Number.isFinite(n)) return n;
+  }
   return multiplyMoney(Number(unitPrice) || 0, qty);
 }
 
@@ -113,9 +116,9 @@ export async function GET(request: NextRequest) {
 
     let ordersQuery = supabaseAdmin
       .from("product_orders")
-      .select("id, fulfillment_type, collection_location_id")
+      .select("id, fulfillment_type, collection_location_id, subtotal, discount_amount, total_amount, refunded_amount")
       .eq("provider_id", providerId)
-      .eq("payment_status", "paid")
+      .in("payment_status", ["paid", "partially_refunded", "refunded"])
       // Appointment orders are fulfillment mirrors for booking_products, which
       // are counted by booking/product reports elsewhere.
       .or("order_source.is.null,order_source.neq.appointment")
@@ -164,7 +167,7 @@ export async function GET(request: NextRequest) {
         const pid = row.product_id;
         if (!pid) continue;
         const qty = Number(row.quantity) || 0;
-        const rev = lineRevenue(qty, Number(row.unit_price) || 0, Number(row.total_price) || 0);
+        const rev = lineRevenue(qty, Number(row.unit_price) || 0, row.total_price);
         const name = typeof row.products?.name === "string" ? row.products.name : null;
         const prev = salesByProduct.get(pid) ?? { units: 0, revenue: 0, fallbackName: null };
         prev.units += qty;
@@ -178,24 +181,52 @@ export async function GET(request: NextRequest) {
       for (const ids of chunk(orderIds, 80)) {
         const { data: items, error: itemsError } = await supabaseAdmin
           .from("product_order_items")
-          .select("product_id, quantity, unit_price, total_price, product_name")
+          .select("id, order_id, product_id, quantity, unit_price, total_price, product_name")
           .in("order_id", ids);
 
         if (itemsError) {
           throw itemsError;
         }
 
+        const byOrder = new Map<string, Array<Record<string, unknown>>>();
         for (const row of items || []) {
-          const pid = row.product_id as string | null;
-          if (!pid) continue;
-          const qty = Number(row.quantity) || 0;
-          const rev = lineRevenue(qty, Number(row.unit_price) || 0, Number(row.total_price) || 0);
-          const name = typeof row.product_name === "string" ? row.product_name : null;
-          const prev = salesByProduct.get(pid) ?? { units: 0, revenue: 0, fallbackName: null };
-          prev.units += qty;
-          prev.revenue = addMoney(prev.revenue, rev);
-          if (!prev.fallbackName && name) prev.fallbackName = name;
-          salesByProduct.set(pid, prev);
+          const orderId = String((row as { order_id?: string }).order_id || "");
+          const list = byOrder.get(orderId) || [];
+          list.push(row as Record<string, unknown>);
+          byOrder.set(orderId, list);
+        }
+        for (const [orderId, rows] of byOrder) {
+          const order = (attributedOrders as Array<{
+            id: string;
+            subtotal?: number;
+            discount_amount?: number;
+            total_amount?: number;
+            refunded_amount?: number;
+          }>).find((o) => o.id === orderId);
+          const kept = saleLineKeptAmounts({
+            lines: rows.map((row, index) => ({
+              id: String(row.id ?? index),
+              lineTotal: lineRevenue(Number(row.quantity) || 0, Number(row.unit_price) || 0, row.total_price),
+            })),
+            subtotal: Number(order?.subtotal || 0),
+            discountAmount: Number(order?.discount_amount || 0),
+            totalAmount: Number(order?.total_amount || 0),
+            refundedAmount: Number(order?.refunded_amount || 0),
+          });
+          rows.forEach((row, index) => {
+            const pid = row.product_id as string | null;
+            if (!pid) return;
+            const qty = Number(row.quantity) || 0;
+            const gross = lineRevenue(qty, Number(row.unit_price) || 0, row.total_price);
+            const rev = gross > 0 ? (kept.get(String(row.id ?? index)) ?? 0) : 0;
+            if (gross > 0 && rev <= 0) return;
+            const name = typeof row.product_name === "string" ? row.product_name : null;
+            const prev = salesByProduct.get(pid) ?? { units: 0, revenue: 0, fallbackName: null };
+            prev.units += qty;
+            prev.revenue = addMoney(prev.revenue, rev);
+            if (!prev.fallbackName && name) prev.fallbackName = name;
+            salesByProduct.set(pid, prev);
+          });
         }
       }
     }
@@ -250,7 +281,7 @@ export async function GET(request: NextRequest) {
       package_usage: [],
       package_revenue: 0,
       report_basis:
-        "Product revenue includes appointment booking_products and standalone paid product_orders. Appointment product_orders are excluded as fulfillment mirrors.",
+        "Product revenue includes appointment booking_products and standalone product orders that are paid, partly refunded, or refunded. A stored line total of 0 stays 0. An order discount or refund is shared across its lines. Appointment product_orders are excluded as fulfillment mirrors.",
     });
   } catch (error) {
     console.error("Error in GET /api/provider/reports/products:", error);

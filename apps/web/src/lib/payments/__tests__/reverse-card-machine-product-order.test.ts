@@ -171,8 +171,11 @@ describe("reverseCardMachineSettlement (product_order)", () => {
       expect.objectContaining({
         payment_status: "refunded",
         status: "refunded",
+        refunded_amount: 100,
+        refund_method: "yoco",
         gift_card_amount: 0,
         gift_card_id: null,
+        wallet_amount: 0,
       }),
     ]);
 

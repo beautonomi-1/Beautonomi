@@ -253,7 +253,7 @@ export async function createGroupParticipantChildBooking(
           unit_price: unitPrice,
           total_price: totalPrice,
           currency: session.currency,
-          staff_id: staffId,
+          staff_id: null,
         };
       })
       .filter(Boolean);

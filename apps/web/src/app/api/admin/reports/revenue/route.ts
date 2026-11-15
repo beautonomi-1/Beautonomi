@@ -1,4 +1,4 @@
-import { addMoney, multiplyMoney, subtractMoney } from "@beautonomi/utils";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
@@ -15,6 +15,8 @@ import {
   normalizeBookingChannel,
 } from "@/lib/reports/booking-channel-breakdown";
 import { RECOGNIZED_REVENUE_TYPES } from "@/lib/reports/provider-revenue-semantics";
+import { bookingLineShares } from "@/lib/reports/staff-ledger-revenue";
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 import { eachUtcDay, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 
@@ -247,17 +249,15 @@ export async function GET(request: NextRequest) {
         if (!id) continue;
         const bookingRevenue = revenueByBooking.get(id) ?? 0;
         const svcs = servicesByBooking.get(id) ?? [];
-        if (svcs.length === 0 || bookingRevenue <= 0) continue;
-        const totalPrice = svcs.reduce((s, x) => addMoney(s, Number(x.price ?? 0)), 0);
-        for (const service of svcs) {
+        if (svcs.length === 0 || bookingRevenue === 0) continue;
+        const shares = bookingLineShares(bookingRevenue, svcs);
+        svcs.forEach((service, index) => {
           const offering = Array.isArray(service.offerings)
             ? service.offerings[0]
             : service.offerings;
           const serviceName = offering?.title ?? "Unknown service";
           const serviceId = service.offering_id ?? serviceName;
-          const proportion =
-            totalPrice > 0 ? Number(service.price ?? 0) / totalPrice : 1 / svcs.length;
-          const serviceRevenue = multiplyMoney(bookingRevenue, proportion);
+          const serviceRevenue = shares[index] ?? 0;
           const existing = revenueByServiceMap.get(serviceId) ?? {
             service_id: serviceId,
             service_name: serviceName,
@@ -267,7 +267,7 @@ export async function GET(request: NextRequest) {
           existing.revenue = addMoney(existing.revenue, serviceRevenue);
           existing.bookingIds.add(id);
           revenueByServiceMap.set(serviceId, existing);
-        }
+        });
       }
     }
 
@@ -410,19 +410,19 @@ export async function GET(request: NextRequest) {
 
     const { data: productOrders } = await supabase
       .from("product_orders")
-      .select("order_source, total_amount, payment_status")
+      .select("order_source, total_amount, refunded_amount, payment_status")
       .eq("tenant_id", tenantId)
-      .eq("payment_status", "paid")
+      .in("payment_status", ["paid", "partially_refunded", "refunded"])
       .or("order_source.is.null,order_source.neq.appointment")
       .gte("created_at", startISO)
       .lte("created_at", endISO);
 
     const productBySource = computeOrderSourceBreakdown({
-      orders: (productOrders || []).map((o: { order_source?: string | null; total_amount?: number }) => ({
-        order_source: o.order_source,
-        units: 1,
-        revenue: Number(o.total_amount ?? 0),
-      })),
+      orders: (productOrders || []).flatMap((o: { order_source?: string | null; total_amount?: number; refunded_amount?: number | null }) => {
+        const kept = productOrderKeptAmount(o);
+        if (kept <= 0) return [];
+        return [{ order_source: o.order_source, units: 1, revenue: kept }];
+      }),
     });
 
     return successResponse({

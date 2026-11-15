@@ -42,6 +42,9 @@ export async function GET(
       .single();
 
     if (!payRun) return notFoundResponse("Pay run not found");
+    if (payRun.status === "draft") {
+      return handleApiError(new Error("EMP201 is available after approval"), "INVALID_STATE", 400);
+    }
 
     const { data: items } = await admin
       .from("provider_pay_run_items")

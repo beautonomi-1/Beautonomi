@@ -114,6 +114,22 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   const [mediaIndex, setMediaIndex] = useState(0);
   const [videoTimeMs, setVideoTimeMs] = useState(0);
   const [detailVideoPlaying, setDetailVideoPlaying] = useState(false);
+  const detailSoundRef = useRef<HTMLAudioElement>(null);
+  const soundtrack = post.sound_url || "";
+  useEffect(() => {
+    const audio = detailSoundRef.current;
+    if (!audio) return;
+    if (!soundtrack || !detailVideoPlaying) {
+      audio.pause();
+      return;
+    }
+    audio.loop = true;
+    if (audio.dataset.track !== soundtrack) {
+      audio.dataset.track = soundtrack;
+      audio.src = soundtrack;
+    }
+    void audio.play().catch(() => undefined);
+  }, [detailVideoPlaying, soundtrack]);
   const [shareOverride, setShareOverride] = useState<ExplorePost | null>(null);
   const viewTrackedRef = useRef(false);
   const commentsFetchedRef = useRef(false);
@@ -490,6 +506,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
     <>
     {reelLayout ?? (
     <div className="min-h-screen bg-white">
+      {soundtrack ? <audio ref={detailSoundRef} preload="auto" /> : null}
       {/* Mobile: Pinterest-style stacked layout */}
       <div className="lg:hidden">
         {/* Full-bleed image */}
@@ -504,6 +521,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     poster={primaryPoster ?? undefined}
                     controls
                     playsInline
+                    muted={Boolean(soundtrack)}
                     className="w-full h-full object-cover"
                     onPlay={() => setDetailVideoPlaying(true)}
                     onPause={() => setDetailVideoPlaying(false)}
@@ -675,6 +693,15 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                 {post.provider.business_name}
               </span>
             </Link>
+            {post.offering?.id && post.provider?.slug ? (
+              <Link
+                href={`/booking?slug=${encodeURIComponent(post.provider.slug)}&service=${encodeURIComponent(post.offering.id)}`}
+                className="mb-4 inline-flex max-w-full rounded-full bg-[#FF0077] px-4 py-2 text-sm font-semibold text-white"
+              >
+                {t("customer.explorePost.bookThisLook")}
+                {post.offering.name ? ` · ${post.offering.name}` : ""}
+              </Link>
+            ) : null}
 
             {/* Comments */}
             <div className="py-2 border-t border-gray-100">
@@ -912,6 +939,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                           poster={primaryPoster ?? undefined}
                           controls
                           playsInline
+                          muted={Boolean(soundtrack)}
                           className="w-full h-full object-cover"
                           onPlay={() => setDetailVideoPlaying(true)}
                           onPause={() => setDetailVideoPlaying(false)}
@@ -1031,6 +1059,15 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                     </div>
                     <span className="font-medium text-gray-900">{post.provider.business_name}</span>
                   </Link>
+                  {post.offering?.id && post.provider?.slug ? (
+                    <Link
+                      href={`/booking?slug=${encodeURIComponent(post.provider.slug)}&service=${encodeURIComponent(post.offering.id)}`}
+                      className="mt-3 inline-flex max-w-full rounded-full bg-[#FF0077] px-4 py-2 text-sm font-semibold text-white"
+                    >
+                      {t("customer.explorePost.bookThisLook")}
+                      {post.offering.name ? ` · ${post.offering.name}` : ""}
+                    </Link>
+                  ) : null}
                 </div>
                 {/* Desktop comments */}
                 <div className="border-t border-gray-100 pt-4">

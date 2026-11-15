@@ -51,6 +51,8 @@ interface MockOpts {
   chargeTxns?: Array<{ id: string; transaction_type?: string; created_at?: string }>;
   /** `void_gift_card_redemption` data. True means the card balance was restored. */
   giftVoidData?: boolean;
+  /** One result per void call. Used when the first call does not answer. */
+  giftVoidResults?: Array<{ data: boolean | null; error: string | null }>;
 }
 
 function buildMock(opts: MockOpts = {}): SupabaseClient {
@@ -70,11 +72,15 @@ function buildMock(opts: MockOpts = {}): SupabaseClient {
     finalizeError = null,
     chargeTxns = [],
     giftVoidData = true,
+    giftVoidResults,
   } = opts;
+  const voidResults = [...(giftVoidResults ?? [])];
 
   const deletedIds: string[] = [];
+  const refundUpdates: Array<Record<string, unknown>> = [];
 
-  return {
+  const client = {
+    refundUpdates,
     from(table: string) {
       if (table === "bookings") {
         return {
@@ -86,6 +92,9 @@ function buildMock(opts: MockOpts = {}): SupabaseClient {
                   error: bookingRow ? null : { message: "not found" },
                 }),
             }),
+          }),
+          update: () => ({
+            eq: () => Promise.resolve({ error: null }),
           }),
         };
       }
@@ -143,11 +152,13 @@ function buildMock(opts: MockOpts = {}): SupabaseClient {
               return Promise.resolve({ error: null });
             },
           }),
-          update: () => ({
-            eq: () =>
-              Promise.resolve({
+          update: (payload: Record<string, unknown>) => ({
+            eq: () => {
+              refundUpdates.push(payload);
+              return Promise.resolve({
                 error: finalizeError ? { message: finalizeError } : null,
-              }),
+              });
+            },
           }),
         };
       }
@@ -199,11 +210,19 @@ function buildMock(opts: MockOpts = {}): SupabaseClient {
         });
       }
       if (name === "void_gift_card_redemption") {
+        const next = voidResults.shift();
+        if (next) {
+          return Promise.resolve({
+            data: next.data,
+            error: next.error ? { message: next.error } : null,
+          });
+        }
         return Promise.resolve({ data: giftVoidData, error: null });
       }
       return Promise.resolve({ error: null });
     }),
-  } as unknown as SupabaseClient;
+  };
+  return client as unknown as SupabaseClient & { refundUpdates: Array<Record<string, unknown>> };
 }
 
 // ---- Tests -----------------------------------------------------------------
@@ -394,18 +413,19 @@ describe("issueAdminWalletRefund", () => {
   });
 
   it("credits wallet excluding gift-card leg on full refund (gift card is restored separately)", async () => {
+    const supabase = buildMock({
+      refundInsertId: "rf-full",
+      bookingRow: {
+        customer_id: "c1",
+        booking_number: "BK-002",
+        currency: "ZAR",
+        tenant_id: "t1",
+        provider_id: "p1",
+        gift_card_amount: 50, // should trigger gift card restore
+      },
+    });
     const result = await issueAdminWalletRefund({
-      supabase: buildMock({
-        refundInsertId: "rf-full",
-        bookingRow: {
-          customer_id: "c1",
-          booking_number: "BK-002",
-          currency: "ZAR",
-          tenant_id: "t1",
-          provider_id: "p1",
-          gift_card_amount: 50, // should trigger gift card restore
-        },
-      }),
+      supabase,
       tenantId: "t1",
       bookingId: "b2",
       amount: 300,
@@ -418,6 +438,7 @@ describe("issueAdminWalletRefund", () => {
       // R300 gross − R50 gift restore = R250 wallet credit (no double refund)
       expect(result.amount).toBe(250);
     }
+    expect(supabase.refundUpdates).toContainEqual({ status: "completed", amount: 300 });
   });
 
   it("keeps the gift in the wallet when the card was already captured", async () => {
@@ -436,6 +457,34 @@ describe("issueAdminWalletRefund", () => {
       }),
       tenantId: "t1",
       bookingId: "b3",
+      amount: 300,
+      originalChargeAmount: 300,
+      reason: "full refund",
+      actorUserId: "admin-1",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.amount).toBe(300);
+  });
+
+  it("adds the gift to the reported refund when the card was spent after the first return did not answer", async () => {
+    const result = await issueAdminWalletRefund({
+      supabase: buildMock({
+        refundInsertId: "rf-unknown",
+        giftVoidResults: [
+          { data: null, error: "down" },
+          { data: false, error: null },
+        ],
+        bookingRow: {
+          customer_id: "c1",
+          booking_number: "BK-004",
+          currency: "ZAR",
+          tenant_id: "t1",
+          provider_id: "p1",
+          gift_card_amount: 50,
+        },
+      }),
+      tenantId: "t1",
+      bookingId: "b4",
       amount: 300,
       originalChargeAmount: 300,
       reason: "full refund",

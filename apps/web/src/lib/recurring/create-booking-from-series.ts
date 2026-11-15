@@ -571,7 +571,6 @@ export async function createBookingFromRecurringSeries(
         productLines,
         addonLines,
         addonNameById,
-        primaryStaffId,
         row,
         occurrenceDateYmd,
         recurringTotalAmount
@@ -626,7 +625,6 @@ export async function createBookingFromRecurringSeries(
       productLines,
       addonLines,
       addonNameById,
-      primaryStaffId,
       row,
       occurrenceDateYmd,
       recurringTotalAmount,
@@ -647,7 +645,6 @@ async function insertRecurringBookingProductsAndAudit(
   productLines: ProductLine[],
   addonLines: AddonLine[],
   addonNameById: Map<string, string>,
-  primaryStaffId: string | null,
   row: SeriesRow,
   occurrenceDateYmd: string,
   totalAmount: number,
@@ -680,7 +677,7 @@ async function insertRecurringBookingProductsAndAudit(
         quantity: product.quantity,
         unit_price: product.unit_price,
         total_price: product.total_price,
-        staff_id: primaryStaffId,
+        staff_id: null,
       }))
     );
     if (error) {

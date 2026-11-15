@@ -14,7 +14,7 @@ import {
 } from "@/lib/reports/provider-report-utils";
 import { PAID_BOOKING_PAYMENT_STATUSES } from "@/lib/payments/booking-payment-status";
 import { posSaleCountsAsRevenue } from "@/lib/reports/provider-sales-history";
-import { productOrderTenderSplit } from "@/lib/orders/product-order-tender";
+import { productOrderTenderSplit, productOrderTillRefundAmount } from "@/lib/orders/product-order-tender";
 import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
 
@@ -324,11 +324,11 @@ export async function getRecordedTakingsForRange(
       let productOrderQuery = supabaseAdmin
         .from("product_orders")
         .select(
-          "id, total_amount, wallet_amount, gift_card_amount, payment_method, fulfillment_type, collection_location_id",
+          "id, total_amount, wallet_amount, gift_card_amount, payment_method, fulfillment_type, collection_location_id, refunded_amount, refund_method",
         )
         .eq("provider_id", providerId)
         .eq("order_source", "walk_in")
-        .eq("payment_status", "paid")
+        .in("payment_status", ["paid", "partially_refunded", "refunded"])
         .gte("paid_at", rangeStartIso)
         .lte("paid_at", rangeEndIso)
         .order("paid_at", { ascending: true })
@@ -350,12 +350,15 @@ export async function getRecordedTakingsForRange(
     if (locationId) {
       walkInOrders = await filterProductOrdersForLocation(supabaseAdmin, providerId, walkInOrders, locationId);
     }
-    productOrderSalesCount = walkInOrders.length;
     for (const row of walkInOrders) {
       const split = productOrderTenderSplit(row);
+      const tillRefund = productOrderTillRefundAmount(row);
+      const remainder = Math.max(0, subtractMoney(split.remainder, tillRefund));
+      const kept = Math.max(0, subtractMoney(split.total, tillRefund));
+      if (kept <= 0) continue;
       const method = resolveRecordedTakingsBucket(row.payment_method, row.payment_provider);
-      if (split.remainder > 0) {
-        byPaymentMethod[method] = addMoney(byPaymentMethod[method] || 0, split.remainder);
+      if (remainder > 0) {
+        byPaymentMethod[method] = addMoney(byPaymentMethod[method] || 0, remainder);
       }
       if (split.wallet > 0) {
         byPaymentMethod.wallet = addMoney(byPaymentMethod.wallet || 0, split.wallet);
@@ -363,7 +366,8 @@ export async function getRecordedTakingsForRange(
       if (split.gift > 0) {
         byPaymentMethod.gift_card = addMoney(byPaymentMethod.gift_card || 0, split.gift);
       }
-      salesTotal = addMoney(salesTotal, split.total);
+      salesTotal = addMoney(salesTotal, kept);
+      productOrderSalesCount += 1;
     }
   }
 

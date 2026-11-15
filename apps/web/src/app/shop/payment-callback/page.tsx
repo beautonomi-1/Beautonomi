@@ -47,14 +47,6 @@ function ProductPaymentCallbackInner() {
         searchParams.get("tx_ref");
       const sessionId = searchParams.get("session_id");
       const transactionId = searchParams.get("transaction_id");
-      if (redirectStatus === "failed" || redirectStatus === "cancelled") {
-        if (!cancelled) {
-          setStatus("error");
-          setMessage("Payment was not completed.");
-          notifyWebView({ type: "checkout_failed", payment_type: "product_order", status: "failed" });
-        }
-        return;
-      }
       if (!reference) {
         if (!cancelled) {
           setStatus("error");
@@ -77,7 +69,13 @@ function ProductPaymentCallbackInner() {
           productOrderId?: string;
           orderNumber?: string;
           message?: string;
-        }>(reference, { maxAttempts: 5, delayMs: 1500, sessionId, transactionId });
+        }>(reference, {
+          maxAttempts: redirectStatus === "failed" || redirectStatus === "cancelled" ? 1 : 5,
+          delayMs: 1500,
+          sessionId,
+          transactionId,
+          redirectStatus,
+        });
 
         if (cancelled) return;
 

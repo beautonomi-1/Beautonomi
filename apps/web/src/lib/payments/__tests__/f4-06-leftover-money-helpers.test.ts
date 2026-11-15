@@ -421,7 +421,7 @@ describe("F4-06 leftover money helpers", () => {
 
   it("adds leftover report GMV / staff / brand money with helpers", () => {
     const staff = src("app/api/provider/staff/totals/route.ts");
-    expect(staff).toMatch(/addMoney\(sum, Number\(x.price \?\? 0\)\)/);
+    expect(staff).toMatch(/revenue: commission.totalRevenue/);
     const gift = src("app/api/provider/reports/gift-cards/route.ts");
     expect(gift).toMatch(/addMoney\(s, r.amount\)/);
     const measured = src("lib/brand-marketing/measured.ts");
@@ -447,7 +447,8 @@ describe("F4-06 leftover money helpers", () => {
     const checkout = repo("apps/customer/app/(app)/(tabs)/shop/product-checkout.tsx");
     expect(checkout).toMatch(/multiplyMoney\(i.effective_price \?\? i.product\?\.retail_price \?\? 0, i.quantity\)/);
     const ledgerPerf = src("lib/reports/service-ledger-performance.ts");
-    expect(ledgerPerf).toMatch(/addMoney\(existing.revenue, multiplyMoney\(bookingRevenue, proportion\)\)/);
+    expect(ledgerPerf).toMatch(/bookingLineShares\(bookingRevenue, services\)/);
+    expect(ledgerPerf).toMatch(/addMoney\(existing.revenue, shares\[index\] \?\? 0\)/);
     const addons = src("lib/bookings/provider-booking-finance.ts");
     expect(addons).toMatch(/addMoney\(sum, multiplyMoney\(Number\(addon.price\) \|\| 0, qty\)\)/);
     const adminProv = src("app/api/admin/reports/providers/route.ts");
@@ -510,7 +511,8 @@ describe("F4-06 leftover money helpers", () => {
     expect(semantics).toMatch(/sum = addMoney\(sum, rowNet\(r\)\)/);
     expect(semantics).toMatch(/netAfterRefunds: subtractMoney\(recognized, refundDeduction\)/);
     const takings = src("lib/reports/recorded-takings.ts");
-    expect(takings).toMatch(/salesTotal = addMoney\(salesTotal, split.total\)/);
+    // Walk-in takings use the amount still in the till after a cash refund, not the original bill.
+    expect(takings).toMatch(/salesTotal = addMoney\(salesTotal, kept\)/);
     const invoices = src("lib/invoices/provider-invoice-status.ts");
     expect(invoices).toMatch(/subtractMoney\(Number\(row.total_amount \?\? 0\), Number\(row.amount_paid \?\? 0\)\)/);
   });
@@ -615,7 +617,8 @@ describe("F4-06 leftover money helpers", () => {
   it("subtracts leftover net-after-fee / tender remaining / payroll-band money with helpers", () => {
     const pay = src("lib/payroll/compute-compensation.ts");
     expect(pay).toMatch(/subtractMoney\(Math.min\(revenue, bandEnd\), bandStart\)/);
-    expect(pay).toMatch(/subtractMoney\(addMoney\(serviceRev, productRev\), plan.thresholdAmount\)/);
+    expect(pay).toMatch(/subtractMoney\(totalRev, plan.thresholdAmount\)/);
+    expect(pay).toMatch(/subtractMoney\(excess, serviceExcess\)/);
     const za = src("lib/payroll/jurisdictions/packs/za.ts");
     expect(za).toMatch(/subtractMoney\(tax, rebate\)/);
     const tender = src("lib/orders/product-order-tender.ts");
@@ -877,19 +880,19 @@ describe("F4-06 leftover money helpers", () => {
     const ltv = src("app/api/provider/reports/clients/lifetime-value/route.ts");
     expect(ltv).toMatch(/addMoney\(enrichedLTV\[mid\]/);
     const commission = src("lib/payroll/commission-calculator.ts");
-    expect(commission).toMatch(/multiplyMoney\(bookingRevenue, staffProportion\)/);
+    expect(commission).toMatch(/serviceAmountAfterBillSplit\(/);
     expect(commission).toMatch(/addMoney\(result.serviceRevenue, staffRevenueShare\)/);
     const adminRev = src("app/api/admin/reports/revenue/route.ts");
-    expect(adminRev).toMatch(/multiplyMoney\(bookingRevenue, proportion\)/);
+    expect(adminRev).toMatch(/bookingLineShares\(bookingRevenue, svcs\)/);
     const sales = src("app/api/provider/reports/sales/summary/route.ts");
-    expect(sales).toMatch(/multiplyMoney\(bookingRevenue, serviceProportion\)/);
+    expect(sales).toMatch(/bookingLineShares\(bookingRevenue, booking.booking_services\)/);
     const statutory = src("lib/payroll/apply-statutory.ts");
     expect(statutory).toMatch(/addMoney\(out.get\(sid\) \?\? 0, taxable\)/);
   });
 
   it("adds leftover report allocated-revenue / ledger accumulators money with helpers", () => {
     const rev = src("app/api/provider/reports/revenue/route.ts");
-    expect(rev).toMatch(/multiplyMoney\(bRev, proportion\)/);
+    expect(rev).toMatch(/bookingLineShares\(bRev, services\)/);
     expect(rev).toMatch(/addMoney\(serviceMap.get\(name\)/);
     expect(rev).toMatch(/addMoney\(staffMap.get\(staffName\)/);
     const sales = src("app/api/provider/reports/sales/summary/route.ts");
@@ -913,7 +916,7 @@ describe("F4-06 leftover money helpers", () => {
   it("adds leftover payroll deduction-total / parseMoney rounding money with helpers", () => {
     const payroll = src("app/provider/team/payroll/[id]/page.tsx");
     expect(payroll).toMatch(/Math.max\(0, roundCurrency\(n\)\)/);
-    expect(payroll).toMatch(/addMoney\(addMoney\(parseMoney\(manualStr\), tax\), uif\)/);
+    expect(payroll).toMatch(/\[parseMoney\(manualStr\), parseMoney\(taxStr\), parseMoney\(uifStr\), carryIn\]/);
   });
 
   it("adds leftover payout-balance / geo booking-value accumulators money with helpers", () => {
@@ -1133,7 +1136,7 @@ describe("F4-06 leftover money helpers", () => {
     const geo = src("app/api/admin/analytics/geo/route.ts");
     expect(geo).toMatch(/multiplyMoney\(totalBookingValue, 1 \/ valueRows.length\)/);
     const revenue = src("app/api/provider/reports/revenue/route.ts");
-    expect(revenue).toMatch(/multiplyMoney\(ledgerFromBookings, 1 \/ bookingCountWithRevenue\)/);
+    expect(revenue).toMatch(/averageOfLedgerNets\(revenueByBooking.values\(\)\)/);
     const services = src("app/provider/reports/sales/services/page.tsx");
     expect(services).toMatch(/multiplyMoney\(service.revenue, 1 \/ service.bookings\)/);
   });
@@ -1159,11 +1162,12 @@ describe("F4-06 leftover money helpers", () => {
 
   it("subtracts leftover revenue growth deltas with subtractMoney", () => {
     const growth = repo("packages/utils/src/reports/growth-display.ts");
-    expect(growth).toMatch(/subtractMoney\(current, previous\) \/ previous/);
+    expect(growth).toMatch(/subtractMoney\(current, previous\)/);
+    expect(growth).toMatch(/Math\.abs\(previous\)/);
     const trends = src("app/api/provider/reports/sales/trends/route.ts");
-    expect(trends).toMatch(/subtractMoney\(current.revenue, previous.revenue\)/);
+    expect(trends).toMatch(/computeGrowthPercent\(current\.revenue, previous\.revenue\)/);
     const summary = src("app/api/provider/reports/sales/summary/route.ts");
-    expect(summary).toMatch(/subtractMoney\(totalRevenue, prevRevenue\)/);
+    expect(summary).toMatch(/computeGrowthPercent\(totalRevenue, prevRevenue\)/);
     const dash = src("lib/server/provider/get-provider-dashboard.ts");
     expect(dash).toMatch(/subtractMoney\(revenueThisMonth, revenueLastMonth\)/);
   });
@@ -1177,7 +1181,7 @@ describe("F4-06 leftover money helpers", () => {
     const analytics = src("app/api/provider/analytics/route.ts");
     expect(analytics).toMatch(/subtractMoney\(thisMonthRevenue, lastMonthRevenue\)/);
     const comparison = src("app/api/provider/reports/business/comparison/route.ts");
-    expect(comparison).toMatch(/subtractMoney\(currentRevenue, previousRevenue\)/);
+    expect(comparison).toMatch(/computeGrowthPercent\(currentRevenue, previousRevenue\)/);
     expect(comparison).toMatch(/multiplyMoney\(ledgerBookings, 1 \/ count\)/);
     const ads = src("app/api/provider/ads/campaigns/[id]/route.ts");
     expect(ads).toMatch(/subtractMoney\(budget, spent\)/);

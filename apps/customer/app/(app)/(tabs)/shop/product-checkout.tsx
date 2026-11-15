@@ -1060,6 +1060,12 @@ export default function ProductCheckoutScreen() {
 
       if (pr.outcome === "cancel") {
         setProcessingPayment(false);
+        if (paystackRes.data.reference) {
+          void verifyPaystackWithRetry(paystackRes.data.reference, {
+            redirectStatus: "cancelled",
+            maxAttempts: 1,
+          });
+        }
         Alert.alert(
           pc("paymentCancelledTitle", undefined, "Payment cancelled"),
           pc(
@@ -1090,6 +1096,10 @@ export default function ProductCheckoutScreen() {
       if (pr.outcome === "success" && pr.url) {
         if (isCancelledPaystackUrl(pr.url)) {
           setProcessingPayment(false);
+          const cancelRef = parseOnlineCheckoutReturnUrl(pr.url).reference || paystackRes.data.reference;
+          if (cancelRef) {
+            void verifyPaystackWithRetry(cancelRef, { redirectStatus: "cancelled", maxAttempts: 1 });
+          }
           Alert.alert(
             pc("paymentCancelledTitle", undefined, "Payment cancelled"),
             pc(
@@ -1114,6 +1124,13 @@ export default function ProductCheckoutScreen() {
         const parsed = parseOnlineCheckoutReturnUrl(pr.url);
         if (parsed.status === "failed" || parsed.status === "cancelled") {
           setProcessingPayment(false);
+          const failRef = parsed.reference || paystackRes.data.reference;
+          if (failRef) {
+            void verifyPaystackWithRetry(failRef, {
+              redirectStatus: parsed.status,
+              maxAttempts: 1,
+            });
+          }
           Alert.alert(
             pc("paymentCancelledTitle", undefined, "Payment cancelled"),
             pc(

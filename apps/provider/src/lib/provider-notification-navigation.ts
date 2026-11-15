@@ -308,6 +308,14 @@ export function navigateFromProviderNotification(router: ExpoRouter, n: Provider
       router.push("/(app)/(tabs)/more/express-booking" as never);
       return true;
     }
+    if (link.includes("my-earnings")) {
+      router.push("/(app)/(tabs)/more/team-pay?tab=my-earnings" as never);
+      return true;
+    }
+    if (link.includes("/team/payroll")) {
+      router.push("/(app)/(tabs)/more/team-pay?tab=payroll" as never);
+      return true;
+    }
     if (link.includes("finance") || link.includes("payout")) {
       router.push("/(app)/(tabs)/more/finance" as never);
       return true;

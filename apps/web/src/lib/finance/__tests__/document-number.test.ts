@@ -35,8 +35,12 @@ describe("document numbering (F2-43)", () => {
     const { supabase, rpc, from } = supabaseWith({
       rpc: async (name, args) => {
         expect(name).toBe(NEXT_DOCUMENT_NUMBER_RPC);
-        expect(args).toEqual({ p_tenant_id: "tenant-1", p_kind: "provider_invoice:2026" });
-        return { data: 42, error: null };
+        expect(args).toEqual({
+          p_tenant_id: "tenant-1",
+          p_kind: "provider_invoice",
+          p_prefix: "INV",
+        });
+        return { data: "INV-2026-000042", error: null };
       },
     });
     const r = await nextDocumentNumber(supabase, {
@@ -48,6 +52,21 @@ describe("document numbering (F2-43)", () => {
     });
     expect(r).toEqual({ number: "INV-2026-000042", sequence: 42, source: "rpc" });
     expect(rpc).toHaveBeenCalledTimes(1);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("still accepts a numeric sequence from an older function", async () => {
+    const { supabase, from } = supabaseWith({
+      rpc: async () => ({ data: 42, error: null }),
+    });
+    const r = await nextDocumentNumber(supabase, {
+      tenantId: "tenant-1",
+      kind: "provider_invoice",
+      prefix: "INV",
+      year: 2026,
+      fallback: { table: "provider_invoices", column: "invoice_number" },
+    });
+    expect(r).toEqual({ number: "INV-2026-000042", sequence: 42, source: "rpc" });
     expect(from).not.toHaveBeenCalled();
   });
 

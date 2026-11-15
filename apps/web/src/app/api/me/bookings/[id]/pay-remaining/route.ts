@@ -18,6 +18,7 @@ import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-pa
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { giftCardCaptureSucceeded } from "@/lib/bookings/gift-value-still-due";
 import { applyCollectibleGiftAndWallet } from "@/lib/bookings/apply-collectible-gift-wallet";
 import { recordCollectibleSettlementLedger } from "@/lib/bookings/record-collectible-settlement-ledger";
 import { rollbackCollectibleSplitLeg } from "@/lib/bookings/rollback-collectible-split-leg";
@@ -338,7 +339,7 @@ export async function POST(
               "capture_gift_card_redemption",
               { p_booking_id: bookingId },
             );
-            if (captureError || captured === false) {
+            if (captureError || !giftCardCaptureSucceeded(captured)) {
               await rollbackCollectibleSplitLeg(admin, {
                 bookingId,
                 customerId: user.id,

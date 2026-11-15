@@ -45,6 +45,7 @@ interface CustomRequestOffer {
   expiration_at: string;
   notes?: string | null;
   status: string;
+  booking_id?: string | null;
   payment_url?: string | null;
   paid_at?: string | null;
   staff_id?: string | null;
@@ -162,6 +163,7 @@ function formatBudget(
 function canAcceptOffer(offer: CustomRequestOffer): boolean {
   if (
     offer.status === "paid" ||
+    offer.status === "accepted" ||
     offer.status === "expired" ||
     offer.status === "withdrawn" ||
     offer.status === "declined" ||
@@ -171,15 +173,14 @@ function canAcceptOffer(offer: CustomRequestOffer): boolean {
   )
     return false;
   const exp = offer.expiration_at ? new Date(offer.expiration_at).getTime() : null;
-  if (exp != null && exp < Date.now()) return false;
+  if (exp != null && exp <= Date.now()) return false;
   return true;
 }
 
 function canContinuePayment(offer: CustomRequestOffer): boolean {
   if (offer.status !== "payment_pending") return false;
-  if (!offer.payment_url) return false;
   const exp = offer.expiration_at ? new Date(offer.expiration_at).getTime() : null;
-  if (exp != null && exp < Date.now()) return false;
+  if (exp != null && exp <= Date.now()) return false;
   return true;
 }
 
@@ -348,9 +349,14 @@ function RequestCard({
         </TouchableOpacity>
       )}
       {item.offers && item.offers.length > 0 && (() => {
-        const allInactive = item.offers!.every(
-          (o) => o.status === "withdrawn" || o.status === "expired" || (o.expiration_at && new Date(o.expiration_at).getTime() < Date.now())
-        );
+        const allInactive = item.offers!.every((o) => {
+          if (o.status === "paid" || o.status === "finalize_failed" || (o.status === "accepted" && !!o.booking_id)) {
+            return false;
+          }
+          if (o.status === "withdrawn" || o.status === "declined" || o.status === "expired") return true;
+          const exp = o.expiration_at ? new Date(o.expiration_at).getTime() : NaN;
+          return Number.isFinite(exp) && exp <= Date.now();
+        });
         const isOpenRequest = item.status === "pending" || item.status === "offered";
         return (
         <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 12 }}>
@@ -362,7 +368,14 @@ function RequestCard({
             </View>
           ) : null}
           {item.offers!.map((o) => {
-            const expired = o.expiration_at && new Date(o.expiration_at).getTime() < Date.now();
+            const pastExpiration = !!o.expiration_at && new Date(o.expiration_at).getTime() <= Date.now();
+            const isPaid = o.status === "paid" || (o.status === "accepted" && !!o.booking_id);
+            const isFinalizeFailed = o.status === "finalize_failed" || (o.status === "accepted" && !o.booking_id);
+            const isWithdrawn = o.status === "withdrawn";
+            const isDeclined = o.status === "declined";
+            const isExpired =
+              o.status === "expired" ||
+              (pastExpiration && !isPaid && !isFinalizeFailed && !isWithdrawn && !isDeclined);
             const canAccept = actionsAllowed && canAcceptOffer(o);
             const canPayContinue = actionsAllowed && canContinuePayment(o);
             return (
@@ -374,9 +387,9 @@ function RequestCard({
                   borderRadius: 8,
                   padding: 12,
                   marginBottom: 8,
-                  backgroundColor: o.status === "paid" ? "#F0FDF4" : Colors.gray[50],
+                  backgroundColor: isPaid ? "#F0FDF4" : Colors.gray[50],
                   borderWidth: 1,
-                  borderColor: o.status === "paid" ? "#BBF7D0" : Colors.gray[100],
+                  borderColor: isPaid ? "#BBF7D0" : Colors.gray[100],
                 }}
               >
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
@@ -409,18 +422,18 @@ function RequestCard({
                       </Text>
                     )}
                   </View>
-                  {o.status === "paid" ? (
+                  {isPaid ? (
                     <Text style={{ fontSize: 14, fontWeight: "500", color: "#15803d" }}>{crl("statusPaid")}</Text>
-                  ) : expired ? (
-                    <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{crl("statusExpired")}</Text>
-                  ) : o.status === "withdrawn" ? (
+                  ) : isFinalizeFailed ? (
+                    <Text style={{ fontSize: 14, color: "#B91C1C", fontWeight: "600" }}>{crl("statusNeedsSupport")}</Text>
+                  ) : isWithdrawn ? (
                     <Text style={{ fontSize: 14, color: Colors.gray[400] }}>{crl("statusWithdrawn")}</Text>
-                  ) : o.status === "declined" ? (
+                  ) : isDeclined ? (
                     <Text style={{ fontSize: 14, color: Colors.gray[400] }}>{crl("statusDeclined")}</Text>
+                  ) : isExpired ? (
+                    <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{crl("statusExpired")}</Text>
                   ) : o.status === "changes_requested" ? (
                     <Text style={{ fontSize: 14, color: "#1D4ED8", fontWeight: "600" }}>{crl("statusChangesRequested")}</Text>
-                  ) : o.status === "finalize_failed" ? (
-                    <Text style={{ fontSize: 14, color: "#B91C1C", fontWeight: "600" }}>{crl("statusNeedsSupport")}</Text>
                   ) : canPayContinue ? (
                     <TouchableOpacity
                       onPress={() => onPayOffer(o.id)}
@@ -754,12 +767,15 @@ export default function CustomRequestsScreen() {
             ) : (() => {
               const d = offerDetailData;
               const req = d.request;
-              const isExpired = d.status === "expired";
+              const pastExpiration = !!d.expiration_at && new Date(d.expiration_at).getTime() <= Date.now();
               const isWithdrawn = d.status === "withdrawn";
               const isDeclined = d.status === "declined";
-              const isFinalizeFailed = d.status === "finalize_failed";
-              const isPaid = d.status === "paid";
-              const isPending = d.status === "pending";
+              const isPaid = d.status === "paid" || (d.status === "accepted" && !!d.booking_id);
+              const isFinalizeFailed = d.status === "finalize_failed" || (d.status === "accepted" && !d.booking_id);
+              const isExpired =
+                d.status === "expired" ||
+                (pastExpiration && !isPaid && !isFinalizeFailed && !isWithdrawn && !isDeclined);
+              const isPending = d.status === "pending" && !isExpired;
 
               const fmtDate = (iso: string | null | undefined) => {
                 if (!iso) return "—";
@@ -868,7 +884,7 @@ export default function CustomRequestsScreen() {
                         </Text>
                       </TouchableOpacity>
                     </View>
-                  ) : d.status === "payment_pending" && d.id ? (
+                  ) : d.status === "payment_pending" && !isExpired && d.id ? (
                     <TouchableOpacity
                       onPress={() => {
                         setOfferDetailVisible(false);

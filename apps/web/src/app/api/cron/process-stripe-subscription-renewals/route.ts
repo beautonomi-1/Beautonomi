@@ -11,9 +11,15 @@ import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 import { generateTransactionReference } from "@/lib/payments/paystack";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
 import { getStripeClient } from "@/lib/payments/stripe-server";
-import { upsertOnlinePaymentCheckout } from "@/lib/payments/online-payment-checkouts";
+import { stripeOffSessionStillOpen } from "@/lib/payments/charge-stripe-off-session";
+import { upsertOnlinePaymentCheckout, markOnlinePaymentCheckoutStatus } from "@/lib/payments/online-payment-checkouts";
 import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
-import { computePaidPeriodExpiresAt } from "@/lib/subscriptions/provider-billing-merchant";
+import {
+  capturedRenewalAccess,
+  computePaidPeriodExpiresAt,
+} from "@/lib/subscriptions/provider-billing-merchant";
+import { subscriptionPaymentFailedAccessNote } from "@/lib/iap/apple/billing-active";
+import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 
 const JOB_NAME = "process-stripe-subscription-renewals";
 export const maxDuration = 300;
@@ -34,7 +40,7 @@ async function runJob() {
     const { data: rows, error } = await supabase
       .from("provider_subscriptions")
       .select(
-        "id, provider_id, plan_id, billing_period, expires_at, stripe_customer_id, stripe_payment_method_id, providers:provider_id ( tenant_id )",
+        "id, provider_id, plan_id, billing_period, expires_at, stripe_customer_id, stripe_payment_method_id, providers:provider_id ( tenant_id, user_id, business_name )",
       )
       .eq("billing_provider", "stripe")
       .eq("status", "active")
@@ -53,9 +59,12 @@ async function runJob() {
         provider_id: string;
         plan_id: string;
         billing_period?: string | null;
+        expires_at?: string | null;
         stripe_customer_id?: string | null;
         stripe_payment_method_id?: string | null;
-        providers?: { tenant_id?: string | null } | Array<{ tenant_id?: string | null }>;
+        providers?:
+          | { tenant_id?: string | null; user_id?: string | null; business_name?: string | null }
+          | Array<{ tenant_id?: string | null; user_id?: string | null; business_name?: string | null }>;
       };
 
       const pm = row.stripe_payment_method_id?.trim();
@@ -82,7 +91,95 @@ async function runJob() {
       if (amountMajor <= 0) continue;
 
       const currency = (plan?.currency || "ZAR").toUpperCase();
+      const { data: inflight, error: inflightError } = await supabase
+        .from("online_payment_checkouts")
+        .select("reference, metadata, updated_at")
+        .eq("provider", "stripe")
+        .eq("status", "pending")
+        .contains("metadata", { provider_id: row.provider_id, kind: "subscription_renewal" })
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!inflightError && inflight) {
+        const inflightMeta =
+          inflight.metadata && typeof inflight.metadata === "object" && !Array.isArray(inflight.metadata)
+            ? (inflight.metadata as Record<string, unknown>)
+            : {};
+        if (inflightMeta.charge_captured === true && inflight.reference) {
+          const billingPeriod = isYearly ? "yearly" : "monthly";
+          const chargedAt = String((inflight as { updated_at?: string }).updated_at ?? "");
+          const capturedAccess = capturedRenewalAccess({
+            billingPeriod,
+            chargedAt,
+            currentExpiresAt: row.expires_at,
+            currentPlanId: row.plan_id,
+            currentBillingPeriod: row.billing_period,
+            now: new Date(nowIso),
+          });
+          const periodEnd = capturedAccess?.expiresAt ?? null;
+          const savedAmount = Number(inflightMeta.amount_major);
+          const payment = await recordProviderSubscriptionPayment({
+            supabase,
+            providerId: row.provider_id,
+            planId: row.plan_id,
+            reference: String(inflight.reference),
+            amountMajor: Number.isFinite(savedAmount) && savedAmount > 0 ? savedAmount : amountMajor,
+            feesMajor: 0,
+            kind: "subscription_renewal",
+            billingPeriod,
+            termEndsAt: periodEnd ?? (row.expires_at && Number.isFinite(Date.parse(row.expires_at))
+              ? new Date(Date.parse(row.expires_at)).toISOString()
+              : null),
+            description: `Stripe subscription renewal — ${plan?.name ?? "plan"}`,
+            paymentProvider: "stripe",
+            tenantIdHint: tenantId,
+            updateBillingPeriod: false,
+          });
+          if (payment.chargeReturned) continue;
+          if (payment.recorded || payment.alreadyRecorded) {
+            const periodStart = capturedAccess?.periodStart
+              ?? (Number.isFinite(Date.parse(chargedAt))
+                ? new Date(chargedAt).toISOString()
+                : nowIso);
+            const { data: opened, error: periodError } = await supabase
+              .from("provider_subscriptions")
+              .update({
+                status: "active",
+                past_due_since: null,
+                updated_at: nowIso,
+                ...(periodEnd
+                  ? {
+                      expires_at: periodEnd,
+                      billing_period_start: periodStart,
+                      billing_period_end: periodEnd,
+                    }
+                  : row.expires_at && Number.isFinite(Date.parse(row.expires_at))
+                    ? { billing_period_end: new Date(Date.parse(row.expires_at)).toISOString() }
+                    : {}),
+              })
+              .eq("id", row.id)
+              .eq("billing_provider", "stripe")
+              .select("id");
+            if (!periodError && opened?.length && (periodEnd || Number.isFinite(Date.parse(chargedAt)))) {
+              await markOnlinePaymentCheckoutStatus(String(inflight.reference), "paid");
+              renewed++;
+            } else if (!periodError && !opened?.length) {
+              console.error(
+                "[process-stripe-subscription-renewals] saved charge kept; another account owns the plan",
+                row.id,
+              );
+            }
+          }
+          continue;
+        } else {
+          const updatedAt = new Date(String((inflight as { updated_at?: string }).updated_at ?? "")).getTime();
+          if (Number.isFinite(updatedAt) && Date.now() - updatedAt < 3 * 24 * 60 * 60 * 1000) {
+            continue;
+          }
+        }
+      }
       const reference = generateTransactionReference("sub_stripe_renew", row.id);
+      let intentSucceeded = false;
 
       try {
         await upsertOnlinePaymentCheckout({
@@ -117,11 +214,45 @@ async function runJob() {
           { idempotencyKey: reference },
         );
 
+        if (stripeOffSessionStillOpen(intent.status)) {
+          await upsertOnlinePaymentCheckout({
+            reference,
+            provider: "stripe",
+            tenantId,
+            paymentIntentId: intent.id,
+            metadata: {
+              provider_id: row.provider_id,
+              plan_id: row.plan_id,
+              kind: "subscription_renewal",
+              tenant_id: tenantId ?? "",
+            },
+          });
+          continue;
+        }
+
         if (intent.status !== "succeeded") {
           throw new Error(`PaymentIntent status ${intent.status}`);
         }
 
-        await recordProviderSubscriptionPayment({
+        intentSucceeded = true;
+
+        await upsertOnlinePaymentCheckout({
+          reference,
+          provider: "stripe",
+          tenantId,
+          paymentIntentId: intent.id,
+          metadata: {
+            provider_id: row.provider_id,
+            plan_id: row.plan_id,
+            kind: "subscription_renewal",
+            charge_captured: true,
+            amount_major: amountMajor,
+            tenant_id: tenantId ?? "",
+          },
+        });
+
+        const periodEnd = computePaidPeriodExpiresAt(isYearly ? "yearly" : "monthly");
+        const payment = await recordProviderSubscriptionPayment({
           supabase,
           providerId: row.provider_id,
           planId: row.plan_id,
@@ -130,27 +261,82 @@ async function runJob() {
           feesMajor: 0,
           kind: "subscription_renewal",
           billingPeriod: isYearly ? "yearly" : "monthly",
+          termEndsAt: periodEnd,
           description: `Stripe subscription renewal — ${plan?.name ?? "plan"}`,
           paymentProvider: "stripe",
           tenantIdHint: tenantId,
+          updateBillingPeriod: false,
         });
-
-        await supabase
+        if (payment.chargeReturned) continue;
+        if (!payment.recorded && !payment.alreadyRecorded) {
+          throw new Error("subscription payment was not recorded");
+        }
+        const { data: opened, error: periodError } = await supabase
           .from("provider_subscriptions")
           .update({
-            expires_at: computePaidPeriodExpiresAt(isYearly ? "yearly" : "monthly"),
+            expires_at: periodEnd,
+            billing_period_start: nowIso,
+            billing_period_end: periodEnd,
             status: "active",
+            past_due_since: null,
             updated_at: nowIso,
           })
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .eq("billing_provider", "stripe")
+          .select("id");
+        if (periodError) throw periodError;
+        if (!opened?.length) {
+          console.error(
+            "[process-stripe-subscription-renewals] saved charge kept; another account owns the plan",
+            row.id,
+          );
+          continue;
+        }
 
+        await markOnlinePaymentCheckoutStatus(reference, "paid");
         renewed++;
       } catch (err) {
+        const openStatus = (err as { payment_intent?: { status?: string; id?: string } } | null)?.payment_intent
+          ?.status;
+        const code = (err as { code?: string } | null)?.code;
+        if (!intentSucceeded && (stripeOffSessionStillOpen(openStatus) || code === "authentication_required")) {
+          continue;
+        }
+        if (intentSucceeded) {
+          console.error(
+            "[process-stripe-subscription-renewals] charge succeeded but was not recorded:",
+            row.id,
+            err,
+          );
+          continue;
+        }
         failed++;
-        await supabase
+        await markOnlinePaymentCheckoutStatus(reference, "failed");
+        const { data: markedPastDue } = await supabase
           .from("provider_subscriptions")
-          .update({ status: "past_due", updated_at: nowIso })
-          .eq("id", row.id);
+          .update({ status: "past_due", past_due_since: nowIso, updated_at: nowIso })
+          .eq("id", row.id)
+          .eq("billing_provider", "stripe")
+          .eq("status", "active")
+          .select("id");
+        if (markedPastDue?.length && prov?.user_id) {
+          try {
+            await sendTemplateNotification(
+              "subscription_payment_failed",
+              [prov.user_id],
+              {
+                business_name: prov.business_name ?? "",
+                grace_days: "3",
+                app_url: process.env.NEXT_PUBLIC_APP_URL ?? "",
+                access_note: subscriptionPaymentFailedAccessNote(true),
+              },
+              ["push"],
+              { appType: "provider" },
+            );
+          } catch (notifyErr) {
+            console.warn("[process-stripe-subscription-renewals] notify failed:", row.id, notifyErr);
+          }
+        }
         console.warn("[process-stripe-subscription-renewals] failed:", row.id, err);
       }
     }

@@ -1,4 +1,4 @@
-import { addMoney, multiplyMoney, subtractMoney } from "@beautonomi/utils";
+import { addMoney, computeGrowthPercent, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -213,13 +213,12 @@ export async function GET(request: NextRequest) {
     const currentAvg = averageLedgerPerScheduledBooking(currentBookingsCount, currentLedgerBookings);
     const previousAvg = averageLedgerPerScheduledBooking(previousBookingsCount, previousLedgerBookings);
 
-    const revenueGrowth = previousRevenue > 0 ? (subtractMoney(currentRevenue, previousRevenue) / previousRevenue) * 100 : 0;
+    const revenueGrowth = computeGrowthPercent(currentRevenue, previousRevenue).percent ?? 0;
     const bookingsGrowth =
       previousBookingsCount > 0 ? ((currentBookingsCount - previousBookingsCount) / previousBookingsCount) * 100 : 0;
     const clientsGrowth =
       previousClients > 0 ? ((currentClients - previousClients) / previousClients) * 100 : 0;
-    const averageLedgerGrowth =
-      previousAvg > 0 ? (subtractMoney(currentAvg, previousAvg) / previousAvg) * 100 : 0;
+    const averageLedgerGrowth = computeGrowthPercent(currentAvg, previousAvg).percent ?? 0;
 
     const curFromYmd = formatDateYmd(currentFromDate, tz);
     const curToYmd = formatDateYmd(currentToDate, tz);

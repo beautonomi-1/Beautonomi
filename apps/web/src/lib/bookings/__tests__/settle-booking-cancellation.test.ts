@@ -403,4 +403,93 @@ describe("customer/portal cancel wallet cap", () => {
     expect(result.cancellationFeeApplied).toBe(0);
     expect(result.policyRefundAmount).toBe(200);
   });
+
+  it("store-credit notices name the wallet amount and a restored gift card separately", async () => {
+    const { customerStoreCreditRefundNotice, staffRefundIssuedNotice } = await import(
+      "../settle-booking-cancellation"
+    );
+    const formatAmount = (n: number) => `R${n.toFixed(2)}`;
+    expect(
+      customerStoreCreditRefundNotice({
+        walletAmount: 150,
+        giftReturned: true,
+        bookingRef: "B-1",
+        formatAmount,
+      }).message,
+    ).toBe(
+      "A refund of R150.00 for booking B-1 has been added to your wallet. The gift card used on this booking was returned to the card.",
+    );
+    expect(
+      customerStoreCreditRefundNotice({
+        walletAmount: 0,
+        giftReturned: true,
+        bookingRef: "B-1",
+        formatAmount,
+      }),
+    ).toEqual({
+      title: "Gift card returned",
+      message: "The gift card used on booking B-1 was returned to the card.",
+    });
+    expect(
+      staffRefundIssuedNotice({
+        method: "store_credit",
+        amount: 200,
+        walletAmount: 150,
+        giftReturned: true,
+        bookingRef: "B-1",
+        formatAmount,
+      }),
+    ).toEqual({
+      amount: 150,
+      message:
+        "A R150.00 store credit refund was issued for booking B-1. The gift card was returned to the customer.",
+    });
+    expect(
+      staffRefundIssuedNotice({
+        method: "cash",
+        amount: 80,
+        walletAmount: 0,
+        giftReturned: false,
+        bookingRef: "B-1",
+        formatAmount,
+      }).message,
+    ).toBe("A R80.00 cash refund was issued for booking B-1.");
+  });
+
+  it("keeps a gift the sweep still owes out of the refundable balance", async () => {
+    const { refundableExcludingGiftStillDue } = await import("../settle-booking-cancellation");
+    expect(
+      refundableExcludingGiftStillDue(300, "Gift card value could not be returned: 50.00"),
+    ).toBe(250);
+    expect(refundableExcludingGiftStillDue(40, "Gift card value could not be returned: 50.00")).toBe(0);
+    expect(refundableExcludingGiftStillDue(300, "Gift card could not be returned")).toBe(300);
+    expect(
+      refundableExcludingGiftStillDue(300, "Gift card could not be returned", {
+        giftCardAmount: 40,
+        visitClosed: true,
+      }),
+    ).toBe(260);
+    expect(
+      refundableExcludingGiftStillDue(300, "Gift card could not be returned", {
+        giftCardAmount: 40,
+        visitClosed: false,
+      }),
+    ).toBe(300);
+    expect(refundableExcludingGiftStillDue(300, null)).toBe(300);
+  });
+
+  it("keeps a recorded wallet refund and a gift the sweep owes out of the cancellation preview", async () => {
+    const { platformRefundedKeepingGiftForSweep } = await import("../gift-value-still-due");
+    expect(
+      platformRefundedKeepingGiftForSweep(250, "Gift card value could not be returned: 50.00"),
+    ).toBe(300);
+    expect(platformRefundedKeepingGiftForSweep(250, null)).toBe(250);
+    expect(platformRefundedKeepingGiftForSweep(0, "Gift card could not be returned")).toBe(0);
+    expect(
+      platformRefundedKeepingGiftForSweep(0, "Gift card could not be returned", {
+        giftCardAmount: 40,
+        visitClosed: true,
+      }),
+    ).toBe(40);
+  });
 });

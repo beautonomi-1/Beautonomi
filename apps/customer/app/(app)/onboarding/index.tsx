@@ -611,7 +611,11 @@ export default function CustomerOnboarding() {
       }
     }
     if (step === 6) {
-      if (!appleIdentity && !emailVerified) return ob("validationEmailVerify");
+      // Same rule as profile completion: a phone-only account has no mailable
+      // address, so it must not be blocked on an email code.
+      if (!appleIdentity && isMailableEmail(email) && !emailVerified) {
+        return ob("validationEmailVerify");
+      }
       if (!phoneVerified) return ob("validationPhoneVerify");
     }
     return null;

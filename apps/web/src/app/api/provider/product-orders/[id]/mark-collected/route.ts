@@ -11,6 +11,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { fulfillWalkInProductOrderDelivery } from "@/lib/provider-sales/fulfill-walk-in-product-order-delivery";
 import { productOrderCardAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
 import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
 import { assertYocoMarkPaidReference } from "@/lib/payments/assert-yoco-mark-paid-reference";
@@ -111,7 +112,32 @@ export async function POST(
       );
     }
     const amountMajor = due.due;
+    const walkInNeedsDelivery =
+      String(order.order_source ?? "") === "walk_in" &&
+      String(order.status ?? "") !== "delivered";
     if (!(amountMajor > 0)) {
+      if (walkInNeedsDelivery && String(order.payment_status ?? "") === "paid") {
+        const delivery = await fulfillWalkInProductOrderDelivery({
+          supabase: getSupabaseAdmin() as never,
+          providerId,
+          orderId: id,
+          actorUserId: user.id,
+        });
+        if (delivery.ok === false) {
+          return errorResponse(
+            delivery.reason === "payment_not_settled"
+              ? "The sale is not paid, so the products were not taken."
+              : delivery.reason,
+            "STOCK_ERROR",
+            409,
+          );
+        }
+        return successResponse({
+          order_id: id,
+          duplicate: true,
+          message: "Payment collection already recorded",
+        });
+      }
       return errorResponse(
         "Nothing is left to collect in person. Wallet, a gift card, or a card payment already covers this order.",
         "NOTHING_TO_COLLECT",
@@ -142,6 +168,30 @@ export async function POST(
       provider: body.payment_method,
       platformHeld: false,
     });
+    if (!result.ok) {
+      return errorResponse(
+        "The payment was not recorded.",
+        "PRODUCT_ORDER_PAYMENT_NOT_RECORDED",
+        409,
+      );
+    }
+    if (walkInNeedsDelivery) {
+      const delivery = await fulfillWalkInProductOrderDelivery({
+        supabase: getSupabaseAdmin() as never,
+        providerId,
+        orderId: id,
+        actorUserId: user.id,
+      });
+      if (delivery.ok === false) {
+        return errorResponse(
+          delivery.reason === "payment_not_settled"
+            ? "The sale is not paid, so the products were not taken."
+            : delivery.reason,
+          "STOCK_ERROR",
+          409,
+        );
+      }
+    }
 
     const { notifyProductOrderPaidIfTransitioned } = await import(
       "@/lib/notifications/notify-product-order-paid"

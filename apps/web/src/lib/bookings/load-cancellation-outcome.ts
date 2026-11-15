@@ -4,7 +4,9 @@ import { getCancellationPolicy } from "@/lib/bookings/cancellation-policy";
 import {
   fetchBookingPaymentsForRefundCap,
   fetchCompletedInPersonRefundsTotal,
+  fetchCompletedStoreCreditRefundsTotal,
 } from "@/lib/bookings/booking-refund-limits";
+import { platformRefundedKeepingGiftForSweep, visitClosedForGiftReturn } from "@/lib/bookings/gift-value-still-due";
 import { splitCollectedByRail } from "@/lib/bookings/payment-collected-classifier";
 import {
   resolveCancellationOutcome,
@@ -30,7 +32,7 @@ export async function loadCancellationOutcomeForBooking(
   const { data: booking, error } = await supabase
     .from("bookings")
     .select(
-      "id, provider_id, location_id, location_type, scheduled_at, created_at, status, customer_id, total_amount, tip_amount, total_paid, total_refunded, currency, current_stage, cancellation_policy_snapshot, provider_rescheduled_at",
+      "id, provider_id, location_id, location_type, scheduled_at, created_at, status, customer_id, total_amount, tip_amount, total_paid, total_refunded, gift_card_amount, currency, current_stage, cancellation_policy_snapshot, provider_rescheduled_at, cancellation_settlement_error",
     )
     .eq("id", bookingId)
     .single();
@@ -52,7 +54,18 @@ export async function loadCancellationOutcomeForBooking(
   );
 
   const payments = await fetchBookingPaymentsForRefundCap(supabase, bookingId);
-  const inPersonRefunded = await fetchCompletedInPersonRefundsTotal(supabase, bookingId);
+  const [inPersonRefunded, storeCreditRefunded] = await Promise.all([
+    fetchCompletedInPersonRefundsTotal(supabase, bookingId),
+    fetchCompletedStoreCreditRefundsTotal(supabase, bookingId),
+  ]);
+  const platformRefunded = platformRefundedKeepingGiftForSweep(
+    storeCreditRefunded,
+    (booking as { cancellation_settlement_error?: string | null }).cancellation_settlement_error,
+    {
+      giftCardAmount: Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0),
+      visitClosed: visitClosedForGiftReturn((booking as { status?: string | null }).status),
+    },
+  );
 
   const outcome = resolveCancellationOutcome({
     booking: booking as Parameters<typeof resolveCancellationOutcome>[0]["booking"],
@@ -65,6 +78,7 @@ export async function loadCancellationOutcomeForBooking(
     actor,
     now: opts?.now,
     explicitCancellationFee: opts?.explicitCancellationFee,
+    platformRefunded,
     inPersonRefunded,
   });
 

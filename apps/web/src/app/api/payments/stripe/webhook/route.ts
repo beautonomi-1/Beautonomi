@@ -15,7 +15,6 @@ import {
   handleStripeTransferReversed,
 } from "./_handlers/stripe-charge";
 import { handleStripeChargeDisputeCreated } from "./_handlers/stripe-dispute";
-import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 
 type LeaseRow = {
   acquired: boolean;
@@ -264,11 +263,23 @@ export async function POST(request: Request) {
         const { settleStripePaymentIntentFailed } = await import(
           "@/lib/payments/settle-stripe-online-payment"
         );
-        const pi = (eventObject as { payment_intent?: unknown }).payment_intent;
+        const session = eventObject as {
+          payment_intent?: unknown;
+          metadata?: Record<string, string>;
+          client_reference_id?: string | null;
+        };
+        const pi = session.payment_intent;
         if (pi && typeof pi === "object") {
           await settleStripePaymentIntentFailed(pi as Parameters<
             typeof settleStripePaymentIntentFailed
           >[0]);
+        } else if (typeof pi === "string" && pi.trim()) {
+          await settleStripePaymentIntentFailed({
+            id: pi.trim(),
+            metadata: session.metadata,
+            client_reference_id: session.client_reference_id ?? null,
+            last_payment_error: { message: "checkout.session.async_payment_failed" },
+          });
         }
         break;
       }
@@ -291,30 +302,12 @@ export async function POST(request: Request) {
         await handleStripeTransferReversed(eventObject);
         break;
       case "payment_intent.payment_failed": {
-        console.info("[stripe/webhook] received", eventType, eventId);
-        const intent = eventObject as {
-          id?: string;
-          amount?: number;
-          currency?: string;
-          receipt_email?: string | null;
-          last_payment_error?: { message?: string | null } | null;
-          metadata?: Record<string, unknown> | null;
-        };
-        const meta = intent.metadata && typeof intent.metadata === "object" ? intent.metadata : {};
-        const { slackNotifyPaymentFailed } = await import("@/lib/integrations/slack/ops-triggers");
-        slackNotifyPaymentFailed({
-          source: "stripe",
-          reference: intent.id ?? eventId,
-          bookingId: typeof meta.booking_id === "string" ? meta.booking_id : null,
-          orderId: typeof meta.product_order_id === "string" ? meta.product_order_id : null,
-          amountMajor:
-            typeof intent.amount === "number"
-              ? convertFromSmallestUnit(intent.amount, String(intent.currency ?? "ZAR"))
-              : null,
-          currency: intent.currency ? String(intent.currency).toUpperCase() : null,
-          reason: intent.last_payment_error?.message ?? "payment_intent.payment_failed",
-          customerEmail: intent.receipt_email ?? null,
-        });
+        const { settleStripePaymentIntentFailed } = await import(
+          "@/lib/payments/settle-stripe-online-payment"
+        );
+        await settleStripePaymentIntentFailed(eventObject as Parameters<
+          typeof settleStripePaymentIntentFailed
+        >[0]);
         break;
       }
       case "charge.dispute.created":

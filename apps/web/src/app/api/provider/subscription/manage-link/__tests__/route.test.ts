@@ -86,6 +86,23 @@ describe("GET /api/provider/subscription/manage-link", () => {
     expect(mockGetSubscriptionManageLink).not.toHaveBeenCalled();
   });
 
+  it("does not open Paystack billing for a Flutterwave subscription", async () => {
+    mockGetSupabaseServer.mockResolvedValue(
+      supabaseWithSubscription({
+        id: "sub-1",
+        billing_provider: "flutterwave",
+        paystack_subscription_code: "SUB_old",
+      }),
+    );
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/provider/subscription/manage-link"));
+
+    expect(res.status).toBe(400);
+    expect(mockGetSubscriptionManageLink).not.toHaveBeenCalled();
+    expect(mockCreateStripePortal).not.toHaveBeenCalled();
+  });
+
   it("returns Paystack manage link when paystack_subscription_code is set", async () => {
     mockGetSupabaseServer.mockResolvedValue(
       supabaseWithSubscription({

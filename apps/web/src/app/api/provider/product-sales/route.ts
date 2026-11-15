@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
     const { data: sales, error, count } = await db
       .from("product_orders")
       .select(
-        "id, order_number, customer_id, subtotal, tax_amount, total_amount, payment_method, payment_reference, customer_name, customer_phone, created_at, product_order_items(product_name, quantity, unit_price)",
+        "id, order_number, customer_id, subtotal, tax_amount, total_amount, refunded_amount, payment_method, payment_reference, customer_name, customer_phone, created_at, product_order_items(product_name, quantity, unit_price)",
         { count: "exact" },
       )
       .eq("provider_id", providerId)
@@ -676,6 +676,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    try {
+      await applyPosProductStockDecrements(supabase, posItems);
+    } catch (stockErr) {
+      const { error: deleteError } = await admin
+        .from("product_orders")
+        .delete()
+        .eq("id", order.id)
+        .eq("provider_id", providerId);
+      if (deleteError) {
+        console.error("[product-sales] could not remove the sale after a stock failure:", deleteError);
+      }
+      throw stockErr;
+    }
+
+    try {
+      const { logSaleStockMovements } = await import("@/lib/products/stock-movements");
+      await logSaleStockMovements(supabase, {
+        providerId,
+        referenceId: order.id,
+        actorUserId: user.id,
+        lines: mergedItems.map((i) => ({
+          productId: i.product_id,
+          productVariantId: i.product_variant_id ?? null,
+          quantity: i.quantity,
+        })),
+      });
+    } catch (logErr) {
+      console.error("[product-sales] stock movement log failed:", logErr);
+    }
+
     // payment_transactions has no provider INSERT RLS (only service_role).
     // Use the admin client so the ledger write is not blocked by RLS — the
     // provider's identity and ownership were already validated above before the
@@ -712,24 +742,6 @@ export async function POST(request: NextRequest) {
       });
     } catch (notifyErr) {
       console.error("[product-sales] notifyProductOrderPaid failed:", notifyErr);
-    }
-
-    await applyPosProductStockDecrements(supabase, posItems);
-
-    try {
-      const { logSaleStockMovements } = await import("@/lib/products/stock-movements");
-      await logSaleStockMovements(supabase, {
-        providerId,
-        referenceId: order.id,
-        actorUserId: user.id,
-        lines: mergedItems.map((i) => ({
-          productId: i.product_id,
-          productVariantId: i.product_variant_id ?? null,
-          quantity: i.quantity,
-        })),
-      });
-    } catch (logErr) {
-      console.error("[product-sales] stock movement log failed:", logErr);
     }
 
     return successResponse(

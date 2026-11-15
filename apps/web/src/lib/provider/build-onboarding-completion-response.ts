@@ -1,7 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { resolvePricingPlanIsFree } from "@/lib/subscription/resolve-pricing-plan-is-free";
-import { normalizeBillingPeriod } from "@/lib/subscriptions/pending-upgrade-fields";
+import {
+  normalizeBillingPeriod,
+  pendingUpgradeIntentPatch,
+} from "@/lib/subscriptions/pending-upgrade-fields";
 
 export interface ResolvedOnboardingPlan {
   selectedPlanIsFree: boolean;
@@ -196,15 +199,20 @@ async function applyPendingUpgradeIntent(
   subscriptionPlanId: string,
   billingPeriod: "monthly" | "yearly",
 ): Promise<void> {
-  const now = new Date().toISOString();
+  const { data: current } = await supabaseAdmin
+    .from("provider_subscriptions")
+    .select("status")
+    .eq("provider_id", providerId)
+    .maybeSingle();
   const { error } = await supabaseAdmin
     .from("provider_subscriptions")
-    .update({
-      pending_upgrade_plan_id: subscriptionPlanId,
-      pending_upgrade_billing_period: billingPeriod,
-      pending_upgrade_set_at: now,
-      updated_at: now,
-    })
+    .update(
+      pendingUpgradeIntentPatch({
+        planId: subscriptionPlanId,
+        billingPeriod,
+        status: (current as { status?: string | null } | null)?.status,
+      }),
+    )
     .eq("provider_id", providerId);
 
   if (error) {

@@ -68,6 +68,7 @@ vi.mock("@/app/api/public/bookings/_helpers/validate-booking", () => ({
 
 vi.mock("@/app/api/public/bookings/_helpers/create-booking-record", () => ({
   createBookingRecord: (...args: unknown[]) => mockCreateBookingRecord(...args),
+  releasedBookingIdFromResponse: () => null,
 }));
 
 vi.mock("@/app/api/public/bookings/_helpers/process-payment", () => ({

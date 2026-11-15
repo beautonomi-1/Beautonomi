@@ -84,6 +84,7 @@ type TeamAccessData = {
   can_request_payouts?: boolean;
   is_business_owner?: boolean;
   can_manage_marketing?: boolean;
+  can_manage_payroll?: boolean;
 };
 
 type ProviderNavCounts = {
@@ -1150,6 +1151,17 @@ export default function MoreScreen() {
                       if (route.includes("reports")) {
                         return canViewReports;
                       }
+                      if (route.includes("team-pay")) {
+                        if (provider?.business_type === "freelancer") return false;
+                        const canManagePayroll =
+                          isBusinessOwner ||
+                          teamAccess?.can_manage_payroll === true ||
+                          permissionData?.permissions?.manage_payroll === true;
+                        const canViewOwnEarnings =
+                          isBusinessOwner ||
+                          permissionData?.permissions?.view_own_earnings === true;
+                        return canManagePayroll || canViewOwnEarnings;
+                      }
                       if (
                         route.includes("products-ecommerce-hub") ||
                         route.includes("product-orders") ||
@@ -1162,8 +1174,16 @@ export default function MoreScreen() {
                     },
                   ).map((item, idx) => {
                     const badge = formatBadgeCount(getRouteBadgeCount(item.route));
+                    const canManagePayrollMenu =
+                      isBusinessOwner ||
+                      teamAccess?.can_manage_payroll === true ||
+                      permissionData?.permissions?.manage_payroll === true;
                     const itemSubtitle =
-                      item.route.includes("engagement-hub") && !canManageMarketing
+                      item.route.includes("team-pay") && !canManagePayrollMenu
+                        ? t("provider.mobile.screens.moreTab.teamPaySubtitleOwn", {
+                            defaultValue: "Your payslips",
+                          })
+                        : item.route.includes("engagement-hub") && !canManageMarketing
                         ? t("provider.mobile.screens.moreTab.engagementSubtitleNoMarketing")
                         : item.subtitleKey
                           ? t(item.subtitleKey)

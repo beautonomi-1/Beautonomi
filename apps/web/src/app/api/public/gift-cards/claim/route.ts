@@ -6,6 +6,10 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { trackGiftCardRedeemedServer } from "@/lib/gift-cards/track-gift-card-events";
+import {
+  creditedGiftCardRedemptionAmount,
+  ensureGiftCardWalletRedemptionLedger,
+} from "@/lib/wallet/gift-card-wallet-redemption-ledger";
 
 /**
  * POST /api/public/gift-cards/claim
@@ -33,7 +37,7 @@ export async function POST(request: NextRequest) {
       .eq("id", parsed.giftCardId)
       .maybeSingle();
 
-    if (!giftCard?.id || giftCard.is_active === false || Number(giftCard.balance ?? 0) <= 0) {
+    if (!giftCard?.id) {
       return errorResponse("This gift card is no longer available", "NOT_AVAILABLE", 400);
     }
 
@@ -69,6 +73,28 @@ export async function POST(request: NextRequest) {
     const tenantId = (userRow as { preferred_home_tenant_id?: string | null })?.preferred_home_tenant_id ?? null;
     const tenantRegion = tenantId ? await getTenantRegionConfig(tenantId) : null;
     const userCurrency = tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
+    const balance = Number(giftCard.balance ?? 0);
+    if (giftCard.is_active === false || balance <= 0) {
+      const alreadyCredited = await creditedGiftCardRedemptionAmount(supabaseAdmin, {
+        giftCardId: giftCard.id,
+        userId: user.id,
+      });
+      if (alreadyCredited != null) {
+        const walletTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
+          tenant_id: giftCard.tenant_id ?? tenantId,
+        });
+        await ensureGiftCardWalletRedemptionLedger(supabaseAdmin, {
+          giftCardId: giftCard.id,
+          code: String(giftCard.code ?? ""),
+          userId: user.id,
+          amount: alreadyCredited,
+          currency: giftCard.currency || userCurrency,
+          tenantId: walletTenantId,
+        });
+        return successResponse({ claimed: true, gift_card_id: giftCard.id, amount: alreadyCredited });
+      }
+      return errorResponse("This gift card is no longer available", "NOT_AVAILABLE", 400);
+    }
 
     if (giftCard.currency !== userCurrency) {
       return errorResponse("Currency mismatch for this gift card", "CURRENCY_MISMATCH", 400);
@@ -85,6 +111,24 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (!claimedCard?.id) {
+      const alreadyCredited = await creditedGiftCardRedemptionAmount(supabaseAdmin, {
+        giftCardId: giftCard.id,
+        userId: user.id,
+      });
+      if (alreadyCredited != null) {
+        const walletTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
+          tenant_id: giftCard.tenant_id ?? tenantId,
+        });
+        await ensureGiftCardWalletRedemptionLedger(supabaseAdmin, {
+          giftCardId: giftCard.id,
+          code: String(giftCard.code ?? ""),
+          userId: user.id,
+          amount: alreadyCredited,
+          currency: giftCard.currency || userCurrency,
+          tenantId: walletTenantId,
+        });
+        return successResponse({ claimed: true, gift_card_id: giftCard.id, amount: alreadyCredited });
+      }
       return errorResponse("This gift card was already redeemed", "ALREADY_REDEEMED", 409);
     }
 
@@ -113,6 +157,15 @@ export async function POST(request: NextRequest) {
         .eq("id", giftCard.id);
       return errorResponse("Could not credit wallet", "WALLET_ERROR", 500);
     }
+
+    await ensureGiftCardWalletRedemptionLedger(supabaseAdmin, {
+      giftCardId: giftCard.id,
+      code: String(giftCard.code ?? ""),
+      userId: user.id,
+      amount: redeemAmount,
+      currency: giftCard.currency || userCurrency,
+      tenantId: walletTenantId,
+    });
 
     await supabaseAdmin
       .from("gift_cards")

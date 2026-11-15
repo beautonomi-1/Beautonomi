@@ -17,6 +17,12 @@ import {
 import { normalizePaycloudMajorAmount } from "@/lib/payments/paycloud-cloud-amount";
 import { resolveSaleEntityTarget } from "@/lib/provider-sales/resolve-sale-entity-target";
 import {
+  decrementPosSaleStock,
+  posSaleRefundShouldRestoreStock,
+  posSaleTracksProductStock,
+  restorePosSaleStock,
+} from "@/lib/provider-sales/pos-product-stock";
+import {
   clearUncollectedProviderPortalPlatformFeeIfNeeded,
   type BookingFeeClearRow,
 } from "@/lib/bookings/provider-booking-platform-fee";
@@ -709,13 +715,14 @@ async function settleSalePayment(
   const admin = getSupabaseAdmin();
   const { data: saleRow, error: saleRowError } = await admin
     .from("sales")
-    .select("payment_status")
+    .select("payment_status, notes")
     .eq("id", input.entityId)
     .eq("provider_id", input.providerId)
     .maybeSingle();
   if (saleRowError) throw new Error(saleRowError.message);
   if (!saleRow) return { settled: false, reason: "sale_not_found" };
-  if (String((saleRow as { payment_status?: string }).payment_status ?? "") === "completed") {
+  const previousStatus = String((saleRow as { payment_status?: string }).payment_status ?? "");
+  if (previousStatus === "completed") {
     return { settled: true };
   }
   const due = await saleCardAmountStillDueForSale(admin, input.providerId, input.entityId);
@@ -726,7 +733,7 @@ async function settleSalePayment(
   });
   if (!gift.ok) return { settled: false, reason: "gift_card_not_captured" };
 
-  const { error } = await supabase
+  const { data: claimed, error } = await supabase
     .from("sales")
     .update({
       payment_status: "completed",
@@ -736,9 +743,66 @@ async function settleSalePayment(
       updated_at: new Date().toISOString(),
     })
     .eq("id", input.entityId)
-    .eq("provider_id", input.providerId);
+    .eq("provider_id", input.providerId)
+    .eq("payment_status", previousStatus)
+    .select("id")
+    .maybeSingle();
 
   if (error) throw error;
+  if (!claimed) return { settled: true };
+
+  if (posSaleTracksProductStock((saleRow as { notes?: string | null }).notes)) {
+    try {
+      await decrementPosSaleStock(admin, input.entityId);
+    } catch (stockError) {
+      await supabase
+        .from("sales")
+        .update({
+          payment_status: previousStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", input.entityId)
+        .eq("provider_id", input.providerId)
+        .eq("payment_status", "completed");
+      console.error("[card-machine] till sale stock was not taken:", stockError);
+      return { settled: false, reason: "stock_failed" };
+    }
+  }
+  return { settled: true };
+}
+
+async function deliverSettledWalkInOrder(
+  admin: SupabaseClient,
+  input: SettleCardMachinePaymentInput,
+): Promise<{ settled: boolean; reason?: string }> {
+  const { data: order } = await (admin.from("product_orders") as any)
+    .select("id, order_source, status, provider_id")
+    .eq("id", input.entityId)
+    .maybeSingle();
+  if (
+    !order ||
+    String(order.order_source ?? "") !== "walk_in" ||
+    String(order.status ?? "") === "delivered"
+  ) {
+    return { settled: true };
+  }
+  try {
+    const { fulfillWalkInProductOrderDelivery } = await import(
+      "@/lib/provider-sales/fulfill-walk-in-product-order-delivery"
+    );
+    const delivery = await fulfillWalkInProductOrderDelivery({
+      supabase: admin,
+      providerId: String(order.provider_id ?? input.providerId),
+      orderId: input.entityId,
+    });
+    if (delivery.ok === false) {
+      console.error("[settle-card-machine] walk-in delivery failed:", delivery.reason);
+      return { settled: false, reason: "stock_failed" };
+    }
+  } catch (error) {
+    console.error("[settle-card-machine] walk-in delivery failed:", error);
+    return { settled: false, reason: "stock_failed" };
+  }
   return { settled: true };
 }
 
@@ -756,6 +820,17 @@ async function settleProductOrderPayment(
   );
   const due = await productOrderCardAmountStillDue(admin, input.entityId, providerPaymentId);
   if (due.ok === false) return { settled: false, reason: "payment_lookup_failed" };
+  if (due.due <= 0.009 && base > due.due + 0.02) {
+    const { data: paidOrder } = await (admin.from("product_orders") as any)
+      .select("payment_status, payment_reference")
+      .eq("id", input.entityId)
+      .maybeSingle();
+    const sameCharge =
+      String(paidOrder?.payment_status ?? "").toLowerCase() === "paid" &&
+      String(paidOrder?.payment_reference ?? "").trim() === providerPaymentId.trim();
+    if (!sameCharge) return { settled: false, reason: "amount_mismatch" };
+    return deliverSettledWalkInOrder(admin, input);
+  }
   const baseCoversDue = Math.abs(base - due.due) <= 0.02;
   if (base > due.due + 0.02) return { settled: false, reason: "amount_mismatch" };
 
@@ -773,29 +848,7 @@ async function settleProductOrderPayment(
     return { settled: false, reason: "payment_not_settled" };
   }
 
-  const { data: order } = await (admin.from("product_orders") as any)
-    .select("id, order_source, status, provider_id")
-    .eq("id", input.entityId)
-    .maybeSingle();
-  if (
-    order &&
-    String(order.order_source ?? "") === "walk_in" &&
-    String(order.status ?? "") !== "delivered"
-  ) {
-    const { fulfillWalkInProductOrderDelivery } = await import(
-      "@/lib/provider-sales/fulfill-walk-in-product-order-delivery"
-    );
-    const delivery = await fulfillWalkInProductOrderDelivery({
-      supabase: admin,
-      providerId: String(order.provider_id ?? input.providerId),
-      orderId: input.entityId,
-    });
-    if (delivery.ok === false) {
-      console.error("[settle-card-machine] walk-in delivery failed:", delivery.reason);
-    }
-  }
-
-  return { settled: true };
+  return deliverSettledWalkInOrder(admin, input);
 }
 
 async function settleAdditionalChargePayment(
@@ -1098,7 +1151,7 @@ async function reverseProductOrderCardMachinePayment(
   const { data: order } = await admin
     .from("product_orders")
     .select(
-      "id, payment_status, payment_reference, payment_method, provider_id, customer_id, tenant_id, currency, order_number, total_amount, wallet_amount, gift_card_amount, status",
+      "id, payment_status, payment_reference, payment_method, provider_id, customer_id, tenant_id, currency, order_number, total_amount, refunded_amount, refund_method, wallet_amount, gift_card_amount, status",
     )
     .eq("id", input.entityId)
     .eq("provider_id", input.providerId)
@@ -1130,6 +1183,7 @@ async function reverseProductOrderCardMachinePayment(
   const isFullRefund = refundAmount + 0.01 >= paidAmount;
 
   let giftReturned = false;
+  let walletReturned = false;
   let giftVoidResult: "restored" | "missing" | "failed" | null = null;
   if (isFullRefund && isProviderCollectedProductMethod(String(order.payment_method ?? ""))) {
     const split = productOrderTenderSplit(order);
@@ -1157,6 +1211,7 @@ async function reverseProductOrderCardMachinePayment(
         p_idempotency_key: `product_order_cancel_refund:${input.entityId}`,
       });
       if (walletError) return { reversed: false, reason: "wallet_credit_failed" };
+      walletReturned = true;
     }
     // Wallet and gift were platform-held. Earnings for that slice are net of
     // the platform fee, so the payout is reduced by the posted earnings, not
@@ -1234,16 +1289,37 @@ async function reverseProductOrderCardMachinePayment(
     }
   }
 
+  const orderTotal = Math.max(0, Number(order.total_amount ?? 0));
+  const alreadyRefunded = Math.max(0, Number(order.refunded_amount ?? 0));
+  const providerCollected = isProviderCollectedProductMethod(String(order.payment_method ?? ""));
+  const refundedAmount =
+    isFullRefund && providerCollected
+      ? orderTotal
+      : Math.min(orderTotal, addMoney(alreadyRefunded, Math.max(0, refundAmount)));
   const orderUpdate: Record<string, unknown> = {
     payment_status: isFullRefund ? "refunded" : "partially_refunded",
+    refunded_amount: roundProductOrderMoney(refundedAmount),
+    refunded_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
   if (giftReturned) {
     orderUpdate.gift_card_amount = 0;
     orderUpdate.gift_card_id = null;
   }
+  if (walletReturned) {
+    orderUpdate.wallet_amount = 0;
+  }
+  const existingRefundMethod = String(order.refund_method ?? "").trim();
+  if (!existingRefundMethod && providerCollected) {
+    orderUpdate.refund_method = String(order.payment_method ?? "").trim().toLowerCase();
+  }
   if (isFullRefund) {
     orderUpdate.status = "refunded";
+    const { restockProductOrderLineItems } = await import("@/lib/orders/product-order-lifecycle");
+    await restockProductOrderLineItems(admin, input.entityId, {
+      movementType: "return",
+      reason: "Card machine refund",
+    });
   }
 
   const { error: orderErr } = await admin
@@ -1270,19 +1346,37 @@ async function reverseSaleCardMachinePayment(
   supabase: SupabaseClient,
   input: ReverseCardMachineSettlementInput,
 ): Promise<{ reversed: boolean; reason?: string }> {
-  const { data: refunded, error } = await supabase
+  const { data: sale, error: saleError } = await supabase
     .from("sales")
-    .update({
-      payment_status: "refunded",
-      updated_at: new Date().toISOString(),
-    })
+    .select("id, payment_status, notes")
     .eq("id", input.entityId)
     .eq("provider_id", input.providerId)
     .eq("payment_provider", input.paymentProvider)
-    .select("id")
     .maybeSingle();
-  if (error) throw error;
-  if (!refunded) return { reversed: false, reason: "sale_not_refunded" };
-  await restoreSaleGiftCard(getSupabaseAdmin(), input.entityId);
+  if (saleError) throw saleError;
+  if (!sale) return { reversed: false, reason: "sale_not_refunded" };
+
+  const admin = getSupabaseAdmin();
+  if (posSaleRefundShouldRestoreStock(sale)) {
+    await restorePosSaleStock(admin, {
+      saleId: input.entityId,
+      providerId: input.providerId,
+    });
+  }
+
+  if (String(sale.payment_status ?? "") !== "refunded") {
+    const { error } = await supabase
+      .from("sales")
+      .update({
+        payment_status: "refunded",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", input.entityId)
+      .eq("provider_id", input.providerId)
+      .eq("payment_provider", input.paymentProvider);
+    if (error) throw error;
+  }
+
+  await restoreSaleGiftCard(admin, input.entityId);
   return { reversed: true };
 }

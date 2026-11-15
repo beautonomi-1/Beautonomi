@@ -162,9 +162,7 @@ export async function applyStatutoryToPayRunItems(
       taxableIncome,
       netPay: net.netPay,
       carryForwardOut:
-        net.nextCarryForward !== 0
-          ? Math.abs(net.nextCarryForward)
-          : item.carryForwardOut,
+        net.nextCarryForward !== 0 ? Math.abs(net.nextCarryForward) : 0,
     };
   });
 }

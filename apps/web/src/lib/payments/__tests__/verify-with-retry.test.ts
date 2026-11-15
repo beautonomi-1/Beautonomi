@@ -16,6 +16,14 @@ describe("buildOnlineVerifyQuery", () => {
     expect(buildOnlineVerifyQuery("ref-abc", "  ")).toBe("reference=ref-abc");
   });
 
+  it("appends failed or cancelled redirect status", async () => {
+    const { buildOnlineVerifyQuery } = await import("../verify-with-retry");
+    expect(buildOnlineVerifyQuery("ref-abc", null, null, "cancelled")).toBe(
+      "reference=ref-abc&status=cancelled",
+    );
+    expect(buildOnlineVerifyQuery("ref-abc", null, null, "ignored")).toBe("reference=ref-abc");
+  });
+
   it("appends session_id for Stripe Checkout returns", async () => {
     const { buildOnlineVerifyQuery } = await import("../verify-with-retry");
     expect(buildOnlineVerifyQuery("ref-abc", "cs_test_123")).toBe(
@@ -47,6 +55,30 @@ describe("verifyWithRetry", () => {
     );
   });
 
+  it("keeps polling when the gateway succeeded but the booking is still unpaid", async () => {
+    mockFetcherGet.mockResolvedValue({
+      data: { status: "success", payment_status: "pending", bookingId: "b1" },
+    });
+
+    const { verifyWithRetry } = await import("../verify-with-retry");
+    const result = await verifyWithRetry("ref-1", { maxAttempts: 2, delayMs: 1 });
+
+    expect(result.status).toBe("pending");
+    expect(result.attempts).toBe(2);
+  });
+
+  it("returns success when the booking payment is recorded", async () => {
+    mockFetcherGet.mockResolvedValueOnce({
+      data: { status: "success", payment_status: "paid", bookingId: "b1" },
+    });
+
+    const { verifyWithRetry } = await import("../verify-with-retry");
+    const result = await verifyWithRetry("ref-1", { maxAttempts: 3, delayMs: 1 });
+
+    expect(result.status).toBe("success");
+    expect(result.attempts).toBe(1);
+  });
+
   it("returns success immediately when verify succeeds", async () => {
     mockFetcherGet.mockResolvedValueOnce({
       data: { status: "success", type: "product_order" },
@@ -62,6 +94,18 @@ describe("verifyWithRetry", () => {
   it("retries pending responses and returns unknown after max attempts", async () => {
     mockFetcherGet.mockResolvedValue({
       data: { status: "pending", message: "still processing" },
+    });
+
+    const { verifyWithRetry } = await import("../verify-with-retry");
+    const result = await verifyWithRetry("ref-1", { maxAttempts: 2, delayMs: 1 });
+
+    expect(result.status).toBe("pending");
+    expect(result.attempts).toBe(2);
+  });
+
+  it("keeps polling when verify-reference says the bank is still processing", async () => {
+    mockFetcherGet.mockResolvedValue({
+      data: { verified: false, status: "pending", paystackStatus: "ongoing" },
     });
 
     const { verifyWithRetry } = await import("../verify-with-retry");

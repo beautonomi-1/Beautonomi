@@ -35,6 +35,26 @@ describe("pay plan upsert schema (F3-21)", () => {
     }
   });
 
+  it("accepts employment dates and rejects an end date before the start", () => {
+    expect(
+      payPlanUpsertSchema.safeParse({
+        ...base,
+        employment_start_date: "2026-03-01",
+        employment_end_date: "2026-06-30",
+      }).success,
+    ).toBe(true);
+    expect(
+      payPlanUpsertSchema.safeParse({
+        ...base,
+        employment_start_date: "2026-06-30",
+        employment_end_date: "2026-03-01",
+      }).success,
+    ).toBe(false);
+    expect(
+      payPlanUpsertSchema.safeParse({ ...base, employment_end_date: "" }).success,
+    ).toBe(true);
+  });
+
   it("rejects service_rate and product_rate outside 0–100", () => {
     expect(payPlanUpsertSchema.safeParse({ ...base, service_rate: 150 }).success).toBe(false);
     expect(payPlanUpsertSchema.safeParse({ ...base, product_rate: -1 }).success).toBe(false);

@@ -36,23 +36,20 @@ export async function getProviderStaffIdForUser(
   return (data as { id?: string } | null)?.id ?? null;
 }
 
-/** Salary, commission, and the time-clock PIN. Contact roster access does not include these. */
+/** Salary and hourly pay for the salon that is open. Team management does not include this. */
 export async function canViewStaffPay(
   userId: string,
   request?: PermissionRequestContext,
 ): Promise<boolean> {
-  if (await isProviderOwner(userId, request)) return true;
-  const [payroll, team] = await Promise.all([
-    hasPermission(userId, "manage_payroll", undefined, request),
-    hasPermission(userId, "manage_team", undefined, request),
-  ]);
-  return payroll || team;
+  const { userCanManagePayroll } = await import("@/lib/payroll/payroll-access");
+  return userCanManagePayroll(userId, request);
 }
 
 const HIDDEN_PAY_FIELDS: Record<string, null | false | ""> = {
   salary: null,
   hourly_rate: null,
   commission_rate: null,
+  commission_percentage: null,
   service_commission_rate: null,
   product_commission_rate: null,
   commission_enabled: false,

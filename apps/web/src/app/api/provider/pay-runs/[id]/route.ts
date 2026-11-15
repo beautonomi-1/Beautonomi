@@ -33,7 +33,7 @@ export async function GET(
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
     const payrollBlocked = await payrollDisabledMessage(supabaseAdmin, providerId);
     if (payrollBlocked) {
@@ -119,6 +119,8 @@ export async function GET(
           total_net_pay: null,
           total_tax_deductions: null,
           total_uif: null,
+          payment_reference: null,
+          paid_by: null,
         }
       : payRun;
 
@@ -147,7 +149,7 @@ export async function DELETE(
     const { user } = payrollCheck;
     const { id } = await params;
     const supabaseAdmin = getSupabaseAdmin();
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
     const payrollBlockedDel = await payrollDisabledMessage(supabaseAdmin, providerId);
     if (payrollBlockedDel) {
@@ -190,7 +192,7 @@ export async function PATCH(
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
     const payrollBlockedPatch = await payrollDisabledMessage(supabaseAdmin, providerId);
     if (payrollBlockedPatch) {
@@ -215,10 +217,14 @@ export async function PATCH(
     const body = await request.json();
     if (Array.isArray(body.items)) {
       for (const item of body.items) {
-        const { item_id, ...updates } = item;
-        if (!item_id) continue;
+        const { item_id, ...updates } = item ?? {};
+        if (!item_id || typeof item_id !== "string") {
+          return handleApiError(new Error("Each pay run line needs an item id"), "INVALID_ITEM", 400);
+        }
         const parsed = updateItemSchema.safeParse(updates);
-        if (!parsed.success) continue;
+        if (!parsed.success) {
+          return handleApiError(new Error("Invalid pay run line"), "INVALID_ITEM", 400);
+        }
 
         const { manual_deductions, tax_deduction, uif_contribution, notes } = parsed.data;
 
@@ -238,30 +244,31 @@ export async function PATCH(
             .eq("pay_run_id", id)
             .single();
 
-          if (existing) {
-            const ex = existing as {
-              gross_pay?: number;
-              manual_deductions?: number;
-              tax_deduction?: number;
-              uif_contribution?: number;
-              carry_forward_in?: number;
-            };
-            const m = manual_deductions ?? ex.manual_deductions ?? 0;
-            const t = tax_deduction ?? ex.tax_deduction ?? 0;
-            const u = uif_contribution ?? ex.uif_contribution ?? 0;
-            const gross = Number(ex.gross_pay || 0);
-            const carryIn = Number(ex.carry_forward_in ?? 0);
-            const net = computeNetPay({
-              grossPay: gross,
-              manualDeductions: m,
-              taxDeduction: t,
-              uifContribution: u,
-              carryForwardBalance: carryIn > 0 ? -carryIn : undefined,
-            });
-            updateData.net_pay = net.netPay;
-            updateData.carry_forward_out =
-              net.nextCarryForward !== 0 ? Math.abs(net.nextCarryForward) : 0;
+          if (!existing) {
+            return handleApiError(new Error("Pay run line not found"), "NOT_FOUND", 400);
           }
+          const ex = existing as {
+            gross_pay?: number;
+            manual_deductions?: number;
+            tax_deduction?: number;
+            uif_contribution?: number;
+            carry_forward_in?: number;
+          };
+          const m = manual_deductions ?? ex.manual_deductions ?? 0;
+          const t = tax_deduction ?? ex.tax_deduction ?? 0;
+          const u = uif_contribution ?? ex.uif_contribution ?? 0;
+          const gross = Number(ex.gross_pay || 0);
+          const carryIn = Number(ex.carry_forward_in ?? 0);
+          const net = computeNetPay({
+            grossPay: gross,
+            manualDeductions: m,
+            taxDeduction: t,
+            uifContribution: u,
+            carryForwardBalance: carryIn > 0 ? -carryIn : undefined,
+          });
+          updateData.net_pay = net.netPay;
+          updateData.carry_forward_out =
+            net.nextCarryForward !== 0 ? Math.abs(net.nextCarryForward) : 0;
 
           await supabaseAdmin
             .from("provider_pay_run_items")

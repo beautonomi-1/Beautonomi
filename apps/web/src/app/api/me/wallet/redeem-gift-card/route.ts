@@ -6,6 +6,10 @@ import { requireRoleInApi, successResponse, handleApiError, errorResponse } from
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  creditedGiftCardRedemptionAmount,
+  ensureGiftCardWalletRedemptionLedger,
+} from "@/lib/wallet/gift-card-wallet-redemption-ledger";
 
 const schema = z.object({
   code: z.string().min(1, "Gift card code is required"),
@@ -46,6 +50,29 @@ export async function POST(request: NextRequest) {
     }
 
     if (giftCard.balance <= 0) {
+      const alreadyCredited = await creditedGiftCardRedemptionAmount(supabaseAdmin, {
+        giftCardId: giftCard.id,
+        userId: user.id,
+      });
+      if (alreadyCredited != null && giftCard.currency === userCurrency) {
+        const walletTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
+          tenant_id: tenantId,
+          provider_id: null,
+        });
+        await ensureGiftCardWalletRedemptionLedger(supabaseAdmin, {
+          giftCardId: giftCard.id,
+          code: codeUpper,
+          userId: user.id,
+          amount: alreadyCredited,
+          currency: userCurrency,
+          tenantId: walletTenantId,
+        });
+        return successResponse({
+          amount: alreadyCredited,
+          currency: userCurrency,
+          message: "Gift card redeemed to wallet successfully",
+        });
+      }
       return errorResponse("This gift card has no remaining balance", "ZERO_BALANCE", 400);
     }
 
@@ -122,73 +149,14 @@ export async function POST(request: NextRequest) {
       return errorResponse("Failed to credit wallet. Please try again.", "WALLET_CREDIT_FAILED", 500);
     }
 
-    // Record Redemption (booking_id is NULL — this is a wallet redemption, not a
-    // booking redemption; migration 642 made booking_id nullable). Captured
-    // immediately since the funds have already moved into the wallet.
-    const { error: redemptionError } = await supabaseAdmin.from("gift_card_redemptions").insert({
-      gift_card_id: giftCard.id,
-      booking_id: null,
-      user_id: user.id,
+    await ensureGiftCardWalletRedemptionLedger(supabaseAdmin, {
+      giftCardId: giftCard.id,
+      code: codeUpper,
+      userId: user.id,
       amount: redeemAmount,
       currency: userCurrency,
-      status: "captured",
-      captured_at: new Date().toISOString(),
+      tenantId: walletTenantId,
     });
-    // The wallet was already credited, so a failed audit insert must not fail the
-    // request — but log it loudly so the gap is visible in reconciliation.
-    if (redemptionError) {
-      console.error("[redeem-gift-card] Failed to record redemption audit row:", redemptionError);
-    }
-
-    // §Gift-liability (audit 2026-06): redeeming a gift card to the wallet moves
-    // value from gift-card liability into wallet liability (tracked in
-    // wallet_transactions). Post a gift_card_liability_reduction so the gift-card
-    // liability is not left overstated. Idempotent in practice: the atomic balance
-    // claim above guarantees redemption runs at most once per card.
-    const { error: liabilityError } = await supabaseAdmin.from("finance_transactions").insert({
-      booking_id: null,
-      provider_id: null,
-      tenant_id: walletTenantId,
-      transaction_type: "gift_card_liability_reduction",
-      amount: redeemAmount,
-      fees: 0,
-      commission: 0,
-      net: -redeemAmount,
-      description: `Gift card ${codeUpper} redeemed to wallet`,
-      created_at: new Date().toISOString(),
-    });
-    if (liabilityError) {
-      console.error(
-        "[redeem-gift-card] Failed to record gift_card_liability_reduction:",
-        liabilityError,
-      );
-    }
-
-    // §Phase 11 giftcard-liability-fixes: on gift-card→wallet redemption the
-    // wallet LIABILITY (GL 2300) also increases. Post a wallet_topup row with
-    // fees=0 so the GL shadow trigger records DR Cash(0) / CR 2300 Wallet liability.
-    // We use amount=redeemAmount so GL 2300 is credited correctly. The matching
-    // DR is implicitly the gift-card liability reduction above (2400 debit).
-    const nowIso = new Date().toISOString();
-    const { error: walletLiabilityError } = await supabaseAdmin.from("finance_transactions").insert({
-      booking_id: null,
-      provider_id: null,
-      tenant_id: walletTenantId,
-      transaction_type: "wallet_topup",
-      amount: redeemAmount,
-      fees: 0,
-      commission: 0,
-      net: redeemAmount,
-      description: `Wallet liability increase from gift card ${codeUpper} redemption`,
-      metadata: { source: "gift_card_redemption", gift_card_id: giftCard.id },
-      created_at: nowIso,
-    });
-    if (walletLiabilityError) {
-      console.error(
-        "[redeem-gift-card] Failed to record wallet_topup liability increase:",
-        walletLiabilityError,
-      );
-    }
 
     return successResponse({
       amount: redeemAmount,

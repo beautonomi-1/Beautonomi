@@ -49,7 +49,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
 import { displayRetailPriceMin, effectiveStockQuantity } from "@/lib/product-inventory-metrics";
 import { trackWalkInSaleCompleted } from "@/lib/analytics";
-import { addMoney, multiplyMoney, percentOf, sumMoney } from "@beautonomi/utils";
+import { addMoney, multiplyMoney, percentOf, subtractMoney, sumMoney } from "@beautonomi/utils";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { PROVIDER_DASHBOARD_REFRESH_EVENT } from "@/lib/provider-dashboard-events";
 import { useProvider } from "@/providers/ProviderContext";
@@ -98,6 +98,7 @@ interface WalkInSale {
   subtotal?: number | string | null;
   tax_amount?: number | string | null;
   total_amount: number | string;
+  refunded_amount?: number | string | null;
   payment_method: string;
   payment_reference?: string | null;
   customer_name?: string | null;
@@ -105,6 +106,14 @@ interface WalkInSale {
   created_at: string;
   product_order_items?: SaleItem[];
   items?: SaleItem[];
+}
+
+function keptWalkInAmount(sale: { total_amount?: number | string | null; refunded_amount?: number | string | null }): number {
+  const totalRaw = Number(sale.total_amount);
+  const total = Number.isFinite(totalRaw) ? Math.max(0, totalRaw) : 0;
+  const refundedRaw = Number(sale.refunded_amount);
+  const refunded = Number.isFinite(refundedRaw) ? Math.min(total, Math.max(0, refundedRaw)) : 0;
+  return Math.max(0, subtractMoney(total, refunded));
 }
 
 interface ApiClient {
@@ -445,7 +454,7 @@ export default function WalkInSaleScreen() {
         wis("refundTitle"),
         wis("refundBody", {
           orderNumber: sale.order_number,
-          amount: formatCurrency(Number(sale.total_amount), tenantCurrency),
+          amount: formatCurrency(keptWalkInAmount(sale), tenantCurrency),
         }),
         [
           { text: t("common.cancel"), style: "cancel" },
@@ -937,7 +946,7 @@ export default function WalkInSaleScreen() {
                     ) : null}
                   </View>
                   <Text style={{ marginTop: 3, fontSize: 15, fontWeight: "600", color: Colors.gray[800] }}>
-                    {formatCurrency(Number(sale.total_amount), tenantCurrency)}
+                    {formatCurrency(keptWalkInAmount(sale), tenantCurrency)}
                   </Text>
                   <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                     {(sale.payment_method in WALK_IN_PAYMENT_LABEL_KEY
@@ -1061,10 +1070,16 @@ export default function WalkInSaleScreen() {
                   <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{formatCurrency(Number(selectedSale.tax_amount), tenantCurrency)}</Text>
                 </View>
               ) : null}
+              {Number(selectedSale.refunded_amount ?? 0) > 0 ? (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{wis("refundedTitle")}</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{formatCurrency(Number(selectedSale.refunded_amount), tenantCurrency)}</Text>
+                </View>
+              ) : null}
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{wis("totalPaid")}</Text>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
-                  {formatCurrency(Number(selectedSale.total_amount), tenantCurrency)}
+                  {formatCurrency(keptWalkInAmount(selectedSale), tenantCurrency)}
                 </Text>
               </View>
             </View>
@@ -1125,6 +1140,7 @@ export default function WalkInSaleScreen() {
                 <Text style={{ marginStart: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{wis("manageInOrders")}</Text>
               </TouchableOpacity>
 
+              {keptWalkInAmount(selectedSale) > 0 ? (
               <TouchableOpacity
                 onPress={() => handleRefundSale(selectedSale)}
                 disabled={refunding}
@@ -1145,6 +1161,7 @@ export default function WalkInSaleScreen() {
                   {refunding ? wis("processing") : wis("processRefund")}
                 </Text>
               </TouchableOpacity>
+              ) : null}
             </View>
           </ScrollView>
         ) : null}

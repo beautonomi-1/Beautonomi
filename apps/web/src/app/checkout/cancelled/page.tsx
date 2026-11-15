@@ -24,6 +24,38 @@ function CancelledContent() {
   const nativeContext = isNativeAppContext(params.get("context"));
 
   useEffect(() => {
+    let ignore = false;
+    const run = async () => {
+      let reference =
+        params.get("reference") || params.get("trxref") || params.get("tx_ref") || "";
+      if (!reference && bookingId) {
+        try {
+          const bookingRes = await fetch(`/api/me/bookings/${encodeURIComponent(bookingId)}`, {
+            credentials: "include",
+            headers: { Accept: "application/json" },
+          });
+          if (bookingRes.ok) {
+            const json = await bookingRes.json();
+            const stored = json?.data?.payment_reference;
+            if (typeof stored === "string") reference = stored;
+          }
+        } catch {
+          // The cancel screen still renders if lookup fails.
+        }
+      }
+      if (!reference || ignore) return;
+      await fetch(
+        `/api/paystack/verify?reference=${encodeURIComponent(reference)}&status=cancelled`,
+        { credentials: "include", headers: { Accept: "application/json" } },
+      ).catch(() => undefined);
+    };
+    void run();
+    return () => {
+      ignore = true;
+    };
+  }, [params, bookingId]);
+
+  useEffect(() => {
     if (!nativeContext || typeof window === "undefined") return;
     const w = window as Window & { ReactNativeWebView?: { postMessage: (msg: string) => void } };
     if (!w.ReactNativeWebView?.postMessage) return;

@@ -4,7 +4,9 @@
  * Transitions provider subscriptions through their lifecycle:
  * 1. cancelled_at IS NOT NULL + status='active' + expires_at passed → status='expired' (cancel-at-period-end)
  * 2. auto_renew=false + status='active' + expires_at passed + not cancelled → status='expired'
- * 3. status='past_due' + past 3-day grace period + expires_at passed → status='expired'
+ * 3. status='past_due' + past 3-day grace + expires_at passed → status='expired'
+ *    Paystack and Flutterwave keep past_due until their day-1/3/5 card retries
+ *    finish (or the collection window ends). Paid access still stops at 3 days.
  *    Apple-billed past_due is excluded from that 3-day cut: Apple retries for up
  *    to 16 days and publishes the deadline as apple_grace_period_expires_at.
  *    Those rows expire only after that StoreKit window ends (ASN EXPIRED and
@@ -21,10 +23,17 @@ import { insertNotification } from "@/lib/notifications/insert-notification";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions/ensure-provider-free-subscription";
 import { repairSubscriptionPlanFromPayments } from "@/lib/subscriptions/repair-subscription-plan-from-payments";
-import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
+import {
+  clearAppleMerchantOnFree,
+  stopPaystackSubscriptionBeforeClear,
+} from "@/lib/subscriptions/provider-billing-merchant";
 import { enforceStaffCapForProviderPlan } from "@/lib/provider/enforce-staff-cap-after-downgrade";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 import { applyScheduledProviderSubscriptionDowngrades } from "@/lib/subscriptions/apply-scheduled-provider-subscription-downgrades";
+import {
+  DUNNING_MAX_RETRIES,
+  dunningCollectionWindowDays,
+} from "@/lib/subscriptions/dunning-retry";
 
 async function enforceStaffCapsForProviders(
   supabase: ReturnType<typeof getSupabaseAdmin>,
@@ -69,7 +78,7 @@ async function runJob(request: NextRequest) {
     const expirePatch = (extra?: Record<string, unknown>) => ({
       status: "expired" as const,
       auto_renew: false,
-      paystack_subscription_code: null,
+      past_due_since: null,
       next_payment_date: null,
       ...(freePlanId ? { plan_id: freePlanId } : {}),
       ...clearAppleMerchantOnFree(),
@@ -90,7 +99,9 @@ async function runJob(request: NextRequest) {
     // 0b. End trials past trial_ends_at — charge if card on file, else lapse to free.
     const { data: expiredTrials } = await supabase
       .from("provider_subscriptions")
-      .select("id, provider_id, plan_id, billing_period, paystack_authorization_code, trial_ends_at")
+      .select(
+        "id, provider_id, plan_id, billing_period, billing_provider, expires_at, paystack_authorization_code, stripe_customer_id, stripe_payment_method_id, trial_ends_at",
+      )
       .eq("status", "trialing")
       .not("trial_ends_at", "is", null)
       .lte("trial_ends_at", now);
@@ -103,13 +114,41 @@ async function runJob(request: NextRequest) {
         provider_id: string;
         plan_id: string;
         billing_period?: string | null;
+        expires_at?: string | null;
         paystack_authorization_code?: string | null;
+        stripe_customer_id?: string | null;
+        stripe_payment_method_id?: string | null;
+        billing_provider?: string | null;
       };
-      if (t.paystack_authorization_code) {
+      if (t.billing_provider === "apple") continue;
+      const stripeReady =
+        t.billing_provider === "stripe" &&
+        Boolean(t.stripe_payment_method_id?.trim()) &&
+        Boolean(t.stripe_customer_id?.trim());
+      if (stripeReady) {
+        // Stripe renewal charges an active plan and skips a row with no customer.
+        const expiresAtMs = t.expires_at ? Date.parse(t.expires_at) : Number.NaN;
+        const periodStillOpen = Number.isFinite(expiresAtMs) && expiresAtMs > Date.parse(now);
         await supabase
           .from("provider_subscriptions")
-          .update({ status: "past_due", updated_at: now })
-          .eq("id", t.id);
+          .update({
+            status: "active",
+            auto_renew: true,
+            ...(periodStillOpen ? {} : { expires_at: now }),
+            updated_at: now,
+          })
+          .eq("id", t.id)
+          .eq("billing_provider", "stripe")
+          .eq("status", "trialing");
+        trialsConverted++;
+      } else if (t.paystack_authorization_code && t.billing_provider !== "stripe") {
+        await supabase
+          .from("provider_subscriptions")
+          .update({ status: "past_due", past_due_since: now, updated_at: now })
+          .eq("id", t.id)
+          .neq("billing_provider", "apple")
+          .neq("billing_provider", "stripe")
+          .eq("status", "trialing");
         trialsConverted++;
       } else {
         await supabase
@@ -118,6 +157,7 @@ async function runJob(request: NextRequest) {
             expirePatch(),
           )
           .eq("id", t.id)
+          .neq("billing_provider", "apple")
           .eq("status", "trialing");
         trialsLapsed++;
       }
@@ -165,24 +205,71 @@ async function runJob(request: NextRequest) {
     }
 
     // 3. Expire past_due subscriptions that have exceeded the grace period.
-    // A subscription enters past_due when a renewal payment fails. Paystack
-    // gets a 3-day grace window (from updated_at, which is set when status
-    // changes to past_due). Apple billing retry is up to 16 days — applying
-    // this 3-day cut would revoke paid features while Apple is still retrying.
+    // A subscription enters past_due when a renewal payment fails. Card billing
+    // gets a 3-day grace window from past_due_since, the first failed charge.
+    // updated_at cannot be that clock: a trigger rewrites it on every save,
+    // including dunning retries. Apple billing retry is up to 16 days.
+    // Paystack and Flutterwave still charge on days 1, 3, and 5 after each
+    // attempt, so a saved card stays past_due until those retries finish.
+    // Paid access already ended at day 3. Stripe and manual have no retry.
     const graceCutoff = new Date(Date.now() - PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const collectionCutoff = new Date(
+      Date.now() - dunningCollectionWindowDays() * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const retriesFinishedOrNoCard = `billing_provider.eq.stripe,billing_provider.eq.manual,paystack_authorization_code.is.null,dunning_retry_count.gte.${DUNNING_MAX_RETRIES}`;
 
-    const { data: pastDueExpired, error: pastDueError } = await supabase
-      .from("provider_subscriptions")
-      .update(expirePatch())
-      .eq("status", "past_due")
-      .neq("billing_provider", "apple")
+    const pastDueQuery = () =>
+      supabase
+        .from("provider_subscriptions")
+        .update(expirePatch())
+        .eq("status", "past_due")
+        .neq("billing_provider", "apple")
+        .lt("expires_at", now)
+        .select("id, provider_id");
+
+    const { data: pastDueExpired, error: pastDueError } = await pastDueQuery()
+      .lt("past_due_since", graceCutoff)
+      .or(retriesFinishedOrNoCard);
+    const { data: unanchoredPastDue, error: unanchoredError } = await pastDueQuery()
+      .is("past_due_since", null)
       .lt("updated_at", graceCutoff)
-      .lt("expires_at", now)
-      .select("id, provider_id");
+      .or(retriesFinishedOrNoCard);
+    const { data: collectionWindowExpired, error: collectionWindowError } = await pastDueQuery()
+      .lt("past_due_since", collectionCutoff)
+      .lt("dunning_retry_count", DUNNING_MAX_RETRIES)
+      .not("paystack_authorization_code", "is", null)
+      .neq("billing_provider", "stripe")
+      .neq("billing_provider", "manual");
+    const { data: unanchoredCollectionExpired, error: unanchoredCollectionError } =
+      await pastDueQuery()
+        .is("past_due_since", null)
+        .lt("updated_at", collectionCutoff)
+        .lt("dunning_retry_count", DUNNING_MAX_RETRIES)
+        .not("paystack_authorization_code", "is", null)
+        .neq("billing_provider", "stripe")
+        .neq("billing_provider", "manual");
 
     if (pastDueError) {
       console.error("Error expiring past-due subscriptions:", pastDueError);
     }
+    if (unanchoredError) {
+      console.error("Error expiring past-due subscriptions without a grace start:", unanchoredError);
+    }
+    if (collectionWindowError) {
+      console.error("Error expiring past-due subscriptions after card retries:", collectionWindowError);
+    }
+    if (unanchoredCollectionError) {
+      console.error(
+        "Error expiring past-due subscriptions after card retries without a grace start:",
+        unanchoredCollectionError,
+      );
+    }
+    const cardPastDueExpired = [
+      ...(pastDueExpired ?? []),
+      ...(unanchoredPastDue ?? []),
+      ...(collectionWindowExpired ?? []),
+      ...(unanchoredCollectionExpired ?? []),
+    ];
 
     const { data: applePastDueExpired, error: applePastDueError } = await supabase
       .from("provider_subscriptions")
@@ -198,12 +285,114 @@ async function runJob(request: NextRequest) {
       console.error("Error expiring Apple past-due subscriptions past grace period:", applePastDueError);
     }
 
-    const pastDueCount = (pastDueExpired?.length ?? 0) + (applePastDueExpired?.length ?? 0);
+    const pastDueCount = cardPastDueExpired.length + (applePastDueExpired?.length ?? 0);
     if (pastDueCount > 0) {
       console.log(
         `Expired ${pastDueCount} past-due subscriptions past grace period:`,
-        [...(pastDueExpired ?? []), ...(applePastDueExpired ?? [])].map((s) => s.id),
+        [...cardPastDueExpired, ...(applePastDueExpired ?? [])].map((s) => s.id),
       );
+    }
+
+    // A page view can mark the row expired before this job runs. Finish the lapse
+    // onto the free plan when that row is still on the paid plan.
+    let alreadyExpiredStillPaid: { id: string; provider_id: string }[] = [];
+    if (freePlanId) {
+      const { data: finished, error: finishedError } = await supabase
+        .from("provider_subscriptions")
+        .update(expirePatch())
+        .eq("status", "expired")
+        .neq("plan_id", freePlanId)
+        .lt("expires_at", now)
+        .or("auto_renew.eq.false,cancelled_at.not.is.null")
+        .select("id, provider_id");
+      if (finishedError) {
+        console.error("Error finishing expired subscriptions still on a paid plan:", finishedError);
+      } else {
+        alreadyExpiredStillPaid = (finished ?? []) as { id: string; provider_id: string }[];
+      }
+    }
+
+    const codeSelect = "id, paystack_subscription_code, tenant_id, provider_id";
+    const [codedExpired, codedFree, codedApple, codedStopNote] = await Promise.all([
+      supabase
+        .from("provider_subscriptions")
+        .select(codeSelect)
+        .eq("status", "expired")
+        .not("paystack_subscription_code", "is", null),
+      freePlanId
+        ? supabase
+            .from("provider_subscriptions")
+            .select(codeSelect)
+            .eq("plan_id", freePlanId)
+            .neq("status", "past_due")
+            .not("paystack_subscription_code", "is", null)
+        : Promise.resolve({ data: [], error: null }),
+      supabase
+        .from("provider_subscriptions")
+        .select(codeSelect)
+        .eq("billing_provider", "apple")
+        .not("paystack_subscription_code", "is", null),
+      supabase
+        .from("provider_subscriptions")
+        .select(codeSelect)
+        .like("paystack_sync_note", "We could not stop automatic billing%")
+        .neq("status", "past_due")
+        .not("paystack_subscription_code", "is", null),
+    ]);
+    const codedExpiredError =
+      codedExpired.error ||
+      codedFree.error ||
+      codedApple.error ||
+      codedStopNote.error;
+    if (codedExpiredError) {
+      console.error("Error loading Paystack subscriptions to stop:", codedExpiredError);
+    } else {
+      const seen = new Set<string>();
+      const codedRows = [
+        ...(codedExpired.data ?? []),
+        ...(codedFree.data ?? []),
+        ...(codedApple.data ?? []),
+        ...(codedStopNote.data ?? []),
+      ].filter((row) => {
+        const id = String((row as { id?: string }).id ?? "");
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+      for (const row of codedRows as Array<{
+        id: string;
+        paystack_subscription_code?: string | null;
+        tenant_id?: string | null;
+        provider_id?: string | null;
+      }>) {
+        const code = String(row.paystack_subscription_code ?? "").trim();
+        const stopped = await stopPaystackSubscriptionBeforeClear({
+          supabase,
+          code,
+          tenantId: row.tenant_id,
+          providerId: row.provider_id,
+        });
+        if (stopped === "cleared") {
+          await supabase
+            .from("provider_subscriptions")
+            .update({
+              paystack_subscription_code: null,
+              paystack_sync_pending: false,
+              paystack_sync_note: null,
+            })
+            .eq("id", row.id)
+            .eq("paystack_subscription_code", code);
+        } else if (stopped === "kept") {
+          await supabase
+            .from("provider_subscriptions")
+            .update({
+              paystack_sync_note:
+                "We could not stop automatic billing. Contact support if charges continue.",
+            })
+            .eq("id", row.id)
+            .eq("paystack_subscription_code", code);
+        }
+      }
     }
 
     // Notify affected providers about their expired subscriptions
@@ -211,7 +400,7 @@ async function runJob(request: NextRequest) {
       ...failedScheduledDowngrades.map((s) => ({ ...s, reason: "payment_failed" as const })),
       ...(expired ?? []).map((s) => ({ ...s, reason: "cancelled_at_period_end" as const })),
       ...(naturalExpired ?? []).map((s) => ({ ...s, reason: "expired" as const })),
-      ...(pastDueExpired ?? []).map((s) => ({ ...s, reason: "payment_failed" as const })),
+      ...(cardPastDueExpired).map((s) => ({ ...s, reason: "payment_failed" as const })),
       ...(applePastDueExpired ?? []).map((s) => ({ ...s, reason: "payment_failed" as const })),
     ];
     const lapsedTrialProviderIds = (expiredTrials ?? [])
@@ -219,6 +408,7 @@ async function runJob(request: NextRequest) {
       .map((trial) => (trial as { provider_id?: string }).provider_id);
     staffCapsEnforced += await enforceStaffCapsForProviders(supabase, [
       ...allExpired.map((s) => s.provider_id),
+      ...alreadyExpiredStillPaid.map((s) => s.provider_id),
       ...lapsedTrialProviderIds,
     ]);
 
@@ -268,7 +458,7 @@ async function runJob(request: NextRequest) {
             ? "Your subscription has been cancelled as the billing period ended."
             : sub.reason === "payment_failed"
               ? "Your subscription has expired due to unsuccessful payment renewal."
-              : "Your subscription has expired. Renew to keep your premium features.";
+              : "Your subscription has expired. Renew to restore your premium features.";
 
           await insertNotification({
             user_id: prov.userId,
@@ -285,6 +475,8 @@ async function runJob(request: NextRequest) {
             {
               business_name: prov.name || "",
               reason: sub.reason,
+              app_url: process.env.NEXT_PUBLIC_APP_URL ?? "",
+              notice: reasonMsg,
             },
             ["push"],
             // In-app bell row inserted manually above; skip template auto-insert.

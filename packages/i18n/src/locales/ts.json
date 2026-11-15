@@ -9618,7 +9618,7 @@
           "markPaid": "Mark yi hakeleriwile",
           "sectionTitle": "Ku hakela",
           "ownerHint": "Tumbuluxa ku hakela ka nkarhi, u tlhe u tlika run yo sivela ku lulamisa PAYE, UIF, na ku tshusiwa hi ku tala eka vatirhi. Pfumelela u tlhe u tshwa yi hakeriwile loko u lunghele.",
-          "staffHint": "Vona hakela runs for your workplace. Only the Bindzu n'wini can tumbuluxa runs, pfumelela, or mark them yi hakeleriwile.",
+          "staffHint": "U vona ntsena papila ra wena ra muholo. N'wini wa bindzu, kumbe loyi a nyikiweke mpfumelelo wa muholo, u tumbuluxa muholo, u wu pfumelela, naswona u wu tshwaya wu hakeriwile.",
           "emptyTitle": "A ku na hakela runs sweswi",
           "emptyOwner": "Endla ku tsutsuma ka muholo ka nkarhi wa vhiki na vhiki kumbe n’hweti na n’hweti. Kutani pfumelela u tlhela u fungha yi hakeriwile laha.",
           "emptyStaff": "N’wini wa wena a nga si tumbuluxa pay run. Va kombele leswaku va sungula yin’we eka xikirini lexi.",
@@ -13913,7 +13913,8 @@
       "requestChangesTitle": "xikombelo cincas",
       "requestChangesBody": "Vertel die verskaffer wat jy wil hê moet aangepas word.",
       "requestChangesEmpty": "Describe the cincas you want.",
-      "requestChangesFailed": "Swi tsandzile ku xikombelo cincas"
+      "requestChangesFailed": "Swi tsandzile ku xikombelo cincas",
+      "offerStatusNeedsSupport": "Needs nseketelo"
     },
     "walletScreen": {
       "balanceLabel": "xikhwama ntshwa",
@@ -15534,7 +15535,7 @@
           "emailRequiredTitle": "imeyili swi laveka",
           "emailRequiredBody": "Engetela adirese ya imeyili eka akhawunti ya wena u nga ha hakeli oda leyi inthaneteni.",
           "paymentUnavailableTitle": "xihakelo a yi kumeki",
-          "paymentUnavailableBody": "We could not sungula xihakelo for this odara. Ringa nakambe.",
+          "paymentUnavailableBody": "A hi swi kotanga ku sungula hakelo ya xiodara lexi. Ringeta nakambe.",
           "shareErrorTitle": "Avelana",
           "shareErrorBody": "Couldn't avelana this risiti.",
           "downloadReceiptTitle": "Panga risiti",
@@ -15575,7 +15576,7 @@
           "timelineShipped": "Yi rhumeriwile",
           "timelineCollected": "Ku hlengeletiwa",
           "timelineDelivered": "Yi rhumeriwile",
-          "trackShipment": "Track shipment",
+          "trackShipment": "Landzelela rhumelo",
           "trackingLabel": "Ku landzelela: {{detail}}",
           "openTrackingA11y": "Pfula Ku landzelela",
           "openTrackingWithCarrierA11y": "Pfula Ku landzelela with {{carrier}}",
@@ -15585,7 +15586,7 @@
           "returnApproved": "Return yi pfumeriwile",
           "itemReceived": "Xilo Received",
           "returnRejected": "Return yi aleleriwile",
-          "returnEscalated": "Return Escalated",
+          "returnEscalated": "Terugsend eskaleer",
           "returnCancelled": "Return yi khanseriwile",
           "returnStatusPending": "yi yimile",
           "returnStatusApproved": "yi pfumeriwile",
@@ -15600,7 +15601,7 @@
           "refundAmountLabel": "nxavo mpimo:",
           "requestedOn": "Ku kombetiwile hi {{date}}",
           "items": "Swilo",
-          "itemQtyPrice": "{{count}} x {{price}}",
+          "itemQtyPrice": "{{count}} × {{price}}",
           "yourDetails": "vuxokoxoko ya wena",
           "nameLabel": "Vito",
           "emailLabel": "imeyili",
@@ -15636,10 +15637,10 @@
           "promotion": "Ku tlakusiwa",
           "calculatedTotal": "Calculated hinkwaswo",
           "chargedTotal": "Charged hinkwaswo",
-          "totalDifferenceHint": "Small differences can come from rounding or xikhangelotions applied at ku hakela.",
+          "totalDifferenceHint": "Ku hambana lokutsongo swi nga huma eka ku rhendzeleka kumbe swiheleriso swi nga tirhisiwa loko ku hakeriwa.",
           "soldBy": "Xi xavisiwile hi",
           "requestReturnCta": "xikombelo Return / nxavo",
-          "returnWindowPassed": "Return window ({{days}} masiku) has passed. For mpfuno, pfula phurofayili → Mpfuno centre → New thikiti.",
+          "returnWindowPassed": "Nkarhi wo vuyisa (masiku ya {{days}}) wu hundzile. Ku pfuniwa, pfula Phurofayela → Senthara ya mpfuno → Thikiti yintshwa.",
           "readyForPickupTitle": "Lulamele ku tekiwa",
           "lineFulfilment": "Ku hetiseka: {{status}}",
           "unitLabel": "Yunithi",
@@ -15647,7 +15648,11 @@
           "accessLabel": "Ku nghena",
           "parkingLabel": "Ku paka",
           "landmarksLabel": "Swikombiso",
-          "partiallyRefundedContactProvider": "Odara leyi yi tlheriseriwile hi xiphemu. Tihlanganisi na muphakeri ku tlherisela mali leyi saleke."
+          "partiallyRefundedContactProvider": "Odara leyi yi tlheriseriwile hi xiphemu. Tihlanganisi na muphakeri ku tlherisela mali leyi saleke.",
+          "refunded": "Yi tlheriseriwile",
+          "messageProvider": "Rhumela hungu eka mupfuneti",
+          "messageFailedTitle": "rungula",
+          "messageFailedBody": "A yi swi kotanga ku sungula mbulavulo na muphakeri lowu."
         },
         "customRequestsList": {
           "startPaymentFailed": "Swi tsandzile ku sungula xihakelo",
@@ -20926,7 +20931,8 @@
         "createOfferFailedShort": "Swi tsandzile ku tumbuluxa offer",
         "changeClient": "Cinca",
         "searchClientPlaceholder": "Lava hi vito, imeyili kumbe riqingho (xik. 082…)",
-        "searchClientHint": "Tsala kwalomu ka swihlawulekisi swi 2"
+        "searchClientHint": "Tsala kwalomu ka swihlawulekisi swi 2",
+        "continuePayment": "yana emahlweni xihakelo"
       },
       "privacyAndSharing": {
         "tabAccount": "Akhawunti",
@@ -35519,7 +35525,9 @@
         "editOffer": "Hlela offer",
         "withdrawOfferConfirm": "Xana u tiyisile leswaku u lava ku susa xixiviso lexi?",
         "withdrawOffer": "Mbuyiseni Mbuyiseni",
-        "couldNotLoadOfferDetails": "A swi koteki ku loyida offer vuxokoxoko."
+        "couldNotLoadOfferDetails": "A swi koteki ku loyida offer vuxokoxoko.",
+        "statusNeedsSupport": "Needs nseketelo",
+        "resumePayment": "ya emahlweni xihakelo"
       },
       "customOfferModal": {
         "loadOfferFailed": "A swi koteki ku loyida offer",
@@ -36462,7 +36470,13 @@
         "waitingBody": "Hi tiyisisa ku hakela ka wena. Pfuxeta swikombelo swa wena swa ntolovelo hi nkarhinyana.",
         "backToRequests": "endzhaku to Xo tiendlela swikombelo",
         "changesRequestedTitle": "Nyiko yi ri karhi yi pfuxetiwa",
-        "changesRequestedBody": "Muphakeri wa wena u pfuxeta nyiko leyi endzhaku ka xikombelo xa wena xo cinca."
+        "changesRequestedBody": "Muphakeri wa wena u pfuxeta nyiko leyi endzhaku ka xikombelo xa wena xo cinca.",
+        "viewBooking": "Vona ku buka",
+        "needsSupportTitle": "xihakelo needs nseketelo",
+        "resumePayment": "ya emahlweni xihakelo",
+        "needsSupportBody": "Hi amukele mali, kambe a hi swi kotanga ku endla xibukiso. Ti khulavule na nseketelo hi nomoro ya wena ya mali.",
+        "unavailableBody": "Kombela muphakeri xiringanyeto lexintshwa loko u nga ha lava vukorhokeri lebyi.",
+        "unavailableTitle": "Xitandzhaku lexi a xi ha hakeriwi"
       }
     },
     "groupInvite": {

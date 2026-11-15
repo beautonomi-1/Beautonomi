@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { subtractMoney } from "@beautonomi/utils";
 import { Link, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_ECOMMERCE } from "@beautonomi/admin-access";
@@ -28,6 +29,7 @@ type OrderRow = Record<string, unknown> & {
   payment_status?: string;
   fulfillment_type?: string;
   total_amount?: number;
+  refunded_amount?: number | null;
   created_at?: string;
   customer?: { full_name?: string; email?: string; phone?: string } | null;
   provider?: { business_name?: string; id?: string } | null;
@@ -228,7 +230,7 @@ export function ProductOrdersPage() {
                   <AdminTd>{String(o.fulfillment_type ?? "")}</AdminTd>
                   <AdminTd>{String(o.status ?? "")}</AdminTd>
                   <AdminTd>{String(o.payment_status ?? "")}</AdminTd>
-                  <AdminTd className="tabular-nums">{Number(o.total_amount ?? 0).toFixed(2)}</AdminTd>
+                  <AdminTd className="tabular-nums">{Math.max(0, subtractMoney(Number(o.total_amount ?? 0), Math.max(0, Number(o.refunded_amount ?? 0)))).toFixed(2)}</AdminTd>
                 </tr>
               );
             })}

@@ -9,6 +9,10 @@ vi.mock("@/lib/auth/permissions", () => ({
   getStaffPermissions: async () => ({ manage_payroll: false, manage_team: false }),
 }));
 
+vi.mock("@/lib/payroll/payroll-access", () => ({
+  userCanManagePayroll: async () => false,
+}));
+
 vi.mock("@/lib/auth/requirePermission", () => ({
   requirePermission: async () => ({ authorized: false }),
 }));

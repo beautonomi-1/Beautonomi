@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
         .update({
           expires_at: nextExpires,
           status: "active",
+          past_due_since: null,
           updated_at: new Date().toISOString(),
         })
         .eq("provider_id", row.provider_id);

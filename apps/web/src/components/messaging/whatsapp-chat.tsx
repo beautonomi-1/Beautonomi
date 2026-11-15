@@ -1831,15 +1831,21 @@ export default function WhatsAppChat({
           ) : offerDetailData ? (() => {
             const d = offerDetailData;
             const req = d.request ?? d;
-            const rawStatus: string = String(d.status ?? "pending");
-            const isPaidDetail = rawStatus === "paid" || !!d.booking_id;
+            const rawStatus: string = String(d.status ?? "pending").toLowerCase();
+            const pastExpiration = !!d.expiration_at && new Date(d.expiration_at).getTime() <= Date.now();
+            const isPaidDetail = rawStatus === "paid" || (rawStatus === "accepted" && !!d.booking_id);
             const isWithdrawnDetail = rawStatus === "withdrawn";
-            const isExpiredDetail = rawStatus === "expired";
             const isDeclinedDetail = rawStatus === "declined";
-            const isChangesRequestedDetail = rawStatus === "changes_requested";
-            const isPaymentPendingDetail = rawStatus === "payment_pending";
+            const isFinalizeFailedDetail = rawStatus === "finalize_failed" || (rawStatus === "accepted" && !d.booking_id);
+            const isExpiredDetail =
+              rawStatus === "expired" ||
+              (pastExpiration && !isPaidDetail && !isFinalizeFailedDetail && !isWithdrawnDetail && !isDeclinedDetail);
+            const isChangesRequestedDetail = rawStatus === "changes_requested" && !isExpiredDetail;
+            const isPaymentPendingDetail = rawStatus === "payment_pending" && !isExpiredDetail;
             const statusLabel = isPaidDetail
               ? t("web.messaging.whatsappChat.statusBooked")
+              : isFinalizeFailedDetail
+                ? t("web.messaging.whatsappChat.statusNeedsSupport", { defaultValue: "Needs support" })
               : isWithdrawnDetail
                 ? t("web.messaging.whatsappChat.statusWithdrawn")
                 : isDeclinedDetail
@@ -1984,6 +1990,7 @@ export default function WhatsAppChat({
                     !isExpiredDetail &&
                     !isDeclinedDetail &&
                     !isPaymentPendingDetail &&
+                    !isFinalizeFailedDetail &&
                     !isChangesRequestedDetail &&
                     d.id && (
                     <>
@@ -2017,6 +2024,7 @@ export default function WhatsAppChat({
                     !isExpiredDetail &&
                     !isDeclinedDetail &&
                     !isPaymentPendingDetail &&
+                    !isFinalizeFailedDetail &&
                     d.id && (
                       <Button
                         variant="outline"
@@ -2031,7 +2039,18 @@ export default function WhatsAppChat({
                         )}
                       </Button>
                     )}
-                  {/* Customer: View Booking when paid */}
+                  {!isProviderChat && isPaymentPendingDetail && d.id && (
+                    <Button
+                      className="w-full"
+                      disabled={isAcceptingOffer}
+                      onClick={() => {
+                        setOfferDetailOpen(false);
+                        void openPaymentDialog(d.id, d.currency);
+                      }}
+                    >
+                      {t("web.messaging.whatsappChat.resumePayment", { defaultValue: "Resume payment" })}
+                    </Button>
+                  )}
                   {!isProviderChat && isPaidDetail && d.booking_id && (
                     <Button
                       variant="outline"

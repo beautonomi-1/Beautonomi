@@ -57,6 +57,7 @@ export async function GET(
         work_hours_enabled,
         commission_enabled,
         commission_rate,
+        commission_percentage,
         hourly_rate,
         salary,
         tips_enabled,
@@ -108,7 +109,9 @@ export async function GET(
       desktop_notifications_enabled: staff.desktop_notifications_enabled ?? false,
       work_hours_enabled: staff.work_hours_enabled ?? true,
       commission_enabled: staff.commission_enabled ?? false,
-      commission_rate: staff.commission_rate ?? 0,
+      commission_rate: staff.commission_rate ?? null,
+      commission_percentage:
+        (staff as { commission_percentage?: number | null }).commission_percentage ?? null,
       hourly_rate: staff.hourly_rate ?? 0,
       salary: staff.salary ?? 0,
       tips_enabled: staff.tips_enabled ?? true,

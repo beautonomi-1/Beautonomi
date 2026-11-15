@@ -665,7 +665,7 @@ export async function allocatePaystackTerminalPaymentMobile(
 
   if (entityType === "product_order") {
     const { data: order } = await (admin.from("product_orders") as any)
-      .select("id, provider_id, order_source, status")
+      .select("id, provider_id, order_source, status, payment_status, payment_reference")
       .eq("id", entityId)
       .eq("provider_id", providerId)
       .maybeSingle();
@@ -681,11 +681,17 @@ export async function allocatePaystackTerminalPaymentMobile(
       return errorResponse(due.message, "PAYMENT_LOOKUP_FAILED", 500);
     }
     if (requestedAmount > due.due + 0.02) {
-      return errorResponse(
-        "Allocation amount is more than this order still owes.",
-        "AMOUNT_MISMATCH",
-        400,
-      );
+      const samePaidCharge =
+        String((order as { payment_status?: string }).payment_status ?? "").toLowerCase() === "paid" &&
+        String((order as { payment_reference?: string }).payment_reference ?? "").trim() ===
+          String(payment.paystack_reference ?? "").trim();
+      if (!samePaidCharge) {
+        return errorResponse(
+          "Allocation amount is more than this order still owes.",
+          "AMOUNT_MISMATCH",
+          400,
+        );
+      }
     }
 
     const payRecord = await recordProductOrderPayment({
@@ -713,26 +719,40 @@ export async function allocatePaystackTerminalPaymentMobile(
       const { fulfillWalkInProductOrderDelivery } = await import(
         "@/lib/provider-sales/fulfill-walk-in-product-order-delivery"
       );
-      await fulfillWalkInProductOrderDelivery({
+      const delivery = await fulfillWalkInProductOrderDelivery({
         supabase: admin as any,
         providerId,
         orderId: entityId,
       });
+      if (delivery.ok === false) {
+        return errorResponse(
+          delivery.reason === "payment_not_settled"
+            ? "The sale is not paid, so the products were not taken."
+            : delivery.reason,
+          "STOCK_ERROR",
+          409,
+        );
+      }
     }
   }
 
   if (entityType === "sale") {
     const { data: sale } = await admin
       .from("sales")
-      .select("id, provider_id, payment_status, notes")
+      .select("id, provider_id, payment_status, payment_provider, payment_provider_id, notes")
       .eq("id", entityId)
       .eq("provider_id", providerId)
       .maybeSingle();
     if (!sale) {
       return errorResponse("Sale target not found for this provider.", "TARGET_NOT_FOUND", 404);
     }
+    const sameCompletedCharge =
+      String((sale as { payment_status?: string }).payment_status ?? "").toLowerCase() === "completed" &&
+      String((sale as { payment_provider?: string }).payment_provider ?? "") === "paystack_virtual_terminal" &&
+      String((sale as { payment_provider_id?: string }).payment_provider_id ?? "").trim() ===
+        String(payment.paystack_reference ?? "").trim();
     const saleDue = await saleCardAmountStillDueForSale(admin, providerId, entityId);
-    if (!saleChargeMatchesDue(requestedAmount, saleDue)) {
+    if (!sameCompletedCharge && !saleChargeMatchesDue(requestedAmount, saleDue)) {
       return errorResponse(
         "Amount does not match what this sale still owes.",
         "AMOUNT_MISMATCH",
@@ -772,7 +792,11 @@ export async function allocatePaystackTerminalPaymentMobile(
       if (gift.ok === false) return errorResponse(gift.message, "GIFT_CARD_ERROR", 400);
     }
 
-    const { error: saleUpdateError } = await admin
+    const previousStatus = String((sale as { payment_status?: string }).payment_status ?? "");
+    if (previousStatus === "refunded") {
+      return errorResponse("This sale has been refunded.", "SALE_REFUNDED", 400);
+    }
+    const { data: claimedSale, error: saleUpdateError } = await admin
       .from("sales")
       .update({
         payment_status: "completed",
@@ -780,9 +804,28 @@ export async function allocatePaystackTerminalPaymentMobile(
         payment_provider_id: payment.paystack_reference,
       })
       .eq("id", entityId)
-      .eq("provider_id", providerId);
+      .eq("provider_id", providerId)
+      .eq("payment_status", previousStatus)
+      .select("id")
+      .maybeSingle();
     if (saleUpdateError) throw saleUpdateError;
-    if (becomingCompleted) await applyPosProductStockDecrements(admin as any, itemsForStock);
+    if (claimedSale && becomingCompleted) {
+      try {
+        await applyPosProductStockDecrements(admin as any, itemsForStock);
+      } catch (stockErr) {
+        await admin
+          .from("sales")
+          .update({ payment_status: previousStatus })
+          .eq("id", entityId)
+          .eq("provider_id", providerId)
+          .eq("payment_status", "completed");
+        return errorResponse(
+          stockErr instanceof Error ? stockErr.message : "Stock could not be updated.",
+          "STOCK_ERROR",
+          400,
+        );
+      }
+    }
   }
 
   if (entityType === "additional_charge") {
@@ -928,23 +971,37 @@ export async function allocatePaystackTerminalPaymentMobile(
     });
   }
 
-  const { data: allocation, error: allocationError } = await (admin
+  const { data: existingAllocations } = await (admin
     .from("provider_terminal_payment_allocations") as any)
-    .insert({
-      terminal_payment_id: paymentId,
-      provider_id: providerId,
-      entity_type: entityType,
-      entity_id: entityId,
-      amount: requestedAmount,
-      currency: payment.currency ?? "ZAR",
-      status: "confirmed",
-      reason: body.reason ?? null,
-      allocated_by: user.id,
-      allocated_at: now,
-    })
-    .select()
-    .single();
-  if (allocationError) throw allocationError;
+    .select("id, terminal_payment_id, provider_id, entity_type, entity_id, amount, currency, status, reason, allocated_by, allocated_at")
+    .eq("terminal_payment_id", paymentId)
+    .eq("provider_id", providerId)
+    .eq("entity_type", entityType)
+    .eq("entity_id", entityId)
+    .eq("amount", requestedAmount)
+    .eq("status", "confirmed")
+    .limit(1);
+  let allocation = existingAllocations?.[0] ?? null;
+  if (!allocation) {
+    const { data: insertedAllocation, error: allocationError } = await (admin
+      .from("provider_terminal_payment_allocations") as any)
+      .insert({
+        terminal_payment_id: paymentId,
+        provider_id: providerId,
+        entity_type: entityType,
+        entity_id: entityId,
+        amount: requestedAmount,
+        currency: payment.currency ?? "ZAR",
+        status: "confirmed",
+        reason: body.reason ?? null,
+        allocated_by: user.id,
+        allocated_at: now,
+      })
+      .select()
+      .single();
+    if (allocationError) throw allocationError;
+    allocation = insertedAllocation;
+  }
 
   const nextAllocatedAmount = addMoney(allocatedAmount, requestedAmount);
   const fullyAllocated = nextAllocatedAmount >= paidAmount;

@@ -248,11 +248,43 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const group = await assertAdminCanAccessGroup(admin, id, tenantId);
     if (!group) return errorResponse("Group booking not found", "NOT_FOUND", 404);
 
-    const { cancelGroupBooking } = await import("@/lib/bookings/group-booking-cancellation");
-    await cancelGroupBooking(admin, id, "admin", "Group booking cancelled by admin", {
+    const { cancelGroupBooking, getGroupBookingParticipantsForCancellation } = await import(
+      "@/lib/bookings/group-booking-cancellation"
+    );
+    const childSettlements = await cancelGroupBooking(admin, id, "admin", "Group booking cancelled by admin", {
       settleFinance: true,
       financeActor: "admin",
     });
+
+    try {
+      const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
+      const { cancellationNoticeFromGroupChild } = await import(
+        "@/lib/bookings/cancellation-outcome-bridge"
+      );
+      const { notifyGroupGuestsWithoutAccountsOfCancellation } = await import(
+        "@/lib/bookings/group-booking-notifications"
+      );
+      await notifyGroupGuestsWithoutAccountsOfCancellation(admin, {
+        participants: await getGroupBookingParticipantsForCancellation(admin, id),
+        providerId: group.provider_id,
+        bookingRef: id,
+        cancelledBy: "admin",
+        guestCardRefundPending: childSettlements.some((child) => child.guestShareRefundFailed),
+      });
+      await Promise.allSettled(
+        childSettlements.map(async (child) => {
+          const notice = cancellationNoticeFromGroupChild(child);
+          await sendCancellationNotification(child.bookingId, {
+            cancelledBy: "system",
+            refundInfo: notice.refundInfo,
+            walletRefund: notice.walletRefund,
+            currency: child.currency,
+          });
+        }),
+      );
+    } catch (notifyErr) {
+      console.error("[admin group cancel] notification failed:", notifyErr);
+    }
 
     return successResponse({ success: true });
   } catch (error) {

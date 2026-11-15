@@ -9,6 +9,13 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { issueAdminWalletRefund } from "@/lib/finance/issue-admin-wallet-refund";
+import { refundableExcludingGiftStillDue } from "@/lib/bookings/settle-booking-cancellation";
+import { visitClosedForGiftReturn } from "@/lib/bookings/gift-value-still-due";
+import {
+  lineUpBookingStockWithSavedStatus,
+  restoreBookingRetailStock,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
 import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
 
 /**
@@ -47,7 +54,7 @@ export async function POST(
       supabase,
       id,
       tenantId,
-      "id, total_amount, total_paid, total_refunded, customer_id, booking_number, currency, payment_status, tenant_id, provider_id, wallet_amount, gift_card_amount"
+      "id, total_amount, total_paid, total_refunded, customer_id, booking_number, currency, payment_status, status, tenant_id, provider_id, wallet_amount, gift_card_amount, cancellation_settlement_error"
     );
     if ("error" in loaded) return loaded.error;
 
@@ -68,7 +75,56 @@ export async function POST(
       provider_id?: string | null;
       wallet_amount?: number;
       gift_card_amount?: number;
+      status?: string | null;
+      cancellation_settlement_error?: string | null;
     };
+
+    const billAmount = Number(b.total_amount ?? 0);
+    const alreadyRefunded = Number(b.total_refunded ?? 0);
+    if (
+      b.payment_status === "refunded" &&
+      String(b.status ?? "") !== "cancelled" &&
+      refundAmount + 0.01 >= billAmount &&
+      alreadyRefunded + 0.01 >= billAmount
+    ) {
+      let stockReturned: Awaited<ReturnType<typeof restoreBookingRetailStock>> = [];
+      try {
+        stockReturned = await restoreBookingRetailStock(supabase, id);
+      } catch (stockErr) {
+        return errorResponse(
+          stockErr instanceof Error
+            ? `The refund was recorded, but the products could not be put back. ${stockErr.message}`
+            : "The refund was recorded, but the products could not be put back. The visit was not cancelled.",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+      const { data: cancelledRows } = await supabase
+        .from("bookings")
+        .update({
+          status: "cancelled",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .neq("status", "cancelled")
+        .select("id");
+      if (!cancelledRows?.length) {
+        try {
+          await lineUpBookingStockWithSavedStatus(supabase, id, [], stockReturned);
+        } catch (undoErr) {
+          console.error("[admin refund] stock could not be lined up:", undoErr);
+        }
+      }
+      if (cancelledRows?.length) {
+        await returnPackageSessionAfterCancel(supabase, id);
+      }
+      return successResponse({
+        id: null,
+        booking_id: id,
+        amount: 0,
+        already_refunded: true,
+      });
+    }
 
     if (b.payment_status !== "paid" && b.payment_status !== "partially_paid") {
       return errorResponse("Can only refund paid or partially paid bookings", "INVALID_STATUS", 400);
@@ -80,7 +136,14 @@ export async function POST(
       Number(b.total_paid ?? 0),
       addMoney(Number(b.wallet_amount ?? 0), Number(b.gift_card_amount ?? 0)),
     );
-    const availableForRefund = subtractMoney(totalCollected, b.total_refunded ?? 0);
+    const availableForRefund = refundableExcludingGiftStillDue(
+      subtractMoney(totalCollected, b.total_refunded ?? 0),
+      b.cancellation_settlement_error,
+      {
+        giftCardAmount: Number(b.gift_card_amount ?? 0),
+        visitClosed: visitClosedForGiftReturn(b.status),
+      },
+    );
     if (refundAmount > availableForRefund) {
       const displayCurrency = b.currency || lastResortCurrency;
       const fmtAvail = new Intl.NumberFormat(adminRefundLocale, {
@@ -138,13 +201,37 @@ export async function POST(
     const refundId = outcome.refundId;
 
     if (refundAmount >= b.total_amount) {
-      await supabase
+      let stockReturned: Awaited<ReturnType<typeof restoreBookingRetailStock>> = [];
+      try {
+        stockReturned = await restoreBookingRetailStock(supabase, id);
+      } catch (stockErr) {
+        return errorResponse(
+          stockErr instanceof Error
+            ? `The refund was recorded, but the products could not be put back. ${stockErr.message}`
+            : "The refund was recorded, but the products could not be put back. The visit was not cancelled.",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+      const { data: cancelledRows } = await supabase
         .from("bookings")
         .update({
           status: "cancelled",
           updated_at: new Date().toISOString(),
         })
-        .eq("id", id);
+        .eq("id", id)
+        .neq("status", "cancelled")
+        .select("id");
+      if (!cancelledRows?.length) {
+        try {
+          await lineUpBookingStockWithSavedStatus(supabase, id, [], stockReturned);
+        } catch (undoErr) {
+          console.error("[admin refund] stock could not be lined up:", undoErr);
+        }
+      }
+      if (cancelledRows?.length) {
+        await returnPackageSessionAfterCancel(supabase, id);
+      }
 
       try {
         const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");

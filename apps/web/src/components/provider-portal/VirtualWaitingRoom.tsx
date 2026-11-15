@@ -10,7 +10,7 @@ import type { WaitingRoomEntry } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { useConfigBundle, useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { playRingtone } from "@/lib/on-demand/ringtone";
 import { useTranslation } from "@beautonomi/i18n";
 import { phoneMatchesQuery } from "@/lib/phone";
@@ -27,11 +27,19 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, _setStatusFilter] = useState<"all" | "waiting" | "in_service" | "completed">("all");
   const onDemandConfig = useModuleConfig("on_demand");
+  const { bundle } = useConfigBundle();
+  const ringtoneEnvironment =
+    bundle?.meta.env ?? (process.env.NODE_ENV === "development" ? "development" : "production");
   const prevWaitingCountRef = useRef<number | null>(null);
   const ringtoneStopRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState !== "visible") ringtoneStopRef.current?.();
+    };
+    document.addEventListener("visibilitychange", onHide);
     return () => {
+      document.removeEventListener("visibilitychange", onHide);
       ringtoneStopRef.current?.();
     };
   }, []);
@@ -40,7 +48,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
     loadEntries();
     const interval = setInterval(loadEntries, 30000);
     return () => clearInterval(interval);
-  }, [statusFilter, locationId]);
+  }, [statusFilter, locationId, ringtoneEnvironment]);
 
   const loadEntries = async () => {
     try {
@@ -64,7 +72,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }
             ring_duration_seconds: onDemandConfig.ring_duration_seconds ?? 20,
             ring_repeat: onDemandConfig.ring_repeat ?? true,
           },
-          { environment: "production" }
+          { environment: ringtoneEnvironment }
         );
         ringtoneStopRef.current = ctrl.stop;
       }

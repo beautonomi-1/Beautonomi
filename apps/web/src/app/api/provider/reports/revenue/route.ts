@@ -1,4 +1,4 @@
-import { addMoney, multiplyMoney } from "@beautonomi/utils";
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -15,6 +15,7 @@ import {
   getPreviousPeriodNetAfterRefunds,
 } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
+import { bookingLineShares, averageOfLedgerNets } from "@/lib/reports/staff-ledger-revenue";
 import {
   eachReportDateKey,
   filterLedgerRowsForLocation,
@@ -118,11 +119,10 @@ export async function GET(request: NextRequest) {
     (bookingsRes || []).forEach((b: any) => {
       const bRev = revenueByBooking.get(b.id) || 0;
       const services = b.booking_services || [];
-      const total = services.reduce((s: number, sv: any) => addMoney(s, Number(sv.price || 0)), 0);
-      services.forEach((sv: any) => {
+      const shares = bookingLineShares(bRev, services);
+      services.forEach((sv: any, index: number) => {
         const name = sv.offerings?.title || "Unknown";
-        const proportion = total > 0 ? Number(sv.price || 0) / total : 1 / Math.max(services.length, 1);
-        const allocatedRevenue = multiplyMoney(bRev, proportion);
+        const allocatedRevenue = shares[index] ?? 0;
         serviceMap.set(name, addMoney(serviceMap.get(name) ?? 0, allocatedRevenue));
         const staffName = sv.staff_id ? staffNameById.get(sv.staff_id) || "Unassigned" : "Unassigned";
         staffMap.set(staffName, addMoney(staffMap.get(staffName) ?? 0, allocatedRevenue));
@@ -136,16 +136,10 @@ export async function GET(request: NextRequest) {
       .map(([staff, revenue]) => ({ staff, revenue }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    let bookingCountWithRevenue = 0;
-    revenueByBooking.forEach((v) => {
-      if (v > 0) bookingCountWithRevenue += 1;
-    });
-
+    const bookingCountWithRevenue = revenueByBooking.size;
     const ledgerFromBookings = Array.from(revenueByBooking.values()).reduce((s, v) => addMoney(s, v), 0);
     const ledgerFromProductOrders = Array.from(revenueByProductOrder.values()).reduce((s, v) => addMoney(s, v), 0);
-
-    const avgLedgerPerBookingWithEarnings =
-      bookingCountWithRevenue > 0 ? multiplyMoney(ledgerFromBookings, 1 / bookingCountWithRevenue) : 0;
+    const avgLedgerPerBookingWithEarnings = averageOfLedgerNets(revenueByBooking.values());
 
     const reportBasis =
       `Window ${fromYmd}–${toYmd} (${reportContext.timezone}). ` +
@@ -154,7 +148,7 @@ export async function GET(request: NextRequest) {
       `Cancellation fees are already included in recognized revenue; total_revenue_inclusive kept for backward compatibility. ` +
       `Service and staff breakdowns allocate **booking-linked** ledger only across booking_services lines by price share — retail-only ledger does not appear there. ` +
       `Daily trend rolls up ledger net by calendar day (recognition date). ` +
-      `avg_per_booking is mean booking-linked ledger ÷ count of bookings with positive ledger allocation — not booking.total_amount. ` +
+      `avg_per_booking is the mean booking-linked ledger for every booking that has a ledger row, including a refund. ` +
       `previous_revenue compares the immediately prior equal-length window ending at period start.`;
 
     const basis = {
@@ -167,7 +161,7 @@ export async function GET(request: NextRequest) {
       breakdown:
         "Per-service/staff uses ledger attributed to each booking, split by line prices.",
       avgPerBooking:
-        "Sum(provider_earnings allocated to bookings) ÷ bookings with any ledger allocation.",
+        "Sum of booking-linked ledger, including a refund, ÷ bookings that have a ledger row.",
       dailyTrend: "revenueByDate keys — same ledger rules as headline.",
     };
 

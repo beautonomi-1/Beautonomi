@@ -13,6 +13,7 @@ import {
   clearUncollectedProviderPortalPlatformFeeIfNeeded,
   type BookingFeeClearRow,
 } from "@/lib/bookings/provider-booking-platform-fee";
+import { giftCardCaptureAnswer, giftCardCaptureSucceeded } from "@/lib/bookings/gift-value-still-due";
 import {
   allocateCheckoutGift,
   applyCheckoutBillAdjustment,
@@ -27,6 +28,7 @@ import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invaria
 import { assertYocoMarkPaidReference } from "@/lib/payments/assert-yoco-mark-paid-reference";
 import { recordCheckoutTipPayment } from "@/lib/bookings/record-checkout-tip-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { releaseGiftCardOrRemember, rememberGiftCaptureStillDue } from "@/lib/bookings/rollback-collectible-split-leg";
 import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 type AdditionalChargeRow = {
@@ -508,8 +510,14 @@ export async function POST(
           "capture_gift_card_redemption",
           { p_booking_id: bookingId },
         );
-        if (captureError || captured === false) {
-          await supabaseAdmin.rpc("void_gift_card_redemption", { p_booking_id: bookingId });
+        if (captureError || !giftCardCaptureSucceeded(captured)) {
+          if (!captureError && giftCardCaptureAnswer(captured) === "absent") {
+            await releaseGiftCardOrRemember(
+              supabaseAdmin,
+              bookingId,
+              (booking as { tenant_id?: string | null }).tenant_id ?? null,
+            );
+          }
           return errorResponse(
             captureError?.message || "Gift card capture failed",
             "GIFT_CARD_ERROR",
@@ -1056,15 +1064,13 @@ export async function POST(
         );
         if (giftCaptureErr || captured === false || captured === null) {
           const captureMessage = String(giftCaptureErr?.message || "");
-          const balanceRestored =
-            /expired|no longer active/i.test(captureMessage) ||
-            captured === false ||
-            captured === null;
+          const expired = /expired|no longer active/i.test(captureMessage);
+          const answeredNotHeld = !giftCaptureErr && giftCardCaptureAnswer(captured) === "absent";
           console.error("[mark-paid] gift card capture failed after the booking was paid", {
             bookingId,
             giftCaptureErr,
           });
-          if (balanceRestored) {
+          if (expired || answeredNotHeld) {
             await supabaseAdmin
               .from("booking_payments")
               .delete()
@@ -1079,6 +1085,12 @@ export async function POST(
                 payment_status: "partially_paid",
               })
               .eq("id", bookingId);
+          } else {
+            await rememberGiftCaptureStillDue(
+              supabaseAdmin,
+              bookingId,
+              (booking as { tenant_id?: string | null }).tenant_id ?? null,
+            );
           }
         }
       }

@@ -12,6 +12,8 @@ import {
 import {
   applyProductOrderCancelRefundSideEffects,
   releaseUnpaidProductOrderHolds,
+  ABANDONED_ORDER_REFUND_STILL_DUE,
+  productOrderHasStockStillOut,
   restockProductOrderLineItems,
 } from "@/lib/orders/product-order-lifecycle";
 import { refundProductOrderOnlineTender } from "@/lib/ecommerce/refund-product-order-online-tender";
@@ -110,7 +112,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const admin = getSupabaseAdmin();
     const { data: order, error: fetchErr } = await (admin.from("product_orders") as any)
       .select(
-        "id, customer_id, provider_id, tenant_id, order_number, status, payment_status, payment_method, payment_reference, total_amount, wallet_amount, gift_card_amount, currency, shipped_at, delivered_at",
+        "id, customer_id, provider_id, tenant_id, order_number, status, payment_status, payment_method, payment_reference, total_amount, wallet_amount, gift_card_amount, currency, shipped_at, delivered_at, cancellation_reason",
       )
       .eq("id", id)
       .maybeSingle();
@@ -121,37 +123,82 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return errorResponse("This order is not associated with your account.", "ORDER_OWNERSHIP_MISMATCH", 403);
     }
 
-    const eligibility = getSelfCancelEligibility(order);
-    if (eligibility.ok === false) {
-      return errorResponse(eligibility.message, eligibility.code, 400);
-    }
+    const alreadyCancelled =
+      String(order.status ?? "") === "cancelled" || String(order.status ?? "") === "refunded";
+    const reason = alreadyCancelled
+      ? String(order.cancellation_reason ?? "").trim() || parsed.reason?.trim() || "Cancelled by customer"
+      : parsed.reason?.trim() || "Cancelled by customer";
 
-    const reason = parsed.reason?.trim() || "Cancelled by customer";
-    const nowIso = new Date().toISOString();
+    let updated: {
+      id: string;
+      order_number?: string | null;
+      status?: string | null;
+      payment_status?: string | null;
+      cancelled_at?: string | null;
+      cancellation_reason?: string | null;
+    } | null = null;
 
-    // Optimistic transition: only one caller wins the status flip.
-    const { data: updated, error: updateErr } = await (admin.from("product_orders") as any)
-      .update({
-        status: "cancelled",
-        cancelled_at: nowIso,
+    if (!alreadyCancelled) {
+      const eligibility = getSelfCancelEligibility(order);
+      if (eligibility.ok === false) {
+        return errorResponse(eligibility.message, eligibility.code, 400);
+      }
+
+      const nowIso = new Date().toISOString();
+      // Optimistic transition: only one caller wins the status flip.
+      const { data: claimed, error: updateErr } = await (admin.from("product_orders") as any)
+        .update({
+          status: "cancelled",
+          cancelled_at: nowIso,
+          cancellation_reason: reason,
+          updated_at: nowIso,
+        })
+        .eq("id", id)
+        .eq("status", order.status)
+        .select("id, order_number, status, payment_status, cancelled_at, cancellation_reason")
+        .maybeSingle();
+      if (updateErr) throw updateErr;
+      if (!claimed) {
+        return errorResponse("Order changed while cancelling. Please refresh and try again.", "STALE_ORDER", 409);
+      }
+      updated = claimed;
+
+      await restockProductOrderLineItems(admin, id, {
+        movementType: "cancel",
+        actorUserId: user.id,
+        reason,
+      });
+    } else {
+      const stockStillOut = await productOrderHasStockStillOut(admin, id);
+      const paidStillOwed = order.payment_status === "paid";
+      if (!stockStillOut && !paidStillOwed) {
+        return errorResponse(
+          "This order has already been cancelled.",
+          "ALREADY_CANCELLED",
+          400,
+        );
+      }
+      if (stockStillOut) {
+        await restockProductOrderLineItems(admin, id, {
+          movementType: "cancel",
+          actorUserId: user.id,
+          reason,
+        });
+      }
+      if (!paidStillOwed) {
+        return successResponse({
+          order: { id, status: order.status, payment_status: order.payment_status },
+          refund: null,
+        });
+      }
+      updated = {
+        id,
+        order_number: order.order_number,
+        status: order.status,
+        payment_status: order.payment_status,
         cancellation_reason: reason,
-        updated_at: nowIso,
-      })
-      .eq("id", id)
-      .eq("status", order.status)
-      .select("id, order_number, status, payment_status, cancelled_at, cancellation_reason")
-      .maybeSingle();
-    if (updateErr) throw updateErr;
-    if (!updated) {
-      return errorResponse("Order changed while cancelling. Please refresh and try again.", "STALE_ORDER", 409);
+      };
     }
-
-    // 1. Inventory back + stock_movements audit rows.
-    await restockProductOrderLineItems(admin, id, {
-      movementType: "cancel",
-      actorUserId: user.id,
-      reason,
-    });
 
     // 2/3. Refund original tender + ledger reversal (paid orders only).
     // Unpaid orders already debited wallet / reserved a gift card at checkout.
@@ -162,6 +209,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       in_person_refund_due: number;
     } | null = null;
     let walletCreditFailed = false;
+    let giftRestoreFailed = false;
     if (order.payment_status === "paid") {
       const online = await refundProductOrderOnlineTender(admin, order, {
         reason,
@@ -180,14 +228,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         onlineRefundedAmount: online.refundedAmount,
       });
       walletCreditFailed = sideEffects.walletCreditFailed;
+      giftRestoreFailed = sideEffects.giftRestoreFailed;
       const total = Math.max(0, Number(order.total_amount ?? 0));
       const gift = Math.min(total, Math.max(0, Number(order.gift_card_amount ?? 0)));
+      const giftInWallet = sideEffects.giftDisposition === "wallet" ? gift : 0;
       refund = {
         online_refunded: online.refundedAmount,
-        wallet_credited: walletCreditFailed
+        wallet_credited: sideEffects.walletCreditFailed
           ? 0
-          : computeProductOrderCancelWalletCredit(order, online.refundedAmount),
-        gift_card_restored: gift,
+          : addMoney(
+              computeProductOrderCancelWalletCredit(order, online.refundedAmount),
+              giftInWallet,
+            ),
+        gift_card_restored: sideEffects.giftDisposition === "restored" ? gift : 0,
         in_person_refund_due: computeInPersonProductOrderRefundDue(order),
       };
     } else {
@@ -197,11 +250,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         `Wallet refund (order cancelled before payment) ${order.order_number || id.slice(0, 8)}`,
       );
       walletCreditFailed = released.failed;
+      giftRestoreFailed = released.giftRestoreFailed;
+      if (released.failed || released.giftRestoreFailed) {
+        await (admin.from("product_orders") as any)
+          .update({
+            cancellation_reason: ABANDONED_ORDER_REFUND_STILL_DUE,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", id);
+      }
       const gift = Math.max(0, Number(order.gift_card_amount ?? 0));
       refund = {
         online_refunded: released.onlineRefunded ?? 0,
         wallet_credited: addMoney(released.amount, released.cardWalletFallback ?? 0),
-        gift_card_restored: gift,
+        gift_card_restored: released.giftDisposition === "restored" ? gift : 0,
         in_person_refund_due: 0,
       };
     }
@@ -219,10 +281,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     try {
       const orderNumber = String(order.order_number ?? id.slice(0, 8));
       const link = `/provider/ecommerce/orders?order=${encodeURIComponent(id)}`;
+      let stockBack = false;
+      try {
+        stockBack = !(await productOrderHasStockStillOut(admin, id));
+      } catch (stockErr) {
+        console.warn("[me/orders/cancel] stock check failed:", stockErr);
+      }
+      const stockSentence = stockBack
+        ? "Stock has been restored."
+        : "Stock is still being put back.";
       await notifyProviderTeamUsers(order.provider_id, {
         type: "product_order_cancelled",
         title: "Order Cancelled by Customer",
-        message: `Order ${orderNumber} was cancelled by the customer${parsed.reason ? `: ${parsed.reason}` : ""}. Stock has been restored.`,
+        message: `Order ${orderNumber} was cancelled by the customer${parsed.reason ? `: ${parsed.reason}` : ""}. ${stockSentence}`,
         metadata: {
           product_order_id: id,
           order_number: orderNumber,
@@ -238,9 +309,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       console.warn("[me/orders/cancel] provider notify failed:", e);
     }
 
+    if (giftRestoreFailed) {
+      return errorResponse(
+        order.payment_status === "paid"
+          ? "Your order was cancelled, but the gift card was not returned yet. Cancel again to finish the return."
+          : "Your order was cancelled, but the gift card was not returned yet. The next check returns it.",
+        "GIFT_CARD_NOT_RETURNED",
+        502,
+      );
+    }
     if (walletCreditFailed) {
       return errorResponse(
-        "Your order was cancelled, but we could not add the refund to your wallet yet. Support will complete it — you do not need to cancel again.",
+        order.payment_status === "paid"
+          ? "Your order was cancelled, but we could not add the refund to your wallet yet. Cancel again to finish the return."
+          : "Your order was cancelled, but the refund was not finished yet. The next check returns it.",
         "REFUND_PENDING",
         502,
       );

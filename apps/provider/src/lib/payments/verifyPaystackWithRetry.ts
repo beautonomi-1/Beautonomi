@@ -30,15 +30,23 @@ type Options = {
   delayMs?: number;
   sessionId?: string | null;
   transactionId?: string | null;
+  redirectStatus?: string | null;
 };
 
-function buildQuery(reference: string, sessionId?: string | null, transactionId?: string | null): string {
+function buildQuery(
+  reference: string,
+  sessionId?: string | null,
+  transactionId?: string | null,
+  redirectStatus?: string | null,
+): string {
   const params = new URLSearchParams();
   params.set("reference", reference);
   const sid = sessionId?.trim();
   if (sid) params.set("session_id", sid);
   const tid = transactionId?.trim();
   if (tid) params.set("transaction_id", tid);
+  const redirect = redirectStatus?.trim().toLowerCase();
+  if (redirect === "failed" || redirect === "cancelled") params.set("status", redirect);
   return params.toString();
 }
 
@@ -54,9 +62,29 @@ function readStatus(d: Record<string, unknown> | null): VerifyStatus {
         ? (d.paystack_status as string)
         : null;
   const v = typeof d.verified === "boolean" ? d.verified : null;
+  const recordedPayment = typeof d.payment_status === "string" ? d.payment_status.toLowerCase() : "";
+  const gateway = ps?.toLowerCase() ?? "";
+  if ((s === "success" || v === true) && recordedPayment === "pending") return "pending";
+  if (
+    s === "pending" ||
+    gateway === "pending" ||
+    gateway === "ongoing" ||
+    gateway === "processing" ||
+    gateway === "queued"
+  ) {
+    return "pending";
+  }
   if (s === "success" || v === true) return "success";
-  if (s === "failed" || ps === "failed" || v === false) return "failed";
-  if (s === "pending" || ps === "pending") return "pending";
+  if (
+    s === "failed" ||
+    s === "cancelled" ||
+    gateway === "failed" ||
+    gateway === "abandoned" ||
+    gateway === "reversed" ||
+    v === false
+  ) {
+    return "failed";
+  }
   return "unknown";
 }
 
@@ -74,6 +102,7 @@ export async function verifyPaystackWithRetry<T = Record<string, unknown>>(
   const delayMs = Math.max(0, opts.delayMs ?? 1500);
   const sessionId = opts.sessionId ?? null;
   const transactionId = opts.transactionId ?? null;
+  const redirectStatus = opts.redirectStatus ?? null;
   const trimmedRef = reference.trim();
 
   if (!trimmedRef) {
@@ -92,7 +121,7 @@ export async function verifyPaystackWithRetry<T = Record<string, unknown>>(
   while (attempts < maxAttempts) {
     attempts += 1;
     try {
-      const q = buildQuery(trimmedRef, sessionId, transactionId);
+      const q = buildQuery(trimmedRef, sessionId, transactionId, redirectStatus);
       const res = await api.get<T>(`${endpoint}${endpoint.includes("?") ? "&" : "?"}${q}`);
       if (res.error) {
         lastErr = res.error.message ?? "Payment verification failed";

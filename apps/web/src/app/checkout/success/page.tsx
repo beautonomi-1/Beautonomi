@@ -30,6 +30,14 @@ const TEXT_SECONDARY = "#6B7280";
 const POLL_INTERVAL_MS = 1500;
 const POLL_MAX_ATTEMPTS = 20;
 
+function customOfferCheckoutOutcome(data: { status?: string | null; booking_id?: string | null } | null | undefined): "booked" | "support" | "pending" {
+  const status = String(data?.status ?? "").toLowerCase();
+  const bookingId = typeof data?.booking_id === "string" ? data.booking_id.trim() : "";
+  if (status === "finalize_failed" || (status === "paid" && !bookingId)) return "support";
+  if ((status === "paid" || status === "accepted") && bookingId) return "booked";
+  return "pending";
+}
+
 function formatMoney(amount: number, currency: string | undefined): string {
   const cur = (currency || "").trim();
   const value = Number.isFinite(amount) ? amount : 0;
@@ -112,6 +120,7 @@ function CheckoutSuccessContent() {
   const [embedReturnCountdown, setEmbedReturnCountdown] = useState<number | null>(null);
 
   const [customOfferBookingId, setCustomOfferBookingId] = useState<string | null>(null);
+  const [customOfferNeedsSupport, setCustomOfferNeedsSupport] = useState(false);
   const [customOfferPollingComplete, setCustomOfferPollingComplete] = useState(false);
   const [providerBranch, setProviderBranch] = useState<ProviderPaymentBranch | null>(null);
 
@@ -165,21 +174,17 @@ function CheckoutSuccessContent() {
         }
       }
       if (!ref) return;
-      if (hostedCheckoutStatus === "failed" || hostedCheckoutStatus === "cancelled") {
-        setVerifyStatus("failed");
-        setVerifyMessage("Payment was not completed.");
-        return;
-      }
       paystackVerifyStarted.current = true;
       setVerifyStatus("verifying");
       try {
         const verifyResult = await verifyWithRetry<{ type?: string; ads_budget_order_id?: string; order_id?: string }>(
           ref,
           {
-            maxAttempts: 5,
+            maxAttempts: hostedCheckoutStatus === "failed" || hostedCheckoutStatus === "cancelled" ? 1 : 5,
             delayMs: 1500,
             sessionId: stripeCheckoutSessionId,
             transactionId: flutterwaveTransactionId,
+            redirectStatus: hostedCheckoutStatus,
           },
         );
         const verifyType = typeof verifyResult.data?.type === "string" ? verifyResult.data.type : null;
@@ -248,10 +253,11 @@ function CheckoutSuccessContent() {
     const run = async () => {
       try {
         await verifyWithRetry(ref, {
-          maxAttempts: 5,
+          maxAttempts: hostedCheckoutStatus === "failed" || hostedCheckoutStatus === "cancelled" ? 1 : 5,
           delayMs: 1500,
           sessionId: stripeCheckoutSessionId,
           transactionId: flutterwaveTransactionId,
+          redirectStatus: hostedCheckoutStatus,
         });
         // Immediately probe offer after verify — the inline finalize means
         // booking_id may already be set by the time the fetch resolves.
@@ -261,9 +267,13 @@ function CheckoutSuccessContent() {
         });
         if (offerRes.ok) {
           const json = await offerRes.json();
-          const bid = (json?.data ?? json)?.booking_id;
-          if (typeof bid === "string" && bid.length > 0) {
-            setCustomOfferBookingId(bid);
+          const row = (json?.data ?? json) as { status?: string | null; booking_id?: string | null };
+          const outcome = customOfferCheckoutOutcome(row);
+          if (outcome === "booked") {
+            setCustomOfferBookingId(row.booking_id ?? null);
+            setCustomOfferPollingComplete(true);
+          } else if (outcome === "support") {
+            setCustomOfferNeedsSupport(true);
             setCustomOfferPollingComplete(true);
           }
         }
@@ -272,7 +282,14 @@ function CheckoutSuccessContent() {
       }
     };
     void run();
-  }, [isCustomOffer, offerId, paystackReference, stripeCheckoutSessionId]);
+  }, [
+    isCustomOffer,
+    offerId,
+    paystackReference,
+    stripeCheckoutSessionId,
+    flutterwaveTransactionId,
+    hostedCheckoutStatus,
+  ]);
 
   /** Realtime: booking_id appears as soon as the webhook / verify path finishes. */
   useEffect(() => {
@@ -289,9 +306,13 @@ function CheckoutSuccessContent() {
           filter: `id=eq.${offerId}`,
         },
         (payload) => {
-          const bid = (payload.new as { booking_id?: string | null })?.booking_id;
-          if (typeof bid === "string" && bid.length > 0) {
-            setCustomOfferBookingId(bid);
+          const row = payload.new as { status?: string | null; booking_id?: string | null };
+          const outcome = customOfferCheckoutOutcome(row);
+          if (outcome === "booked") {
+            setCustomOfferBookingId(row.booking_id ?? null);
+            setCustomOfferPollingComplete(true);
+          } else if (outcome === "support") {
+            setCustomOfferNeedsSupport(true);
             setCustomOfferPollingComplete(true);
           }
         },
@@ -318,10 +339,16 @@ function CheckoutSuccessContent() {
         });
         if (!res.ok) return;
         const json = await res.json();
-        const data = json?.data ?? json;
-        const bid = data?.booking_id;
-        if (bid) {
-          setCustomOfferBookingId(bid);
+        const data = (json?.data ?? json) as { status?: string | null; booking_id?: string | null };
+        const outcome = customOfferCheckoutOutcome(data);
+        if (outcome === "booked") {
+          setCustomOfferBookingId(data.booking_id ?? null);
+          setCustomOfferPollingComplete(true);
+          clearInterval(interval);
+          return;
+        }
+        if (outcome === "support") {
+          setCustomOfferNeedsSupport(true);
           setCustomOfferPollingComplete(true);
           clearInterval(interval);
           return;
@@ -343,7 +370,7 @@ function CheckoutSuccessContent() {
   const showBookingLink = !!(resolvedBookingId || bookingNumber);
   const paymentType = searchParams?.get("payment_type");
   const customOfferTimedOut =
-    isCustomOffer && !!offerId && customOfferPollingComplete && !resolvedBookingId;
+    isCustomOffer && !!offerId && customOfferPollingComplete && !resolvedBookingId && !customOfferNeedsSupport;
 
   const [bookingData, setBookingData] = useState<{
     selected_datetime: string;
@@ -1204,6 +1231,18 @@ function CheckoutSuccessContent() {
                 this page — your booking will appear in <strong>My bookings</strong> as soon as your
                 bank confirms.
               </span>
+            </div>
+          ) : customOfferNeedsSupport ? (
+            <div
+              className="rounded-2xl border px-4 py-3 text-sm leading-relaxed"
+              style={{
+                borderColor: "rgba(220, 38, 38, 0.35)",
+                background: "rgba(254, 226, 226, 0.7)",
+                color: "#991B1B",
+              }}
+              role="alert"
+            >
+              <strong>Payment needs support.</strong> We received the payment but could not create the booking. Contact support with your payment reference. Do not pay this offer again.
             </div>
           ) : customOfferTimedOut ? (
             <div

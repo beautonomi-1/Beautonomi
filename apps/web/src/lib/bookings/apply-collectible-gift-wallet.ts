@@ -13,6 +13,7 @@ import {
 import { giftRedemptionCreditDecision } from "@/lib/bookings/checkout-bill-adjustment";
 import { computeCollectibleSplits } from "@/lib/bookings/compute-collectible-splits";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { releaseGiftCardOrRemember, rollbackCollectibleSplitLeg, rememberGiftCaptureStillDue } from "@/lib/bookings/rollback-collectible-split-leg";
 import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 export type ApplyCollectibleGiftWalletInput = {
@@ -196,22 +197,20 @@ export async function applyCollectibleGiftAndWallet(
       p_tenant_id: ledgerTenantId,
     });
     if (walletErr || !debitResult) {
-      if (giftHoldCreated) {
-        if (giftColumnIncreased && giftCardAmountApplied > 0) {
-          const { data: bookingRow } = await admin
-            .from("bookings")
-            .select("gift_card_amount")
-            .eq("id", bookingId)
-            .maybeSingle();
-          const prevGift = Number((bookingRow as { gift_card_amount?: number } | null)?.gift_card_amount ?? 0);
-          await admin
-            .from("bookings")
-            .update({
-              gift_card_amount: Math.max(0, subtractMoney(prevGift, giftCardAmountApplied)),
-            })
-            .eq("id", bookingId);
-        }
-        await (admin.rpc as any)("void_gift_card_redemption", { p_booking_id: bookingId }).catch(() => {});
+      if (giftColumnIncreased && giftCardAmountApplied > 0) {
+        await rollbackCollectibleSplitLeg(admin, {
+          bookingId,
+          customerId,
+          currency,
+          tenantId,
+          providerId,
+          walletAmountToReverse: 0,
+          giftCardAmountToReverse: giftCardAmountApplied,
+          paymentLegSuffix,
+          idempotencyKey: `collectible_wallet_debit_failed:${bookingId}${paymentLegSuffix || ":checkout"}`,
+        });
+      } else if (giftHoldCreated) {
+        await releaseGiftCardOrRemember(admin, bookingId, tenantId);
       }
       return {
         ok: false,
@@ -248,7 +247,38 @@ export async function applyCollectibleGiftAndWallet(
   });
 
   if (!deferFullSettlement && giftCardAmountApplied > 0 && !cardLegPending) {
-    await (admin.rpc as any)("capture_gift_card_redemption", { p_booking_id: bookingId });
+    const { data: captured, error: captureErr } = await (admin.rpc as any)("capture_gift_card_redemption", {
+      p_booking_id: bookingId,
+    });
+    const captureMessage = String(captureErr?.message || "");
+    const expired = /expired|no longer active/i.test(captureMessage);
+    if (captureErr && !expired) {
+      await rememberGiftCaptureStillDue(admin, bookingId, tenantId);
+    } else if (expired || captured === false) {
+      const { data: bookingRow } = await admin
+        .from("bookings")
+        .select("gift_card_amount")
+        .eq("id", bookingId)
+        .maybeSingle();
+      const prevGift = Number((bookingRow as { gift_card_amount?: number } | null)?.gift_card_amount ?? 0);
+      await admin
+        .from("bookings")
+        .update({
+          gift_card_amount: Math.max(0, subtractMoney(prevGift, giftCardAmountApplied)),
+        })
+        .eq("id", bookingId);
+      await admin
+        .from("booking_payments")
+        .delete()
+        .eq("booking_id", bookingId)
+        .eq(
+          "payment_provider_id",
+          buildSyntheticWalletGiftProviderId("gift_card", bookingId, paymentLegSuffix),
+        );
+      giftCardAmountApplied = 0;
+    } else if (captured !== true) {
+      await rememberGiftCaptureStillDue(admin, bookingId, tenantId);
+    }
   }
 
   if (!deferFullSettlement && !cardLegPending) {

@@ -139,19 +139,15 @@ function GiftCardPurchaseSuccessInner() {
       setPhase("idle");
       return;
     }
-    if (redirectStatus === "failed" || redirectStatus === "cancelled") {
-      setPhase("error");
-      setErrorMsg(tx("verifyFailed"));
-      return;
-    }
     setPhase("verifying");
     setErrorMsg(null);
     try {
       const verifyResult = await verifyWithRetry<Record<string, unknown>>(reference, {
-        maxAttempts: 5,
+        maxAttempts: redirectStatus === "failed" || redirectStatus === "cancelled" ? 1 : 5,
         delayMs: 1500,
         sessionId,
         transactionId,
+        redirectStatus,
       });
       const vp = extractVerifyPayload({ data: verifyResult.data });
       const oid = vp.giftCardOrderId ?? null;
@@ -204,7 +200,7 @@ function GiftCardPurchaseSuccessInner() {
       setErrorMsg(e instanceof FetchError ? e.message : "Something went wrong");
       setPhase("error");
     }
-  }, [reference]);
+  }, [reference, redirectStatus, sessionId, transactionId]);
 
   useEffect(() => {
     void verifyAndLoad();

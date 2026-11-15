@@ -62,6 +62,10 @@ function createAdminClient(bookings: Array<Record<string, unknown>>) {
   const bookingQuery = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    is: vi.fn().mockReturnThis(),
+    not: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn(async () => ({ data: null, error: null })),
     in: vi.fn(async () => ({ data: bookings, error: null })),
     update: updateMock.mockReturnValue({
       eq: vi.fn().mockReturnThis(),
@@ -75,6 +79,8 @@ function createAdminClient(bookings: Array<Record<string, unknown>>) {
       return {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
+        not: vi.fn(async () => ({ data: [], error: null })),
+        is: vi.fn(async () => ({ data: [], error: null })),
         single: vi.fn(async () => ({ data: { full_name: "Provider User" }, error: null })),
         insert: vi.fn(async () => ({ data: null, error: null })),
       };

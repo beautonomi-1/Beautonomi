@@ -199,7 +199,8 @@ export async function saleCardAmountStillDueForSale(
     .eq("provider_id", providerId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!sale || sale.payment_status === "completed") return null;
+  const saleStatus = String(sale?.payment_status ?? "").toLowerCase();
+  if (!sale || saleStatus === "completed" || saleStatus === "refunded") return null;
   const giftPaid = await sumSaleGiftCardPaid(supabase, saleId);
   const cardTaken =
     (await sumSuccessfulSaleCardTakenBySaleIds(supabase, [saleId])).get(saleId) ?? 0;

@@ -1,4 +1,5 @@
 import { addMoney } from "@beautonomi/utils";
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -142,17 +143,21 @@ export async function GET(
 
       const { data: productOrdersForSpend } = await admin
         .from("product_orders")
-        .select("total_amount, payment_status, provider:providers!inner(tenant_id)")
+        .select("total_amount, refunded_amount, payment_status, provider:providers!inner(tenant_id)")
         .eq("customer_id", id)
         .eq("provider.tenant_id", tenantId);
 
       const poRows = (productOrdersForSpend ?? []) as {
         total_amount?: number;
+        refunded_amount?: number | null;
         payment_status?: string;
       }[];
       const product_orders_paid_total = poRows
-        .filter((o) => o.payment_status === "paid")
-        .reduce((s, o) => addMoney(s, Number(o.total_amount ?? 0)), 0);
+        .filter((o) => {
+          const payment = String(o.payment_status ?? "");
+          return payment === "paid" || payment === "partially_refunded" || payment === "refunded";
+        })
+        .reduce((s, o) => addMoney(s, productOrderKeptAmount(o)), 0);
 
       stats.product_orders_count = productOrderCount ?? 0;
       stats.product_orders_paid_total = product_orders_paid_total;
@@ -201,7 +206,7 @@ export async function GET(
       const { data: recentPo } = await admin
         .from("product_orders")
         .select(
-          "id, order_number, status, payment_status, total_amount, currency, fulfillment_type, created_at, provider:providers!inner(id, business_name, tenant_id)",
+          "id, order_number, status, payment_status, total_amount, refunded_amount, currency, fulfillment_type, created_at, provider:providers!inner(id, business_name, tenant_id)",
         )
         .eq("customer_id", id)
         .eq("provider.tenant_id", tenantId)

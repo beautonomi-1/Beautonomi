@@ -1,6 +1,10 @@
 import { View, Text, TextInput, TouchableOpacity, ScrollView } from "react-native";
 import { twStyle } from "@/lib/twStyle";
-import type { PayModelValue, PayPlanFormState } from "@/lib/pay-plan-form-state";
+import {
+  payModelUsesCommission,
+  type PayModelValue,
+  type PayPlanFormState,
+} from "@/lib/pay-plan-form-state";
 
 const PAY_MODELS: PayModelValue[] = [
   "commission_only",
@@ -72,13 +76,7 @@ function ChipRow<T extends string>({
 export function StaffPayPlanForm({ value, onChange, disabled, label }: Props) {
   const set = (patch: Partial<PayPlanFormState>) => onChange({ ...value, ...patch });
 
-  const usesCommission = [
-    "commission_only",
-    "base_plus_commission",
-    "base_or_commission_higher",
-    "commission_above_threshold",
-    "hourly_plus_commission",
-  ].includes(value.pay_model);
+  const usesCommission = payModelUsesCommission(value.pay_model);
   const usesBase = ["salary", "base_plus_commission", "base_or_commission_higher"].includes(
     value.pay_model,
   );
@@ -100,15 +98,71 @@ export function StaffPayPlanForm({ value, onChange, disabled, label }: Props) {
         disabled={disabled}
         labelFor={(m) => label(`payModel_${m}`)}
       />
+      <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+          {value.pay_model === "commission_only"
+            ? "A percentage of the services and products they sell. No salary. For an employee, PAYE and UIF are calculated on that commission."
+            : value.pay_model === "base_plus_commission"
+              ? "A monthly salary plus a percentage of what they sell. Commission is what they earned in the period."
+              : value.pay_model === "base_or_commission_higher"
+                ? "They receive the monthly salary or the commission, whichever is higher that period."
+                : value.pay_model === "commission_above_threshold"
+                  ? "Service and product percentages apply only to the sales above the target."
+                  : value.pay_model === "hourly"
+                    ? "Paid for the hours they work."
+                    : value.pay_model === "hourly_plus_commission"
+                      ? "Paid for hours worked, plus a percentage of what they sell."
+                      : value.pay_model === "salary"
+                        ? "A monthly salary only. Commission is not added."
+                        : "Booth renters are not included on a pay run or a payslip. They keep their own takings."}
+      </Text>
 
       <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label("employmentType")}</Text>
       <ChipRow
         options={EMPLOYMENT_TYPES}
         selected={value.employment_type}
-        onSelect={(t) => set({ employment_type: t })}
+        onSelect={(employmentType) =>
+          set(
+            employmentType === "contractor"
+              ? { employment_type: employmentType, statutory_mode: "none" }
+              : { employment_type: employmentType },
+          )
+        }
         disabled={disabled}
-        labelFor={(t) => label(`employment_${t}`)}
+        labelFor={(employmentType) => label(`employment_${employmentType}`)}
       />
+      <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+        {value.employment_type === "contractor"
+          ? "Contractors stay on the pay run. PAYE and UIF are not calculated."
+          : "Employees and apprentices are taxed on what the pay run pays them, including commission. PAYE is an estimate and UIF is the employee contribution. Apprentices use the same calculation, without a learnership allowance."}
+      </Text>
+
+      {value.pay_model !== "booth_renter" ? (
+        <>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Employment start</Text>
+          <TextInput
+            style={[inputStyle, twStyle("mb-3")]}
+            value={value.employment_start_date}
+            onChangeText={(v) => set({ employment_start_date: v })}
+            editable={!disabled}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor="#9ca3af"
+          />
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Employment end</Text>
+          <TextInput
+            style={[inputStyle, twStyle("mb-1")]}
+            value={value.employment_end_date}
+            onChangeText={(v) => set({ employment_end_date: v })}
+            editable={!disabled}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor="#9ca3af"
+          />
+          <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+            {value.employment_type === "contractor"
+              ? "Leave the end date empty for an ongoing contract. A date inside a pay period limits pay. Contractors still get a payslip, without calculated PAYE or UIF."
+              : "Leave the end date empty for an ongoing role. A date inside a pay period reduces a monthly salary. Commission is still what they earned in that period."}
+          </Text>
+        </>
+      ) : null}
 
       <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label("effectiveFrom")}</Text>
       <TextInput
@@ -120,18 +174,24 @@ export function StaffPayPlanForm({ value, onChange, disabled, label }: Props) {
         placeholderTextColor="#9ca3af"
       />
 
-      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label("statutoryMode")}</Text>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tax</Text>
       <ChipRow
         options={["auto", "manual", "none"] as const}
-        selected={value.statutory_mode}
+        selected={value.employment_type === "contractor" ? "none" : value.statutory_mode}
         onSelect={(mode) => set({ statutory_mode: mode })}
-        disabled={disabled}
-        labelFor={(mode) => label(`statutory_${mode}`)}
+        disabled={disabled || value.employment_type === "contractor"}
+        labelFor={(mode) =>
+          mode === "auto"
+            ? "Calculate PAYE and UIF"
+            : mode === "manual"
+              ? "I'll enter PAYE and UIF"
+              : "Don't calculate tax"
+        }
       />
 
       {usesBase ? (
         <>
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label("baseAmount")}</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Monthly salary</Text>
           <TextInput
             style={[inputStyle, twStyle("mb-3")]}
             value={String(value.base_amount || "")}

@@ -32,6 +32,7 @@ import {
   creditWalletForProductOrderIfNeeded,
   refundUnpaidProductOrderCardCharges,
   voidProductOrderGiftCardIfNeeded,
+  ABANDONED_ORDER_REFUND_STILL_DUE,
 } from "@/lib/orders/product-order-lifecycle";
 import { dispatchProductOrderStatusNotification } from "@/lib/notifications/notify-product-order-status";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
@@ -40,8 +41,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const STOCK_RELEASED = "Payment was not completed in time — stock released";
+const STOCK_STILL_OUT = "Payment was not completed in time — products still out";
+const REFUND_STILL_DUE = ABANDONED_ORDER_REFUND_STILL_DUE;
 const JOB_NAME = "expire-pending-payment-orders";
-/** Minutes an unpaid card order may sit before stock is released. */
 const DEFAULT_TTL_MINUTES = 30;
 const BATCH_LIMIT = 200;
 
@@ -103,29 +106,18 @@ async function runJob(request: NextRequest) {
   const walkInExpired = await expireAbandonedWalkInCardMachineOrders(admin);
 
   const candidates = (stale as StaleOrderRow[] | null) ?? [];
-  if (candidates.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      ttl_minutes: ttlMinutes,
-      candidates: 0,
-      expired: 0,
-      walk_in_expired: walkInExpired,
-    });
-  }
 
   let expired = 0;
   for (const order of candidates) {
     try {
-      // Atomically claim the cancellation FIRST, only while the order is still
-      // `pending`. This wins exactly once and never races a late webhook / verify
-      // that paid the order, nor a concurrent cron run — so the (non-idempotent)
-      // restock below runs at most once and only for genuinely abandoned orders.
+      // Claim first so a payment that lands in the same moment is not restocked.
+      // A later sweep puts products back only when this return did not finish.
       const { data: claimed } = await (admin.from("product_orders") as any)
         .update({
           status: "cancelled",
           payment_status: "failed",
           cancelled_at: new Date().toISOString(),
-          cancellation_reason: "Payment was not completed in time — stock released",
+          cancellation_reason: STOCK_RELEASED,
           updated_at: new Date().toISOString(),
         })
         .eq("id", order.id)
@@ -136,19 +128,34 @@ async function runJob(request: NextRequest) {
       if ((claimed?.length ?? 0) === 0) continue; // already paid/cancelled elsewhere
 
       // Reverse any wallet split (idempotent) and restock line items.
-      await creditWalletForProductOrderIfNeeded(
-        admin,
-        order,
-        "Wallet refund (online payment not completed)",
-        "product_order_payment_abandoned",
-      );
-      await voidProductOrderGiftCardIfNeeded(admin, order);
-      await refundUnpaidProductOrderCardCharges(
-        admin,
-        order,
-        "Card refund (online payment not completed)",
-      );
-      await restockProductOrderLineItems(admin, order.id);
+      const moneyFailed = await finishAbandonedOrderMoney(admin, order);
+      let stockFailed = false;
+      try {
+        await restockProductOrderLineItems(admin, order.id);
+      } catch (stockErr) {
+        stockFailed = true;
+        await (admin.from("product_orders") as any)
+          .update({
+            cancellation_reason: STOCK_STILL_OUT,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", order.id)
+          .eq("cancellation_reason", STOCK_RELEASED);
+        console.warn("[expire-pending-payment-orders] stock release failed", order.id, stockErr);
+      }
+
+      if (stockFailed) continue;
+
+      if (moneyFailed) {
+        await (admin.from("product_orders") as any)
+          .update({
+            cancellation_reason: REFUND_STILL_DUE,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", order.id)
+          .eq("cancellation_reason", STOCK_RELEASED);
+        continue;
+      }
 
       if (order.customer_id) {
         try {
@@ -160,7 +167,7 @@ async function runJob(request: NextRequest) {
             orderNumber: String(order.order_number ?? order.id.slice(0, 8)),
             tenantId: order.tenant_id,
             providerId: order.provider_id,
-            cancellationReason: "Payment was not completed in time — stock released",
+            cancellationReason: STOCK_RELEASED,
           });
         } catch (notifyErr) {
           console.warn("[expire-pending-payment-orders] notify failed", order.id, notifyErr);
@@ -173,13 +180,123 @@ async function runJob(request: NextRequest) {
     }
   }
 
+  const stockRetried = await retryAbandonedProductOrderStock(admin);
+
   return NextResponse.json({
     ok: true,
     ttl_minutes: ttlMinutes,
     candidates: candidates.length,
     expired,
     walk_in_expired: walkInExpired,
+    stock_retried: stockRetried,
   });
+}
+
+async function finishAbandonedOrderMoney(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  order: StaleOrderRow,
+): Promise<boolean> {
+  let moneyFailed = false;
+  const credit = await creditWalletForProductOrderIfNeeded(
+    admin,
+    order,
+    "Wallet refund (online payment not completed)",
+    "product_order_payment_abandoned",
+  );
+  if (credit?.failed) moneyFailed = true;
+  try {
+    const giftVoid = await voidProductOrderGiftCardIfNeeded(admin, order);
+    if (giftVoid === "failed") {
+      moneyFailed = true;
+      console.warn("[expire-pending-payment-orders] gift card was not returned", order.id);
+    }
+  } catch (giftErr) {
+    moneyFailed = true;
+    console.warn("[expire-pending-payment-orders] gift card was not returned", order.id, giftErr);
+  }
+  const cards = await refundUnpaidProductOrderCardCharges(
+    admin,
+    order,
+    "Card refund (online payment not completed)",
+  );
+  if (cards?.failed) moneyFailed = true;
+  return moneyFailed;
+}
+
+async function retryAbandonedProductOrderStock(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+): Promise<number> {
+  const { data, error } = await (admin.from("product_orders") as any)
+    .select(
+      "id, customer_id, provider_id, tenant_id, wallet_amount, gift_card_amount, currency, order_number",
+    )
+    .eq("status", "cancelled")
+    .eq("payment_status", "failed")
+    .in("cancellation_reason", [STOCK_STILL_OUT, REFUND_STILL_DUE])
+    .limit(BATCH_LIMIT);
+  if (error) {
+    console.warn("[expire-pending-payment-orders] stock retry query failed", error);
+    return 0;
+  }
+
+  let finished = 0;
+  for (const order of (data ?? []) as StaleOrderRow[]) {
+    try {
+      const moneyFailed = await finishAbandonedOrderMoney(admin, order);
+      try {
+        await restockProductOrderLineItems(admin, order.id);
+      } catch (stockErr) {
+        await (admin.from("product_orders") as any)
+          .update({
+            cancellation_reason: STOCK_STILL_OUT,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", order.id)
+          .in("cancellation_reason", [STOCK_STILL_OUT, REFUND_STILL_DUE]);
+        console.warn("[expire-pending-payment-orders] stock retry failed", order.id, stockErr);
+        continue;
+      }
+      if (moneyFailed) {
+        await (admin.from("product_orders") as any)
+          .update({
+            cancellation_reason: REFUND_STILL_DUE,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", order.id)
+          .in("cancellation_reason", [STOCK_STILL_OUT, REFUND_STILL_DUE]);
+        continue;
+      }
+      const { data: marked } = await (admin.from("product_orders") as any)
+        .update({
+          cancellation_reason: STOCK_RELEASED,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.id)
+        .in("cancellation_reason", [STOCK_STILL_OUT, REFUND_STILL_DUE])
+        .select("id");
+      if ((marked?.length ?? 0) === 0) continue;
+      finished += 1;
+      if (order.customer_id) {
+        try {
+          await dispatchProductOrderStatusNotification({
+            supabase: admin,
+            customerId: order.customer_id,
+            status: "cancelled",
+            orderId: order.id,
+            orderNumber: String(order.order_number ?? order.id.slice(0, 8)),
+            tenantId: order.tenant_id,
+            providerId: order.provider_id,
+            cancellationReason: STOCK_RELEASED,
+          });
+        } catch (notifyErr) {
+          console.warn("[expire-pending-payment-orders] notify failed", order.id, notifyErr);
+        }
+      }
+    } catch (err) {
+      console.warn("[expire-pending-payment-orders] stock retry failed", order.id, err);
+    }
+  }
+  return finished;
 }
 
 /** Hours an unpaid walk-in card-machine order may wait (late webhooks / staff retry) before it is cancelled. */

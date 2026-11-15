@@ -9618,7 +9618,7 @@
           "markPaid": "Mark yo badelwa",
           "sectionTitle": "U badela",
           "ownerHint": "Tumbuluxa ku hakela ka nkarhi, u tlhe u tlika run yo sivela ku lulamisa PAYE, UIF, na ku tshusiwa hi ku tala eka vatirhi. Pfumelela u tlhe u tshwa yi hakeriwile loko u lunghele.",
-          "staffHint": "Vhona badela runs for your workplace. Only the Bindu mune can vumba runs, tenda, or mark them yo badelwa.",
+          "staffHint": "Ni vhona fhedzi bammbiri yanu ya mbadelo. Mune wa bindu, kana ane a newa thendelo ya mbadelo, u vhumba mbadelo, u i tenda, nahone u i tshwaya yo badelwa.",
           "emptyTitle": "A huna badela runs zwazwino",
           "emptyOwner": "U sika pay run ya tshifhinga tsha vhege kana nwedzi. Nga murahu ni tende na u swaya uri yo badelwa hafha.",
           "emptyStaff": "Muṋe waṋu ha athu sika pay run. Vha humbeleni uri vha thome tshiṅwe kha tshikirini itshi.",
@@ -13913,7 +13913,8 @@
       "requestChangesTitle": "khumbelo shandukisas",
       "requestChangesBody": "Vertel die verskaffer wat jy wil hê moet aangepas word.",
       "requestChangesEmpty": "Describe the shandukisas you want.",
-      "requestChangesFailed": "Zwo kundelwa u khumbelo shandukisas"
+      "requestChangesFailed": "Zwo kundelwa u khumbelo shandukisas",
+      "offerStatusNeedsSupport": "Needs thusedzo"
     },
     "walletScreen": {
       "balanceLabel": "sipaji tsalelo",
@@ -15534,7 +15535,7 @@
           "emailRequiredTitle": "imeili zwi a ṱoḓea",
           "emailRequiredBody": "Engetela adirese ya imeyili eka akhawunti ya wena u nga ha hakeli oda leyi inthaneteni.",
           "paymentUnavailableTitle": "mbadedzo a i ho",
-          "paymentUnavailableBody": "We could not thoma mbadedzo for this odara. Lingedzani hafhu.",
+          "paymentUnavailableBody": "A ro ngo kona u thoma mbadelo ya oda iyi. Lingedzani hafhu.",
           "shareErrorTitle": "Kovhela",
           "shareErrorBody": "Couldn't kovhela this risiti.",
           "downloadReceiptTitle": "Ḓaowniloda risiti",
@@ -15575,7 +15576,7 @@
           "timelineShipped": "Yo rumelwa",
           "timelineCollected": "Ku hlengeletiwa",
           "timelineDelivered": "Yo rumelwa",
-          "trackShipment": "Track shipment",
+          "trackShipment": "Tevhela thumelo",
           "trackingLabel": "U teledza: {{detail}}",
           "openTrackingA11y": "Vula U teledza",
           "openTrackingWithCarrierA11y": "Vula U teledza with {{carrier}}",
@@ -15585,7 +15586,7 @@
           "returnApproved": "Return yo tendehwa",
           "itemReceived": "Tshithu Received",
           "returnRejected": "Return yo haneliwa",
-          "returnEscalated": "Return Escalated",
+          "returnEscalated": "Terugsend eskaleer",
           "returnCancelled": "Return yo khanselwa",
           "returnStatusPending": "yo linda",
           "returnStatusApproved": "yo tendehwa",
@@ -15600,7 +15601,7 @@
           "refundAmountLabel": "mbuyiso tshivhalo:",
           "requestedOn": "Yo kombelwa nga {{date}}",
           "items": "Zwithu",
-          "itemQtyPrice": "{{count}} x {{price}}",
+          "itemQtyPrice": "{{count}} × {{price}}",
           "yourDetails": "zwidodombedzwa yau",
           "nameLabel": "Dzina",
           "emailLabel": "imeili",
@@ -15636,10 +15637,10 @@
           "promotion": "Ku tlakusiwa",
           "calculatedTotal": "Calculated yoṱhe",
           "chargedTotal": "Charged yoṱhe",
-          "totalDifferenceHint": "Small differences can come from rounding or khangisotions applied at u badela.",
+          "totalDifferenceHint": "Phambano thukhu i nga bva kha u roundedza kana dzithekiselo dzo shumiswaho musi hu badelwa.",
           "soldBy": "Zwo rengiswa nga",
           "requestReturnCta": "khumbelo Return / mbuyiso",
-          "returnWindowPassed": "Return window ({{days}} maḓuvha) has passed. For thuso, vula phurofaily → Thuso centre → New thikithi.",
+          "returnWindowPassed": "Tshifhinga tsha u humisela (maḓuvha a {{days}}) tsho fhela. U thusiwa, vulani Phurofaela → Senthara ya thuso → Thikiti ntswa.",
           "readyForPickupTitle": "Yo lindela u dzhia",
           "lineFulfilment": "U fhedza: {{status}}",
           "unitLabel": "Yunithi",
@@ -15647,7 +15648,11 @@
           "accessLabel": "U dzhena",
           "parkingLabel": "U paka",
           "landmarksLabel": "Zwikombiso",
-          "partiallyRefundedContactProvider": "Oda iyi yo vhuiswa nga tshipiḓa. Kha vha kwame vhaṋetshedzi u itela u vhuisa tshelede yo salaho."
+          "partiallyRefundedContactProvider": "Oda iyi yo vhuiswa nga tshipiḓa. Kha vha kwame vhaṋetshedzi u itela u vhuisa tshelede yo salaho.",
+          "refunded": "Yo vhuedzedzwa",
+          "messageProvider": "Rumela mulaedza kha muneḓi",
+          "messageFailedTitle": "mulaedza",
+          "messageFailedBody": "A yo ngo kona u thoma nyambedzano na mufhasi uyu."
         },
         "customRequestsList": {
           "startPaymentFailed": "Zwo kundelwa u thoma mbadedzo",
@@ -20926,7 +20931,8 @@
         "createOfferFailedShort": "Zwo kundelwa u vumba offer",
         "changeClient": "Shandukisa",
         "searchClientPlaceholder": "Todani nga dzina, imeiḽi kana luṱingo (tsumbo 082…)",
-        "searchClientHint": "Nwalani vhulapfu ha zwifanyiso zwi 2"
+        "searchClientHint": "Nwalani vhulapfu ha zwifanyiso zwi 2",
+        "continuePayment": "bvela phanḓa mbadedzo"
       },
       "privacyAndSharing": {
         "tabAccount": "Akhaunte",
@@ -35519,7 +35525,9 @@
         "editOffer": "Lulamisisa offer",
         "withdrawOfferConfirm": "Ni na uri ni khou vhudzisa u bvisa tshikhalo itshi?",
         "withdrawOffer": "Mbuyiseni Mbuyiseni",
-        "couldNotLoadOfferDetails": "A zwo koni u ḽoḓa offer zwidodombedzwa."
+        "couldNotLoadOfferDetails": "A zwo koni u ḽoḓa offer zwidodombedzwa.",
+        "statusNeedsSupport": "Needs thusedzo",
+        "resumePayment": "bvela phanḓa mbadedzo"
       },
       "customOfferModal": {
         "loadOfferFailed": "A zwo koni u ḽoḓa offer",
@@ -36462,7 +36470,13 @@
         "waitingBody": "Ri khou khwaṱhisedza mbadelo yavho. Vusuludzani khumbelo dzaṋu dza mvelele nga tshifhinganyana.",
         "backToRequests": "murahu to Zwo itelwa khumbelo",
         "changesRequestedTitle": "Offer i khou vusuludzwa",
-        "changesRequestedBody": "Muṋetshedzi waṋu u khou khwinisa tshumelo iyi nga murahu ha khumbelo yaṋu ya tshanduko."
+        "changesRequestedBody": "Muṋetshedzi waṋu u khou khwinisa tshumelo iyi nga murahu ha khumbelo yaṋu ya tshanduko.",
+        "viewBooking": "Vhona u buka",
+        "needsSupportTitle": "mbadedzo needs thusedzo",
+        "resumePayment": "bvela phanḓa mbadedzo",
+        "needsSupportBody": "Ro tanganedza mbadelo, fhedzi a ro ngo kona u sika booking. I vhagane na thikhedzo nga nomoro yanu ya mbadelo.",
+        "unavailableBody": "Humbela mufhasi ndinganyo ntswa arali ni tshee ni toda tshumelo iyi.",
+        "unavailableTitle": "Nyiito iyi a i tsha badelwa"
       }
     },
     "groupInvite": {

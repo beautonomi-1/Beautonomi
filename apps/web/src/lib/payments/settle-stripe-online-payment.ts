@@ -20,6 +20,7 @@ type StripePaymentIntentLike = {
   customer?: string | { id?: string } | null;
   payment_method?: string | { id?: string } | null;
   receipt_email?: string | null;
+  client_reference_id?: string | null;
   last_payment_error?: { message?: string | null } | null;
 };
 

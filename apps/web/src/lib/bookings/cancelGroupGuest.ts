@@ -3,6 +3,7 @@ import { cancelGroupBookingParticipant } from "@/lib/bookings/group-booking-canc
 import { repriceBookingAfterLineRemoval } from "@/lib/bookings/repriceBookingAfterLineRemoval";
 import type { CancellationPolicy } from "@/lib/bookings/cancellation-policy";
 import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
+import { refundableExcludingGiftStillDue, visitClosedForGiftReturn } from "@/lib/bookings/gift-value-still-due";
 
 export type CancelGroupGuestResult =
   | {
@@ -244,12 +245,28 @@ async function computeLeadOverpaid(
 ): Promise<number> {
   const { data: lead } = await admin
     .from("bookings")
-    .select("total_paid, total_refunded")
+    .select("total_paid, total_refunded, wallet_amount, gift_card_amount, status, cancellation_settlement_error")
     .eq("id", leadBookingId)
     .maybeSingle();
-  const netPaid = subtractMoney(
-    Number((lead as { total_paid?: number | null } | null)?.total_paid ?? 0),
-    Number((lead as { total_refunded?: number | null } | null)?.total_refunded ?? 0),
+  const row = lead as {
+    total_paid?: number | null;
+    total_refunded?: number | null;
+    wallet_amount?: number | null;
+    gift_card_amount?: number | null;
+    cancellation_settlement_error?: string | null;
+    status?: string | null;
+  } | null;
+  const coverage = Math.max(
+    Number(row?.total_paid ?? 0),
+    addMoney(Number(row?.wallet_amount ?? 0), Number(row?.gift_card_amount ?? 0)),
+  );
+  const netPaid = refundableExcludingGiftStillDue(
+    subtractMoney(coverage, Number(row?.total_refunded ?? 0)),
+    row?.cancellation_settlement_error,
+    {
+      giftCardAmount: Number(row?.gift_card_amount ?? 0),
+      visitClosed: visitClosedForGiftReturn(row?.status),
+    },
   );
   return Math.max(0, subtractMoney(netPaid, newTotal));
 }

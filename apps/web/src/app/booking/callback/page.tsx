@@ -27,12 +27,6 @@ export default function PaymentCallback() {
       const flutterwaveTransactionId = hosted.transactionId;
       const hostedStatus = hosted.hostedStatus;
 
-      if (isHostedCheckoutFailureStatus(hostedStatus)) {
-        setStatus("error");
-        setMessage(t("web.booking.callback.paymentFailed"));
-        return;
-      }
-
       if (!reference) {
         setStatus("error");
         setMessage(t("web.booking.callback.referenceNotFound"));
@@ -40,13 +34,15 @@ export default function PaymentCallback() {
       }
 
       try {
+        const failedReturn = isHostedCheckoutFailureStatus(hostedStatus);
         const response = await verifyWithRetry<{ status?: string; bookingId?: string }>(
           reference,
           {
-            maxAttempts: 5,
+            maxAttempts: failedReturn ? 1 : 5,
             delayMs: 1500,
             sessionId,
             transactionId: flutterwaveTransactionId,
+            redirectStatus: hostedStatus,
           },
         );
 

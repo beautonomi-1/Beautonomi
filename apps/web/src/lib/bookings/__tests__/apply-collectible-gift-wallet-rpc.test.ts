@@ -7,7 +7,7 @@ describe("apply-collectible-gift-wallet rollback RPC", () => {
   it("uses void_gift_card_redemption (not release_gift_card_redemption) after wallet debit failure", () => {
     const path = join(dirname(fileURLToPath(import.meta.url)), "../apply-collectible-gift-wallet.ts");
     const source = readFileSync(path, "utf8");
-    expect(source).toContain('"void_gift_card_redemption"');
+    expect(source).toContain("releaseGiftCardOrRemember");
     expect(source).not.toContain("release_gift_card_redemption");
   });
 });

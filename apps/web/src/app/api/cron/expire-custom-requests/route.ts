@@ -3,7 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
-import { creditWalletForCustomOfferAbandon } from "@/lib/custom-offers/credit-wallet-for-offer-abandon";
+import { reopenCustomRequestIfNoLiveOffers } from "@/lib/custom-offers/reopen-request-if-no-live-offers";
+import { creditWalletForCustomOfferAbandon, rememberCustomOfferWalletStillDue, retryCustomOfferWalletStillDue } from "@/lib/custom-offers/credit-wallet-for-offer-abandon";
 import { getNotificationTemplate, sendTemplateNotification, sendToUser } from "@/lib/notifications/onesignal";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
@@ -180,6 +181,7 @@ async function runJob(request: NextRequest) {
     }
 
     const admin = getSupabaseAdmin();
+    await retryCustomOfferWalletStillDue(admin);
     const now = new Date().toISOString();
 
     const { data: staleRequests, error: requestError } = await admin
@@ -223,6 +225,7 @@ async function runJob(request: NextRequest) {
             `[expire-custom-requests] wallet refund failed for payment_pending offer ${row.id}:`,
             walletErr,
           );
+          await rememberCustomOfferWalletStillDue(admin, row.id);
         }
       }
 
@@ -248,6 +251,38 @@ async function runJob(request: NextRequest) {
 
     if (offerError) throw offerError;
 
+    const { data: paymentPendingExpired } = await admin
+      .from("custom_offers")
+      .select("id, request_id, provider_id, request:custom_requests(customer_id)")
+      .eq("status", "payment_pending")
+      .lt("expiration_at", now);
+    const timedOutPayments = (paymentPendingExpired ?? []) as ExpiredOfferRow[];
+    for (const row of timedOutPayments) {
+      const customerId = row.request?.customer_id;
+      if (!customerId) continue;
+      try {
+        await creditWalletForCustomOfferAbandon(admin, row.id, customerId, row.provider_id ?? null, {
+          reason: "expired",
+        });
+      } catch (walletErr) {
+        console.error(`[expire-custom-requests] wallet refund failed for offer ${row.id}:`, walletErr);
+        await rememberCustomOfferWalletStillDue(admin, row.id);
+      }
+    }
+    if (timedOutPayments.length > 0) {
+      await admin
+        .from("custom_offers")
+        .update({ status: "expired", updated_at: now })
+        .in("id", timedOutPayments.map((row) => row.id))
+        .eq("status", "payment_pending");
+      for (const row of timedOutPayments) {
+        await patchCustomOfferMessageAttachments(admin, row.id, { status: "expired" });
+        if (!expiredRequestIds.includes(row.request_id)) {
+          await reopenCustomRequestIfNoLiveOffers(admin, row.request_id);
+        }
+      }
+    }
+
     const standaloneExpiredOffers = (staleOffers ?? []) as ExpiredOfferRow[];
     for (const offer of standaloneExpiredOffers) {
       if (!cascadedOfferIds.includes(offer.id)) {
@@ -257,6 +292,12 @@ async function runJob(request: NextRequest) {
 
     for (const req of (staleRequests ?? []) as ExpiredRequestRow[]) {
       await notifyExpiredRequestBestEffort(req);
+    }
+    const expiredRequestIdSet = new Set(expiredRequestIds);
+    for (const offer of standaloneExpiredOffers) {
+      if (!offer.request_id || expiredRequestIdSet.has(offer.request_id)) continue;
+      if (cascadedOfferIds.includes(offer.id)) continue;
+      await reopenCustomRequestIfNoLiveOffers(admin, offer.request_id);
     }
     for (const offer of standaloneExpiredOffers) {
       if (!cascadedOfferIds.includes(offer.id)) {

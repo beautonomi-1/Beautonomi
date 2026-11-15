@@ -1,4 +1,4 @@
-import { addMoney, multiplyMoney, subtractMoney } from "@beautonomi/utils";
+import { addMoney, computeGrowthPercent, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -158,8 +158,7 @@ export async function GET(request: NextRequest) {
     if (trends.length >= 2) {
       const current = trends[trends.length - 1];
       const previous = trends[trends.length - 2];
-      revenueGrowth =
-        previous.revenue > 0 ? (subtractMoney(current.revenue, previous.revenue) / previous.revenue) * 100 : 0;
+      revenueGrowth = computeGrowthPercent(current.revenue, previous.revenue).percent ?? 0;
       bookingsGrowth =
         previous.bookings > 0 ? ((current.bookings - previous.bookings) / previous.bookings) * 100 : 0;
       priorBucketComparison = {

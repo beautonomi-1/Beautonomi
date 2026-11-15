@@ -93,6 +93,29 @@ export default function InvoiceDetailPage() {
     const hostedStatus = hosted.hostedStatus;
 
     if (paymentCancelled) {
+      if (reference) {
+        void verifyWithRetry(reference, {
+          maxAttempts: 1,
+          delayMs: 0,
+          sessionId,
+          transactionId: flutterwaveTransactionId,
+          redirectStatus: "cancelled",
+        });
+      }
+      router.replace(`/provider/settings/billing/invoices/${invoiceId}`);
+      toast.info(t("web.provider.settings.pages.billing/invoices/[id].paymentCancelled"));
+      void loadInvoice();
+      return;
+    }
+
+    if (isHostedCheckoutFailureStatus(hostedStatus) && reference) {
+      void verifyWithRetry(reference, {
+        maxAttempts: 1,
+        delayMs: 0,
+        sessionId,
+        transactionId: flutterwaveTransactionId,
+        redirectStatus: hostedStatus,
+      });
       router.replace(`/provider/settings/billing/invoices/${invoiceId}`);
       toast.info(t("web.provider.settings.pages.billing/invoices/[id].paymentCancelled"));
       void loadInvoice();

@@ -47,10 +47,14 @@ export async function productOrderCardAmountStillDue(
   reference: string,
 ): Promise<{ ok: true; due: number } | { ok: false; message: string }> {
   const { data: order, error } = await (supabase.from("product_orders") as any)
-    .select("total_amount, wallet_amount, gift_card_amount")
+    .select("total_amount, wallet_amount, gift_card_amount, payment_status")
     .eq("id", productOrderId)
     .maybeSingle();
   if (error || !order) return { ok: false, message: "Order not found" };
+  const paymentStatus = String(order.payment_status ?? "").toLowerCase();
+  if (paymentStatus === "paid" || paymentStatus === "refunded" || paymentStatus === "partially_refunded") {
+    return { ok: true, due: 0 };
+  }
   const recorded = await loadSuccessfulProductOrderCardCharges(supabase, productOrderId);
   if (recorded.ok === false) return { ok: false, message: recorded.message };
   const prior = priorProductOrderCardPayments(recorded.rows, reference);

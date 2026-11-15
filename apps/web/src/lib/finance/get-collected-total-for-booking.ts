@@ -4,6 +4,7 @@ import {
   netPaymentTransactionAmount,
 } from "@/lib/finance/payment-transaction-net";
 import { addMoney, subtractMoney } from "@beautonomi/utils";
+import { refundableExcludingGiftStillDue, visitClosedForGiftReturn } from "@/lib/bookings/gift-value-still-due";
 
 /**
  * Cash-like amount collected for a booking across gateway rows, net of refunds
@@ -35,7 +36,7 @@ export async function getCollectedTotalForBooking(
 
   const { data: booking, error: bookingErr } = await supabase
     .from("bookings")
-    .select("total_paid, total_refunded, wallet_amount, gift_card_amount")
+    .select("total_paid, total_refunded, wallet_amount, gift_card_amount, status, cancellation_settlement_error")
     .eq("id", bookingId)
     .maybeSingle();
 
@@ -50,5 +51,12 @@ export async function getCollectedTotalForBooking(
   const totalRefunded = Number((booking as { total_refunded?: number }).total_refunded ?? 0);
   const collected = Math.max(totalPaid, walletGift);
 
-  return Math.max(0, subtractMoney(collected, totalRefunded));
+  return refundableExcludingGiftStillDue(
+    subtractMoney(collected, totalRefunded),
+    (booking as { cancellation_settlement_error?: string | null }).cancellation_settlement_error,
+    {
+      giftCardAmount: Number((booking as { gift_card_amount?: number }).gift_card_amount ?? 0),
+      visitClosed: visitClosedForGiftReturn((booking as { status?: string | null }).status),
+    },
+  );
 }

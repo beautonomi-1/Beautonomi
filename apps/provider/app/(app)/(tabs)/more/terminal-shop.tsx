@@ -371,6 +371,9 @@ export default function TerminalShopScreen() {
       }
 
       if (result?.outcome === "cancel") {
+        if (reference) {
+          void verifyPaystackWithRetry(reference, { redirectStatus: "cancelled", maxAttempts: 1 });
+        }
         const failed = terminalOrderFailedCopy(ts("paymentNotCompleted"));
         setPaymentOutcome({ phase: "failed", ...failed });
         await refreshAll();
@@ -389,6 +392,10 @@ export default function TerminalShopScreen() {
         let checkoutSessionId: string | null = null;
         if (result.outcome === "success" && result.url) {
           if (matchesTerminalPaystackReturnUrl(result.url, { cancelled: true })) {
+            const cancelRef = parseOnlineCheckoutReturnUrl(result.url).reference || reference;
+            if (cancelRef) {
+              void verifyPaystackWithRetry(cancelRef, { redirectStatus: "cancelled", maxAttempts: 1 });
+            }
             const failed = terminalOrderFailedCopy(ts("paymentNotCompleted"));
             setPaymentOutcome({ phase: "failed", ...failed });
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -397,6 +404,15 @@ export default function TerminalShopScreen() {
           }
           const parsed = parseOnlineCheckoutReturnUrl(result.url);
           if (parsed.status === "failed" || parsed.status === "cancelled") {
+            const failRef = parsed.reference || reference;
+            if (failRef) {
+              void verifyPaystackWithRetry(failRef, {
+                redirectStatus: parsed.status,
+                sessionId: parsed.sessionId,
+                transactionId: parsed.transactionId,
+                maxAttempts: 1,
+              });
+            }
             const failed = terminalOrderFailedCopy(ts("paymentNotCompleted"));
             setPaymentOutcome({ phase: "failed", ...failed });
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

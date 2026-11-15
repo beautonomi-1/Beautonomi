@@ -51,6 +51,10 @@ export default function LoyaltyPage({
     void load();
   }, []);
 
+  const milestonePoints = loyaltyData
+    ? Math.max(loyaltyData.lifetime_points ?? 0, loyaltyData.points_balance)
+    : 0;
+
   const historyLabel = (transaction: LoyaltyData["history"][number]) => {
     if (transaction.description) return transaction.description;
     if (transaction.transaction_type === "bonus") return t("web.accountSettings.loyalty.bonusPoints");
@@ -200,7 +204,7 @@ export default function LoyaltyPage({
                             <span className="text-gray-600">{t("web.accountSettings.loyalty.progress")}</span>
                             <span className="text-gray-900 font-medium">
                               {t("web.accountSettings.loyalty.progressPoints", {
-                                current: loyaltyData.points_balance,
+                                current: milestonePoints,
                                 threshold: loyaltyData.next_milestone.points_threshold,
                               })}
                             </span>
@@ -210,7 +214,7 @@ export default function LoyaltyPage({
                               className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] h-2.5 rounded-full transition-all"
                               style={{
                                 width: `${Math.min(
-                                  (loyaltyData.points_balance / loyaltyData.next_milestone.points_threshold) * 100,
+                                  (milestonePoints / loyaltyData.next_milestone.points_threshold) * 100,
                                   100
                                 )}%`,
                               }}
@@ -238,7 +242,7 @@ export default function LoyaltyPage({
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {loyaltyData.available_milestones.map((milestone) => {
-                        const isReached = loyaltyData.points_balance >= milestone.points_threshold;
+                        const isReached = milestonePoints >= milestone.points_threshold;
                         return (
                           <div
                             key={milestone.id}

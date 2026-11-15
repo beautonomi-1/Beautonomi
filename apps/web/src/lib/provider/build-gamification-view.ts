@@ -25,6 +25,21 @@ export type BadgeRequirementProgressStats = {
   ratingAverage: number;
 };
 
+/**
+ * Points earned inside the current badge. With no badge yet, that is the full total.
+ * The stored `current_tier_points` column is not maintained; this is the displayed value.
+ */
+export function pointsInCurrentProviderTier(
+  totalPoints: number,
+  currentBadge: { requirements?: unknown } | null | undefined,
+): number {
+  const total = Math.max(0, Math.floor(Number(totalPoints) || 0));
+  if (!currentBadge) return total;
+  const requirements = (currentBadge.requirements ?? {}) as BadgeRequirements;
+  const floor = Math.max(0, Math.floor(Number(requirements.points) || 0));
+  return Math.max(0, total - floor);
+}
+
 export function resolveJoinedBadge(
   joined: ProviderPointsBadgeJoin,
 ): BadgeRow | null {

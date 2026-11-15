@@ -2473,6 +2473,8 @@ export class ProviderApiClient implements ProviderApi {
         enable_in_online_booking: member.enable_in_online_booking ?? true,
         bookable_from: member.bookable_from ?? null,
         public_title: member.public_title ?? null,
+        time_clock_enabled: member.time_clock_enabled === true,
+        clocked_in: member.clocked_in === true,
       }));
 
       return teamMembers;

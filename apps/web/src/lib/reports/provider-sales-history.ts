@@ -11,6 +11,7 @@ import {
 } from "@/lib/reports/provider-report-utils";
 import { bookingMatchesDashboardLocation } from "@/lib/server/provider/dashboard-booking-location-filter";
 import { providerCollectedRetailOrdersOrFilter } from "@/lib/reports/provider-retail-order-scope";
+import { productOrderTillRefundAmount } from "@/lib/orders/product-order-tender";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 import { chunkIds, fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
@@ -518,10 +519,10 @@ export async function queryProviderSalesHistory(
         const { data, error } = await db
           .from("product_orders")
           .select(
-            "id, order_number, customer_id, customer_name, total_amount, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
+            "id, order_number, customer_id, customer_name, total_amount, fulfillment_type, collection_location_id, paid_at, updated_at, created_at, refunded_amount, refund_method",
           )
           .eq("provider_id", providerId)
-          .eq("payment_status", "paid")
+          .in("payment_status", ["paid", "partially_refunded", "refunded"])
           .gte("paid_at", fromIso)
           .lte("paid_at", toIso)
           .or(providerCollectedRetailOrdersOrFilter())
@@ -559,7 +560,13 @@ export async function queryProviderSalesHistory(
           continue;
         }
         const gross = Number(row.total_amount ?? 0);
-        extraTotalsRows.push({ gross_total: gross, provider_net: gross, platform_fee: 0, commission: 0 });
+        const tillRefund = productOrderTillRefundAmount(row);
+        extraTotalsRows.push({
+          gross_total: gross,
+          provider_net: Math.max(0, subtractMoney(gross, tillRefund)),
+          platform_fee: 0,
+          commission: 0,
+        });
         index.push({
           id: row.id,
           source: "product_order",
@@ -690,7 +697,7 @@ async function materializeSalesHistoryRows(args: {
       db
         .from("product_orders")
         .select(
-          "id, order_number, customer_id, customer_name, total_amount, currency, payment_status, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
+          "id, order_number, customer_id, customer_name, total_amount, currency, payment_status, fulfillment_type, collection_location_id, paid_at, updated_at, created_at, refunded_amount, refund_method",
         )
         .eq("provider_id", providerId)
         .in("id", slice),
@@ -792,6 +799,7 @@ async function materializeSalesHistoryRows(args: {
         const customerName = row.customer_id ? customerMap.get(row.customer_id) ?? null : row.customer_name ?? "Walk-in";
         const ref = row.order_number || row.id;
         const gross = Number(row.total_amount ?? 0);
+        const tillRefund = productOrderTillRefundAmount(row);
         rows.push({
           id: row.id,
           source: "product_order",
@@ -802,13 +810,13 @@ async function materializeSalesHistoryRows(args: {
           gross_total: gross,
           platform_fee: 0,
           commission: 0,
-          provider_net: gross,
+          provider_net: Math.max(0, subtractMoney(gross, tillRefund)),
           tip: 0,
           tax: 0,
           travel_fee: 0,
           cancellation_fee: 0,
           discount_contra: 0,
-          refunds: 0,
+          refunds: tillRefund,
           payment_status: row.payment_status ?? null,
           currency: row.currency || "ZAR",
           location_id: reportLoc,

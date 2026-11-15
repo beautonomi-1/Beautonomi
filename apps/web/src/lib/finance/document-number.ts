@@ -3,21 +3,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /**
  * F2-43 — gap-free, per-tenant document numbering (invoices, payouts, payments).
  *
- * SARS expects tax-invoice numbers to be sequential without gaps. A
- * "SELECT max()+1 then INSERT" race leaves gaps and duplicates, so numbers
- * must be allocated by the database under a row lock.
+ * SARS expects tax-invoice numbers to be sequential. Allocation is
+ * `next_document_number(tenant, kind, prefix)` (migration 10140), which locks
+ * `document_sequences` and returns the full number, for example
+ * `INV-2026-000001`. The year bucket is the database's Johannesburg year.
  *
- * TODO(DB agent): create the RPC
- *   `public.next_document_number(p_tenant_id uuid, p_kind text) RETURNS bigint`
- *   backed by a `document_sequences(tenant_id uuid, kind text, last_value bigint,
- *   PRIMARY KEY (tenant_id, kind))` table, implemented as
- *   `INSERT … ON CONFLICT (tenant_id, kind) DO UPDATE SET last_value =
- *   document_sequences.last_value + 1 RETURNING last_value` (SECURITY DEFINER,
- *   EXECUTE revoked from PUBLIC/anon/authenticated, service_role only). `p_kind`
- *   is `<document kind>:<year>` so numbering restarts each calendar year.
- *
- * Until that RPC is deployed this helper falls back to the legacy high-water
- * read; callers must still retry on unique violation (23505).
+ * When the function is not deployed yet, or the row has no tenant, this falls
+ * back to a high-water read. Callers still retry on unique violation (23505).
  */
 export const NEXT_DOCUMENT_NUMBER_RPC = "next_document_number";
 
@@ -37,6 +29,13 @@ function isMissingRpc(error: unknown): boolean {
   );
 }
 
+function sequenceFromDocumentNumber(value: string): number | null {
+  const match = value.match(/-(\d+)$/);
+  if (!match) return null;
+  const sequence = parseInt(match[1]!, 10);
+  return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
+}
+
 export async function nextDocumentNumber(
   supabase: SupabaseClient,
   input: {
@@ -49,20 +48,32 @@ export async function nextDocumentNumber(
     fallback: { table: string; column: string };
   },
 ): Promise<{ number: string; sequence: number; source: "rpc" | "fallback" }> {
-  const { data, error } = await supabase.rpc(NEXT_DOCUMENT_NUMBER_RPC, {
-    p_tenant_id: input.tenantId,
-    p_kind: `${input.kind}:${input.year}`,
-  });
-  if (!error) {
-    const sequence = Number(Array.isArray(data) ? data[0] : data);
-    if (Number.isFinite(sequence) && sequence > 0) {
-      return { number: formatDocumentNumber(input.prefix, input.year, sequence), sequence, source: "rpc" };
+  if (input.tenantId) {
+    const { data, error } = await supabase.rpc(NEXT_DOCUMENT_NUMBER_RPC, {
+      p_tenant_id: input.tenantId,
+      p_kind: input.kind,
+      p_prefix: input.prefix,
+    });
+    if (!error) {
+      const raw = Array.isArray(data) ? data[0] : data;
+      if (typeof raw === "string") {
+        const sequence = sequenceFromDocumentNumber(raw);
+        if (sequence) return { number: raw, sequence, source: "rpc" };
+      }
+      const sequence = Number(raw);
+      if (Number.isFinite(sequence) && sequence > 0) {
+        return {
+          number: formatDocumentNumber(input.prefix, input.year, sequence),
+          sequence,
+          source: "rpc",
+        };
+      }
+    } else if (!isMissingRpc(error)) {
+      throw error;
     }
-  } else if (!isMissingRpc(error)) {
-    throw error;
   }
 
-  // Fallback (not gap-free under concurrency — see TODO above).
+  // Fallback when the sequence function is not deployed, or the row has no tenant.
   const { data: last } = await supabase
     .from(input.fallback.table)
     .select(input.fallback.column)

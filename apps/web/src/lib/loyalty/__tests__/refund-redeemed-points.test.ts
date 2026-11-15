@@ -50,6 +50,19 @@ describe("refundRedeemedLoyaltyPoints", () => {
     expect(out.reason).toBe("no_redeem_row");
   });
 
+  it("does not treat a failed lookup as no points to return", async () => {
+    const admin = makeAdmin([{ data: null, error: { message: "down" } }]);
+
+    const out = await refundRedeemedLoyaltyPoints(admin, {
+      bookingId: "b1",
+      customerId: "c1",
+      reason: "cancel",
+    });
+    expect(out.refunded).toBe(false);
+    expect(out.reason).toBe("lookup_failed");
+    expect(admin.rpc).not.toHaveBeenCalled();
+  });
+
   it("refunds absolute value of redeemed ledger row", async () => {
     const admin = makeAdmin([
       { data: null, error: null },

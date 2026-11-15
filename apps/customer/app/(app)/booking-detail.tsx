@@ -1351,6 +1351,12 @@ export default function BookingDetailScreen() {
           return;
         }
         if (checkoutResult.outcome === "cancel") {
+          if (paymentReference) {
+            void verifyPaystackWithRetry(paymentReference, {
+              redirectStatus: "cancelled",
+              maxAttempts: 1,
+            });
+          }
           Alert.alert(
             bd("paymentPendingTitle"),
             bd("paymentCancelledRetryBody"),
@@ -1362,6 +1368,15 @@ export default function BookingDetailScreen() {
         if (checkoutResult.outcome === "success" && checkoutResult.url) {
           const parsed = parseOnlineCheckoutReturnUrl(checkoutResult.url);
           if (parsed.status === "failed" || parsed.status === "cancelled") {
+            const failRef = parsed.reference || paymentReference;
+            if (failRef) {
+              void verifyPaystackWithRetry(failRef, {
+                redirectStatus: parsed.status,
+                sessionId: parsed.sessionId,
+                transactionId: parsed.transactionId,
+                maxAttempts: 1,
+              });
+            }
             Alert.alert(
               bd("paymentPendingTitle"),
               bd("paymentCancelledRetryBody"),
@@ -2111,6 +2126,12 @@ export default function BookingDetailScreen() {
           return;
         }
         if (checkoutResult.outcome === "cancel") {
+          if (paymentReference) {
+            void verifyPaystackWithRetry(paymentReference, {
+              redirectStatus: "cancelled",
+              maxAttempts: 1,
+            });
+          }
           Alert.alert(
             bd("paymentPendingTitle"),
             bd("paymentCancelledRetryBody"),
@@ -2122,6 +2143,15 @@ export default function BookingDetailScreen() {
         if (checkoutResult.outcome === "success" && checkoutResult.url) {
           const parsed = parseOnlineCheckoutReturnUrl(checkoutResult.url);
           if (parsed.status === "failed" || parsed.status === "cancelled") {
+            const failRef = parsed.reference || paymentReference;
+            if (failRef) {
+              void verifyPaystackWithRetry(failRef, {
+                redirectStatus: parsed.status,
+                sessionId: parsed.sessionId,
+                transactionId: parsed.transactionId,
+                maxAttempts: 1,
+              });
+            }
             Alert.alert(
               bd("paymentPendingTitle"),
               bd("paymentCancelledRetryBody"),

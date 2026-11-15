@@ -1,4 +1,4 @@
-import { addMoney } from "@beautonomi/utils";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1767,7 +1767,7 @@ export function UserDetailPage() {
                       <AdminTd>{prov?.business_name ?? "—"}</AdminTd>
                       <AdminTd>{str(o.status)}</AdminTd>
                       <AdminTd>{str(o.payment_status)}</AdminTd>
-                      <AdminTd className="tabular-nums">{Number(o.total_amount ?? 0).toFixed(2)}</AdminTd>
+                      <AdminTd className="tabular-nums">{Math.max(0, subtractMoney(Number(o.total_amount ?? 0), Math.max(0, Number(o.refunded_amount ?? 0)))).toFixed(2)}</AdminTd>
                     </tr>
                   );
                 })}

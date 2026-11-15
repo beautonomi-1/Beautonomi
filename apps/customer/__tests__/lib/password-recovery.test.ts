@@ -2,6 +2,7 @@ import {
   getNewPasswordIssue,
   getPasswordStrength,
   passwordMeetsPolicyRequirements,
+  passwordRecoveryRedirectUrl,
 } from "@/lib/auth/password-recovery";
 
 describe("password recovery helpers", () => {
@@ -21,6 +22,13 @@ describe("password recovery helpers", () => {
     ).toBe("policy");
     expect(getNewPasswordIssue("password1", "password2", policy)).toBe("mismatch");
     expect(getNewPasswordIssue("password1", "password1", policy)).toBeNull();
+  });
+
+  it("sends the email link to the website reset page", () => {
+    expect(passwordRecoveryRedirectUrl("https://app.example.com/")).toBe(
+      "https://app.example.com/auth/callback?type=recovery",
+    );
+    expect(passwordRecoveryRedirectUrl("  ")).toBe("");
   });
 
   it("scores strength like signup", () => {

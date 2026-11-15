@@ -66,7 +66,7 @@ import {
 import { ExploreVideoReelSideLogo } from "@/components/explore/ExploreVideoReelBrand";
 import { trackExploreView, trackExploreWatchProgress } from "@/lib/explore-analytics";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
-import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
+import { ExploreSoundBed } from "@/components/explore/ExploreSoundBed";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { useSocialCapability } from "@/hooks/useSafetySettings";
 import {
@@ -79,52 +79,6 @@ import {
   ContentReportSheet,
   type ContentReportTargetType,
 } from "@/components/safety/ContentReportSheet";
-
-function ExploreSoundBed({
-  soundUrl,
-  active,
-  muted,
-}: {
-  soundUrl: string;
-  active: boolean;
-  muted: boolean;
-}) {
-  const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
-  const activeRef = useRef(active);
-  const mutedRef = useRef(muted);
-  activeRef.current = active;
-  mutedRef.current = muted;
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      await setAudioModeAsync({ playsInSilentMode: true });
-      if (cancelled) return;
-      const player = createAudioPlayer({ uri: soundUrl });
-      const playing = activeRef.current && !mutedRef.current;
-      player.loop = playing;
-      playerRef.current = player;
-      if (playing) player.play();
-      else player.pause();
-    })();
-    return () => {
-      cancelled = true;
-      playerRef.current?.remove();
-      playerRef.current = null;
-    };
-  }, [soundUrl]);
-
-  useEffect(() => {
-    const player = playerRef.current;
-    if (!player) return;
-    const playing = active && !muted;
-    player.loop = playing;
-    if (playing) player.play();
-    else player.pause();
-  }, [active, muted]);
-
-  return null;
-}
 
 function ExploreVideoPlayer({
   post,
@@ -396,6 +350,7 @@ function VideoFeedItem({
   onMorePress: () => void;
 }) {
   const { t } = useTranslation();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const heartAnim = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
@@ -552,6 +507,31 @@ function VideoFeedItem({
           <Text style={{ color: "#fff", fontSize: 14, lineHeight: 20 }} numberOfLines={3}>
             {post.caption}
           </Text>
+        ) : null}
+        {post.offering?.id && post.provider?.slug ? (
+          <TouchableOpacity
+            onPress={() =>
+              router.push({
+                pathname: "/(app)/book",
+                params: { slug: post.provider.slug, service_id: post.offering?.id },
+              })
+            }
+            accessibilityRole="button"
+            accessibilityLabel={t("customer.explorePost.bookThisLook")}
+            style={{
+              alignSelf: "flex-start",
+              marginTop: 10,
+              backgroundColor: Colors.primary,
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }} numberOfLines={1}>
+              {t("customer.explorePost.bookThisLook")}
+              {post.offering.name ? ` · ${post.offering.name}` : ""}
+            </Text>
+          </TouchableOpacity>
         ) : null}
       </View>
     </Pressable>

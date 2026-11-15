@@ -5,6 +5,7 @@ import { requireProviderReportsAccess } from "@/lib/reports/require-provider-rep
 import { createClient } from "@supabase/supabase-js";
 import { getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
 import { MAX_BOOKINGS_FOR_REPORT, MAX_REPORT_DAYS } from "@/lib/reports/constants";
+import { bookingLineShares } from "@/lib/reports/staff-ledger-revenue";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -133,12 +134,9 @@ export async function GET(request: NextRequest) {
       const bookingRevenue = revenueByBooking.get(booking.id) || 0;
       if (!booking.booking_services || !Array.isArray(booking.booking_services)) return;
 
-      const totalServicePrice = booking.booking_services.reduce(
-        (sum: number, s: any) => addMoney(sum, Number(s.price || 0)),
-        0
-      );
+      const shares = bookingLineShares(bookingRevenue, booking.booking_services);
 
-      booking.booking_services.forEach((bs: any) => {
+      booking.booking_services.forEach((bs: any, index: number) => {
         const service = bs.offerings;
         if (!service) return;
 
@@ -156,10 +154,7 @@ export async function GET(request: NextRequest) {
         };
 
         existing.bookingIds.add(booking.id);
-        const serviceProportion = totalServicePrice > 0
-          ? Number(bs.price || 0) / totalServicePrice
-          : 1 / booking.booking_services.length;
-        existing.revenue = addMoney(existing.revenue, multiplyMoney(bookingRevenue, serviceProportion));
+        existing.revenue = addMoney(existing.revenue, shares[index] ?? 0);
         const catSet = categoryBookingSets.get(categoryName) ?? new Set<string>();
         catSet.add(booking.id);
         categoryBookingSets.set(categoryName, catSet);

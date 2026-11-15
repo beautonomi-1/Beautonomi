@@ -488,6 +488,13 @@ export async function POST(request: NextRequest) {
         reference: chargeReference,
         metadata: body.metadata ?? {},
       });
+      if (fw.ok === false && fw.pending) {
+        return successResponse({
+          pending: true,
+          reference: chargeReference,
+          message: fw.message,
+        });
+      }
       if (fw.ok === false) {
         return handleApiError(
           new Error(fw.message),
@@ -514,6 +521,13 @@ export async function POST(request: NextRequest) {
           user_id: user.id,
         },
       });
+      if (stripeCharge.ok === false && stripeCharge.pending === true) {
+        return successResponse({
+          pending: true,
+          reference: stripeCharge.reference,
+          message: stripeCharge.message,
+        });
+      }
       if (stripeCharge.ok === false) {
         return handleApiError(
           new Error(stripeCharge.message),

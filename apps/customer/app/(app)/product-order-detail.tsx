@@ -336,6 +336,8 @@ export default function ProductOrderDetailScreen() {
   const paymentMethodLabel = formatPaymentMethod(order.payment_method ?? undefined, pod);
   const giftAmt = Number(order.gift_card_amount ?? 0);
   const dueTotal = Math.max(0, Number(order.total_amount ?? 0));
+  const refundedAmt = Math.max(0, Number(order.refunded_amount ?? 0));
+  const chargedTotal = Math.max(0, subtractMoney(dueTotal, Math.min(dueTotal, refundedAmt)));
   const dueGift = Math.min(dueTotal, Math.max(0, giftAmt));
   const dueWallet = Math.min(Math.max(0, walletAmt), Math.max(0, subtractMoney(dueTotal, dueGift)));
   const serverDue = order.amount_still_due;
@@ -448,6 +450,12 @@ export default function ProductOrderDetailScreen() {
         return;
       }
       if (pr.outcome === "cancel") {
+        if (paystackRes.data.reference) {
+          void verifyPaystackWithRetry(paystackRes.data.reference, {
+            redirectStatus: "cancelled",
+            maxAttempts: 1,
+          });
+        }
         trackProductOrderPayOutcome({
           order_id: order.id,
           outcome: "cancelled",
@@ -472,6 +480,15 @@ export default function ProductOrderDetailScreen() {
       if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
         const parsed = parseOnlineCheckoutReturnUrl(pr.url);
         if (parsed.status === "failed" || parsed.status === "cancelled") {
+          const failRef = parsed.reference || paystackRes.data.reference;
+          if (failRef) {
+            void verifyPaystackWithRetry(failRef, {
+              redirectStatus: parsed.status,
+              sessionId: parsed.sessionId,
+              transactionId: parsed.transactionId,
+              maxAttempts: 1,
+            });
+          }
           trackProductOrderPayOutcome({
             order_id: order.id,
             outcome: "cancelled",
@@ -853,7 +870,7 @@ export default function ProductOrderDetailScreen() {
           )}
 
           {/* When the provider sets tracking_url, the row opens the carrier page; otherwise number-only. */}
-          {order.tracking_number || order.tracking_url ? (
+          {order.fulfillment_type === "delivery" && (order.tracking_number || order.tracking_url) ? (
             (() => {
               const label = [
                 order.carrier,
@@ -1247,9 +1264,15 @@ export default function ProductOrderDetailScreen() {
               )}
             </Text>
           </View>
+          {refundedAmt > 0 ? (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>{pod("refunded")}</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(refundedAmt)}</Text>
+            </View>
+          ) : null}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{pod("chargedTotal")}</Text>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>{fmt(Number(order.total_amount ?? 0))}</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>{fmt(chargedTotal)}</Text>
           </View>
           {Math.abs(
             Number(order.total_amount ?? 0) -

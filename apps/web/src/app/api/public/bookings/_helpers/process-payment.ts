@@ -20,6 +20,7 @@ import {
 import { chargeAuthorization } from "@/lib/payments/paystack-complete";
 import { classifySavedCardChargeStatus } from "@/lib/payments/saved-card-charge-status";
 import { getAppointmentSettingsFromDB } from "@/lib/provider-portal/appointment-settings";
+import { giftCardCaptureAnswer, giftCardCaptureSucceeded } from "@/lib/bookings/gift-value-still-due";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
@@ -421,7 +422,7 @@ export async function processPayment(
         "capture_gift_card_redemption",
         { p_booking_id: booking.id },
       );
-      if (captureErr || captured === false) {
+      if (captureErr || !giftCardCaptureSucceeded(captured)) {
         return handleApiError(
           captureErr ?? new Error("Gift card could not be captured"),
           captureErr?.message || "Gift card could not be captured.",
@@ -674,14 +675,17 @@ export async function processPayment(
           stripePaymentMethodId: stripePmId,
           metadata: savedCardMeta,
         });
-        if (stripeCharge.ok === false) {
+        if (stripeCharge.ok === false && stripeCharge.pending === true) {
+          paymentUrl = null;
+          paymentReference = stripeCharge.reference;
+        } else if (stripeCharge.ok === false) {
           return handleApiError(
             new Error(stripeCharge.message),
             stripeCharge.message || "Failed to charge saved card",
             "PAYMENT_FAILED",
             400,
           );
-        }
+        } else {
         paymentUrl = null;
         paymentReference = stripeCharge.reference;
         try {
@@ -702,12 +706,30 @@ export async function processPayment(
             paymentProvider: "stripe",
           });
           if (giftCardAmountApplied > 0) {
-            try {
-              await (supabaseAdmin.rpc as any)("capture_gift_card_redemption", {
-                p_booking_id: booking.id,
-              });
-            } catch (giftCaptureErr) {
-              await clearRestoredGiftCardHold(supabaseAdmin, booking.id, giftCaptureErr);
+            const { data: captured, error: captureErr } = await (supabaseAdmin.rpc as any)(
+              "capture_gift_card_redemption",
+              { p_booking_id: booking.id },
+            );
+            if (captureErr || captured === false || captured === null) {
+              const captureMessage = String(captureErr?.message || "");
+              if (/expired|no longer active/i.test(captureMessage)) {
+                await clearRestoredGiftCardHold(supabaseAdmin, booking.id, captureErr);
+              } else if (captureErr) {
+                const { rememberGiftCaptureStillDue } = await import(
+                  "@/lib/bookings/rollback-collectible-split-leg"
+                );
+                await rememberGiftCaptureStillDue(supabaseAdmin, booking.id, booking.tenant_id ?? null);
+              } else if (giftCardCaptureAnswer(captured) === "absent") {
+                await supabaseAdmin
+                  .from("bookings")
+                  .update({ gift_card_amount: 0, gift_card_id: null, payment_status: "partially_paid" })
+                  .eq("id", booking.id);
+              } else {
+                const { rememberGiftCaptureStillDue } = await import(
+                  "@/lib/bookings/rollback-collectible-split-leg"
+                );
+                await rememberGiftCaptureStillDue(supabaseAdmin, booking.id, booking.tenant_id ?? null);
+              }
             }
           }
           if (recurringSubscribeEligible) {
@@ -729,6 +751,7 @@ export async function processPayment(
             { bookingId: booking.id, err: reconcileErr },
           );
         }
+        }
       } else if (
         savedCardProvider === "flutterwave" &&
         isFlutterwaveSavedCardToken(String(savedCard.provider_payment_method_id ?? ""))
@@ -743,14 +766,17 @@ export async function processPayment(
           reference,
           metadata: savedCardMeta,
         });
-        if (flwCharge.ok === false) {
+        if (flwCharge.ok === false && flwCharge.pending) {
+          paymentUrl = null;
+          paymentReference = reference;
+        } else if (flwCharge.ok === false) {
           return handleApiError(
             new Error(flwCharge.message),
             flwCharge.message || "Failed to charge saved card",
             "PAYMENT_FAILED",
             400,
           );
-        }
+        } else {
         paymentUrl = null;
         paymentReference = reference;
         try {
@@ -759,9 +785,31 @@ export async function processPayment(
             paymentProvider: "flutterwave",
           });
           if (giftCardAmountApplied > 0) {
-            await (supabaseAdmin.rpc as any)("capture_gift_card_redemption", {
-              p_booking_id: booking.id,
-            });
+            const { data: captured, error: captureErr } = await (supabaseAdmin.rpc as any)(
+              "capture_gift_card_redemption",
+              { p_booking_id: booking.id },
+            );
+            if (captureErr || captured === false || captured === null) {
+              const captureMessage = String(captureErr?.message || "");
+              if (/expired|no longer active/i.test(captureMessage)) {
+                await clearRestoredGiftCardHold(supabaseAdmin, booking.id, captureErr);
+              } else if (captureErr) {
+                const { rememberGiftCaptureStillDue } = await import(
+                  "@/lib/bookings/rollback-collectible-split-leg"
+                );
+                await rememberGiftCaptureStillDue(supabaseAdmin, booking.id, booking.tenant_id ?? null);
+              } else if (giftCardCaptureAnswer(captured) === "absent") {
+                await supabaseAdmin
+                  .from("bookings")
+                  .update({ gift_card_amount: 0, gift_card_id: null, payment_status: "partially_paid" })
+                  .eq("id", booking.id);
+              } else {
+                const { rememberGiftCaptureStillDue } = await import(
+                  "@/lib/bookings/rollback-collectible-split-leg"
+                );
+                await rememberGiftCaptureStillDue(supabaseAdmin, booking.id, booking.tenant_id ?? null);
+              }
+            }
           }
         } catch (reconcileErr) {
           await clearRestoredGiftCardHold(supabaseAdmin, booking.id, reconcileErr);
@@ -769,6 +817,7 @@ export async function processPayment(
             bookingId: booking.id,
             err: reconcileErr,
           });
+        }
         }
       } else {
       let chargeResult: Awaited<ReturnType<typeof chargeAuthorization>>;
@@ -836,7 +885,10 @@ export async function processPayment(
         );
       }
 
-      if (savedCardOutcome === "hosted_fallback") {
+      if (savedCardOutcome === "still_open") {
+        paymentUrl = null;
+        paymentReference = reference;
+      } else if (savedCardOutcome === "hosted_fallback") {
         const fallbackReference = generateTransactionReference("booking", booking.id);
         const hostedResult = await initializeHostedBookingPayment({
           supabase,
@@ -919,7 +971,7 @@ export async function processPayment(
               }
             );
             if (captureErr) throw captureErr;
-            if (captureResult === false || captureResult === null) {
+            if (giftCardCaptureAnswer(captureResult) === "absent") {
               giftForLedger = 0;
               console.warn("[process-payment] saved-card gift card capture returned no capture", {
                 bookingId: booking.id,
@@ -929,13 +981,27 @@ export async function processPayment(
                 .from("bookings")
                 .update({ gift_card_id: null, gift_card_amount: 0 })
                 .eq("id", booking.id);
+            } else if (giftCardCaptureAnswer(captureResult) === "unknown") {
+              const { rememberGiftCaptureStillDue } = await import(
+                "@/lib/bookings/rollback-collectible-split-leg"
+              );
+              await rememberGiftCaptureStillDue(supabaseAdmin, booking.id, booking.tenant_id ?? null);
             }
           } catch (giftCaptureErr) {
-            giftForLedger = 0;
-            await clearRestoredGiftCardHold(supabaseAdmin, booking.id, giftCaptureErr);
+            const captureMessage =
+              giftCaptureErr instanceof Error ? giftCaptureErr.message : String(giftCaptureErr ?? "");
+            if (/expired|no longer active/i.test(captureMessage)) {
+              giftForLedger = 0;
+              await clearRestoredGiftCardHold(supabaseAdmin, booking.id, giftCaptureErr);
+            } else {
+              const { rememberGiftCaptureStillDue } = await import(
+                "@/lib/bookings/rollback-collectible-split-leg"
+              );
+              await rememberGiftCaptureStillDue(supabaseAdmin, booking.id, booking.tenant_id ?? null);
+            }
             console.error(
-              "[process-payment] saved-card gift card capture failed before the ledger; card charge stands without the gift",
-              { bookingId: booking.id, err: giftCaptureErr }
+              "[process-payment] saved-card gift card capture did not finish; the gift stays on the visit until the next sweep",
+              { bookingId: booking.id, err: giftCaptureErr },
             );
           }
         }
@@ -1010,7 +1076,7 @@ export async function processPayment(
         }
 
         try {
-          await (supabase.from("payments") as any).insert({
+          const { error: savedCardPaymentRowError } = await (supabaseAdmin.from("payments") as any).insert({
             booking_id: booking.id,
             user_id: v.customerId,
             provider_id: draft.provider_id,
@@ -1031,6 +1097,12 @@ export async function processPayment(
               saved_card_used: true,
             },
           });
+          if (savedCardPaymentRowError) {
+            console.error(
+              "[process-payment] saved-card payments row was not stored",
+              { bookingId: booking.id, err: savedCardPaymentRowError },
+            );
+          }
         } catch (paymentRowErr) {
           console.error(
             "[process-payment] legacy payments insert threw after saved-card charge; webhook will reconcile",

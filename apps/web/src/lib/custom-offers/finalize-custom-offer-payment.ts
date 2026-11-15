@@ -17,6 +17,7 @@
  *
  * Caller MUST pass an admin-scoped Supabase client (service_role).
  */
+import { bookingGiftVoidOutcome, giftCardCaptureAnswer } from "@/lib/bookings/gift-value-still-due";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { addMoney, percentOf, subtractMoney } from "@beautonomi/utils";
@@ -41,6 +42,7 @@ import {
 } from "@/lib/bookings/resolve-commission-base-for-booking-payment";
 import { postBookingAuditLedgerLegsIfMissing } from "@/lib/bookings/post-booking-audit-ledger-legs";
 import { holdGiftCardOnBooking } from "@/lib/gift-cards/hold-gift-card-for-booking";
+import { markGiftCardStillHeld } from "@/lib/bookings/settle-booking-cancellation";
 
 export interface FinalizeCustomOfferPaymentInput {
   offerId: string;
@@ -919,12 +921,40 @@ export async function finalizeCustomOfferPayment(
           p_booking_id: booking.id,
         })
       : { data: false, error: null };
-    const giftTaken = held.ok && !captureError && captured !== false;
-    if (!giftTaken) {
+    const captureAnswer = !held.ok
+      ? "absent"
+      : captureError && /expired|no longer active/i.test(String(captureError.message ?? captureError))
+        ? "absent"
+        : captureError
+          ? "unknown"
+          : giftCardCaptureAnswer(captured);
+    const giftTaken = captureAnswer === "taken";
+    if (captureAnswer === "unknown") {
+      const { rememberGiftCaptureStillDue } = await import(
+        "@/lib/bookings/rollback-collectible-split-leg"
+      );
+      await rememberGiftCaptureStillDue(adminSupabase, booking.id as string, bookingTenantId);
+    }
+    if (giftTaken || captureAnswer === "unknown") {
+      if (held.ok && held.giftCardId) {
+        await adminSupabase.from("bookings").update({ gift_card_id: held.giftCardId }).eq("id", booking.id);
+      }
+    } else if (!giftTaken) {
+      let giftStillHeld = false;
       if (held.ok) {
-        await (adminSupabase.rpc as typeof adminSupabase.rpc)("void_gift_card_redemption", {
-          p_booking_id: booking.id,
-        });
+        try {
+          const { data: voided, error: voidErr } = await (adminSupabase.rpc as typeof adminSupabase.rpc)(
+            "void_gift_card_redemption",
+            { p_booking_id: booking.id },
+          );
+          giftStillHeld = Boolean(voidErr) || bookingGiftVoidOutcome(voided) === "unknown";
+          if (voidErr) {
+            console.warn("[finalizeCustomOfferPayment] gift card void failed:", voidErr);
+          }
+        } catch (voidErr) {
+          giftStillHeld = true;
+          console.warn("[finalizeCustomOfferPayment] gift card void failed:", voidErr);
+        }
       }
       giftCardAmountApplied = 0;
       cashCollected = addMoney(paystackAmountMajor, walletAmountApplied);
@@ -941,11 +971,12 @@ export async function finalizeCustomOfferPayment(
           updated_at: new Date().toISOString(),
         })
         .eq("id", booking.id);
+      if (giftStillHeld) {
+        await markGiftCardStillHeld(adminSupabase, booking.id as string, true);
+      }
       if (nothingElseCollected) {
         return { ok: false, reason: held.ok ? "gift_card_capture_failed" : "gift_card_reserve_failed" };
       }
-    } else if (held.ok && held.giftCardId) {
-      await adminSupabase.from("bookings").update({ gift_card_id: held.giftCardId }).eq("id", booking.id);
     }
   }
 

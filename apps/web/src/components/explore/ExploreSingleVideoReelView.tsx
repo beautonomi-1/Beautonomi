@@ -866,6 +866,15 @@ export function ExploreSingleVideoReelView({
         {activePost.caption ? (
           <p className="pointer-events-auto mt-1 line-clamp-2 text-sm text-white/95">{activePost.caption}</p>
         ) : null}
+        {activePost.offering?.id && activePost.provider?.slug ? (
+          <Link
+            href={`/booking?slug=${encodeURIComponent(activePost.provider.slug)}&service=${encodeURIComponent(activePost.offering.id)}`}
+            className="pointer-events-auto mt-2 inline-flex max-w-full rounded-full bg-[#FF0077] px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            {t("customer.explorePost.bookThisLook")}
+            {activePost.offering.name ? ` · ${activePost.offering.name}` : ""}
+          </Link>
+        ) : null}
       </div>
 
       <div className="absolute bottom-[max(6rem,calc(env(safe-area-inset-bottom)+5rem))] right-3 z-20 flex flex-col items-center gap-4">

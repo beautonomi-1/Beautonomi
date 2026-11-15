@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useTranslation } from "@beautonomi/i18n";
@@ -7,7 +7,11 @@ import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
 import { redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
-import * as ExpoLinking from "expo-linking";
+import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import { isCancelledPaystackUrl } from "@/lib/paystack-webview-utils";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { getNativePaystackReturnUrl } from "@/lib/payments/customerNativePaystackReturn";
 
 type InvitePayload = {
   invited_name?: string | null;
@@ -46,6 +50,7 @@ export default function GroupInviteScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [invite, setInvite] = useState<InvitePayload | null>(null);
+  const checkout = useInAppPaystackCheckout();
 
   const returnTo = `/group-invite/${encodeURIComponent(String(token ?? ""))}`;
   const apiBase = `/api/public/group-invites/${encodeURIComponent(String(token ?? ""))}`;
@@ -84,16 +89,50 @@ export default function GroupInviteScreen() {
   const payShare = async () => {
     if (!token) return;
     setBusy(true);
-    const res = await api.post<{ authorization_url?: string }>(`${apiBase}/pay`, {});
-    setBusy(false);
-    if (res.error) {
-      if (await redirectLoginIfAuthRequired(returnTo, res.error)) return;
-      Alert.alert(gi("payFailed"), getApiErrorMessage(res.error));
-      return;
+    try {
+      const res = await api.post<{ authorization_url?: string; reference?: string }>(`${apiBase}/pay`, {});
+      if (res.error) {
+        if (await redirectLoginIfAuthRequired(returnTo, res.error)) return;
+        Alert.alert(gi("payFailed"), getApiErrorMessage(res.error));
+        return;
+      }
+      const url = res.data?.authorization_url;
+      const startedRef = res.data?.reference?.trim() ?? "";
+      if (!url) {
+        Alert.alert(gi("payFailed"));
+        return;
+      }
+      if (Platform.OS === "web") {
+        window.location.assign(url);
+        return;
+      }
+      const pr = await checkout.waitForCheckout(url, {
+        title: "Pay your share",
+        returnUrl: getNativePaystackReturnUrl(`group-invite/${encodeURIComponent(String(token))}`),
+        matchSuccess: (rawUrl) => rawUrl.includes("group-invite") && !isCancelledPaystackUrl(rawUrl),
+        matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
+      });
+      if (pr.outcome === "start_failed") {
+        Alert.alert(gi("payFailed"));
+        return;
+      }
+      let reference = startedRef;
+      let redirectStatus: string | null = pr.outcome === "cancel" ? "cancelled" : null;
+      if ((pr.outcome === "success" || pr.outcome === "cancel") && pr.url) {
+        const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+        if (parsed.reference) reference = parsed.reference;
+        if (parsed.status === "failed" || parsed.status === "cancelled") redirectStatus = parsed.status;
+      }
+      if (reference) {
+        await verifyPaystackWithRetry(reference, {
+          redirectStatus,
+          maxAttempts: redirectStatus ? 1 : 5,
+        });
+      }
+      await load();
+    } finally {
+      setBusy(false);
     }
-    const url = res.data?.authorization_url;
-    if (url) await ExpoLinking.openURL(url);
-    else Alert.alert(gi("payFailed"));
   };
 
   const doCancel = async () => {

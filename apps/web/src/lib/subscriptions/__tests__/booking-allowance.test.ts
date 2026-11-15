@@ -82,6 +82,38 @@ describe("booking allowance", () => {
     expect(banner.booking_limit_message).toMatch(/unlimited bookings/i);
   });
 
+  it("keeps a failed card renewal entitled for 3 days after the period has ended", () => {
+    const now = Date.parse("2026-09-29T09:00:00.000Z");
+    expect(
+      subscriptionRowIsEntitled(
+        {
+          status: "past_due",
+          billing_provider: "paystack",
+          expires_at: "2026-09-28T00:00:00.000Z",
+          past_due_since: "2026-09-28T00:00:00.000Z",
+          updated_at: "2026-09-29T08:00:00.000Z",
+        },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not restart grace when a later save moves updated_at", () => {
+    const now = Date.parse("2026-09-29T09:00:00.000Z");
+    expect(
+      subscriptionRowIsEntitled(
+        {
+          status: "past_due",
+          billing_provider: "paystack",
+          expires_at: "2026-10-01T00:00:00.000Z",
+          past_due_since: "2026-09-20T00:00:00.000Z",
+          updated_at: "2026-09-29T08:00:00.000Z",
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
   it("keeps an Apple billing-retry row entitled after expires_at has lapsed", () => {
     const now = Date.parse("2026-09-29T09:00:00.000Z");
     expect(

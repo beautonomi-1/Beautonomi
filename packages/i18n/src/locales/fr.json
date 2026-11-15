@@ -9618,10 +9618,10 @@
           "markPaid": "Marquer payé",
           "sectionTitle": "Cycles de paie",
           "ownerHint": "Create a run for a period, then tap a draft run to adjust per-staff PAYE, UIF, and manual deductions. Approve and mark paid when ready.",
-          "staffHint": "View pay runs for your workplace. Only the business owner can create runs, approve, or mark them paid.",
+          "staffHint": "Vous ne voyez que votre propre bulletin. Le propriétaire, ou une personne autorisée à la paie, crée la paie, l'approuve et la marque réglée.",
           "emptyTitle": "Pas encore de pay runs",
           "emptyOwner": "Créez un cycle de paie hebdomadaire ou mensuel. Puis approuvez et marquez payé ici.",
-          "emptyStaff": "Your owner hasn’t created a cycle de paie yet. Ask them to start one from this screen.",
+          "emptyStaff": "Aucun cycle de paie pour l'instant. Le propriétaire, ou une personne autorisée, le crée. Votre bulletin apparaît dans Mes gains après validation.",
           "createPayRun": "Créer pay run",
           "openPayRunA11y": "Ouvrir le cycle de paie du {{start}} au {{end}}, statut {{status}}",
           "statusDraft": "Brouillon",
@@ -13913,7 +13913,8 @@
       "requestChangesTitle": "Demander des modifications",
       "requestChangesBody": "Indiquez au prestataire ce que vous souhaitez ajuster.",
       "requestChangesEmpty": "Décrivez les modifications souhaitées.",
-      "requestChangesFailed": "Impossible de demander des modifications"
+      "requestChangesFailed": "Impossible de demander des modifications",
+      "offerStatusNeedsSupport": "Assistance requise"
     },
     "walletScreen": {
       "balanceLabel": "Portefeuille balance",
@@ -15526,20 +15527,20 @@
           "copyTrackingHint": "Veuillez copier le numéro de suivi manuellement.",
           "openLinkTitle": "Impossible de ouvrir link",
           "paymentSuccessTitle": "Paiement successful",
-          "paymentSuccessBody": "Your order {{orderNumber}} has been paid.",
+          "paymentSuccessBody": "Votre commande {{orderNumber}} est réglée.",
           "paymentFailedTitle": "Échec : Paiement",
           "paymentFailedBody": "Impossible de terminer paiement.",
           "paymentPendingTitle": "Paiement en attente",
-          "paymentPendingBody": "If you completed payment, it may take a few moments to confirm. Refresh this order shortly.",
+          "paymentPendingBody": "Si le règlement est terminé, la confirmation peut prendre un instant. Actualisez cette commande bientôt.",
           "emailRequiredTitle": "E-mail obligatoire",
-          "emailRequiredBody": "Add an email address à your account avant paying this order online.",
+          "emailRequiredBody": "Ajoutez une adresse e-mail à votre compte avant de régler cette commande en ligne.",
           "paymentUnavailableTitle": "Paiement indisponible",
           "paymentUnavailableBody": "We impossible de démarrer paiement for this commande. Veuillez réessayer.",
           "shareErrorTitle": "Partager",
           "shareErrorBody": "Impossible de partager ce reçu.",
           "downloadReceiptTitle": "Télécharger le reçu",
           "receiptGenerateFailed": "Impossible de generate this reçu. Veuillez réessayer.",
-          "storageUnavailable": "File storage is not available on this device.",
+          "storageUnavailable": "Le stockage de fichiers n'est pas disponible sur cet appareil.",
           "downloadPdfFailed": "Impossible de télécharger le PDF. {{hint}}",
           "downloadUnknownError": "Une erreur s’est produite.",
           "orderIdMissing": "Commande ID is missing",
@@ -15547,7 +15548,7 @@
           "loadOrderError": "Impossible de charger la commande. Vérifiez votre connexion.",
           "securePaymentTitle": "Secure paiement",
           "paymentCancelledTitle": "Paiement annulé",
-          "paymentCancelledBody": "You cancelled the payment. No charge was made. You can réessayer from this order.",
+          "paymentCancelledBody": "Vous avez annulé le règlement. Aucun débit n'a été fait. Vous pouvez réessayer depuis cette commande.",
           "cancelOrderTitle": "Annuler la commande",
           "cancelOrderBody": "Annuler cette commande ? Les articles en stock seront réintégrés et les paiements remboursés.",
           "cancelledInPerson": "Commande annulée. {{amount}} a été encaissé en personne et doit encore être rendu par le salon.",
@@ -15633,13 +15634,13 @@
           "platformFee": "Frais de plateforme",
           "paidFromWallet": "Paid from portefeuille",
           "paidFromGiftCard": "Paid from carte cadeau",
-          "promotion": "Promotion",
+          "promotion": "Offre",
           "calculatedTotal": "Total calculé",
           "chargedTotal": "Total facturé",
           "totalDifferenceHint": "De petits écarts peuvent venir de l’arrondi ou des promotions au paiement.",
           "soldBy": "Vendu par",
           "requestReturnCta": "Request Return / Remboursement",
-          "returnWindowPassed": "Return window ({{days}} days) has passed. For help, open Profile → Centre d’aide → New ticket.",
+          "returnWindowPassed": "Le délai de retour ({{days}} jours) est dépassé. Pour de l'aide, ouvrez Profil → Centre d'aide → Nouveau ticket.",
           "readyForPickupTitle": "Prêt à retirer",
           "lineFulfilment": "Préparation : {{status}}",
           "unitLabel": "Unité",
@@ -15647,7 +15648,11 @@
           "accessLabel": "Accès",
           "parkingLabel": "Parking",
           "landmarksLabel": "Points de repère",
-          "partiallyRefundedContactProvider": "Cette commande a été partiellement remboursée. Contactez le fournisseur pour rembourser le solde restant."
+          "partiallyRefundedContactProvider": "Cette commande a été partiellement remboursée. Contactez le fournisseur pour rembourser le solde restant.",
+          "refunded": "Remboursé",
+          "messageProvider": "Contacter le prestataire",
+          "messageFailedTitle": "Message",
+          "messageFailedBody": "Impossible d'ouvrir une conversation avec ce prestataire."
         },
         "customRequestsList": {
           "startPaymentFailed": "Impossible de start paiement",
@@ -20926,7 +20931,8 @@
         "createOfferFailedShort": "Impossible de créer offer",
         "changeClient": "Changer",
         "searchClientPlaceholder": "Rechercher par nom, e-mail ou téléphone (p. ex. 082…)",
-        "searchClientHint": "Saisissez au moins 2 caractères"
+        "searchClientHint": "Saisissez au moins 2 caractères",
+        "continuePayment": "Continue paiement"
       },
       "privacyAndSharing": {
         "tabAccount": "Compte",
@@ -35519,7 +35525,9 @@
         "editOffer": "Modifier offer",
         "withdrawOfferConfirm": "Voulez-vous vraiment retirer cette offre ?",
         "withdrawOffer": "Retirer l’offre",
-        "couldNotLoadOfferDetails": "Impossible de load offer details."
+        "couldNotLoadOfferDetails": "Impossible de load offer details.",
+        "statusNeedsSupport": "Assistance requise",
+        "resumePayment": "Resume paiement"
       },
       "customOfferModal": {
         "loadOfferFailed": "Impossible de load offer",
@@ -36462,7 +36470,13 @@
         "waitingBody": "Nous confirmons votre paiement. Actualisez vos demandes personnalisées en un instant.",
         "backToRequests": "Retour to custom requests",
         "changesRequestedTitle": "Offre en cours de révision",
-        "changesRequestedBody": "Votre fournisseur met à jour cette offre après votre demande de modification."
+        "changesRequestedBody": "Votre fournisseur met à jour cette offre après votre demande de modification.",
+        "viewBooking": "Voir réservation",
+        "resumePayment": "Resume paiement",
+        "needsSupportBody": "Nous avons reçu le règlement, mais la réservation n'a pas pu être créée. Contactez l'assistance avec votre référence de règlement.",
+        "needsSupportTitle": "Le règlement nécessite une assistance",
+        "unavailableBody": "Demandez un nouveau devis au prestataire si vous voulez encore ce service.",
+        "unavailableTitle": "Cette offre ne peut plus être réglée"
       }
     },
     "groupInvite": {

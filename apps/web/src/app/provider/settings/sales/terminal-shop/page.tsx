@@ -374,6 +374,15 @@ export default function TerminalShopPage() {
     const hosted = readHostedCheckoutReturnParams(searchParams);
     const reference = hosted.reference;
     if (paymentSuccess === "1" && isHostedCheckoutFailureStatus(hosted.hostedStatus)) {
+      if (reference) {
+        void verifyWithRetry(reference, {
+          maxAttempts: 1,
+          delayMs: 0,
+          sessionId: hosted.sessionId,
+          transactionId: hosted.transactionId,
+          redirectStatus: hosted.hostedStatus,
+        });
+      }
       setPaymentBanner("processing");
       toast.info(t("web.provider.settings.pages.sales/terminal-payment-return.paymentCancelledBody"));
       return;

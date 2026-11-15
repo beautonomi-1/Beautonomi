@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addMoney, roundCurrency } from "@beautonomi/utils";
+import { insertStaffEarningsLinesIgnoreDuplicates } from "./insert-staff-earnings-lines";
 
 export type EarningsLineRow = {
   id: string;
@@ -145,28 +146,19 @@ export async function reassignStaffEarningsLines(
     return { reversed: 0, created: 0, skipped: plan.skipped, netMoved: 0 };
   }
 
-  const { data: revRows, error: revErr } = await admin
-    .from("staff_earnings_lines")
-    .upsert(plan.reversals, {
-      onConflict: "source_finance_transaction_id,staff_id,kind",
-      ignoreDuplicates: true,
-    })
-    .select("id");
-  if (revErr) throw revErr;
-
-  const { data: newRows, error: newErr } = await admin
-    .from("staff_earnings_lines")
-    .upsert(plan.newLines, {
-      onConflict: "source_finance_transaction_id,staff_id,kind",
-      ignoreDuplicates: true,
-    })
-    .select("id");
-  if (newErr) throw newErr;
+  const reversed = await insertStaffEarningsLinesIgnoreDuplicates(
+    admin,
+    plan.reversals as unknown as Array<Record<string, unknown>>,
+  );
+  const created = await insertStaffEarningsLinesIgnoreDuplicates(
+    admin,
+    plan.newLines as unknown as Array<Record<string, unknown>>,
+  );
 
   const netMoved = plan.newLines.reduce((s, l) => addMoney(s, Number((l as { amount: number }).amount)), 0);
   return {
-    reversed: (revRows ?? []).length,
-    created: (newRows ?? []).length,
+    reversed,
+    created,
     skipped: plan.skipped,
     netMoved: roundCurrency(netMoved),
   };

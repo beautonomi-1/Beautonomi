@@ -26,7 +26,9 @@ vi.mock("@/lib/platform-tax-settings", () => ({
   getPlatformDefaultTaxRate: vi.fn(async () => platformTaxRate.value),
 }));
 
+import { computePaidPeriodExpiresAt } from "../provider-billing-merchant";
 import {
+  markProviderSubscriptionPaymentsRelinquished,
   recordProviderSubscriptionPayment,
   reverseProviderSubscriptionPayment,
   splitSubscriptionRefundComponents,
@@ -154,9 +156,8 @@ describe("recordProviderSubscriptionPayment", () => {
     expect(tax[0].metadata.vat_rate_percent).toBe(15);
   });
 
-  it("stores yearly billing_period and 365-day term_end when billingPeriod is yearly", async () => {
+  it("stores the recognition term on the same calendar period as access", async () => {
     const db = makeDb({ payment_transactions: [], finance_transactions: [] });
-    const before = Date.now();
     await recordProviderSubscriptionPayment({
       supabase: db.supabase,
       reference: "ref-yearly",
@@ -169,9 +170,45 @@ describe("recordProviderSubscriptionPayment", () => {
     const payment = (db.inserts.finance_transactions ?? []).find(
       (r) => r.transaction_type === "provider_subscription_payment",
     );
+    const termStart = new Date(String(payment?.metadata?.term_start));
     expect(payment?.metadata?.billing_period).toBe("yearly");
-    const termEndMs = new Date(String(payment?.metadata?.term_end)).getTime();
-    expect(termEndMs - before).toBeGreaterThanOrEqual(364 * 86400000);
+    expect(payment?.metadata?.term_end).toBe(computePaidPeriodExpiresAt("yearly", termStart));
+
+    const monthlyDb = makeDb({ payment_transactions: [], finance_transactions: [] });
+    await recordProviderSubscriptionPayment({
+      supabase: monthlyDb.supabase,
+      reference: "ref-monthly",
+      providerId: "prov-1",
+      amountMajor: 100,
+      feesMajor: 0,
+      billingPeriod: "monthly",
+      kind: "subscription_renewal",
+    });
+    const monthly = (monthlyDb.inserts.finance_transactions ?? []).find(
+      (r) => r.transaction_type === "provider_subscription_payment",
+    );
+    const monthlyStart = new Date(String(monthly?.metadata?.term_start));
+    expect(monthly?.metadata?.term_end).toBe(computePaidPeriodExpiresAt("monthly", monthlyStart));
+  });
+
+  it("keeps a store end date as the recognition term", async () => {
+    const db = makeDb({ payment_transactions: [], finance_transactions: [] });
+    const storeEnd = "2027-03-01T00:00:00.000Z";
+    await recordProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reference: "ref-apple-term",
+      providerId: "prov-1",
+      amountMajor: 100,
+      feesMajor: 15,
+      billingPeriod: "monthly",
+      kind: "apple_iap_subscription",
+      paymentProvider: "apple",
+      termEndsAt: storeEnd,
+    });
+    const payment = (db.inserts.finance_transactions ?? []).find(
+      (r) => r.transaction_type === "provider_subscription_payment",
+    );
+    expect(payment?.metadata?.term_end).toBe(storeEnd);
   });
 
   it("posts no VAT leg when the platform VAT rate is 0", async () => {
@@ -243,6 +280,106 @@ describe("recordProviderSubscriptionPayment", () => {
     expect(db.inserts.payment_transactions).toHaveLength(1);
     expect(db.inserts.finance_transactions).toHaveLength(1);
   });
+
+  it("posts the missing finance row when the payment was already saved", async () => {
+    const db = makeDb({
+      payment_transactions: [
+        {
+          id: "pay-1",
+          provider: "paystack",
+          reference: "ref-saved",
+          status: "success",
+          created_at: "2026-11-01T00:00:00.000Z",
+        },
+      ],
+      finance_transactions: [],
+    });
+
+    const result = await recordProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reference: "ref-saved",
+      providerId: "prov-1",
+      amountMajor: 300,
+      feesMajor: 0,
+      kind: "subscription_renewal",
+    });
+
+    expect(result.alreadyRecorded).toBe(true);
+    expect(result.recorded).toBe(false);
+    expect(db.inserts.payment_transactions).toBeUndefined();
+    expect(db.inserts.finance_transactions).toHaveLength(1);
+    expect(db.inserts.finance_transactions[0].transaction_type).toBe("provider_subscription_payment");
+    expect(db.inserts.finance_transactions[0].metadata.reference).toBe("ref-saved");
+    expect(db.inserts.finance_transactions[0].metadata.term_start).toBe("2026-11-01T00:00:00.000Z");
+  });
+
+  it("does not post the finance row again when it is already saved", async () => {
+    const db = makeDb({
+      payment_transactions: [
+        {
+          id: "pay-1",
+          provider: "paystack",
+          reference: "ref-saved",
+          status: "success",
+          created_at: "2026-11-01T00:00:00.000Z",
+        },
+      ],
+      finance_transactions: [
+        {
+          id: "fin-1",
+          provider_id: "prov-1",
+          transaction_type: "provider_subscription_payment",
+          metadata: { reference: "ref-saved" },
+        },
+      ],
+    });
+
+    const result = await recordProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reference: "ref-saved",
+      providerId: "prov-1",
+      amountMajor: 300,
+      feesMajor: 0,
+      kind: "subscription_renewal",
+    });
+
+    expect(result.alreadyRecorded).toBe(true);
+    expect(result.financeTransactionId).toBe("fin-1");
+    expect(db.inserts.finance_transactions).toBeUndefined();
+    expect(db.inserts.payment_transactions).toBeUndefined();
+  });
+});
+
+describe("markProviderSubscriptionPaymentsRelinquished", () => {
+  it("stamps open payments and leaves a reversed payment alone", async () => {
+    const db = makeDb({
+      finance_transactions: [
+        {
+          id: "pay-1",
+          provider_id: "prov-1",
+          transaction_type: "provider_subscription_payment",
+          metadata: { plan_id: "paid-plan", reference: "ref-1" },
+        },
+        {
+          id: "pay-2",
+          provider_id: "prov-1",
+          transaction_type: "provider_subscription_payment",
+          metadata: { plan_id: "paid-plan", reversed_at: "2026-11-01T00:00:00.000Z" },
+        },
+      ],
+    });
+
+    await markProviderSubscriptionPaymentsRelinquished(
+      db.supabase,
+      "prov-1",
+      "2026-11-14T18:00:00.000Z",
+    );
+
+    expect(db.tables.finance_transactions[0].metadata.access_relinquished_at).toBe(
+      "2026-11-14T18:00:00.000Z",
+    );
+    expect(db.tables.finance_transactions[1].metadata.access_relinquished_at).toBeUndefined();
+  });
 });
 
 describe("reverseProviderSubscriptionPayment", () => {
@@ -268,6 +405,9 @@ describe("reverseProviderSubscriptionPayment", () => {
           plan_id: "plan-growth",
           status: "active",
           paystack_subscription_code: "SUB_x",
+          billing_period_start: "2026-11-01T00:00:00.000Z",
+          billing_period_end: "2026-12-01T00:00:00.000Z",
+          next_payment_date: "2026-12-01T00:00:00.000Z",
         },
       ],
       provider_subscription_orders: [
@@ -430,8 +570,54 @@ describe("reverseProviderSubscriptionPayment", () => {
     const sub = db.tables.provider_subscriptions[0];
     expect(sub.plan_id).toBe("free-plan-1");
     expect(sub.paystack_subscription_code).toBeNull();
+    expect(sub.billing_period_start).toBeNull();
+    expect(sub.billing_period_end).toBeNull();
+    expect(sub.next_payment_date).toBeNull();
+    expect(db.tables.finance_transactions[0].metadata.reversed_at).toEqual(expect.any(String));
     expect(db.tables.provider_subscription_orders[0].status).toBe("refunded");
     expect(disableSubscriptionByCode).toHaveBeenCalledWith("SUB_x", { tenantId: "tenant-1" });
+  });
+
+  it("keeps the Paystack code when the stop fails so a later run can retry", async () => {
+    disableSubscriptionByCode.mockRejectedValueOnce(new Error("paystack down"));
+    const db = paidState();
+
+    await reverseProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reason: "paystack_refund",
+      reference: "ref-1",
+      orderId: "order-1",
+    });
+
+    const sub = db.tables.provider_subscriptions[0];
+    expect(sub.plan_id).toBe("free-plan-1");
+    expect(sub.paystack_subscription_code).toBe("SUB_x");
+    expect(sub.paystack_sync_pending).toBe(true);
+  });
+
+  it("finishes the free-plan drop when the refund was already posted", async () => {
+    const db = paidState();
+    db.tables.finance_transactions.push({
+      id: "refund-1",
+      provider_id: "prov-1",
+      transaction_type: "provider_subscription_refund",
+      amount: -291,
+      metadata: { reference: "ref-1", source_payment_id: "fin-1" },
+    });
+
+    const result = await reverseProviderSubscriptionPayment({
+      supabase: db.supabase,
+      reason: "paystack_refund",
+      reference: "ref-1",
+      orderId: "order-1",
+    });
+
+    expect(result.alreadyReversed).toBe(true);
+    expect(result.ledgerReversed).toBe(false);
+    const sub = db.tables.provider_subscriptions[0];
+    expect(sub.plan_id).toBe("free-plan-1");
+    expect(sub.billing_period_end).toBeNull();
+    expect(sub.next_payment_date).toBeNull();
   });
 
   it("is idempotent — a second reversal does not double-post", async () => {

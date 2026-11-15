@@ -10,6 +10,14 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { resolveLedgerCurrency } from "@/lib/ledger/resolve-ledger-currency";
 import { postCancellationFeeShareLines } from "@/lib/payroll/cancellation-fee-share";
 import { addMoney, subtractMoney } from "@beautonomi/utils";
+import {
+  GIFT_VALUE_STILL_DUE,
+  bookingGiftVoidOutcome,
+  giftValueStillDueAmount,
+  giftValueStillDueMessage,
+  refundableExcludingGiftStillDue,
+  visitClosedForGiftReturn,
+} from "@/lib/bookings/gift-value-still-due";
 import type { CancellationPolicy } from "@/lib/bookings/cancellation-policy";
 import {
   computeInPersonRefundableCap,
@@ -51,6 +59,7 @@ export interface BookingFinancialSnapshot {
   total_refunded?: number | null;
   wallet_amount?: number | null;
   gift_card_amount?: number | null;
+  status?: string | null;
   loyalty_points_used?: number | null;
   loyalty_points_redeemed?: number | null;
   loyalty_points_earned?: number | null;
@@ -91,7 +100,13 @@ export interface SettleBookingCancellationResult {
   cancellationFeeLedgerPosted: boolean;
   loyaltyRedeemedRestored: boolean;
   loyaltyEarnClawedBack: boolean;
+  /** True only when the void put the gift card balance back on the card. */
   giftCardVoidAttempted: boolean;
+  giftCardRestored: boolean;
+  /** True when a gift amount was kept out of the wallet because the void did not answer. */
+  giftValueStillDue: boolean;
+  /** A split-payment guest card refund did not finish. */
+  guestShareRefundFailed: boolean;
   refundRail?: "terminal" | "wallet";
   /** Non-terminal in-person amount recorded (pending or completed cash refund row). */
   inPersonCashRefundDue: number;
@@ -198,6 +213,63 @@ export function walletStoreCreditAmountWhenVoidingGiftOnFullRefund(params: {
   if (!willVoidGiftCardOnFullRefund) return params.refundAmount;
   if (params.giftCardRestored === false) return roundCurrency2(params.refundAmount);
   return Math.max(0, subtractMoney(params.refundAmount, params.giftCardCollected));
+}
+
+/** Customer wording after the gift return has answered. A restored card is not wallet money. */
+export function customerStoreCreditRefundNotice(params: {
+  walletAmount: number;
+  giftReturned: boolean;
+  bookingRef: string;
+  formatAmount: (amount: number) => string;
+}): { title: string; message: string } {
+  const walletPaid = params.walletAmount > 0.009;
+  const walletSentence = walletPaid
+    ? `A refund of ${params.formatAmount(params.walletAmount)} for booking ${params.bookingRef} has been added to your wallet. Use it for your next booking.`
+    : "";
+  const giftSentence = params.giftReturned
+    ? `The gift card used on booking ${params.bookingRef} was returned to the card.`
+    : "";
+  if (walletSentence && giftSentence) {
+    return {
+      title: "Refund added to wallet",
+      message: `A refund of ${params.formatAmount(params.walletAmount)} for booking ${params.bookingRef} has been added to your wallet. The gift card used on this booking was returned to the card.`,
+    };
+  }
+  if (giftSentence) return { title: "Gift card returned", message: giftSentence };
+  return { title: "Refund added to wallet", message: walletSentence };
+}
+
+/** Staff wording for the same refund. Store credit is only the wallet amount. */
+export function staffRefundIssuedNotice(params: {
+  method: string;
+  amount: number;
+  walletAmount: number;
+  giftReturned: boolean;
+  bookingRef: string;
+  formatAmount: (amount: number) => string;
+}): { amount: number; message: string } {
+  if (params.method === "store_credit") {
+    const walletPaid = params.walletAmount > 0.009;
+    if (params.giftReturned && !walletPaid) {
+      return {
+        amount: 0,
+        message: `The gift card was returned to the customer for booking ${params.bookingRef}.`,
+      };
+    }
+    const walletSentence = `A ${params.formatAmount(params.walletAmount)} store credit refund was issued for booking ${params.bookingRef}.`;
+    if (params.giftReturned) {
+      return {
+        amount: params.walletAmount,
+        message: `${walletSentence} The gift card was returned to the customer.`,
+      };
+    }
+    return { amount: params.walletAmount, message: walletSentence };
+  }
+  const label = params.method.replace(/_/g, " ");
+  return {
+    amount: params.amount,
+    message: `A ${params.formatAmount(params.amount)} ${label} refund was issued for booking ${params.bookingRef}.`,
+  };
 }
 
 export function computeCancellationFeeForSettlement(
@@ -318,9 +390,9 @@ async function restoreRedeemedLoyalty(
   admin: SupabaseClient,
   booking: BookingFinancialSnapshot,
   reason: string,
-): Promise<boolean> {
+): Promise<{ restored: boolean; failed: boolean }> {
   const customerId = booking.customer_id;
-  if (!customerId) return false;
+  if (!customerId) return { restored: false, failed: false };
   try {
     const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
     const result = await refundRedeemedLoyaltyPoints(admin, {
@@ -328,33 +400,180 @@ async function restoreRedeemedLoyalty(
       customerId,
       reason,
     });
-    return result.refunded;
+    const failed = result.reason === "rpc_error" || result.reason === "lookup_failed";
+    return { restored: result.refunded, failed };
   } catch (err) {
     console.error("[settleBookingCancellation] loyalty redeem restore failed:", err);
-    return false;
+    return { restored: false, failed: true };
   }
 }
 
 async function clawBackEarnedLoyalty(
   admin: SupabaseClient,
   booking: BookingFinancialSnapshot,
-): Promise<boolean> {
+): Promise<{ clawed: boolean; failed: boolean }> {
   const customerId = booking.customer_id;
-  if (!customerId) return false;
+  if (!customerId) return { clawed: false, failed: false };
 
   try {
     const { clawBackEarnedLoyaltyForBooking } = await import(
       "@/lib/loyalty/claw-back-earned-for-booking"
     );
-    return await clawBackEarnedLoyaltyForBooking(admin, {
+    const clawed = await clawBackEarnedLoyaltyForBooking(admin, {
       bookingId: booking.id,
       customerId,
       bookingNumber: booking.booking_number,
     });
+    return { clawed, failed: false };
   } catch (err) {
     console.error("[settleBookingCancellation] loyalty earn clawback failed:", err);
-    return false;
+    return { clawed: false, failed: true };
   }
+}
+
+/** Money can be settled while these points are still outstanding. The settle cron retries them. */
+export const LOYALTY_POINTS_STILL_DUE = "Loyalty points could not be returned";
+
+/** Remember a gift card return that did not finish. Does not change a refund that is still open. */
+export const GIFT_CARD_STILL_HELD = "Gift card could not be returned";
+
+export {
+  GIFT_VALUE_STILL_DUE,
+  bookingGiftVoidOutcome,
+  giftValueStillDueAmount,
+  giftValueStillDueMessage,
+  refundableExcludingGiftStillDue,
+} from "@/lib/bookings/gift-value-still-due";
+
+/** What to do with a gift value that was kept out of the wallet after the return is tried again. */
+export function giftValueFollowUp(
+  first: "restored" | "spent" | "unknown",
+  second: "restored" | "spent" | "unknown",
+): "none" | "mark" | "credit" {
+  if (first !== "unknown") return "none";
+  if (second === "unknown") return "mark";
+  if (second === "spent") return "credit";
+  return "none";
+}
+
+/**
+ * A failed gift-card return stays on the visit. An open wallet refund stays
+ * ahead of it. Once that refund is in, the gift mark is what the sweep retries.
+ * Points that are still due are picked up after the card is returned.
+ */
+export function settlementMarkAfterGiftVoid(params: {
+  refundPending: boolean;
+  walletError: string;
+  giftStillHeld: boolean;
+  giftHeldOut: number;
+  loyaltyStillDue: boolean;
+}): { stampSettled: boolean; error: string | null } {
+  const giftMark =
+    params.giftHeldOut > 0.009 ? giftValueStillDueMessage(params.giftHeldOut) : GIFT_CARD_STILL_HELD;
+  if (params.refundPending) {
+    return {
+      stampSettled: false,
+      error: params.giftStillHeld ? `${giftMark}. ${params.walletError}` : params.walletError,
+    };
+  }
+  if (params.giftStillHeld) {
+    return { stampSettled: true, error: giftMark };
+  }
+  if (params.loyaltyStillDue) {
+    return { stampSettled: true, error: LOYALTY_POINTS_STILL_DUE };
+  }
+  return { stampSettled: true, error: null };
+}
+
+export function settlementErrorAfterWalletCredit(priorError: string, loyaltyStillDue: boolean): string | null {
+  const heldOut = giftValueStillDueAmount(priorError);
+  if (heldOut != null) return giftValueStillDueMessage(heldOut);
+  if (priorError.includes(GIFT_CARD_STILL_HELD)) return GIFT_CARD_STILL_HELD;
+  if (loyaltyStillDue) return LOYALTY_POINTS_STILL_DUE;
+  return null;
+}
+
+export async function markGiftCardStillHeld(
+  admin: SupabaseClient,
+  bookingId: string,
+  stillHeld: boolean,
+): Promise<void> {
+  if (!stillHeld) return;
+  try {
+    const { error } = await admin
+      .from("bookings")
+      .update({ cancellation_settlement_error: GIFT_CARD_STILL_HELD })
+      .eq("id", bookingId)
+      .is("cancellation_settlement_error", null);
+    if (error) {
+      console.error("[gift card] could not mark the card still held", bookingId, error);
+    }
+  } catch (err) {
+    console.error("[gift card] could not mark the card still held", bookingId, err);
+  }
+}
+
+export async function markGiftCardValueStillDue(
+  admin: SupabaseClient,
+  bookingId: string,
+  amount: number,
+): Promise<void> {
+  if (!(amount > 0.009)) return;
+  try {
+    const { error } = await admin
+      .from("bookings")
+      .update({ cancellation_settlement_error: giftValueStillDueMessage(amount) })
+      .eq("id", bookingId)
+      .is("cancellation_settlement_error", null);
+    if (error) {
+      console.error("[gift card] could not mark the value still due", bookingId, error);
+    }
+  } catch (err) {
+    console.error("[gift card] could not mark the value still due", bookingId, err);
+  }
+}
+export async function markLoyaltyStillDue(
+  admin: SupabaseClient,
+  bookingId: string,
+  stillDue: boolean,
+): Promise<void> {
+  if (!stillDue) return;
+  try {
+    const { error } = await admin
+      .from("bookings")
+      .update({ cancellation_settlement_error: LOYALTY_POINTS_STILL_DUE })
+      .eq("id", bookingId)
+      .is("cancellation_settlement_error", null);
+    if (error) {
+      console.error("[loyalty] could not mark points still due", bookingId, error);
+    }
+  } catch (err) {
+    console.error("[loyalty] could not mark points still due", bookingId, err);
+  }
+}
+
+export async function finishCancellationLoyalty(
+  admin: SupabaseClient,
+  booking: Pick<BookingFinancialSnapshot, "id" | "customer_id" | "booking_number">,
+  cancelledBy: CancellationSettledBy = "customer",
+  reason?: string,
+): Promise<{ redeemedRestored: boolean; earnClawed: boolean; stillDue: boolean }> {
+  const loyaltyReason =
+    reason ??
+    (cancelledBy === "provider"
+      ? "provider_cancel"
+      : cancelledBy === "admin"
+        ? "admin_cancel"
+        : cancelledBy === "no_show"
+          ? "no_show"
+          : `${cancelledBy}_cancel`);
+  const redeemed = await restoreRedeemedLoyalty(admin, booking as BookingFinancialSnapshot, loyaltyReason);
+  const earned = await clawBackEarnedLoyalty(admin, booking as BookingFinancialSnapshot);
+  return {
+    redeemedRestored: redeemed.restored,
+    earnClawed: earned.clawed,
+    stillDue: redeemed.failed || earned.failed,
+  };
 }
 
 type GiftCardVoidOutcome = "restored" | "spent" | "unknown";
@@ -426,8 +645,7 @@ async function maybeVoidGiftCardRedemption(
       console.warn("[settleBookingCancellation] gift card void failed:", error);
       return "unknown";
     }
-    if (data === true) return "restored";
-    return "spent";
+    return bookingGiftVoidOutcome(data);
   } catch (err) {
     console.warn("[settleBookingCancellation] void_gift_card_redemption:", err);
     return "unknown";
@@ -442,7 +660,7 @@ async function maybeVoidGiftCardRedemption(
 async function refundSplitGroupGuestSharesForCancellation(
   admin: SupabaseClient,
   params: SettleBookingCancellationParams,
-): Promise<number> {
+): Promise<{ guestPaidNet: number; failed: number }> {
   try {
     const { refundGroupGuestSharePayments } = await import("@/lib/bookings/group-guest-refunds");
     const outcome = await refundGroupGuestSharePayments(admin, {
@@ -457,10 +675,10 @@ async function refundSplitGroupGuestSharesForCancellation(
         failed: outcome.failed,
       });
     }
-    return outcome.guestPaidNet;
+    return { guestPaidNet: outcome.guestPaidNet, failed: outcome.failed };
   } catch (err) {
     console.error("[settleBookingCancellation] guest share lookup failed:", err);
-    return 0;
+    return { guestPaidNet: 0, failed: 0 };
   }
 }
 
@@ -495,12 +713,32 @@ export async function settleBookingCancellation(
     );
     throw err;
   }
-  const guestSharesHeld = await refundSplitGroupGuestSharesForCancellation(admin, params);
+  const guestShareRefund = await refundSplitGroupGuestSharesForCancellation(admin, params);
+  const guestSharesHeld = guestShareRefund.guestPaidNet;
+  const guestShareRefundFailed = guestShareRefund.failed > 0.009;
+  let giftStillDueError: string | null = null;
+  try {
+    const { data: mark } = await admin
+      .from("bookings")
+      .select("cancellation_settlement_error")
+      .eq("id", bookingId)
+      .maybeSingle();
+    giftStillDueError =
+      (mark as { cancellation_settlement_error?: string | null } | null)?.cancellation_settlement_error ??
+      null;
+  } catch (markErr) {
+    console.warn("[settleBookingCancellation] gift still-due lookup failed:", markErr);
+  }
+  const collectedForSettlement = refundableExcludingGiftStillDue(
+    params.maxWalletCredit ?? computeEffectiveCollectedAmount(booking),
+    giftStillDueError,
+    {
+      giftCardAmount: Number(booking.gift_card_amount ?? 0),
+      visitClosed: visitClosedForGiftReturn(booking.status),
+    },
+  );
   const effectiveCollected = roundCurrency2(
-    Math.max(
-      0,
-      subtractMoney(params.maxWalletCredit ?? computeEffectiveCollectedAmount(booking), guestSharesHeld),
-    ),
+    Math.max(0, subtractMoney(collectedForSettlement, guestSharesHeld)),
   );
   const leadPolicyRefundAmount = roundCurrency2(
     Math.max(0, subtractMoney(subtractMoney(policyRefundAmount, guestSharesHeld), priorCancellationCredits)),
@@ -675,26 +913,37 @@ export async function settleBookingCancellation(
   // retained fee. Posting cancellation_fee for that same amount as well
   // leaves recognized revenue at twice the fee. Measured on the local audit
   // DB: a 333.33 sale, a 50.00 fee row, and a 283.33 refund retained 100.00.
+  // The staff share is an earnings line on the existing sale, not a second revenue row.
+  const refundSettled = walletRefundTarget <= 0.009 || refundResult.success === true;
+  if (cancellationFeeApplied > 0.009 && refundSettled) {
+    try {
+      const { data: financeRows } = await admin
+        .from("finance_transactions")
+        .select("id, transaction_type, created_at")
+        .eq("booking_id", bookingId)
+        .order("created_at", { ascending: true });
+      const rows = (financeRows ?? []) as Array<{ id?: string; transaction_type?: string }>;
+      const source =
+        rows.find((row) => row.transaction_type === "provider_earnings" && row.id) ??
+        rows.find((row) => row.transaction_type !== "refund" && row.id);
+      if (source?.id) {
+        await postCancellationFeeShareLines(admin, {
+          providerId: booking.provider_id,
+          bookingId,
+          financeTransactionId: source.id,
+          providerEarningsAmount: cancellationFeeApplied,
+          tenantId: booking.tenant_id,
+        });
+      }
+    } catch (shareErr) {
+      console.error("[settleBookingCancellation] cancellation fee share failed:", shareErr);
+    }
+  }
   const cancellationFeeLedgerPosted = false;
 
-  const loyaltyReason =
-    params.cancelledBy === "provider"
-      ? "provider_cancel"
-      : params.cancelledBy === "admin"
-        ? "admin_cancel"
-      : params.cancelledBy === "no_show"
-        ? "no_show"
-        : `${params.cancelledBy}_cancel`;
-
-  const loyaltyRedeemedRestored = await restoreRedeemedLoyalty(admin, booking, loyaltyReason);
-  const loyaltyEarnClawedBack =
-    params.cancelledBy === "provider" ||
-    params.cancelledBy === "admin" ||
-    params.cancelledBy === "no_show" ||
-    params.cancelledBy === "customer" ||
-    params.cancelledBy === "portal"
-      ? await clawBackEarnedLoyalty(admin, booking)
-      : false;
+  const loyalty = await finishCancellationLoyalty(admin, booking, params.cancelledBy);
+  const loyaltyRedeemedRestored = loyalty.redeemedRestored;
+  const loyaltyEarnClawedBack = loyalty.earnClawed;
 
   const giftCardVoidAttempted = giftCardRestored;
 
@@ -719,12 +968,42 @@ export async function settleBookingCancellation(
   // A failed wallet credit leaves a failed store_credit refund row that the
   // auto wallet credit cron (or finance staff) replays; the settle-pending
   // cancellations cron stamps the booking once that row completes.
+  // Loyalty that did not finish stays on the booking after the money is settled
+  // so that same cron can return the points without holding the refund.
   const refundPending = walletCreditTarget > 0.009 && refundResult.success === false;
-  await markCancellationSettlementState(
-    admin,
-    bookingId,
-    refundPending ? refundResult.error || "Cancellation refund could not be credited" : null,
-  );
+  const giftStillHeld = giftCardVoid === "unknown";
+  const giftHeldOut = giftStillHeld
+    ? roundCurrency2(
+        Math.max(
+          0,
+          subtractMoney(
+            Math.min(leadPolicyRefundAmount, effectiveCollected),
+            Math.min(leadPolicyRefundAmount, refundableWithoutGift),
+          ),
+        ),
+      )
+    : 0;
+  const mark = settlementMarkAfterGiftVoid({
+    refundPending,
+    walletError: refundResult.error || "Cancellation refund could not be credited",
+    giftStillHeld,
+    giftHeldOut,
+    loyaltyStillDue: loyalty.stillDue,
+  });
+  if (mark.stampSettled) {
+    const { error: stateErr } = await admin
+      .from("bookings")
+      .update({
+        cancellation_settled_at: new Date().toISOString(),
+        cancellation_settlement_error: mark.error,
+      })
+      .eq("id", bookingId);
+    if (stateErr) {
+      console.error("[settleBookingCancellation] settlement state update failed:", stateErr);
+    }
+  } else {
+    await markCancellationSettlementState(admin, bookingId, mark.error);
+  }
 
   return {
     cancellationFeeApplied,
@@ -737,13 +1016,16 @@ export async function settleBookingCancellation(
     loyaltyRedeemedRestored,
     loyaltyEarnClawedBack,
     giftCardVoidAttempted,
+    giftCardRestored,
+    giftValueStillDue: giftStillHeld && giftHeldOut > 0.009,
+    guestShareRefundFailed,
     refundRail: params.refundRail,
     inPersonCashRefundDue,
   };
 }
 
 const BOOKING_FINANCIAL_SELECT =
-  "id, provider_id, customer_id, booking_number, tenant_id, location_type, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, loyalty_points_used, loyalty_points_redeemed, loyalty_points_earned";
+  "id, provider_id, customer_id, booking_number, tenant_id, location_type, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, currency, loyalty_points_used, loyalty_points_redeemed, loyalty_points_earned";
 
 /** Load booking row and run finance settlement (for group cancel / participant removal). */
 export async function settleBookingFinanceById(

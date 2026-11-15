@@ -167,6 +167,9 @@ export function usePaystackPayment() {
             reason: "cancel_action",
             source: "customer_mobile",
           });
+          if (reference) {
+            void verifyPaystackWithRetry(reference, { redirectStatus: "cancelled", maxAttempts: 1 });
+          }
           return { success: false, cancelled: true };
         }
 
@@ -186,6 +189,16 @@ export function usePaystackPayment() {
               reason: "cancel_action",
               source: "customer_mobile",
             });
+            const parsedFail = parseOnlineCheckoutReturnUrl(pr.url);
+            const failRef = parsedFail.reference || reference;
+            if (failRef) {
+              void verifyPaystackWithRetry(failRef, {
+                redirectStatus: isFailedHostedCheckoutReturn(pr.url) ? "failed" : "cancelled",
+                sessionId: parsedFail.sessionId,
+                transactionId: parsedFail.transactionId,
+                maxAttempts: 1,
+              });
+            }
             return { success: false, cancelled: true };
           }
 

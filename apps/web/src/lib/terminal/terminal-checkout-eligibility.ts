@@ -13,7 +13,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import type { TerminalCommercialModel } from "@/lib/terminal/record-terminal-order-payment";
-import { SCHEDULED_DOWNGRADE_ENTITLED_OR } from "@/lib/subscriptions/feature-access";
+import { PAST_DUE_ENTITLED_OR, SCHEDULED_DOWNGRADE_ENTITLED_OR } from "@/lib/subscriptions/feature-access";
+import { isPastDueWithinGrace } from "@/lib/iap/apple/billing-active";
 
 export type TerminalProductForEligibility = {
   id: string;
@@ -93,11 +94,13 @@ async function getProviderSubscriptionContext(
   const { data: subscription } = await supabase
     .from("provider_subscriptions")
     .select(
-      `id, plan_id, status, updated_at, plan:subscription_plans!plan_id(id, name, features, is_free)`,
+      `id, plan_id, status, updated_at, past_due_since, billing_provider, apple_grace_period_expires_at, plan:subscription_plans!plan_id(id, name, features, is_free)`,
     )
     .eq("provider_id", providerId)
     .in("status", ["active", "trialing", "past_due"])
-    .or(`expires_at.gte.${nowIso},expires_at.is.null,${SCHEDULED_DOWNGRADE_ENTITLED_OR}`)
+    .or(
+      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso},${PAST_DUE_ENTITLED_OR},${SCHEDULED_DOWNGRADE_ENTITLED_OR}`,
+    )
     .order("status", { ascending: true })
     .maybeSingle();
 
@@ -106,8 +109,21 @@ async function getProviderSubscriptionContext(
   }
 
   if (subscription.status === "past_due") {
-    const updatedAt = (subscription as { updated_at?: string }).updated_at;
-    if (updatedAt && updatedAt < graceCutoff) {
+    const row = subscription as {
+      updated_at?: string | null;
+      past_due_since?: string | null;
+      billing_provider?: string | null;
+      apple_grace_period_expires_at?: string | null;
+    };
+    const entitled = isPastDueWithinGrace({
+      billingProvider: row.billing_provider,
+      pastDueSince: row.past_due_since,
+      updatedAt: row.updated_at,
+      appleGracePeriodExpiresAt: row.apple_grace_period_expires_at,
+      nowIso,
+      graceCutoffIso: graceCutoff,
+    });
+    if (!entitled) {
       return { subscriptionId: null, tier: await getFreePlanTier(supabase) };
     }
   }

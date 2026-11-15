@@ -95,6 +95,7 @@ export async function GET(request: NextRequest) {
           .from("customer_memberships")
           .update({
             status: "expired",
+            auto_renew: false,
             updated_at: new Date().toISOString(),
           })
           .in("id", staleIds);
@@ -183,18 +184,22 @@ export async function GET(request: NextRequest) {
     }
 
     if (!umError && umRows && Array.isArray(umRows)) {
-      // Only auto-expire truly stale `active` rows (expired term, no dunning state).
-      // `past_due` rows must NOT be expired here — the renewal cron owns that transition
-      // and enforces the grace window. Expiring past_due rows from a GET would bypass
-      // grace and break discounts + dunning UI for customers still in the retry window.
+      // Expire an ended active term only when the renewal cron will not charge it.
+      // A saved card with a next billing date stays active so the cron can renew it.
+      // `past_due` rows stay with the cron, which owns the grace window.
       const staleUserMembershipIds: string[] = [];
       for (const row of umRows as any[]) {
         const plan = row.plan;
         const provider = row.provider;
         const rowStatus: string = row?.status ?? "active";
 
-        if (rowStatus === "active" && !isNotExpired(row?.expires_at ?? null) && row?.id) {
-          staleUserMembershipIds.push(row.id);
+        const termEnded = rowStatus === "active" && !isNotExpired(row?.expires_at ?? null);
+        const renewalWillRun =
+          row?.auto_renew === true &&
+          Boolean(row?.payment_method_id) &&
+          Boolean(row?.next_billing_at);
+        if (termEnded && row?.id) {
+          if (!renewalWillRun) staleUserMembershipIds.push(row.id);
           continue;
         }
 
@@ -237,6 +242,8 @@ export async function GET(request: NextRequest) {
         await (supabase.from("user_memberships") as any)
           .update({
             status: "expired",
+            auto_renew: false,
+            next_billing_at: null,
             updated_at: new Date().toISOString(),
           })
           .in("id", staleUserMembershipIds);
