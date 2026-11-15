@@ -1158,10 +1158,10 @@ export async function processSuccessfulPayment(
       : null;
 
   // F2-08: a late charge.success for a booking that is already cancelled /
-  // no_show / declined must never mark it paid or post ledger. If the charge was
-  // settled before the booking closed, the cancellation flow owns the refund and
-  // this retry is a no-op. Otherwise auto-refund the gateway charge, flag any
-  // payment_transactions row and open a reconciliation exception, then ack.
+  // no_show / declined must never mark it paid or post ledger — unless we can
+  // revive a legacy "Payment failed" cancel. If the charge was settled before
+  // the booking closed, the cancellation flow owns the refund and this retry
+  // is a no-op. Otherwise auto-refund the gateway charge.
   if (isMoneyTerminalBookingStatus(bookingData.status)) {
     if (alreadySettledPaymentTx) {
       console.log(
@@ -1169,21 +1169,57 @@ export async function processSuccessfulPayment(
       );
       return;
     }
-    await handleLateChargeSuccessOnTerminalBooking(supabase, {
-      bookingId: metadata.booking_id,
-      bookingStatus: String(bookingData.status),
-      tenantId: (bookingData.tenant_id as string | null | undefined) ?? financeTenantId ?? null,
-      reference: String(reference),
-      paymentProvider,
-      amountMajor: convertFromSmallestUnit(amount || 0, bookingPaystackCurrency),
-      currency: bookingPaystackCurrency,
-    });
-    return;
+    const amountMajorForRevive = convertFromSmallestUnit(amount || 0, bookingPaystackCurrency);
+    if (String(bookingData.status).toLowerCase() === "cancelled") {
+      const { revivePaymentFailedBooking } = await import(
+        "@/lib/bookings/revive-payment-failed-booking"
+      );
+      const revived = await revivePaymentFailedBooking(supabase, {
+        bookingId: String(metadata.booking_id),
+        reference: String(reference),
+        amountMajor: amountMajorForRevive,
+        paymentProvider,
+      });
+      if (revived.ok) {
+        const { data: reopened } = await supabase
+          .from("bookings")
+          .select(
+            "id, status, payment_status, payment_reference, currency, tenant_id, total_amount, wallet_amount, gift_card_amount, tip_amount, tax_amount",
+          )
+          .eq("id", metadata.booking_id)
+          .maybeSingle();
+        if (reopened) {
+          Object.assign(bookingData, reopened);
+        }
+      } else {
+        await handleLateChargeSuccessOnTerminalBooking(supabase, {
+          bookingId: metadata.booking_id,
+          bookingStatus: String(bookingData.status),
+          tenantId: (bookingData.tenant_id as string | null | undefined) ?? financeTenantId ?? null,
+          reference: String(reference),
+          paymentProvider,
+          amountMajor: amountMajorForRevive,
+          currency: bookingPaystackCurrency,
+        });
+        return;
+      }
+    } else {
+      await handleLateChargeSuccessOnTerminalBooking(supabase, {
+        bookingId: metadata.booking_id,
+        bookingStatus: String(bookingData.status),
+        tenantId: (bookingData.tenant_id as string | null | undefined) ?? financeTenantId ?? null,
+        reference: String(reference),
+        paymentProvider,
+        amountMajor: amountMajorForRevive,
+        currency: bookingPaystackCurrency,
+      });
+      return;
+    }
   }
 
   let verifiedPendingPayment: Record<string, unknown> | null = null;
   if (!alreadySettledPaymentTx && ONLINE_VERIFY_PROVIDERS.has(paymentProvider)) {
-    const verified = await verifyBookingCharge({
+    let verified = await verifyBookingCharge({
       supabase,
       bookingId: metadata.booking_id,
       reference: String(reference),
@@ -1203,6 +1239,91 @@ export async function processSuccessfulPayment(
           ? expectedHostedCardAmountMajor(bookingData)
           : null,
     });
+    // Superseded reference: customer paid again from the booking page while an
+    // older checkout tab still captured. Re-point the pending row or refund.
+    if (verified.ok === false && verified.reason === "no_pending_payment") {
+      const amountMajor = convertFromSmallestUnit(amount || 0, bookingPaystackCurrency);
+      const statusNow = String(bookingData.status ?? "").toLowerCase();
+      const payStatusNow = String(bookingData.payment_status ?? "").toLowerCase();
+      const stillDue =
+        !isMoneyTerminalBookingStatus(statusNow) &&
+        (payStatusNow === "pending" || payStatusNow === "partially_paid") &&
+        amountMajor > 0;
+      if (stillDue) {
+        const due = expectedHostedCardAmountMajor(bookingData);
+        if (due == null || amountMajor + 0.01 >= due) {
+          await supabase
+            .from("bookings")
+            .update({
+              payment_reference: String(reference),
+              payment_provider: paymentProvider,
+              payment_status: "pending",
+            })
+            .eq("id", metadata.booking_id);
+          const { data: pendingPay } = await supabase
+            .from("payments")
+            .select("id")
+            .eq("booking_id", metadata.booking_id)
+            .eq("status", "pending")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (pendingPay?.id) {
+            await supabase
+              .from("payments")
+              .update({
+                payment_provider: paymentProvider,
+                payment_provider_transaction_id: String(reference),
+              })
+              .eq("id", pendingPay.id);
+          }
+          bookingData.payment_reference = String(reference);
+          verified = await verifyBookingCharge({
+            supabase,
+            bookingId: metadata.booking_id,
+            reference: String(reference),
+            amountSmallest: amount || 0,
+            chargeCurrency:
+              typeof (data as { currency?: string }).currency === "string"
+                ? (data as { currency: string }).currency
+                : null,
+            tenantId: financeTenantId,
+            bookingPaymentReference: String(reference),
+            bookingCurrency: typeof bookingData.currency === "string" ? bookingData.currency : null,
+            psp: paymentProvider,
+            fallbackAmountMajor: expectedHostedCardAmountMajor(bookingData),
+          });
+        }
+      }
+      if (verified.ok === false && verified.reason === "no_pending_payment") {
+        try {
+          const { refundGatewayCharge } = await import("@/lib/payments/refund-gateway-charge");
+          await refundGatewayCharge({
+            reference: String(reference),
+            amountMajor,
+            currency: bookingPaystackCurrency,
+            tenantId: financeTenantId,
+            reason: `Superseded ${paymentProvider} capture with no pending payment row`,
+            idempotencyKey: `booking_superseded_ref_refund:${metadata.booking_id}:${reference}`,
+            fallbackProvider:
+              paymentProvider === "stripe" || paymentProvider === "flutterwave"
+                ? paymentProvider
+                : "paystack",
+          });
+        } catch (refundErr) {
+          console.error("[charge-success] superseded reference refund failed:", refundErr);
+          slackNotifyUnrecognizedPayments({
+            tenantId: financeTenantId,
+            count: 1,
+            amountMajor,
+            currency:
+              typeof bookingData.currency === "string" ? bookingData.currency : null,
+            source: `${paymentProvider}_webhook:superseded_reference_refund_failed`,
+          });
+        }
+        return;
+      }
+    }
     if (verified.ok === false) {
       console.error("[charge-success] booking online charge rejected:", {
         bookingId: metadata.booking_id,
@@ -2617,11 +2738,13 @@ async function returnPackageSessionAfterFailedBookingCharge(
 
 
   // ── Standard booking failure ──────────────────────────────────────────────
+  // Unpaid hosted checkout stays open (same idea as product-order online holds).
+  // Only legacy rows already cancelled as "Payment failed" still reverse tender.
 
   const { data: booking } = await supabase
     .from("bookings")
     .select(
-      "id, customer_id, booking_number, tenant_id, provider_id, customer_package_entitlement_id, rescheduled_from_booking_id, gift_card_amount, currency",
+      "id, customer_id, booking_number, tenant_id, provider_id, customer_package_entitlement_id, rescheduled_from_booking_id, gift_card_amount, currency, status, payment_status",
     )
     .eq("id", metadata.booking_id)
     .single();
@@ -2631,7 +2754,10 @@ async function returnPackageSessionAfterFailedBookingCharge(
     return;
   }
 
-  const bookingData = booking as ChargeBookingRow;
+  const bookingData = booking as ChargeBookingRow & {
+    status?: string | null;
+    payment_status?: string | null;
+  };
 
   const { data: successTxForRef } = await supabase
     .from("payment_transactions")
@@ -2646,135 +2772,115 @@ async function returnPackageSessionAfterFailedBookingCharge(
     return;
   }
 
-  const { data: claimedBooking } = await supabase
-    .from("bookings")
-    .update({
-      payment_status: "failed",
-      payment_reference: reference,
-      payment_provider: paymentProvider,
-      status: "cancelled",
-      cancellation_reason: "Payment failed",
-      cancelled_at: new Date().toISOString(),
-    })
-    .eq("id", metadata.booking_id)
-    .eq("payment_status", "pending")
-    .select("id");
+  if (bookingData.payment_status === "pending") {
+    const gatewayHint = String(gateway_response ?? "")
+      .trim()
+      .toLowerCase();
+    const messageHint = String(message ?? "")
+      .trim()
+      .toLowerCase();
+    const isCustomerCancel =
+      gatewayHint === "cancelled" ||
+      gatewayHint === "canceled" ||
+      messageHint === "cancelled" ||
+      messageHint === "canceled";
+    const isAbandonOrReverse =
+      gatewayHint === "abandoned" ||
+      gatewayHint === "reversed" ||
+      messageHint === "abandoned" ||
+      messageHint === "reversed";
+    // Card declines and charge.failed — not cancel-page or abandoned checkout.
+    const isRealDecline =
+      !isCustomerCancel &&
+      !isAbandonOrReverse &&
+      (gatewayHint === "failed" ||
+        messageHint === "failed" ||
+        gatewayHint.includes("declin") ||
+        messageHint.includes("declin") ||
+        gatewayHint.includes("insufficient") ||
+        messageHint.includes("insufficient") ||
+        gatewayHint.includes("do not honour") ||
+        gatewayHint.includes("do not honor") ||
+        Boolean(gatewayHint || messageHint));
 
-  if ((claimedBooking?.length ?? 0) === 0) {
-    const { data: liveBooking } = await supabase
-      .from("bookings")
-      .select("status, payment_status")
-      .eq("id", metadata.booking_id)
-      .maybeSingle();
-    const live = liveBooking as { status?: string | null; payment_status?: string | null } | null;
-    if (live?.status === "cancelled" && live?.payment_status === "failed") {
-      const { restoreBookingRetailStock } = await import("@/lib/bookings/deduct-booking-retail-stock");
-      await restoreBookingRetailStock(supabase, String(metadata.booking_id));
-      await returnPackageSessionAfterFailedBookingCharge(supabase, bookingData);
-      const tender = await finishFailedBookingTender(supabase, metadata, bookingData);
-      await rememberFailedChargeTender(
-        supabase,
-        String(metadata.booking_id),
-        tender.walletDone && tender.giftDone,
+    if (isRealDecline) {
+      const { claimOnlinePaymentCheckoutFailed } = await import(
+        "@/lib/payments/online-payment-checkouts"
       );
+      const firstFailure = await claimOnlinePaymentCheckoutFailed(String(reference));
+      if (firstFailure) {
+        emitPaystackPaymentFailedSlack(data, {
+          bookingId: typeof metadata.booking_id === "string" ? metadata.booking_id : null,
+        });
+        try {
+          const { sendToUser } = await import("@/lib/notifications/onesignal");
+          await sendToUser(
+            bookingData.customer_id,
+            {
+              title: "Payment Failed",
+              message: `Your payment for booking ${bookingData.booking_number} could not be processed. Please try again.`,
+              data: {
+                type: "payment_failed",
+                booking_id: metadata.booking_id,
+              },
+              url: `/bookings/${metadata.booking_id}`,
+            },
+            ["push"],
+            { appType: "customer" },
+          );
+        } catch (notifError) {
+          console.error("Error sending notification:", notifError);
+        }
+        try {
+          const lastResortFailed = await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
+            supabase,
+            providerId: bookingData.provider_id,
+          });
+          const amt = Number(metadata?.amount_to_collect || 0);
+          await trackServer(
+            EVENT_PAYMENT_FAILED,
+            {
+              portal: "client",
+              booking_id: metadata.booking_id,
+              amount: amt,
+              currency: metadata?.currency || lastResortFailed,
+              payment_method: metadata?.save_card ? "saved_card" : "new_card",
+              payment_provider: paymentProvider,
+              error_code: message || gateway_response || "unknown",
+            },
+            bookingData.customer_id,
+          );
+        } catch (amplitudeError) {
+          console.error("[Amplitude] Failed to track payment failed:", amplitudeError);
+        }
+      }
     }
+
     console.log(
-      `[charge.failed] Skipping booking failure — booking ${metadata.booking_id} no longer pending payment`,
+      `[charge.failed] Leaving booking ${metadata.booking_id} open after unpaid checkout failure (${reference})`,
     );
     return;
   }
 
-  const { restoreBookingRetailStock } = await import("@/lib/bookings/deduct-booking-retail-stock");
-  await restoreBookingRetailStock(supabase, String(metadata.booking_id));
-  await returnPackageSessionAfterFailedBookingCharge(supabase, bookingData);
+  if (bookingData.status === "cancelled" && bookingData.payment_status === "failed") {
+    const { restoreBookingRetailStock } = await import("@/lib/bookings/deduct-booking-retail-stock");
+    await restoreBookingRetailStock(supabase, String(metadata.booking_id));
+    await returnPackageSessionAfterFailedBookingCharge(supabase, bookingData);
+    const tender = await finishFailedBookingTender(supabase, metadata, bookingData);
+    await rememberFailedChargeTender(
+      supabase,
+      String(metadata.booking_id),
+      tender.walletDone && tender.giftDone,
+    );
+    console.log(
+      `[charge.failed] Finished tender reversal for legacy cancelled booking ${metadata.booking_id}`,
+    );
+    return;
+  }
 
-  emitPaystackPaymentFailedSlack(data, {
-    bookingId: typeof metadata.booking_id === "string" ? metadata.booking_id : null,
-  });
-
-  const tender = await finishFailedBookingTender(supabase, metadata, bookingData);
-  await rememberFailedChargeTender(
-    supabase,
-    String(metadata.booking_id),
-    tender.walletDone && tender.giftDone,
+  console.log(
+    `[charge.failed] Skipping booking failure — booking ${metadata.booking_id} no longer pending payment`,
   );
-
-  const lastResortFailed = await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
-    supabase,
-    providerId: bookingData.provider_id,
-  });
-
-  // Create payment transaction record
-  await supabase.from("payment_transactions").insert({
-    booking_id: metadata.booking_id,
-    reference,
-    amount: 0,
-    fees: 0,
-    net_amount: 0,
-    status: "failed",
-    provider: paymentProvider,
-    metadata: {
-      paystack_reference: reference,
-      failure_reason: message,
-    },
-    created_at: new Date().toISOString(),
-  });
-
-  await supabase.from("payments")
-    .update({
-      status: "failed",
-      payment_provider: paymentProvider,
-      payment_provider_transaction_id: reference,
-      failed_at: new Date().toISOString(),
-      failure_reason: message || gateway_response || "paystack_charge_failed",
-      payment_provider_response: data,
-    })
-    .eq("booking_id", metadata.booking_id)
-    .eq("payment_provider", paymentProvider);
-
-  // Notify customer
-  try {
-    const { sendToUser } = await import("@/lib/notifications/onesignal");
-
-    await sendToUser(
-      bookingData.customer_id,
-      {
-        title: "Payment Failed",
-        message: `Your payment for booking ${bookingData.booking_number} could not be processed. Please try again.`,
-        data: {
-          type: "payment_failed",
-          booking_id: metadata.booking_id,
-        },
-        url: `/checkout`,
-      },
-      ["push"],
-      { appType: "customer" }
-    );
-  } catch (notifError) {
-    console.error("Error sending notification:", notifError);
-  }
-
-  // Track Amplitude event
-  try {
-    const amt = Number(metadata?.amount_to_collect || 0);
-    await trackServer(
-      EVENT_PAYMENT_FAILED,
-      {
-        portal: "client",
-        booking_id: metadata.booking_id,
-        amount: amt,
-        currency: metadata?.currency || lastResortFailed,
-        payment_method: metadata?.save_card ? "saved_card" : "new_card",
-        payment_provider: paymentProvider,
-        error_code: message || gateway_response || "unknown",
-      },
-      bookingData.customer_id,
-    );
-  } catch (amplitudeError) {
-    console.error("[Amplitude] Failed to track payment failed:", amplitudeError);
-  }
-
-  console.log(`Booking ${metadata.booking_id} payment failed (${reference})`);
 }
 
 // ─── Custom Offer ────────────────────────────────────────────────────────────

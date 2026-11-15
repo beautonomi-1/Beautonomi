@@ -1,11 +1,10 @@
 /**
- * Regression tests for the "success-then-failed race" guards in the standard
- * booking `charge.failed` handler (inside `processFailedPayment`).
+ * Regression tests for the standard booking `charge.failed` handler
+ * (inside `processFailedPayment`).
  *
- * A duplicate/out-of-order Paystack webhook delivery must never downgrade a
- * booking that already has a successful payment, and a retry of the same
- * `charge.failed` event must not double-apply the cancellation/wallet-refund
- * side effects once the booking has already left `payment_status: "pending"`.
+ * Unpaid hosted checkout stays open (like product-order holds). A success-then-
+ * failed race must never downgrade a paid booking. Legacy rows already cancelled
+ * as Payment failed still finish tender reversal.
  */
 vi.mock("@/lib/bookings/rollback-collectible-split-leg", () => ({
   rollbackCollectibleSplitLeg: vi.fn(async () => ({ walletDone: true, giftDone: true })),
@@ -20,6 +19,7 @@ import { handleChargeFailed } from "../charge-success";
 import { restoreBookingRetailStock } from "@/lib/bookings/deduct-booking-retail-stock";
 import { slackNotifyPaymentFailed } from "@/lib/integrations/slack/ops-triggers";
 import { rollbackCollectibleSplitLeg } from "@/lib/bookings/rollback-collectible-split-leg";
+import { claimOnlinePaymentCheckoutFailed } from "@/lib/payments/online-payment-checkouts";
 import type { PaystackEvent, SupabaseClient } from "../shared";
 
 vi.mock("@/lib/finance/resolve-tenant-id-for-ledger", () => ({
@@ -46,10 +46,21 @@ vi.mock("@/lib/bookings/deduct-booking-retail-stock", () => ({
   restoreBookingRetailStock: vi.fn(async () => undefined),
 }));
 
+vi.mock("@/lib/payments/online-payment-checkouts", () => ({
+  claimOnlinePaymentCheckoutFailed: vi.fn(async () => true),
+  markOnlinePaymentCheckoutStatus: vi.fn(async () => undefined),
+  getOnlinePaymentCheckoutByReference: vi.fn(async () => null),
+}));
+
 function makeBookingChargeFailedSupabase(options: {
   successTxExists: boolean;
-  /** Rows returned by the atomic `.eq("payment_status", "pending")` claim update. */
-  claimedRows: Array<{ id: string }>;
+  /**
+   * When true (default if claimedRows had rows historically), booking is still
+   * `payment_status: pending` and must stay open.
+   */
+  pendingCheckout?: boolean;
+  /** Rows returned by legacy claim-style updates (package clear, etc.). */
+  claimedRows?: Array<{ id: string }>;
   liveBooking?: {
     status: string;
     payment_status: string;
@@ -74,6 +85,13 @@ function makeBookingChargeFailedSupabase(options: {
   let bookingPaymentsDeleted = false;
   let paymentsUpdated = false;
 
+  const bookingStatus =
+    options.liveBooking?.status ??
+    (options.pendingCheckout === false ? "confirmed" : "pending_payment");
+  const bookingPaymentStatus =
+    options.liveBooking?.payment_status ??
+    (options.pendingCheckout === false ? "paid" : "pending");
+
   const mockSupabase = {
     from: vi.fn((table: string) => {
       if (table === "bookings") {
@@ -83,14 +101,16 @@ function makeBookingChargeFailedSupabase(options: {
               single: vi.fn(async () => ({
                 data: {
                   id: "booking-1",
-                  customer_id: "customer-1",
+                  customer_id: options.liveBooking?.customer_id ?? "customer-1",
                   booking_number: "BK-1001",
-                  tenant_id: "tenant-1",
-                  provider_id: "provider-1",
+                  tenant_id: options.liveBooking?.tenant_id ?? "tenant-1",
+                  provider_id: options.liveBooking?.provider_id ?? "provider-1",
                   customer_package_entitlement_id: options.packageEntitlementId ?? null,
                   rescheduled_from_booking_id: options.rescheduledFromBookingId ?? null,
                   gift_card_amount: options.giftCardAmount ?? 0,
-                  currency: "ZAR",
+                  currency: options.liveBooking?.currency ?? "ZAR",
+                  status: bookingStatus,
+                  payment_status: bookingPaymentStatus,
                 },
                 error: null,
               })),
@@ -119,7 +139,7 @@ function makeBookingChargeFailedSupabase(options: {
                         : [],
                     error: null,
                   }
-                : { data: options.claimedRows, error: null };
+                : { data: options.claimedRows ?? [], error: null };
             return {
               eq: vi.fn(() => ({
                 eq: vi.fn(() => ({
@@ -271,39 +291,49 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
 
   it("skips cancelling the booking when the reference already has a successful payment_transactions row", async () => {
     const { mockSupabase, bookingUpdates, paymentTxInserts, getBookingPaymentsDeleted } =
-      makeBookingChargeFailedSupabase({ successTxExists: true, claimedRows: [] });
+      makeBookingChargeFailedSupabase({ successTxExists: true });
 
     await handleChargeFailed(makeChargeFailedEvent("ref-already-succeeded"), mockSupabase);
 
-    // Must bail out before the atomic claim update, the failed payment_transactions
-    // insert, and the gift-card/booking_payments cleanup — the booking already paid.
     expect(bookingUpdates).toHaveLength(0);
     expect(paymentTxInserts).toHaveLength(0);
     expect(getBookingPaymentsDeleted()).toBe(false);
     expect(slackNotifyPaymentFailed).not.toHaveBeenCalled();
   });
 
-  it("skips a duplicate charge.failed delivery once the booking has already left pending (claim returns 0 rows)", async () => {
-    const { mockSupabase, bookingUpdates, paymentTxInserts, getBookingPaymentsDeleted } =
-      makeBookingChargeFailedSupabase({ successTxExists: false, claimedRows: [] });
+  it("leaves an unpaid checkout open and does not reverse tender, payments, or stock", async () => {
+    const { mockSupabase, bookingUpdates, paymentTxInserts, getBookingPaymentsDeleted, getPaymentsUpdated } =
+      makeBookingChargeFailedSupabase({ successTxExists: false });
 
-    await handleChargeFailed(makeChargeFailedEvent("ref-retry"), mockSupabase);
+    await handleChargeFailed(makeChargeFailedEvent("ref-decline-keep-open"), mockSupabase);
 
-    // The atomic claim update was attempted (payment_status="pending" guard) but
-    // matched no rows — a prior delivery already resolved the booking, so no
-    // further side effects (payment_transactions insert, gift-card void, etc.)
-    // should run.
-    expect(bookingUpdates).toHaveLength(1);
+    expect(bookingUpdates).toHaveLength(0);
     expect(paymentTxInserts).toHaveLength(0);
     expect(getBookingPaymentsDeleted()).toBe(false);
+    expect(getPaymentsUpdated()).toBe(false);
     expect(restoreBookingRetailStock).not.toHaveBeenCalled();
+    expect(claimOnlinePaymentCheckoutFailed).toHaveBeenCalledWith("ref-decline-keep-open");
+    expect(slackNotifyPaymentFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "paystack",
+        reference: "ref-decline-keep-open",
+        bookingId: "booking-1",
+      }),
+    );
+  });
+
+  it("does not notify again when the checkout failure was already claimed", async () => {
+    vi.mocked(claimOnlinePaymentCheckoutFailed).mockResolvedValueOnce(false);
+    const { mockSupabase } = makeBookingChargeFailedSupabase({ successTxExists: false });
+
+    await handleChargeFailed(makeChargeFailedEvent("ref-decline-dup"), mockSupabase);
+
     expect(slackNotifyPaymentFailed).not.toHaveBeenCalled();
   });
 
   it("puts products back when a failed payment is delivered again after the visit was already cancelled", async () => {
     const { mockSupabase, paymentTxInserts } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [],
       liveBooking: { status: "cancelled", payment_status: "failed" },
     });
 
@@ -316,7 +346,6 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
   it("returns the wallet when a failed payment is delivered again after the visit was cancelled", async () => {
     const { mockSupabase, rpcCalls, paymentTxInserts } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [],
       liveBooking: { status: "cancelled", payment_status: "failed" },
     });
     const event = makeChargeFailedEvent("ref-retry-wallet");
@@ -342,7 +371,6 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
   it("does not put products back when the visit was already paid", async () => {
     const { mockSupabase } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [],
       liveBooking: { status: "confirmed", payment_status: "paid" },
     });
 
@@ -351,44 +379,10 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
     expect(restoreBookingRetailStock).not.toHaveBeenCalled();
   });
 
-  it("processes the booking failure once when the atomic claim succeeds", async () => {
-    const { mockSupabase, bookingUpdates, paymentTxInserts, rpcCalls, getBookingPaymentsDeleted, getPaymentsUpdated } =
-      makeBookingChargeFailedSupabase({
-        successTxExists: false,
-        claimedRows: [{ id: "booking-1" }],
-      });
-
-    await handleChargeFailed(makeChargeFailedEvent("ref-genuine-failure"), mockSupabase);
-
-    expect(bookingUpdates).toContainEqual(
-      expect.objectContaining({
-        payment_status: "failed",
-        status: "cancelled",
-      }),
-    );
-    expect(bookingUpdates).toContainEqual({
-      cancellation_settlement_error: "Loyalty points could not be returned",
-    });
-    expect(restoreBookingRetailStock).toHaveBeenCalledWith(mockSupabase, "booking-1");
-    expect(paymentTxInserts).toHaveLength(1);
-    expect(paymentTxInserts[0]).toMatchObject({ status: "failed", booking_id: "booking-1" });
-    expect(rpcCalls.some((c) => c.fn === "void_gift_card_redemption")).toBe(true);
-    expect(bookingUpdates).toContainEqual({ cancellation_reason: "Payment failed" });
-    expect(getBookingPaymentsDeleted()).toBe(true);
-    expect(getPaymentsUpdated()).toBe(true);
-    expect(slackNotifyPaymentFailed).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "paystack",
-        reference: "ref-genuine-failure",
-        bookingId: "booking-1",
-      }),
-    );
-  });
-
-  it("keeps the failed payment open when the gift card void does not answer", async () => {
+  it("keeps the failed payment open when the gift card void does not answer on a legacy cancel", async () => {
     const { mockSupabase, bookingUpdates } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [{ id: "booking-1" }],
+      liveBooking: { status: "cancelled", payment_status: "failed" },
       giftVoid: null,
     });
 
@@ -399,10 +393,10 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
     });
   });
 
-  it("closes the failed payment when the gift card void finds no redemption row", async () => {
+  it("closes the failed payment when the gift card void finds no redemption row on a legacy cancel", async () => {
     const { mockSupabase, bookingUpdates } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [{ id: "booking-1" }],
+      liveBooking: { status: "cancelled", payment_status: "failed" },
       giftVoid: false,
     });
 
@@ -411,10 +405,10 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
     expect(bookingUpdates).toContainEqual({ cancellation_reason: "Payment failed" });
   });
 
-  it("returns a counted gift to the wallet when the void leaves it captured", async () => {
+  it("returns a counted gift to the wallet when the void leaves it captured on a legacy cancel", async () => {
     const { mockSupabase, bookingUpdates, rpcCalls } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [{ id: "booking-1" }],
+      liveBooking: { status: "cancelled", payment_status: "failed" },
       giftVoid: false,
       giftCardAmount: 40,
     });
@@ -503,10 +497,10 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
     expect(bookingUpdates.some((row) => row.status === "cancelled")).toBe(false);
   });
 
-  it("returns the prepaid session once when the card payment fails", async () => {
+  it("returns the prepaid session once when a legacy cancelled failure is repaired", async () => {
     const { mockSupabase, rpcCalls } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [{ id: "booking-1" }],
+      liveBooking: { status: "cancelled", payment_status: "failed" },
       packageEntitlementId: "ent-1",
     });
 
@@ -521,7 +515,7 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
   it("puts the prepaid session back on the visit when the return reports that nothing was given back", async () => {
     const { mockSupabase, bookingUpdates } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [{ id: "booking-1" }],
+      liveBooking: { status: "cancelled", payment_status: "failed" },
       packageEntitlementId: "ent-1",
       restoreSession: false,
     });
@@ -534,7 +528,6 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
   it("does not return the session again when this failure is delivered again", async () => {
     const { mockSupabase, rpcCalls, paymentTxInserts } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [],
       liveBooking: { status: "cancelled", payment_status: "failed" },
       packageEntitlementId: "ent-1",
       packageAlreadyReturned: true,
@@ -546,10 +539,10 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
     expect(paymentTxInserts).toHaveLength(0);
   });
 
-  it("leaves the original visit's session in place when the replacement payment fails", async () => {
+  it("leaves the original visit's session in place when a legacy replacement cancel is repaired", async () => {
     const { mockSupabase, rpcCalls, bookingUpdates } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [{ id: "booking-1" }],
+      liveBooking: { status: "cancelled", payment_status: "failed" },
       packageEntitlementId: "ent-1",
       rescheduledFromBookingId: "booking-old",
     });
@@ -560,10 +553,10 @@ describe("charge.failed booking handler — success-then-failed race guards", ()
     expect(bookingUpdates).toContainEqual({ customer_package_entitlement_id: null });
   });
 
-  it("returns the replacement session when the original visit no longer holds it", async () => {
+  it("returns the replacement session when the original visit no longer holds it on a legacy cancel", async () => {
     const { mockSupabase, rpcCalls } = makeBookingChargeFailedSupabase({
       successTxExists: false,
-      claimedRows: [{ id: "booking-1" }],
+      liveBooking: { status: "cancelled", payment_status: "failed" },
       packageEntitlementId: "ent-new",
       rescheduledFromBookingId: "booking-old",
       originalEntitlementId: null,

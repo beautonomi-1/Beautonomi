@@ -29,7 +29,6 @@ import {
   finishFailedBookingTender,
   PAYMENT_FAILED_REFUND_STILL_DUE,
 } from "@/app/api/payments/webhook/_handlers/charge-success";
-import { returnBorrowedSessionIfReleased } from "@/lib/bookings/reschedule-carry-over";
 import { retryUnfinishedCollectibleRollbacks } from "@/lib/bookings/rollback-collectible-split-leg";
 import { notifyCustomerCheckoutNotCompleted } from "@/lib/notifications/notification-service";
 
@@ -77,7 +76,7 @@ async function runJob(request: NextRequest) {
   const { data: stale, error } = await admin
     .from("bookings")
     .select(
-      "id, customer_id, created_at, updated_at, customer_package_entitlement_id, rescheduled_from_booking_id",
+      "id, customer_id, created_at, updated_at, customer_package_entitlement_id, rescheduled_from_booking_id, payment_reference, payment_provider, tenant_id",
     )
     .eq("status", "pending_payment")
     .eq("payment_status", "pending")
@@ -96,22 +95,31 @@ async function runJob(request: NextRequest) {
       customer_id: string | null;
       customer_package_entitlement_id?: string | null;
       rescheduled_from_booking_id?: string | null;
+      payment_reference?: string | null;
+      payment_provider?: string | null;
+      tenant_id?: string | null;
     }> | null) ?? [];
+
+  const { settleOrReleasePendingCheckout } = await import(
+    "@/app/api/public/bookings/_helpers/release-own-open-checkouts"
+  );
 
   let expired = 0;
   for (const booking of candidates) {
     if (!booking.customer_id) continue;
     let released = false;
     try {
-      await releaseBookingSlotAfterPaymentFailure(admin, booking.id, booking.customer_id);
-      released = true;
+      const outcome = await settleOrReleasePendingCheckout(
+        admin,
+        booking,
+        booking.customer_id,
+      );
+      if (outcome.action === "settled" || outcome.action === "in_progress") {
+        continue;
+      }
+      released = outcome.action === "released";
     } catch (err) {
       console.warn("[expire-pending-payment-bookings] release failed", booking.id, err);
-    }
-    try {
-      await returnBorrowedSessionIfReleased(admin, booking);
-    } catch (sessionErr) {
-      console.warn("[expire-pending-payment-bookings] borrowed session restore failed", booking.id, sessionErr);
     }
     if (!released) continue;
     const { data: saved } = await admin

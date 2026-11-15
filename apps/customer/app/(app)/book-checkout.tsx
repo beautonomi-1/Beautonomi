@@ -196,6 +196,8 @@ interface ConsumeResponse {
   booking_number?: string;
   payment_url?: string | null;
   payment_reference?: string | null;
+  /** Replay found the booking already paid; open it instead of paying again. */
+  already_paid?: boolean;
   recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
 }
 
@@ -2902,16 +2904,35 @@ export default function BookCheckoutScreen() {
         payload.paystack_callback_url = getCustomerPaystackAuthReturnUrl(CHECKOUT_SUCCESS_PATH);
       }
 
-      const res = await api.post<ConsumeResponse>(
+      let res = await api.post<ConsumeResponse>(
         `/api/public/booking-holds/${normalizedHoldId}/consume`,
         payload,
         { timeout: 120_000 }
       );
 
+      // The checkout cached behind this idempotency key can no longer be paid
+      // (cancelled or missing). Rotate the key once and send the request again.
+      if ((res.error as { code?: string } | null | undefined)?.code === "CHECKOUT_NO_LONGER_PAYABLE") {
+        checkoutIdempotencyKeyRef.current = generateCheckoutIdempotencyKey();
+        payload.idempotency_key = checkoutIdempotencyKeyRef.current;
+        res = await api.post<ConsumeResponse>(
+          `/api/public/booking-holds/${normalizedHoldId}/consume`,
+          payload,
+          { timeout: 120_000 }
+        );
+      }
+
       if (res.error) {
         haptic.error();
         const errStatus = (res.error as { status?: number }).status;
         const errCode = (res.error as { code?: string }).code;
+        if (errCode === "CHECKOUT_NO_LONGER_PAYABLE") {
+          setError(
+            (res.error as { message?: string }).message?.trim() ||
+              t("checkout.slotConflictFallback")
+          );
+          return;
+        }
         if (await redirectLoginIfAuthRequired(bookContinueReturnTo, res.error)) {
           setError(null);
           return;
@@ -2979,6 +3000,11 @@ export default function BookCheckoutScreen() {
 
       const data = res.data;
       const bookingId = data?.booking_id;
+
+      if (data?.already_paid && bookingId) {
+        navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
+        return;
+      }
 
       /* Server creates the Paystack transaction on POST /api/public/booking-holds/:id/consume (same as web book/continue). */
       const paymentUrl = data?.payment_url;

@@ -20,8 +20,8 @@ const apiGetMock = api.get as jest.MockedFunction<typeof api.get>;
 function ok<T>(data: T): ApiResponse<T> {
   return { data, error: null };
 }
-function fail(message = "boom"): ApiResponse<unknown> {
-  return { data: null, error: { message } };
+function fail(message = "boom", code?: string, status = 409): ApiResponse<unknown> {
+  return { data: null, error: { message, ...(code ? { code } : {}), status } };
 }
 
 describe("verifyPaystackWithRetry (customer)", () => {
@@ -103,5 +103,27 @@ describe("verifyPaystackWithRetry (customer)", () => {
     const call = apiGetMock.mock.calls[0]?.[0] ?? "";
     expect(call).toContain("/api/paystack/verify-reference");
     expect(call).toContain("reference=ref-8");
+  });
+
+  it.each(["BOOKING_CANCELLED", "CHECKOUT_NO_LONGER_PAYABLE"] as const)(
+    "returns failed immediately on terminal verify code %s",
+    async (code) => {
+      apiGetMock.mockResolvedValue(
+        fail("This booking was cancelled.", code),
+      );
+      const res = await verifyPaystackWithRetry("ref-cancelled", { maxAttempts: 5, delayMs: 0 });
+      expect(res.status).toBe("failed");
+      expect(res.attempts).toBe(1);
+      expect(res.errorMessage).toBe("This booking was cancelled.");
+      expect(apiGetMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("retries non-terminal 409 API errors", async () => {
+    apiGetMock.mockResolvedValue(fail("Still processing", "VERIFY_NOT_READY"));
+    const res = await verifyPaystackWithRetry("ref-race", { maxAttempts: 3, delayMs: 0 });
+    expect(res.status).toBe("unknown");
+    expect(res.attempts).toBe(3);
+    expect(apiGetMock).toHaveBeenCalledTimes(3);
   });
 });

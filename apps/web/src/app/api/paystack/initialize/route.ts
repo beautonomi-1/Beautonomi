@@ -280,11 +280,43 @@ export async function POST(request: NextRequest) {
       }
       paystackAmount = resolved.amountSmallestUnit;
     } else if (bookingIdFromMeta) {
+      const adminForGuard = getSupabaseAdmin();
+      const { data: bookingGuard } = await adminForGuard
+        .from("bookings")
+        .select("id, status, cancelled_at, cancellation_reason, customer_id")
+        .eq("id", bookingIdFromMeta)
+        .eq("customer_id", user.id)
+        .maybeSingle();
+      const guard = bookingGuard as {
+        status?: string | null;
+        cancelled_at?: string | null;
+        cancellation_reason?: string | null;
+      } | null;
+      if (guard?.status === "cancelled" && guard.cancellation_reason === "Payment failed") {
+        await adminForGuard
+          .from("bookings")
+          .update({
+            status: "pending_payment",
+            payment_status: "pending",
+            cancelled_at: null,
+            cancelled_by: null,
+            cancellation_reason: null,
+          })
+          .eq("id", bookingIdFromMeta)
+          .eq("status", "cancelled")
+          .eq("cancellation_reason", "Payment failed");
+      } else if (guard?.cancelled_at || guard?.status === "cancelled") {
+        return errorResponse(
+          "This booking was cancelled and cannot be paid.",
+          "BOOKING_CANCELLED",
+          409,
+        );
+      }
       const resolved = await resolveBookingPaystackAmount(supabase, bookingIdFromMeta, user.id);
       if (resolved.ok === false) {
         return errorResponse(resolved.message, resolved.code, resolved.status);
       }
-      const slotOk = await revalidateBookingSlotBeforePayment(getSupabaseAdmin(), bookingIdFromMeta);
+      const slotOk = await revalidateBookingSlotBeforePayment(adminForGuard, bookingIdFromMeta);
       if (slotOk.ok === false) {
         return errorResponse(slotOk.message, slotOk.code, 409);
       }

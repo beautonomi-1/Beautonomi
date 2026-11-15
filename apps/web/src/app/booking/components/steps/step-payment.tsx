@@ -70,6 +70,8 @@ type PublicBookingCreateResult = {
   booking_id: string;
   booking_number: string;
   payment_url?: string | null;
+  /** Idempotent replay found the booking already paid; open it instead of paying again. */
+  already_paid?: boolean;
   wallet_amount_applied?: number;
   gift_card_amount_applied?: number;
   paystack_amount?: number;
@@ -1128,13 +1130,26 @@ export default function StepPayment({
       updateBookingState({ idempotencyKey });
     }
 
-    const response = await fetcher.post<{
-      data: PublicBookingCreateResult;
-    }>("/api/public/bookings", bookingData, {
-      headers: { "Idempotency-Key": idempotencyKey },
-      // Server often runs validate + create_booking RPC + Paystack init; 10s default aborts before response.
-      timeoutMs: 120000,
-    });
+    const postBooking = (key: string) =>
+      fetcher.post<{
+        data: PublicBookingCreateResult;
+      }>("/api/public/bookings", bookingData, {
+        headers: { "Idempotency-Key": key },
+        // Server often runs validate + create_booking RPC + Paystack init; 10s default aborts before response.
+        timeoutMs: 120000,
+      });
+
+    let response: Awaited<ReturnType<typeof postBooking>>;
+    try {
+      response = await postBooking(idempotencyKey);
+    } catch (error: any) {
+      // The cached checkout behind this key can no longer be paid (cancelled or
+      // missing). Rotate the key once and create a fresh booking.
+      if ((error?.code as string | undefined) !== "CHECKOUT_NO_LONGER_PAYABLE") throw error;
+      const rotatedKey = generateUuidV4();
+      updateBookingState({ idempotencyKey: rotatedKey });
+      response = await postBooking(rotatedKey);
+    }
 
     return response.data;
   };
@@ -1456,6 +1471,17 @@ export default function StepPayment({
             idempotency_key: `web-book:${adCampaignId}:${bookingResult.booking_id}`,
           })
           .catch(() => {});
+      }
+
+      // Idempotent replay: this booking was already paid (for example the
+      // customer paid in another tab). Open it instead of starting a new charge.
+      if (bookingResult.already_paid) {
+        toast.success(t("web.booking.stepPayment.paymentSuccessful"));
+        notifyRecurringFromResult(bookingResult.recurring_subscription);
+        router.push(
+          `/checkout/success?booking_id=${encodeURIComponent(bookingResult.booking_id)}${bookingResult.booking_number ? `&booking_number=${encodeURIComponent(bookingResult.booking_number)}` : ""}`,
+        );
+        return;
       }
 
       // Step 2: Process payment based on method

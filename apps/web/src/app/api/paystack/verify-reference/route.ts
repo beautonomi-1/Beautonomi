@@ -97,8 +97,6 @@ export async function GET(request: NextRequest) {
       searchParams.get("tx_ref")?.trim();
     const bookingIdParam = searchParams.get("booking_id")?.trim();
     const transactionId = searchParams.get("transaction_id");
-    const redirectStatus = (searchParams.get("status") ?? "").toLowerCase();
-
     if (!reference) {
       return errorResponse("reference is required", "VALIDATION_ERROR", 400);
     }
@@ -108,23 +106,6 @@ export async function GET(request: NextRequest) {
       "@/lib/payments/online-payment-checkouts"
     );
     const checkoutRow = await getOnlinePaymentCheckoutByReference(reference);
-
-    if (redirectStatus === "failed" || redirectStatus === "cancelled") {
-      const failMeta = { ...(checkoutRow?.metadata ?? {}) };
-      await processFailedPayment(
-        { reference, metadata: failMeta, gateway_response: redirectStatus },
-        adminEarly,
-      );
-      const capture = await bookingPaymentAfterCharge(adminEarly, reference, failMeta);
-      return successResponse({
-        verified: false,
-        status: "failed",
-        paystackStatus: "failed",
-        bookingId: capture.bookingId,
-        payment_status: capture.payment_status,
-        message: "Payment was not completed",
-      });
-    }
 
     const sessionId = searchParams.get("session_id");
     const { shouldUseStripeOnlineVerify, verifyAndSettleOnlinePayment } = await import(

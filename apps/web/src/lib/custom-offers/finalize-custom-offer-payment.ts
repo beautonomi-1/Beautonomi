@@ -88,6 +88,7 @@ export interface FinalizeCustomOfferPaymentResult {
 type OfferRow = {
   id?: string;
   status?: string;
+  payment_reference?: string | null;
   booking_id?: string;
   duration_minutes?: number;
   price?: number;
@@ -515,6 +516,25 @@ export async function finalizeCustomOfferPayment(
 
   // ── 2. Idempotency ─────────────────────────────────────────────────────────
   if (offer.status === "paid") {
+    // Already paid from a different card capture: this reference is a duplicate
+    // payment. Report it as stale so the caller refunds it.
+    if (
+      input.paystackAmountMajor > 0 &&
+      offer.payment_reference &&
+      offer.payment_reference !== input.reference
+    ) {
+      const { data: ownTx } = await adminSupabase
+        .from("payment_transactions")
+        .select("id")
+        .eq("reference", input.reference)
+        .maybeSingle();
+      if (!ownTx) {
+        console.warn(
+          `[finalizeCustomOfferPayment] offer ${offerId} already paid via ${offer.payment_reference}; ${input.reference} needs a refund`,
+        );
+        return { ok: false, reason: "unexpected_status:paid" };
+      }
+    }
     if (offer.booking_id) {
       // Defensive: a prior run may have marked the offer paid (this step) but
       // crashed before writing the finance ledger (step 10). Don't leave the
@@ -529,15 +549,60 @@ export async function finalizeCustomOfferPayment(
     );
     return { ok: false, reason: offer.status };
   }
-  // Only settle from payment_pending. After cancel-payment the offer is
-  // `pending` again (and any wallet debit has been credited back). Accepting
-  // finalize from `pending` would recreate a booking that still counts the
-  // refunded wallet leg as tender — the platform would absorb the gap.
+  // Prefer payment_pending. After cancel-payment the offer is `pending` again;
+  // accept that only when this reference still matches the offer's checkout
+  // and the captured amount covers the offer (wallet was credited back).
   if (offer.status !== "payment_pending") {
-    console.warn(
-      `[finalizeCustomOfferPayment] offer ${offerId} is ${offer.status}; refusing to create booking (expected payment_pending)`,
-    );
-    return { ok: false, reason: `unexpected_status:${offer.status}` };
+    if (offer.status === "pending") {
+      const { getOnlinePaymentCheckoutByReference } = await import(
+        "@/lib/payments/online-payment-checkouts"
+      );
+      const checkout = await getOnlinePaymentCheckoutByReference(String(input.reference ?? ""));
+      const metaOfferId = String(
+        (checkout?.metadata as { custom_offer_id?: string } | undefined)?.custom_offer_id ??
+          (checkout?.metadata as { offer_id?: string } | undefined)?.offer_id ??
+          "",
+      ).trim();
+      // Wallet and gift card value were returned when the checkout was abandoned,
+      // so only a card-only checkout can settle from `pending` without the
+      // platform absorbing the returned tender. The card must cover the price
+      // this checkout was issued for (deposit or total).
+      const checkoutMeta = (checkout?.metadata ?? {}) as Record<string, unknown>;
+      const cardOnly =
+        Number(checkoutMeta.wallet_amount_applied ?? 0) <= 0.009 &&
+        Number(checkoutMeta.gift_card_amount_applied ?? 0) <= 0.009;
+      const expectedCard =
+        String(checkoutMeta.payment_option ?? "full") === "deposit" &&
+        Number(checkoutMeta.deposit_amount ?? 0) > 0
+          ? Number(checkoutMeta.deposit_amount)
+          : Number(checkoutMeta.total_amount ?? 0);
+      const captured = Number(input.paystackAmountMajor ?? 0);
+      const amountOk =
+        expectedCard > 0 && captured > 0 && Math.abs(captured - expectedCard) <= 0.01;
+      if (metaOfferId === offerId && cardOnly && amountOk) {
+        const { data: reopened } = await adminSupabase
+          .from("custom_offers")
+          .update({
+            status: "payment_pending",
+            payment_reference: String(input.reference),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", offerId)
+          .eq("status", "pending")
+          .is("booking_id", null)
+          .select("id");
+        if ((reopened?.length ?? 0) > 0) {
+          offer.status = "payment_pending";
+          offer.payment_reference = String(input.reference);
+        }
+      }
+    }
+    if (offer.status !== "payment_pending") {
+      console.warn(
+        `[finalizeCustomOfferPayment] offer ${offerId} is ${offer.status}; refusing to create booking (expected payment_pending)`,
+      );
+      return { ok: false, reason: `unexpected_status:${offer.status}` };
+    }
   }
 
   // Reference-based dedupe: another concurrent finalize for the same payment.

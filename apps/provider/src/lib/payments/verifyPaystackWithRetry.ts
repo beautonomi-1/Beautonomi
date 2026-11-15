@@ -1,4 +1,5 @@
 import { api } from "@/lib/api-client";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/api-error";
 import { safeLog, safeWarn } from "@/lib/payments/safeLog";
 
 /**
@@ -51,6 +52,14 @@ function buildQuery(
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const TERMINAL_VERIFY_ERROR_CODES = new Set(["BOOKING_CANCELLED", "CHECKOUT_NO_LONGER_PAYABLE"]);
+
+function terminalVerifyMessage(error: unknown): string | null {
+  const code = getApiErrorCode(error);
+  if (!code || !TERMINAL_VERIFY_ERROR_CODES.has(code)) return null;
+  return getApiErrorMessage(error, "Payment verification failed");
+}
 
 function readStatus(d: Record<string, unknown> | null): VerifyStatus {
   if (!d) return "unknown";
@@ -124,6 +133,15 @@ export async function verifyPaystackWithRetry<T = Record<string, unknown>>(
       const q = buildQuery(trimmedRef, sessionId, transactionId, redirectStatus);
       const res = await api.get<T>(`${endpoint}${endpoint.includes("?") ? "&" : "?"}${q}`);
       if (res.error) {
+        const terminal = terminalVerifyMessage(res.error);
+        if (terminal !== null) {
+          return {
+            attempts,
+            data: null,
+            status: "failed",
+            errorMessage: terminal,
+          };
+        }
         lastErr = res.error.message ?? "Payment verification failed";
         safeWarn("verify attempt error", { attempts, error: res.error });
       } else {
@@ -141,6 +159,15 @@ export async function verifyPaystackWithRetry<T = Record<string, unknown>>(
         }
       }
     } catch (e) {
+      const terminal = terminalVerifyMessage(e);
+      if (terminal !== null) {
+        return {
+          attempts,
+          data: null,
+          status: "failed",
+          errorMessage: terminal,
+        };
+      }
       lastErr = e instanceof Error ? e.message : "Payment verification failed";
       safeWarn("verify attempt threw", { attempts, error: lastErr });
     }

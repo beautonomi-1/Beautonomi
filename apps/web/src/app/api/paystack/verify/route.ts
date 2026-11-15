@@ -56,8 +56,6 @@ export async function GET(request: NextRequest) {
       searchParams.get("trxref") ||
       searchParams.get("tx_ref");
     const transactionId = searchParams.get("transaction_id");
-    const redirectStatus = (searchParams.get("status") ?? "").toLowerCase();
-
     if (!reference) {
       return successResponse({ status: "error", message: "Reference required" });
     }
@@ -71,22 +69,6 @@ export async function GET(request: NextRequest) {
     const { shouldUseStripeOnlineVerify, verifyAndSettleOnlinePayment } = await import(
       "@/lib/payments/resolve-online-verify"
     );
-
-    if (redirectStatus === "failed" || redirectStatus === "cancelled") {
-      const failMeta = { ...(checkoutRow?.metadata ?? {}) };
-      await processFailedPayment(
-        { reference, metadata: failMeta, gateway_response: redirectStatus },
-        adminEarly,
-      );
-      const capture = await bookingPaymentAfterCharge(adminEarly, reference, failMeta);
-      return successResponse({
-        status: "failed",
-        reference,
-        bookingId: capture.bookingId,
-        payment_status: capture.payment_status,
-        message: "Payment was not completed",
-      });
-    }
 
     if (checkoutRow?.provider === "flutterwave") {
       const flwResult = await verifyAndSettleOnlinePayment(
@@ -830,11 +812,23 @@ export async function GET(request: NextRequest) {
       }
 
       if (booking.status === "cancelled" || booking.cancelled_at) {
-        return errorResponse(
-          "This booking was cancelled. If you were charged, contact support for a refund.",
-          "BOOKING_CANCELLED",
-          409,
+        const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0), paidCurrency);
+        const { revivePaymentFailedBooking } = await import(
+          "@/lib/bookings/revive-payment-failed-booking"
         );
+        const revived = await revivePaymentFailedBooking(admin, {
+          bookingId: String(bookingId),
+          reference: String(reference),
+          amountMajor,
+          paymentProvider: "paystack",
+        });
+        if (!revived.ok) {
+          return errorResponse(
+            "This booking was cancelled. If you were charged, contact support for a refund.",
+            "BOOKING_CANCELLED",
+            409,
+          );
+        }
       }
 
       await processSuccessfulPayment(verifiedChargeData, admin);

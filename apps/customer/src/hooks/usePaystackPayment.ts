@@ -120,11 +120,29 @@ export function usePaystackPayment() {
         }, { timeout: 120_000 });
 
         if (res.error) {
+          const errCode = (res.error as { code?: string }).code;
+          // The booking was genuinely cancelled (or its checkout is dead). Do not retry
+          // the same checkout; the customer must start a new booking.
+          if (
+            errCode === "CHECKOUT_NO_LONGER_PAYABLE" ||
+            errCode === "BOOKING_CANCELLED" ||
+            errCode === "INVALID_STATUS"
+          ) {
+            setError(
+              res.error.message ||
+                "This booking can no longer be paid. Please start a new booking.",
+            );
+            return { success: false, noLongerPayable: true };
+          }
           setError(res.error.message || "Failed to initialize payment");
           return { success: false };
         }
 
         const data = res.data;
+        if (data && (data as { already_paid?: boolean }).already_paid) {
+          // Booking was settled by an earlier capture; nothing left to pay.
+          return { success: true, alreadyPaid: true };
+        }
         if (!data?.authorization_url) {
           setError("Invalid payment response");
           return { success: false };

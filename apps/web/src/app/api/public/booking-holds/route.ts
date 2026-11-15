@@ -668,6 +668,29 @@ async function handlePost(request: NextRequest) {
           }
         }
 
+        if (holdCaptchaSkipUserId) {
+          const windowStart = new Date(startDate.getTime() - 4 * 60 * 60 * 1000);
+          const windowEnd = new Date(startDate.getTime() + 4 * 60 * 60 * 1000);
+          const { releaseOwnOpenCheckouts } = await import(
+            "@/app/api/public/bookings/_helpers/release-own-open-checkouts"
+          );
+          const own = await releaseOwnOpenCheckouts(supabase as SupabaseClient, {
+            customerId: holdCaptchaSkipUserId,
+            providerId: provider_id,
+            windowStart: windowStart.toISOString(),
+            windowEnd: windowEnd.toISOString(),
+            excludeBookingId: exclude_booking_id || null,
+          });
+          if (own.paymentInProgressBookingId) {
+            return errorResponse(
+              "A payment for your previous checkout is still confirming. Open that booking or wait a moment.",
+              "PAYMENT_IN_PROGRESS",
+              409,
+              { booking_id: own.paymentInProgressBookingId },
+            );
+          }
+        }
+
         const conflictResult = await checkBookingSnapshotSegmentConflicts(
           supabase as SupabaseClient,
           provider_id,

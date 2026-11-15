@@ -40,6 +40,15 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const TERMINAL_VERIFY_ERROR_CODES = new Set(["BOOKING_CANCELLED", "CHECKOUT_NO_LONGER_PAYABLE"]);
+
+function terminalVerifyMessageFromFetchError(error: unknown): string | null {
+  if (!(error instanceof FetchError)) return null;
+  const code = error.code?.trim();
+  if (!code || !TERMINAL_VERIFY_ERROR_CODES.has(code)) return null;
+  return error.message?.trim() || "Payment verification failed";
+}
+
 function readStatus(data: Record<string, unknown> | null): VerifyWithRetryResult["status"] {
   if (!data) return "unknown";
   const status = typeof data.status === "string" ? data.status : null;
@@ -132,6 +141,15 @@ export async function verifyWithRetry<T = Record<string, unknown>>(
         };
       }
     } catch (error) {
+      const terminalMessage = terminalVerifyMessageFromFetchError(error);
+      if (terminalMessage !== null) {
+        return {
+          attempts,
+          data: null,
+          status: "failed",
+          errorMessage: terminalMessage,
+        };
+      }
       const message = error instanceof FetchError ? error.message : "Payment verification failed";
       lastErrorMessage = message;
       if (attempts >= maxAttempts) {

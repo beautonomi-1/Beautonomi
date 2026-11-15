@@ -63,6 +63,37 @@ export async function initializeHostedBookingPayment(
     loyaltyPointsRedeemed,
   } = input;
 
+  const { data: liveBooking } = await supabaseAdmin
+    .from("bookings")
+    .select("id, status, cancelled_at, cancellation_reason")
+    .eq("id", booking.id)
+    .maybeSingle();
+  const live = liveBooking as {
+    status?: string | null;
+    cancelled_at?: string | null;
+    cancellation_reason?: string | null;
+  } | null;
+  if (live?.status === "cancelled" && live.cancellation_reason === "Payment failed") {
+    await supabaseAdmin
+      .from("bookings")
+      .update({
+        status: "pending_payment",
+        payment_status: "pending",
+        cancelled_at: null,
+        cancelled_by: null,
+        cancellation_reason: null,
+      })
+      .eq("id", booking.id)
+      .eq("status", "cancelled")
+      .eq("cancellation_reason", "Payment failed");
+  } else if (live?.cancelled_at || live?.status === "cancelled") {
+    return errorResponse(
+      "This booking was cancelled and cannot be paid.",
+      "BOOKING_CANCELLED",
+      409,
+    );
+  }
+
   const slotOk = await revalidateBookingSlotBeforePayment(supabaseAdmin, booking.id);
   if (slotOk.ok === false) {
     return errorResponse(slotOk.message, slotOk.code, 409);

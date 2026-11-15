@@ -120,6 +120,52 @@ export async function POST(request: NextRequest) {
             { userId: captchaSkipUserId },
           );
           if (cached) {
+            if (cached.status === 200 && captchaSkipUserId) {
+              const body = cached.body as {
+                data?: {
+                  booking_id?: string;
+                  payment_url?: string | null;
+                  payment_reference?: string | null;
+                  [key: string]: unknown;
+                };
+                error?: unknown;
+              } | null;
+              const bookingId = body?.data?.booking_id;
+              if (bookingId) {
+                const { resolveCachedBookingCheckout } = await import(
+                  "./_helpers/resolve-cached-booking-checkout"
+                );
+                const resolved = await resolveCachedBookingCheckout(
+                  getSupabaseAdmin(),
+                  bookingId,
+                  captchaSkipUserId,
+                  body?.data?.payment_url ?? null,
+                );
+                if (resolved.kind === "dead") {
+                  return errorResponse(
+                    "This checkout is no longer available. Please start a new booking.",
+                    "CHECKOUT_NO_LONGER_PAYABLE",
+                    409,
+                    { booking_id: resolved.bookingId ?? bookingId },
+                  );
+                }
+                if (resolved.kind === "already_paid") {
+                  return successResponse({
+                    ...(body?.data ?? {}),
+                    booking_id: resolved.bookingId,
+                    payment_url: null,
+                    payment_reference: resolved.paymentReference,
+                    already_paid: true,
+                  });
+                }
+                return successResponse({
+                  ...(body?.data ?? {}),
+                  booking_id: resolved.bookingId,
+                  payment_url: resolved.paymentUrl,
+                  payment_reference: resolved.paymentReference,
+                });
+              }
+            }
             return cached.toResponse();
           }
         }
@@ -303,66 +349,30 @@ export async function POST(request: NextRequest) {
         }
 
         stage = "stale_pending_cancel";
-        // 2.7. Cancel any stale unpaid online bookings by this user for the same
-        //      provider and nearby time window before conflict checks run.
-        //      Auto-confirmed Paystack bookings can have status='confirmed' while
-        //      payment_status='pending', so status-only cleanup leaves the
-        //      customer's own abandoned payment attempt blocking the retry.
+        // 2.7. Gateway-checked release of this customer's own unpaid online
+        //      checkouts for the same provider/window (all gateways). Settles
+        //      if the charge already succeeded; blocks with PAYMENT_IN_PROGRESS
+        //      while the gateway is still processing.
         {
           const selectedDt = new Date(draft.selected_datetime);
           const windowStart = new Date(selectedDt.getTime() - 4 * 60 * 60 * 1000); // -4 h
-          const windowEnd   = new Date(selectedDt.getTime() + 4 * 60 * 60 * 1000); // +4 h
-          // §Stale-cancel (audit 2026-06): a bulk UPDATE here cancelled abandoned
-          // bookings but left their RESERVED gift card balance locked and any
-          // upfront WALLET debit un-reversed. Select the matching ids and route
-          // each through releaseBookingSlotAfterPaymentFailure, which voids the
-          // gift card reservation, credits back the wallet amount, and clears the
-          // coverage fields before cancelling.
-          const { data: staleBookings } = await supabaseAdmin
-            .from("bookings")
-            .select("id, customer_id, customer_package_entitlement_id, rescheduled_from_booking_id")
-            .eq("customer_id", user.id)
-            .eq("provider_id", draft.provider_id)
-            .eq("booking_source", "online")
-            .eq("payment_status", "pending")
-            .or("payment_provider.eq.paystack,payment_provider.is.null")
-            .in("status", ["pending", "pending_payment", "confirmed"])
-            .gte("scheduled_at", windowStart.toISOString())
-            .lte("scheduled_at", windowEnd.toISOString());
-
-          const staleRows = (staleBookings as Array<{
-            id: string;
-            customer_id?: string | null;
-            customer_package_entitlement_id?: string | null;
-            rescheduled_from_booking_id?: string | null;
-          }> | null) ?? [];
-          if (staleRows.length > 0) {
-            await Promise.all(
-              staleRows.map(async (stale) => {
-                try {
-                  await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, stale.id, user.id);
-                } catch (releaseErr) {
-                  console.error(
-                    "[stale_pending_cancel] failed to release stale booking",
-                    stale.id,
-                    releaseErr,
-                  );
-                }
-                try {
-                  await returnBorrowedSessionIfReleased(supabaseAdmin, {
-                    id: stale.id,
-                    customer_id: stale.customer_id ?? user.id,
-                    customer_package_entitlement_id: stale.customer_package_entitlement_id,
-                    rescheduled_from_booking_id: stale.rescheduled_from_booking_id,
-                  }, borrowedEntitlementId);
-                } catch (sessionErr) {
-                  console.error(
-                    "[stale_pending_cancel] failed to keep the borrowed package session",
-                    stale.id,
-                    sessionErr,
-                  );
-                }
-              }),
+          const windowEnd = new Date(selectedDt.getTime() + 4 * 60 * 60 * 1000); // +4 h
+          const { releaseOwnOpenCheckouts } = await import(
+            "./_helpers/release-own-open-checkouts"
+          );
+          const own = await releaseOwnOpenCheckouts(supabaseAdmin, {
+            customerId: user.id,
+            providerId: draft.provider_id,
+            windowStart: windowStart.toISOString(),
+            windowEnd: windowEnd.toISOString(),
+            borrowedEntitlementId,
+          });
+          if (own.paymentInProgressBookingId) {
+            return errorResponse(
+              "A payment for your previous checkout is still confirming. Open that booking or wait a moment.",
+              "PAYMENT_IN_PROGRESS",
+              409,
+              { booking_id: own.paymentInProgressBookingId },
             );
           }
         }

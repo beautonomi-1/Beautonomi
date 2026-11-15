@@ -2,12 +2,15 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mockFetcherGet = vi.fn();
 
-vi.mock("@/lib/http/fetcher", () => ({
-  fetcher: {
-    get: (...args: unknown[]) => mockFetcherGet(...args),
-  },
-  FetchError: class extends Error {},
-}));
+vi.mock("@/lib/http/fetcher", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/http/fetcher")>();
+  return {
+    ...mod,
+    fetcher: {
+      get: (...args: unknown[]) => mockFetcherGet(...args),
+    },
+  };
+});
 
 describe("buildOnlineVerifyQuery", () => {
   it("includes reference only when session_id is absent", async () => {
@@ -125,6 +128,34 @@ describe("verifyWithRetry", () => {
 
     expect(result.status).toBe("failed");
     expect(result.errorMessage).toBe("Payment failed");
+  });
+
+  it.each(["BOOKING_CANCELLED", "CHECKOUT_NO_LONGER_PAYABLE"] as const)(
+    "returns failed immediately on terminal 409 code %s without retrying",
+    async (code) => {
+      const { FetchError } = await import("@/lib/http/fetcher");
+      const { verifyWithRetry } = await import("../verify-with-retry");
+      mockFetcherGet.mockRejectedValue(new FetchError("Terminal verify failure", 409, code));
+
+      const result = await verifyWithRetry("ref-terminal", { maxAttempts: 5, delayMs: 1 });
+
+      expect(result.status).toBe("failed");
+      expect(result.attempts).toBe(1);
+      expect(result.errorMessage).toBe("Terminal verify failure");
+      expect(mockFetcherGet).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("retries other 409 responses that are not terminal verify codes", async () => {
+    const { FetchError } = await import("@/lib/http/fetcher");
+    mockFetcherGet.mockRejectedValue(new FetchError("Still racing", 409, "VERIFY_NOT_READY"));
+
+    const { verifyWithRetry } = await import("../verify-with-retry");
+    const result = await verifyWithRetry("ref-race", { maxAttempts: 2, delayMs: 1 });
+
+    expect(result.status).toBe("unknown");
+    expect(result.attempts).toBe(2);
+    expect(mockFetcherGet).toHaveBeenCalledTimes(2);
   });
 });
 

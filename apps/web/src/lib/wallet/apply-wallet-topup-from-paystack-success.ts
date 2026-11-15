@@ -168,7 +168,8 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     return;
   }
 
-  // Atomically claim the pending -> paid transition. The single winner credits.
+  // Atomically claim pending|failed -> paid. Cancel-page failure marks the
+  // top-up failed; a later capture on the same reference must still credit.
   const { data: claimed } = await supabase
     .from("wallet_topups")
     .update({
@@ -179,16 +180,15 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
       tenant_id: topupWalletTenantId,
     })
     .eq("id", topupId)
-    .eq("status", "pending")
+    .in("status", ["pending", "failed"])
     .select("id")
     .maybeSingle();
 
   if (!claimed) {
-    // We lost the atomic claim. If the top-up was still pending on entry, a
-    // concurrent caller (verify vs webhook) won the race and will credit — so
-    // we must NOT credit again. Only heal a genuinely stranded top-up that was
-    // already marked paid on entry but, due to an earlier failure, never got a
-    // wallet credit (the ledger guard above already proved none exists).
+    // We lost the atomic claim. If the top-up was still pending/failed on entry,
+    // a concurrent caller won the race and will credit — so we must NOT credit
+    // again. Only heal a genuinely stranded top-up that was already marked paid
+    // on entry but never got a wallet credit.
     if (!enteredPaid) return;
     await supabase
       .from("wallet_topups")

@@ -12,6 +12,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { finalizeCustomOfferPayment } from "../finalize-custom-offer-payment";
 
+const { mockGetCheckoutByReference } = vi.hoisted(() => ({
+  mockGetCheckoutByReference: vi.fn(async (_reference: string) => null as unknown),
+}));
+
+vi.mock("@/lib/payments/online-payment-checkouts", () => ({
+  getOnlinePaymentCheckoutByReference: (reference: string) => mockGetCheckoutByReference(reference),
+}));
+
 vi.mock("@/lib/custom-offers/sync-offer-message-attachments", () => ({
   patchCustomOfferMessageAttachments: vi.fn(async () => undefined),
 }));
@@ -224,6 +232,96 @@ describe("finalizeCustomOfferPayment idempotency", () => {
     expect(res.ok).toBe(true);
     expect(res.bookingId).toBe("booking-9");
     expect(res.reason).toBe("duplicate_reference");
+  });
+
+  it("reports a duplicate capture when the offer was already paid from another reference", async () => {
+    const offer = {
+      id: "offer-1",
+      status: "paid",
+      booking_id: "booking-9",
+      payment_reference: "co_first_ref",
+      price: 100,
+      currency: "ZAR",
+      duration_minutes: 60,
+      request: { id: "req-1", customer_id: "c1", provider_id: "p1" },
+    };
+    const admin = makeAdminMockForOffer(offer);
+    const res = await finalizeCustomOfferPayment(admin, {
+      offerId: "offer-1",
+      reference: "co_second_ref",
+      paystackAmountMajor: 100,
+      paystackFeesMajor: 0,
+      walletAmountApplied: 0,
+      giftCardAmountApplied: 0,
+    });
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe("unexpected_status:paid");
+  });
+
+  it("settles a pending offer when the reference matches its card-only checkout", async () => {
+    mockGetCheckoutByReference.mockResolvedValueOnce({
+      reference: "co_test_ref",
+      metadata: {
+        custom_offer_id: "offer-1",
+        total_amount: 100,
+        payment_option: "full",
+        wallet_amount_applied: 0,
+        gift_card_amount_applied: 0,
+      },
+    });
+    const offer = {
+      id: "offer-1",
+      status: "pending",
+      price: 100,
+      currency: "ZAR",
+      duration_minutes: 60,
+      request: { id: "req-1", customer_id: "c1", provider_id: "p1" },
+    };
+    const base = makeAdminMockForOffer(offer, { id: "tx-1", booking_id: "booking-9" });
+    const updateChain: any = {
+      eq: () => updateChain,
+      is: () => updateChain,
+      select: async () => ({ data: [{ id: "offer-1" }], error: null }),
+    };
+    const admin = {
+      ...base,
+      from: (table: string) => {
+        const t = base.from(table);
+        return table === "custom_offers" ? { ...t, update: () => updateChain } : t;
+      },
+    };
+    const res = await finalizeCustomOfferPayment(admin, {
+      offerId: "offer-1",
+      reference: "co_test_ref",
+      paystackAmountMajor: 100,
+      paystackFeesMajor: 0,
+      walletAmountApplied: 0,
+      giftCardAmountApplied: 0,
+    });
+    expect(res.reason).toBe("duplicate_reference");
+  });
+
+  it("refuses a pending offer when the reference has no matching checkout", async () => {
+    mockGetCheckoutByReference.mockResolvedValueOnce(null);
+    const offer = {
+      id: "offer-1",
+      status: "pending",
+      price: 100,
+      currency: "ZAR",
+      duration_minutes: 60,
+      request: { id: "req-1", customer_id: "c1", provider_id: "p1" },
+    };
+    const admin = makeAdminMockForOffer(offer);
+    const res = await finalizeCustomOfferPayment(admin, {
+      offerId: "offer-1",
+      reference: "co_unknown_ref",
+      paystackAmountMajor: 100,
+      paystackFeesMajor: 0,
+      walletAmountApplied: 0,
+      giftCardAmountApplied: 0,
+    });
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe("unexpected_status:pending");
   });
 
   it("refuses to create a booking when the offer is withdrawn", async () => {
