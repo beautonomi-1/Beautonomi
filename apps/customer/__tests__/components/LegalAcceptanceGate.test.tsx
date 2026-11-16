@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { act, render, waitFor } from "@testing-library/react-native";
+import { render, waitFor } from "@testing-library/react-native";
 import { Text } from "react-native";
 
 const mockApiPost = jest.fn();
@@ -106,11 +106,11 @@ describe("LegalAcceptanceGate", () => {
         <Text>App shell</Text>
       </LegalAcceptanceGate>,
     );
-    // The acceptance setState is scheduled at normal priority. On a busy CI runner
-    // that update can sit until React's 5s expiration, which is also Jest's test timeout.
-    await act(async () => {
-      await Promise.resolve();
-    });
+    // The acceptance result renders on the next turn. Do not wrap this wait in
+    // `act()`: React 19 flushes async act through MessageChannel, and on CI that
+    // callback does not run before Jest's 5s test timeout.
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
     expect(JSON.stringify(screen.toJSON())).toContain(
       "customer.mobile.components.legalAcceptanceGate.title",
     );

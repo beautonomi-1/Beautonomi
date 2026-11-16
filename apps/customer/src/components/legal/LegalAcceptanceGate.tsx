@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   View,
   Text,
@@ -30,6 +30,58 @@ type Props = {
   enabled?: boolean;
 };
 
+type AcceptanceSnapshot = { loading: boolean; accepted: boolean };
+
+/**
+ * The acceptance read is async. Publishing it through `useSyncExternalStore`
+ * schedules a sync render on the next tick. A normal `setState` after `await`
+ * is a normal-priority update, and on a busy CI runner React holds that until
+ * its 5s expiration — the same limit Jest gives the test.
+ */
+function useCustomerEulaAcceptance(): AcceptanceSnapshot & { markAccepted: () => void } {
+  const storeRef = useRef<{
+    snapshot: AcceptanceSnapshot;
+    listeners: Set<() => void>;
+  } | null>(null);
+  if (storeRef.current === null) {
+    storeRef.current = {
+      snapshot: { loading: true, accepted: false },
+      listeners: new Set(),
+    };
+  }
+  const store = storeRef.current;
+  const publish = useCallback((next: AcceptanceSnapshot) => {
+    store.snapshot = next;
+    store.listeners.forEach((listener) => listener());
+  }, [store]);
+  const snapshot = useSyncExternalStore(
+    (listener) => {
+      store.listeners.add(listener);
+      return () => {
+        store.listeners.delete(listener);
+      };
+    },
+    () => store.snapshot,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void hasAcceptedCurrentCustomerEula().then((accepted) => {
+      if (cancelled) return;
+      publish({ loading: false, accepted });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [publish, store]);
+
+  const markAccepted = useCallback(() => {
+    publish({ loading: false, accepted: true });
+  }, [publish]);
+
+  return { ...snapshot, markAccepted };
+}
+
 export function LegalAcceptanceGate({ children, enabled = true }: Props) {
   return (
     <LegalAcceptanceGateActive enabled={enabled}>{children}</LegalAcceptanceGateActive>
@@ -47,24 +99,9 @@ function LegalAcceptanceGateActive({
   const lg = (key: string) => t(`customer.mobile.components.legalAcceptanceGate.${key}`) as string;
   const { session, signOut } = useAuth();
   const userId = session?.user?.id ?? null;
-  const [loading, setLoading] = useState(true);
-  const [accepted, setAccepted] = useState(false);
+  const { loading, accepted, markAccepted } = useCustomerEulaAcceptance();
   const [checked, setChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const ok = await hasAcceptedCurrentCustomerEula();
-      if (!cancelled) {
-        setAccepted(ok);
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const syncServerAcceptance = useCallback(async () => {
     if (!userId) return;
@@ -100,11 +137,11 @@ function LegalAcceptanceGateActive({
     setSubmitting(true);
     try {
       await storeCustomerEulaAcceptance();
-      setAccepted(true);
+      markAccepted();
     } finally {
       setSubmitting(false);
     }
-  }, [checked, submitting]);
+  }, [checked, submitting, markAccepted]);
 
   if (!enabled || accepted) {
     return <>{children}</>;

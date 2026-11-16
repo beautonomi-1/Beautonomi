@@ -412,15 +412,25 @@ export async function GET(request: NextRequest) {
             403,
           );
         }
-        await applyWalletTopupFromSuccessfulPaystackCharge(
-          {
-            reference: String(reference),
-            metadata,
-            amount: data.data.amount,
-            fees: data.data.fees,
-          },
-          admin as any,
-        );
+        try {
+          await applyWalletTopupFromSuccessfulPaystackCharge(
+            {
+              reference: String(reference),
+              metadata,
+              amount: data.data.amount,
+              fees: data.data.fees,
+            },
+            admin as any,
+          );
+        } catch (topupErr) {
+          // The customer-facing outcome is the wallet credit. Receipt/finance rows
+          // are retried by the charge.success webhook; only fail if no credit exists.
+          console.error("[paystack/verify] wallet top-up completion failed", {
+            walletTopupId,
+            reference,
+            error: topupErr instanceof Error ? topupErr.message : topupErr,
+          });
+        }
         const { data: creditedRow } = await admin
           .from("wallet_transactions")
           .select("id")

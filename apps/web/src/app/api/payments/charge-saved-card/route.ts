@@ -896,18 +896,17 @@ export async function POST(request: NextRequest) {
             },
             supabaseAdmin,
           );
-          const { data: creditedRow } = await (supabaseAdmin.from("wallet_transactions") as any)
-            .select("id")
-            .eq("reference_id", walletTopupIdFromMeta)
-            .eq("reference_type", "wallet_topup")
-            .limit(1)
-            .maybeSingle();
-          if (!creditedRow) {
-            walletTopupFulfillmentFailed = true;
-          }
         } catch (walletErr) {
+          console.error("[charge-saved-card] Failed to complete wallet top-up after charge:", walletErr);
+        }
+        const { data: creditedRow } = await (supabaseAdmin.from("wallet_transactions") as any)
+          .select("id")
+          .eq("reference_id", walletTopupIdFromMeta)
+          .eq("reference_type", "wallet_topup")
+          .limit(1)
+          .maybeSingle();
+        if (!creditedRow) {
           walletTopupFulfillmentFailed = true;
-          console.error("[charge-saved-card] Failed to credit wallet top-up after charge:", walletErr);
         }
       }
     }
