@@ -130,6 +130,11 @@ const productOrdersQuery = `
 
 violations += await runAuditQuery(productOrdersQuery, "paid_product_orders_missing_ledger");
 
+violations += await runAuditQuery(
+  namedAuditQuery("paid_wallet_topups_missing_ledger"),
+  "paid_wallet_topups_missing_ledger",
+);
+
 if (violations > 0) {
   console.error(`[finance-audit] FAILED — ${violations} total violations.`);
   process.exit(1);

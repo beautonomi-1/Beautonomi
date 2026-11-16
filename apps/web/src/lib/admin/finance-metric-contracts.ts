@@ -1,4 +1,4 @@
-export const FINANCE_METRIC_CONTRACT_VERSION = "2026.07.05";
+export const FINANCE_METRIC_CONTRACT_VERSION = "2026.11.16";
 
 type MetricContract = {
   key: string;
@@ -14,7 +14,7 @@ const CONTRACTS: Record<string, MetricContract> = {
     key: "platformRecognizedRevenue",
     label: "Platform Recognized Revenue",
     formula:
-      "platform_take_net + subscription_net + ads_net + service_fee_revenue + manual_adjustments_net",
+      "platform_take_net + subscription_net + ads_net + marketing_credit_net + service_fee_revenue (platform fees net of platform_fee/service_fee refund nets) + gift_card_breakage",
     source: ["finance_transactions", "aggregateFinanceLedgerRows"],
     timezone: "tenant",
     cadence: "near_realtime",
@@ -89,7 +89,7 @@ const CONTRACTS: Record<string, MetricContract> = {
   takeRate: {
     key: "takeRate",
     label: "Take rate",
-    formula: "(platform_take_net + service_fee_revenue) / service_collected_gross",
+    formula: "(platform_take_net + service_fee_revenue net of refunded platform fees) / service_collected_gross",
     source: ["finance_transactions", "aggregateFinanceLedgerRows"],
     timezone: "tenant",
     cadence: "daily",

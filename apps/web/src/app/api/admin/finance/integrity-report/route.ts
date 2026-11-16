@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { handleApiError, requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import {
@@ -40,16 +40,6 @@ export async function GET(request: NextRequest) {
       error: null,
     });
   } catch (error) {
-    console.error("[admin/finance/integrity-report]", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: error instanceof Error ? error.message : "Failed to build integrity report",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 },
-    );
+    return handleApiError(error, "Failed to build integrity report");
   }
 }

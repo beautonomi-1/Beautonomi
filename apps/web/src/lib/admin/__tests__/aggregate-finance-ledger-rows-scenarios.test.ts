@@ -21,6 +21,8 @@ function row(partial: Partial<FinanceLedgerRow> & { transaction_type: string }):
     fees: partial.fees ?? 0,
     commission: partial.commission ?? 0,
     net: partial.net ?? partial.amount ?? 0,
+    refund_component: partial.refund_component,
+    currency: partial.currency,
     created_at: partial.created_at ?? "2026-04-01T00:00:00.000Z",
   };
 }
@@ -422,5 +424,95 @@ describe("aggregateFinanceLedgerRows — admin finance scenarios", () => {
     expect(agg.terminal_gateway_fees).toBeCloseTo(18.19, 2);
     expect(agg.terminal_revenue_gross).toBe(700);
     expect(gatewayFeesTotalFromAggregate(agg)).toBeCloseTo(20.69, 2);
+  });
+
+  it("cash refund gross uses abs(net), not abs(amount), so component legs are not double-counted", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ booking_id: "b120", transaction_type: "refund", refund_component: "provider_earnings", amount: 100, net: -100 }),
+      row({ booking_id: "b120", transaction_type: "refund", refund_component: "tip", amount: 10, net: -10 }),
+      row({ booking_id: "b120", transaction_type: "refund", refund_component: "payment", amount: -100, net: 0 }),
+      row({ booking_id: "b120", transaction_type: "refund", refund_component: "platform_fee", amount: 10, net: -10 }),
+      row({ booking_id: "b195", transaction_type: "refund", refund_component: "payment", amount: -150, net: 0 }),
+      row({ booking_id: "b195", transaction_type: "refund", refund_component: "provider_earnings", amount: 150, net: -150 }),
+      row({ booking_id: "b195", transaction_type: "refund", refund_component: "tip", amount: 30, net: -30 }),
+      row({ booking_id: "b195", transaction_type: "refund", refund_component: "platform_fee", amount: 15, net: -15 }),
+    ];
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.refunds_gross).toBe(315);
+    expect(agg.refunds_abs_gross).toBe(315);
+  });
+
+  it("recognized platform fees are net of platform_fee refunds; collected GMV stays gross", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ booking_id: "paid", transaction_type: "payment", amount: 150, fees: 6, net: 0 }),
+      row({ booking_id: "paid", transaction_type: "platform_fee", amount: 15, net: 15 }),
+      row({ booking_id: "paid", transaction_type: "provider_earnings", amount: 150, net: 150 }),
+      row({ booking_id: "paid", transaction_type: "tip", amount: 22.5, net: 22.5 }),
+      row({ booking_id: "r1", transaction_type: "payment", amount: 100, fees: 7, net: 0 }),
+      row({ booking_id: "r1", transaction_type: "platform_fee", amount: 10, net: 10 }),
+      row({ booking_id: "r1", transaction_type: "tip", amount: 10, net: 10 }),
+      row({ booking_id: "r1", transaction_type: "refund", refund_component: "platform_fee", amount: 10, net: -10 }),
+      row({ booking_id: "r2", transaction_type: "payment", amount: 150, fees: 7.23, net: 0 }),
+      row({ booking_id: "r2", transaction_type: "platform_fee", amount: 15, net: 15 }),
+      row({ booking_id: "r2", transaction_type: "tip", amount: 30, net: 30 }),
+      row({ booking_id: "r2", transaction_type: "refund", refund_component: "platform_fee", amount: 15, net: -15 }),
+    ];
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.service_collected_gross).toBeCloseTo(502.5, 2);
+    expect(agg.service_fee_revenue).toBe(15);
+    expect(agg.platform_fee_revenue).toBe(15);
+    expect(agg.gateway_fees_services).toBeCloseTo(20.23, 2);
+    expect(agg.platform_take_net).toBeCloseTo(-20.23, 2);
+    expect(platformRevenueNetFromAggregate(agg)).toBeCloseTo(-5.23, 2);
+  });
+
+  it("does not fold a product-order platform fee refund into booking service fee revenue", () => {
+    const rows: FinanceLedgerRow[] = [
+      row({ booking_id: "b1", transaction_type: "platform_fee", amount: 15, net: 15 }),
+      row({
+        product_order_id: "o1",
+        transaction_type: "refund",
+        refund_component: "platform_fee",
+        amount: 8,
+        net: -8,
+      }),
+    ];
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.service_fee_revenue).toBe(15);
+    expect(agg.ecommerce_platform_fees).toBe(-8);
+  });
+
+  it("treats a null refund component as customer cash and a partial refund as that cash only", () => {
+    const legacy = aggregateFinanceLedgerRows([
+      row({ booking_id: "b1", transaction_type: "refund", amount: -80, net: -80 }),
+    ]);
+    expect(legacy.refunds_gross).toBe(80);
+    const partial = aggregateFinanceLedgerRows([
+      row({ booking_id: "b1", transaction_type: "refund", refund_component: "provider_earnings", amount: 40, net: -40 }),
+      row({ booking_id: "b1", transaction_type: "refund", refund_component: "payment", amount: -40, net: 0 }),
+    ]);
+    expect(partial.refunds_gross).toBe(40);
+  });
+
+  it("keeps wallet top-ups out of GMV and counts tip, travel, and cancellation refunds in provider impact", () => {
+    const agg = aggregateFinanceLedgerRows([
+      row({ booking_id: "b1", transaction_type: "payment", amount: 100, net: 0 }),
+      row({ transaction_type: "wallet_topup", amount: 50, net: 50 }),
+      row({ booking_id: "b1", transaction_type: "refund", refund_component: "tip", amount: 5, net: -5 }),
+      row({ booking_id: "b1", transaction_type: "refund", refund_component: "travel_fee", amount: 8, net: -8 }),
+      row({ booking_id: "b1", transaction_type: "refund", refund_component: "cancellation_fee", amount: 12, net: -12 }),
+    ]);
+    expect(agg.service_collected_gross).toBe(100);
+    expect(agg.wallet_topup_ledger).toBe(50);
+    expect(agg.provider_refund_net_impact).toBe(-25);
+    expect(agg.refunds_gross).toBe(25);
+  });
+
+  it("flags mixed currencies instead of presenting a single total currency", () => {
+    const agg = aggregateFinanceLedgerRows([
+      row({ transaction_type: "payment", amount: 10, net: 1, currency: "ZAR" }),
+      row({ transaction_type: "payment", amount: 10, net: 1, currency: "USD" }),
+    ]);
+    expect(agg.currency).toBe("MIXED");
   });
 });

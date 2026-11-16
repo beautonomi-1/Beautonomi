@@ -15,6 +15,9 @@ import {
   fetchLatestMarketplaceHealth,
 } from "@/lib/admin/marketplace-health-api";
 import { computeTakeRate, computeContributionMargin } from "@/lib/admin/marketplace-health";
+import { addMoney } from "@beautonomi/utils";
+import { adminPeriodBounds } from "@/lib/admin/admin-period-bounds";
+import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
 
 /** Ledger window for “all-time” dashboard cards (avoids unbounded row fetch). */
 const LEDGER_TOTAL_MONTHS = 24;
@@ -31,14 +34,11 @@ async function sumWalletTopupsForTenant(
       .select("amount")
       .eq("status", "paid")
       .eq("tenant_id", tenantId)
-      .gte("paid_at", range.start);
+      .gte("paid_at", range.start)
+      .order("id", { ascending: true });
     if (range.end) q = q.lte("paid_at", range.end);
-    const { data, error } = await q;
-    if (error) {
-      console.warn("wallet_topups tenant sum failed:", error.message);
-      return 0;
-    }
-    return (data || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+    const { rows } = await fetchAllPages<{ amount?: number | null }>(q);
+    return rows.reduce((s, r) => addMoney(s, Number(r.amount || 0)), 0);
   } catch (e) {
     console.warn("wallet_topups sum failed:", e);
     return 0;
@@ -112,23 +112,11 @@ export async function GET(request: NextRequest) {
       if (tzFromSettings) tz = tzFromSettings;
     } catch { /* ignore — fall back to UTC */ }
 
-    // Compute start-of-today in the tenant timezone via Intl
-    const formatter = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-    const parts = formatter.formatToParts(now);
-    const p: Record<string, number> = {};
-    for (const part of parts) {
-      if (part.type !== "literal") p[part.type] = parseInt(part.value, 10);
-    }
-    // Reconstruct UTC start-of-day in the tenant timezone
-    const startOfTodayLocal = new Date(`${p.year ?? now.getUTCFullYear()}-${String(p.month ?? now.getUTCMonth() + 1).padStart(2, "0")}-${String(p.day ?? now.getUTCDate()).padStart(2, "0")}T00:00:00`);
-    const offsetMinutes = startOfTodayLocal.getTime() - new Date(`${p.year ?? now.getUTCFullYear()}-${String(p.month ?? now.getUTCMonth() + 1).padStart(2, "0")}-${String(p.day ?? now.getUTCDate()).padStart(2, "0")}T00:00:00Z`).getTime();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    // Adjust today boundary for timezone offset
-    startOfToday.setTime(startOfToday.getTime() - offsetMinutes);
-
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    const bounds = adminPeriodBounds(now, tz);
+    const startOfToday = bounds.startOfToday;
+    const startOfMonth = bounds.startOfMonth;
+    const startOfLastMonth = bounds.startOfPreviousMonth;
+    const endOfLastMonth = bounds.endOfPreviousMonth;
 
     const supabaseAdmin = getSupabaseAdmin();
     const { data: rpcCount, error: rpcErr } = await supabaseAdmin.rpc("admin_dashboard_tenant_customer_count", {
