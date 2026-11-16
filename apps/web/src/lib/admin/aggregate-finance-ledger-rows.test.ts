@@ -74,10 +74,12 @@ describe("aggregateFinanceLedgerRows", () => {
       { transaction_type: "payment", amount: 100, fees: 4, net: 0, metadata: { fee_source: "paystack" } },
       { transaction_type: "wallet_topup", amount: 50, fees: 2, net: 50, metadata: { fee_source: "stripe" } },
       { transaction_type: "payment", amount: 80, fees: 3, net: 0, metadata: { fee_source: "yoco" } },
+      { transaction_type: "provider_subscription_payment", amount: 40, fees: 6, net: 34, metadata: { fee_source: "apple_commission" } },
     ];
     const agg = aggregateFinanceLedgerRows(rows);
     expect(agg.gateway_fees_by_gateway.paystack).toBe(4);
     expect(agg.gateway_fees_by_gateway.stripe).toBe(2);
+    expect(agg.gateway_fees_by_gateway.apple).toBe(6);
     expect(agg.gateway_fees_by_gateway.yoco).toBeUndefined();
     const split = Object.values(agg.gateway_fees_by_gateway).reduce((s, n) => s + n, 0);
     expect(split).toBe(gatewayFeesTotalFromAggregate(agg));
