@@ -47,6 +47,7 @@ type FinanceSummary = {
     payout_transfers?: number;
     total?: number;
   };
+  gateway_fees_by_gateway?: Record<string, number>;
   terminal_commerce?: {
     revenue_gross?: number;
     gateway_fees?: number;
@@ -56,6 +57,7 @@ type FinanceSummary = {
   platform_refund_impact: number;
   platform_commission_net: number;
   platform_take_net: number;
+  manual_adjustments_net?: number;
   tips_gross: number;
   taxes_gross: number;
   subscription_collected_gross: number;
@@ -90,8 +92,14 @@ type FinanceSummary = {
   period: FinancePeriod;
   currency?: string;
   reporting_currency_mixed?: boolean;
+  commission_enabled?: boolean;
   platform_revenue?: {
+    /** @deprecated Take after gateway fees. Prefer booking_commission_net and booking_take_net. */
     booking_commission?: number;
+    booking_commission_net?: number;
+    booking_gateway_fees?: number;
+    manual_adjustments_net?: number;
+    booking_take_net?: number;
     customer_paid_platform_fees?: number;
     subscriptions?: number;
     ads?: number;
@@ -343,7 +351,7 @@ export function FinanceOverviewPage() {
   const platformRevenueDrivers = useMemo(() => {
     if (!summary) return [];
     return [
-      { label: "Booking commission (net)", value: summary.platform_revenue?.booking_commission ?? summary.platform_take_net },
+      { label: "Booking commission", value: summary.platform_revenue?.booking_commission_net ?? summary.platform_commission_net ?? 0 },
       { label: "Customer-paid platform fees", value: summary.platform_revenue?.customer_paid_platform_fees ?? summary.service_fee_revenue ?? 0 },
       { label: "Subscriptions (net)", value: summary.platform_revenue?.subscriptions ?? summary.subscription_net ?? 0 },
       { label: "Ads (net)", value: summary.platform_revenue?.ads ?? summary.ads_net ?? 0 },
@@ -353,15 +361,28 @@ export function FinanceOverviewPage() {
         label: "Gift card breakage",
         value: (summary.platform_revenue as { gift_card_breakage?: number } | undefined)?.gift_card_breakage ?? 0,
       },
-    ];
+    ].concat(
+      (summary.platform_revenue?.manual_adjustments_net ?? summary.manual_adjustments_net ?? 0) > 0
+        ? [{ label: "Manual adjustments", value: summary.platform_revenue?.manual_adjustments_net ?? summary.manual_adjustments_net ?? 0 }]
+        : [],
+    );
   }, [summary]);
 
   const platformDeductions = useMemo(() => {
     if (!summary) return [];
-    return [
+    const rows = [
+      {
+        label: "Gateway fees (booking & add-on)",
+        value: Math.abs(summary.platform_revenue?.booking_gateway_fees ?? summary.gateway_fees ?? 0),
+      },
       { label: "Platform refund contra", value: Math.abs(summary.platform_refund_impact ?? 0) },
       { label: "Referral payouts", value: Math.abs(summary.referral_payouts ?? 0) },
     ];
+    const adjustments = summary.platform_revenue?.manual_adjustments_net ?? summary.manual_adjustments_net ?? 0;
+    if (adjustments < 0) {
+      rows.splice(1, 0, { label: "Manual adjustments", value: Math.abs(adjustments) });
+    }
+    return rows;
   }, [summary]);
 
   const providerRevenueDrivers = useMemo(() => {
@@ -657,6 +678,11 @@ export function FinanceOverviewPage() {
               <SummaryMetricCard
                 label="Platform commission (net)"
                 value={summary.platform_commission_net ?? summary.platform_take_net}
+                tooltip={
+                  summary.commission_enabled === false
+                    ? "Commission is off for this tenant. This figure is commission only; gateway fees are listed separately."
+                    : "Commission on booking payments, before gateway fees."
+                }
               />
               <SummaryMetricCard
                 label="Provider net activity"
@@ -765,12 +791,21 @@ export function FinanceOverviewPage() {
               </Link>
             </div>
             <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-gray-900">Gateway fees (Paystack)</h3>
+              <h3 className="mb-3 text-sm font-semibold text-gray-900">Gateway fees</h3>
               <p className="mb-2 text-xs text-gray-500">
                 Booking &amp; add-on gateway fees ({formatAdminCurrency(summary.gateway_fees ?? 0)}) are a subset of
-                total gateway fees across all Paystack flows.
+                total gateway fees across platform-held gateways. Card-machine fees charged by a provider&apos;s own
+                acquirer are not included.
               </p>
               <div className="space-y-2 text-sm">
+                {Object.entries(summary.gateway_fees_by_gateway ?? {})
+                  .filter(([, value]) => Math.abs(value) > 0.004)
+                  .map(([gateway, value]) => (
+                    <div key={gateway} className="flex items-center justify-between gap-3">
+                      <span className="text-gray-600">{gateway}</span>
+                      <span className="tabular-nums font-medium text-gray-900">{formatAdminCurrency(value)}</span>
+                    </div>
+                  ))}
                 {gatewayFeeBreakdown.map((item) => (
                   <div key={item.label} className="flex items-center justify-between gap-3">
                     <span className="text-gray-600">{item.label}</span>
@@ -979,8 +1014,8 @@ export function FinanceOverviewPage() {
                 <div className="rounded-lg border border-gray-200 p-3">
                   <p className="text-xs uppercase tracking-wide text-gray-500">Gateway fee capture anomalies</p>
                   <p className="mt-1 text-sm text-gray-700">
-                    {formatAdminNumber(summary.reconciliation.checks.gateway_fee_capture_anomalies?.row_count ?? 0)} Paystack
-                    row{(summary.reconciliation.checks.gateway_fee_capture_anomalies?.row_count ?? 0) === 1 ? "" : "s"} with
+                    {formatAdminNumber(summary.reconciliation.checks.gateway_fee_capture_anomalies?.row_count ?? 0)} platform-held
+                    payment{(summary.reconciliation.checks.gateway_fee_capture_anomalies?.row_count ?? 0) === 1 ? "" : "s"} with
                     fees ≤ 0
                     {(summary.reconciliation.checks.gateway_fee_capture_anomalies?.expected_fees_total ?? 0) > 0 ? (
                       <>
@@ -1021,6 +1056,11 @@ export function FinanceOverviewPage() {
                   <p className="mt-1 text-sm text-gray-700">
                     Net {formatAdminCurrency(summary.reconciliation.checks.platform_net_health?.platform_net ?? 0)}
                   </p>
+                  {summary.commission_enabled === false && (summary.reconciliation.checks.platform_net_health?.platform_net ?? 0) < 0 ? (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Commission is off, so gateway fees can exceed customer-paid platform fees.
+                    </p>
+                  ) : null}
                 </div>
                 {summary.reconciliation.checks.platform_cash_position ? (
                   <div className="rounded-lg border border-gray-200 p-3 sm:col-span-2">
@@ -1135,7 +1175,7 @@ export function FinanceOverviewPage() {
                     <AdminTh>Type</AdminTh>
                     <AdminTh>Amount</AdminTh>
                     <AdminTh>
-                      <span title="Paystack gateway fee recorded on payment and terminal_* ledger rows">Fees</span>
+                      <span title="Gateway fee recorded on payment and terminal ledger rows">Fees</span>
                     </AdminTh>
                     <AdminTh>Net</AdminTh>
                     <AdminTh>Booking</AdminTh>
@@ -1152,7 +1192,7 @@ export function FinanceOverviewPage() {
                         className="tabular-nums text-gray-600"
                         title={
                           tx.fees > 0
-                            ? "Paystack gateway fee from webhook (payment / terminal commerce rows)"
+                            ? "Gateway fee from the payment provider (payment / terminal commerce rows)"
                             : undefined
                         }
                       >

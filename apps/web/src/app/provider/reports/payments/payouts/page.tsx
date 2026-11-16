@@ -34,6 +34,7 @@ interface PayoutsData {
   };
   totalPayouts: number;
   totalPayoutAmount: number;
+  totalRecognizedRevenue?: number;
   totalGrossAmount: number;
   totalBookedAmount?: number;
   totalBookedNetOfRefunds?: number;
@@ -287,7 +288,9 @@ export default function PayoutsReport() {
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.totalPayoutAmount)}</p>
                 <Wallet className="h-5 w-5 text-emerald-600" />
               </div>
-              <p className="mt-2 text-xs text-gray-500">{t("web.provider.reports.pages.payments/payouts.netProviderEarningsHint")}</p>
+              <p className="mt-2 text-xs text-gray-500">
+                Service earnings (ledger). Recognized revenue including tips, travel, and fees: {fmt(data.totalRecognizedRevenue ?? data.totalPayoutAmount)}
+              </p>
             </CardContent>
           </Card>
 

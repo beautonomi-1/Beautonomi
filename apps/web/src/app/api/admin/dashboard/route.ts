@@ -379,7 +379,12 @@ export async function GET(request: NextRequest) {
       },
 
       platform_revenue: {
+        /** @deprecated Take after gateway fees. Use booking_commission_net and booking_take_net. */
         booking_commission: total.platform_take_net,
+        booking_commission_net: total.platform_commission_net,
+        booking_gateway_fees: total.gateway_fees_services,
+        manual_adjustments_net: total.manual_adjustments_net,
+        booking_take_net: total.platform_take_net,
         subscriptions: total.subscription_net,
         ads: total.ads_net,
         service_fees: total.service_fee_revenue,
@@ -396,7 +401,12 @@ export async function GET(request: NextRequest) {
       },
 
       revenue_streams: {
+        /** @deprecated Take after gateway fees. Use booking_commission_net and booking_take_net. */
         booking_commission: total.platform_take_net,
+        booking_commission_net: total.platform_commission_net,
+        booking_gateway_fees: total.gateway_fees_services,
+        manual_adjustments_net: total.manual_adjustments_net,
+        booking_take_net: total.platform_take_net,
         customer_paid_platform_fees: total.service_fee_revenue,
         subscriptions: total.subscription_net,
         ads: total.ads_net,

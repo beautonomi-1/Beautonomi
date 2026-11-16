@@ -765,7 +765,7 @@ function FeeReconciliationsSection({
           </span>
         </div>
         <p className="mt-1 text-xs text-gray-600">
-          Auto rows: Actual = ledger-recorded Paystack fees. Recorded mirrors Actual in auto mode. Expected = fee config.
+          Auto rows: Actual = ledger-recorded gateway fees. Recorded mirrors Actual in auto mode. Expected = fee config.
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1544,7 +1544,7 @@ function CreateReconciliationModal({
       open={open}
       onClose={onClose}
       title="New reconciliation"
-      description="Expected = fee config. Actual defaults to ledger-recorded Paystack fees for the period."
+      description="Expected = fee config. Actual defaults to ledger-recorded gateway fees for the period."
       footer={
         <>
           <button type="button" className={adminToolbarButtonClass()} onClick={onClose}>
@@ -1649,7 +1649,7 @@ function CreateReconciliationModal({
                 : ""}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Actual is pre-filled from ledger-recorded fees (webhook truth). Adjust if you have a Paystack statement override.
+              Actual is pre-filled from ledger-recorded fees (webhook truth). Adjust if you have a gateway statement override.
             </p>
           </div>
         ) : null}

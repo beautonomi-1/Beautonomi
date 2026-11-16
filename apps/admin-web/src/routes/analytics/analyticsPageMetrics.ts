@@ -16,7 +16,11 @@ export type AnalyticsPeriod = "7d" | "30d" | "90d" | "1y";
 export type TimeSeriesPoint = { date: string; count?: number; revenue?: number };
 
 export type RevenueStreamsPayload = {
+  /** @deprecated Take after gateway fees. Prefer booking_commission_net. */
   booking_commission?: number;
+  booking_commission_net?: number;
+  booking_gateway_fees?: number;
+  booking_take_net?: number;
   subscriptions?: number;
   ads?: number;
   service_fees?: number;
@@ -72,7 +76,7 @@ export function formatDeltaHint(d: number | null | undefined, period: AnalyticsP
 export function buildRevenueMixSegments(streams: RevenueStreamsPayload | undefined) {
   if (!streams) return [];
   return [
-    { label: "Booking take", value: streams.booking_commission ?? 0, colorClass: "bg-emerald-600" },
+    { label: "Booking commission", value: streams.booking_commission_net ?? 0, colorClass: "bg-emerald-600" },
     { label: "Subscriptions", value: streams.subscriptions ?? 0, colorClass: "bg-violet-600" },
     { label: "Ads", value: streams.ads ?? 0, colorClass: "bg-amber-500" },
     { label: "Marketing credits", value: streams.marketing_credits ?? 0, colorClass: "bg-sky-600" },

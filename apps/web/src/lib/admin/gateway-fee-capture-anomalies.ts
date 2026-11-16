@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LEDGER_FEE_TYPES } from "@/lib/admin/fee-reconciliation-compute";
+import { ledgerRowGateway } from "@/lib/finance/ledger-row-gateway";
+import { roundCurrency, addMoney } from "@beautonomi/utils";
 
 const PAYSTACK_CARD_TYPES = new Set<string>([...LEDGER_FEE_TYPES, "payout"]);
 
@@ -66,10 +68,8 @@ export async function countGatewayFeeCaptureAnomalies(
     if (amount <= 0 && txType !== "payout") continue;
 
     let gateway: string | null = null;
-    if (txType === "payout") {
-      gateway = "paystack";
-    } else if (
-      [
+    const recordedGateway = ledgerRowGateway(row as { metadata?: Record<string, unknown> | null });
+    if (txType === "payout" || [
         "provider_subscription_payment",
         "provider_ads_payment",
         "provider_marketing_credit_topup",
@@ -80,16 +80,15 @@ export async function countGatewayFeeCaptureAnomalies(
         "terminal_rental",
         "terminal_bundle_alloc",
         "terminal_promotion",
-      ].includes(txType)
-    ) {
-      gateway = "paystack";
+      ].includes(txType)) {
+      gateway = recordedGateway === "unknown" ? "paystack" : recordedGateway;
     } else {
       const spId = (row as { source_payment_id?: string }).source_payment_id;
       if (spId) gateway = sourceGateway.get(spId) ?? null;
     }
 
     if (!gateway || NON_GATEWAY_PROVIDERS.has(gateway)) continue;
-    if (gateway !== "paystack" && gateway !== "yoco") continue;
+    if (!["paystack", "stripe", "flutterwave", "apple", "yoco"].includes(gateway)) continue;
 
     const feeScope = txType === "payout" ? "transfer" : "transaction";
     const { data: expected } = await supabase.rpc("calculate_expected_fee", {

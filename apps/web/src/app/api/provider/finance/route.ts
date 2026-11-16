@@ -370,7 +370,7 @@ export async function GET(request: NextRequest) {
     const refundsTotal = rows.reduce((s: number, r: any) => {
       if (r.transaction_type === "refund") {
         return isProviderEarningsRefundComponent(r.refund_component)
-          ? s + Math.abs(Number(r.net ?? r.amount ?? 0))
+          ? s + Math.abs(Number(r.net ?? 0))
           : s;
       }
       if (r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0) {
@@ -386,7 +386,7 @@ export async function GET(request: NextRequest) {
       .reduce((s: number, r: any) => {
         if (r.transaction_type === "refund") {
           return isProviderEarningsRefundComponent(r.refund_component)
-            ? s + Math.abs(Number(r.net ?? r.amount ?? 0))
+            ? s + Math.abs(Number(r.net ?? 0))
             : s;
         }
         if (r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0) {

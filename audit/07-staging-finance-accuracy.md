@@ -182,3 +182,19 @@ Every Finance Overview, Dashboard, Revenue, Gods Eye, and Analytics money field 
 | Currency | ZAR | ZAR | PASS |
 
 Cross-surface equality for this window: Finance GMV = Dashboard GMV = Revenue GMV = SQL `service_collected_gross`; refunds match the dashboard total, the revenue report, and completed booking refunds; platform recognized revenue is `platformRevenueNetFromAggregate` on every surface that shows it; wallet cash collected matches the ledger after the backfill; provider earnings match the ledger. `platform_cash_position.refunds_gross` uses the same `refunds_abs_gross` field, now `abs(net)` of cash refund legs.
+
+## 8. Commission, gateway fees, and aligned GMV
+
+Booking commission and booking take are separate. With commission off, commission is 0 and booking take equals minus booking gateway fees. Aligned bookings GMV counts every booking whose payment status is paid, partially paid, refunded, or partially refunded, including later refunds. The previous page filter dropped refunded bookings and showed a false variance.
+
+| Metric | Expected before the money-flow seed | Source |
+| --- | --- | --- |
+| Booking commission (net) | 0.00 | `platform_commission_net` |
+| Booking gateway fees | 20.23 | `gateway_fees_services` |
+| Booking take (net) | −20.23 | commission − booking gateway fees |
+| Aligned bookings GMV | 502.50 | paid + refunded booking totals |
+| Ledger GMV | 502.50 | `service_collected_gross` |
+| Completed bookings missing `completed_at` | 0 after migration 10182 | audit-log fill |
+| Duplicate active fee configs | 0 after migration 10183 | oldest active row kept |
+
+Per-gateway fee lines sum to the gateway-fee total. Yoco and PayCloud stay out of that total. A real-flow seed on staging adds its own expected deltas in `scripts/audit/out/seed-manifest-<run>.json` and does not change these baselines for rows that are not part of the run.

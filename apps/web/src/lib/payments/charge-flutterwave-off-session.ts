@@ -75,7 +75,7 @@ export async function chargeAndSettleFlutterwaveOffSession(
     reference: string;
     metadata?: Record<string, unknown>;
   },
-): Promise<{ ok: true } | { ok: false; message: string }> {
+): Promise<{ ok: true; appFeeMajor: number } | { ok: false; message: string }> {
   const charged = await chargeFlutterwaveTokenized(params);
   if (charged.ok === false) return { ok: false, message: charged.message };
 
@@ -96,7 +96,7 @@ export async function chargeAndSettleFlutterwaveOffSession(
   if (!settled.settled) {
     return { ok: false, message: settled.reason ?? "Settlement failed after Flutterwave charge" };
   }
-  return { ok: true };
+  return { ok: true, appFeeMajor: Number(verified.tx.app_fee ?? 0) };
 }
 
 export function flutterwaveTokenFromPaymentMethodId(id: string | null | undefined): string | null {

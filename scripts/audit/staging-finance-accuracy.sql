@@ -584,7 +584,7 @@ SELECT jsonb_build_object(
   'required_migrations', (
     SELECT COALESCE(jsonb_object_agg(version, name), '{}'::jsonb)
       FROM supabase_migrations.schema_migrations
-     WHERE version IN ('10105', '10116', '10124', '10125', '10139', '10141', '10145', '10180', '10181')
+     WHERE version IN ('10105', '10116', '10124', '10125', '10139', '10141', '10145', '10180', '10181', '10182', '10183')
   ),
   'enums', jsonb_build_object(
     'booking_status', (SELECT COALESCE(jsonb_agg(e.enumlabel ORDER BY e.enumsortorder), '[]'::jsonb)
@@ -679,6 +679,25 @@ SELECT jsonb_build_object(
         FROM public.booking_refunds
        WHERE status = 'completed'
          AND created_at <= (SELECT as_of FROM params)
+    ),
+    'bookings_gmv_aligned', (
+      SELECT COALESCE(round(sum(total_amount)::numeric, 2), 0)
+        FROM public.bookings
+       WHERE created_at <= (SELECT as_of FROM params)
+         AND payment_status::text IN ('paid', 'partially_paid', 'refunded', 'partially_refunded')
+    ),
+    'completed_without_completed_at', (
+      SELECT count(*) FROM public.bookings
+       WHERE status::text = 'completed' AND completed_at IS NULL
+    ),
+    'duplicate_active_fee_configs', (
+      SELECT count(*) FROM (
+        SELECT 1
+          FROM public.payment_gateway_fee_configs
+         WHERE is_active
+         GROUP BY gateway_name, payment_method, currency, region, fee_scope, effective_from
+        HAVING count(*) > 1
+      ) d
     )
   ),
   'shadow_gl', (
@@ -706,6 +725,7 @@ SELECT jsonb_build_object(
       'payout_id', ft.payout_id,
       'created_at', ft.created_at,
       'vat_source', ft.metadata->>'vat_source',
+      'fee_source', ft.metadata->>'fee_source',
       'reversed_at', ft.metadata->>'reversed_at'
     ) ORDER BY ft.created_at), '[]'::jsonb)
     FROM public.finance_transactions ft

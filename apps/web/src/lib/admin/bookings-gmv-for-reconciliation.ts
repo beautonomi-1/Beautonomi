@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
 
 export type BookingsGmvReconciliationResult = {
-  /** Sum of total_amount for paid/partially_paid confirmed/completed bookings. */
+  /** Sum of total_amount for bookings that collected money, including later refunds. */
   grossBookingsGmv: number;
   /** Walk-in additional charges included in total_amount but excluded from ledger GMV. */
   walkInAddOnDeduction: number;
@@ -10,9 +10,36 @@ export type BookingsGmvReconciliationResult = {
   alignedBookingsGmv: number;
 };
 
+/** Bookings that collected money, including ones later refunded. Ledger GMV is gross. */
+export const ALIGNED_BOOKINGS_PAYMENT_STATUSES = [
+  "paid",
+  "partially_paid",
+  "refunded",
+  "partially_refunded",
+] as const;
+
+export function countsTowardAlignedBookingsGmv(row: { payment_status?: string | null }): boolean {
+  return (ALIGNED_BOOKINGS_PAYMENT_STATUSES as readonly string[]).includes(String(row.payment_status ?? ""));
+}
+
+export function sumAlignedBookingsGmv(
+  rows: Array<{ total_amount?: number | null; payment_status?: string | null }>,
+  walkInDeduction = 0,
+): BookingsGmvReconciliationResult {
+  const grossBookingsGmv = rows
+    .filter(countsTowardAlignedBookingsGmv)
+    .reduce((s, row) => addMoney(s, Number(row.total_amount ?? 0)), 0);
+  const deduction = Math.max(0, walkInDeduction);
+  return {
+    grossBookingsGmv: roundCurrency(grossBookingsGmv),
+    walkInAddOnDeduction: roundCurrency(deduction),
+    alignedBookingsGmv: roundCurrency(Math.max(0, subtractMoney(grossBookingsGmv, deduction))),
+  };
+}
+
 /**
  * Bookings-side GMV aligned with ledger `service_collected_gross`:
- * paid bookings only, walk-in add-ons subtracted (ledger excludes them).
+ * every booking that collected money, including later refunds. Walk-in add-ons subtracted.
  */
 export async function computeAlignedBookingsGmv(
   supabase: SupabaseClient,
@@ -24,8 +51,7 @@ export async function computeAlignedBookingsGmv(
     .from("bookings")
     .select("total_amount")
     .eq("tenant_id", tenantId)
-    .in("status", ["confirmed", "completed"])
-    .in("payment_status", ["paid", "partially_paid"]);
+    .in("payment_status", [...ALIGNED_BOOKINGS_PAYMENT_STATUSES]);
 
   if (range.start) bookingsQuery = bookingsQuery.gte("created_at", range.start);
   if (range.end) bookingsQuery = bookingsQuery.lte("created_at", range.end);
@@ -42,10 +68,7 @@ export async function computeAlignedBookingsGmv(
     return { grossBookingsGmv: 0, walkInAddOnDeduction: 0, alignedBookingsGmv: 0 };
   }
 
-  const grossBookingsGmv = bookingRows.reduce(
-    (s, row) => s + Number((row as { total_amount?: number }).total_amount ?? 0),
-    0,
-  );
+  const grossBookingsGmv = sumAlignedBookingsGmv(bookingRows, 0).grossBookingsGmv;
 
   let walkInAddOnDeduction = Math.max(0, ledgerWalkInCharges);
 

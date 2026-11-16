@@ -382,7 +382,7 @@ export async function GET(request: NextRequest) {
         description: trendBucketDescription,
       },
       revenue: {
-        // total: all-time `provider_earnings` net (headline) — use `all_time` for new clients
+        // total: recognized provider revenue in the selected period (not all-time provider_earnings)
         total: totalRevenue,
         all_time: totalRevenue,
         thisMonth: thisMonthRevenue,

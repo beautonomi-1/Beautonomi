@@ -28,6 +28,7 @@ import {
 import { computeAlignedBookingsGmv } from "@/lib/admin/bookings-gmv-for-reconciliation";
 import { countGatewayFeeCaptureAnomalies } from "@/lib/admin/gateway-fee-capture-anomalies";
 import { buildPlatformCashPosition } from "@/lib/admin/platform-cash-position";
+import { isPlatformCommissionEnabled } from "@/lib/finance/resolve-commission-percentage";
 
 /**
  * GET /api/admin/finance/summary
@@ -252,6 +253,7 @@ export async function GET(request: Request) {
         gateway_fees: agg.gateway_fees_services,
         gateway_fees_total: gatewayFeesTotal,
         gateway_fees_breakdown: gatewayFeesBreakdown,
+        gateway_fees_by_gateway: agg.gateway_fees_by_gateway,
         terminal_commerce: {
           revenue_gross: agg.terminal_revenue_gross,
           gateway_fees: agg.terminal_gateway_fees,
@@ -318,8 +320,14 @@ export async function GET(request: Request) {
         referral_payouts: referralPayouts,
         total_platform_take_after_referrals: totalPlatformRecognizedRevenueAfterReferrals,
 
+        commission_enabled: await isPlatformCommissionEnabled(supabaseAdmin, tenantId),
         platform_revenue: {
+          /** @deprecated Take after gateway fees. Use booking_commission_net and booking_take_net. */
           booking_commission: agg.platform_take_net,
+          booking_commission_net: agg.platform_commission_net,
+          booking_gateway_fees: agg.gateway_fees_services,
+          manual_adjustments_net: agg.manual_adjustments_net,
+          booking_take_net: agg.platform_take_net,
           customer_paid_platform_fees: customerPaidPlatformFees,
           subscriptions: agg.subscription_net,
           ads: agg.ads_net,
@@ -347,7 +355,12 @@ export async function GET(request: Request) {
         },
 
         revenue_streams: {
+          /** @deprecated Take after gateway fees. Use booking_commission_net and booking_take_net. */
           booking_commission: agg.platform_take_net,
+          booking_commission_net: agg.platform_commission_net,
+          booking_gateway_fees: agg.gateway_fees_services,
+          manual_adjustments_net: agg.manual_adjustments_net,
+          booking_take_net: agg.platform_take_net,
           customer_paid_platform_fees: customerPaidPlatformFees,
           subscriptions: agg.subscription_net,
           ads: agg.ads_net,
@@ -383,7 +396,7 @@ export async function GET(request: Request) {
               variance_pct: gmvVariancePct,
               status: gmvControlStatus,
               basis_note:
-                "Both sides use created_at; bookings GMV is paid bookings only minus walk-in add-ons (aligned with ledger service_collected_gross). Percent shown only when min(ledger, bookings) ≥ R100.",
+                "Both sides use created_at. Bookings GMV counts every booking that collected money, including later refunds, minus walk-in add-ons. Percent shown only when min(ledger, bookings) ≥ R100.",
             },
             gateway_fee_capture_anomalies: {
               row_count: gatewayFeeAnomalies.row_count,

@@ -40,4 +40,15 @@ describe("admin money surfaces share the ledger aggregator", () => {
     expect(source("lib/admin/marketplace-health.ts")).toContain("platformRevenueNetFromAggregate");
     expect(source("lib/admin/marketplace-health.ts")).toContain("gatewayFeesTotalFromAggregate");
   });
+
+  it("admin pages label commission separately from booking take and do not hard-code Paystack gateway fees", () => {
+    const adminRoutes = join(webSrc, "../../admin-web/src/routes");
+    const finance = readFileSync(join(adminRoutes, "finance/FinanceOverviewPage.tsx"), "utf8");
+    const reports = readFileSync(join(adminRoutes, "reports/ReportDetailPage.tsx"), "utf8");
+    expect(finance).toContain("booking_commission_net");
+    expect(finance).not.toContain("Gateway fees (Paystack)");
+    expect(reports).toContain("booking_take_net");
+    expect(reports).not.toContain("Gateway fees (Paystack)");
+    expect(readFileSync(join(adminRoutes, "finance/FeesConfigsPage.tsx"), "utf8")).not.toContain("Paystack fees");
+  });
 });

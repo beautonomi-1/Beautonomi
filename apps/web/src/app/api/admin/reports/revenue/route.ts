@@ -470,7 +470,10 @@ export async function GET(request: NextRequest) {
       netRevenueAfterDiscounts: totalRevenue - totalPromotionDiscounts,
 
       platformRevenue: {
-        booking_commission_net: ledgerAgg.platform_take_net,
+        booking_commission_net: ledgerAgg.platform_commission_net,
+        booking_gateway_fees: ledgerAgg.gateway_fees_services,
+        manual_adjustments_net: ledgerAgg.manual_adjustments_net,
+        booking_take_net: ledgerAgg.platform_take_net,
         subscription_net: ledgerAgg.subscription_net,
         ads_net: ledgerAgg.ads_net,
         marketing_credit_net: ledgerAgg.marketing_credit_net,

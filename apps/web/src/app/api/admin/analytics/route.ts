@@ -20,6 +20,7 @@ import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown
 import { eachUtcDay, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { fetchMarketplaceHealthSeries } from "@/lib/admin/marketplace-health-api";
+import { isPlatformCommissionEnabled } from "@/lib/finance/resolve-commission-percentage";
 
 export async function GET(request: NextRequest) {
   try {
@@ -315,7 +316,12 @@ export async function GET(request: NextRequest) {
           terminal_revenue: agg.terminal_revenue_gross,
           terminal_gateway_fees: agg.terminal_gateway_fees,
           revenue_streams: {
+            /** @deprecated Take after gateway fees. Use booking_commission_net and booking_take_net. */
             booking_commission: agg.platform_take_net,
+            booking_commission_net: agg.platform_commission_net,
+            booking_gateway_fees: agg.gateway_fees_services,
+            manual_adjustments_net: agg.manual_adjustments_net,
+            booking_take_net: agg.platform_take_net,
             subscriptions: agg.subscription_net,
             ads: agg.ads_net,
             service_fees: agg.service_fee_revenue,
@@ -334,6 +340,10 @@ export async function GET(request: NextRequest) {
           terminal_gateway_fees: 0,
           revenue_streams: {
             booking_commission: 0,
+            booking_commission_net: 0,
+            booking_gateway_fees: 0,
+            manual_adjustments_net: 0,
+            booking_take_net: 0,
             subscriptions: 0,
             ads: 0,
             service_fees: 0,
@@ -399,6 +409,7 @@ export async function GET(request: NextRequest) {
         "Gateway and terminal totals use the same ledger aggregate as Finance overview. Fee reconciliations auto-generate daily.",
       channelBasisNote:
         "Bookings use scheduled_at in the selected period through now (matches the bookings report). Channel labels from booking_source (null treated as online). Counts only — not completion rate.",
+      commission_enabled: await isPlatformCommissionEnabled(admin, tenantId),
       revenue_streams: ledgerTotals.revenue_streams,
       marketplace_health_series: healthSeries,
     });
