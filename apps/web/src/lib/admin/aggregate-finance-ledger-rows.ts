@@ -4,6 +4,7 @@ import {
   isProviderEarningsRefundComponent,
 } from "@/lib/ledger/refund-components";
 import { addMoney, subtractMoney, sumMoney } from "@beautonomi/utils";
+import { isPlatformHeldGateway, ledgerRowGateway } from "@/lib/finance/ledger-row-gateway";
 
 /**
  * Single source of truth for admin money metrics from merged `finance_transactions` rows.
@@ -126,6 +127,8 @@ export type FinanceLedgerAggregate = {
   cashback_total: number;
   /** Membership liability released to provider payable (membership_recognition). */
   membership_recognition_net: number;
+  /** Platform-held gateway fees split by gateway. Sum equals gatewayFeesTotalFromAggregate. */
+  gateway_fees_by_gateway: Record<string, number>;
 };
 
 type Row = Pick<
@@ -174,8 +177,16 @@ function sum(tx: Row[], types: string[], field: "amount" | "fees" | "net" | "com
   return tx.filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => addMoney(s, Number(r[field] ?? 0)), 0);
 }
 
+function platformHeldFee(row: Row): number {
+  const fee = Number(row.fees ?? 0);
+  if (!fee) return 0;
+  const gateway = ledgerRowGateway(row);
+  if (!isPlatformHeldGateway(gateway) && gateway !== "unknown") return 0;
+  return fee;
+}
+
 function sumFees(tx: Row[], types: string[]): number {
-  return tx.filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => addMoney(s, Number(r.fees ?? 0)), 0);
+  return tx.filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => addMoney(s, platformHeldFee(r)), 0);
 }
 
 function sumAbsoluteAmount(tx: Row[], types: string[]): number {
@@ -224,9 +235,33 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const membershipGatewayFees = sumFees(tx, ["membership_sale"]);
   const livePayoutRows = tx.filter((r) => r.transaction_type === "payout" && !isReversedPayoutRow(r));
   const payoutTransferFees = addMoney(
-    livePayoutRows.reduce((s, r) => addMoney(s, Number(r.fees ?? 0)), 0),
+    livePayoutRows.reduce((s, r) => addMoney(s, platformHeldFee(r)), 0),
     sumFees(tx, ["payout_transfer_fee"]),
   );
+  const gatewayFeeTypes = new Set<string>([
+    "payment",
+    "additional_charge_payment",
+    ...TERMINAL_COMMERCE_TYPES,
+    "gift_card_sale",
+    "wallet_topup",
+    "gateway_fee_adjustment",
+    "membership_sale",
+    "payout",
+    "payout_transfer_fee",
+    "provider_subscription_payment",
+    "provider_ads_payment",
+    "provider_marketing_credit_topup",
+  ]);
+  const gatewayFeesByGateway: Record<string, number> = {};
+  for (const row of tx) {
+    if (!gatewayFeeTypes.has(row.transaction_type)) continue;
+    if (row.transaction_type === "payout" && isReversedPayoutRow(row)) continue;
+    const fee = Number(row.fees ?? 0);
+    if (!fee) continue;
+    const gateway = ledgerRowGateway(row);
+    if (!isPlatformHeldGateway(gateway) && gateway !== "unknown") continue;
+    gatewayFeesByGateway[gateway] = addMoney(gatewayFeesByGateway[gateway] ?? 0, fee);
+  }
 
   const bookingPlatformFeesGross = tx
     .filter((r) =>
@@ -450,6 +485,7 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     gift_card_breakage_revenue: giftCardBreakageRevenue,
     cashback_total: cashbackTotal,
     membership_recognition_net: membershipRecognitionNet,
+    gateway_fees_by_gateway: gatewayFeesByGateway,
   };
 }
 

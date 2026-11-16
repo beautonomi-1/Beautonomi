@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
 import { addMoney, roundCurrency } from "@beautonomi/utils";
+import { ledgerRowGateway } from "@/lib/finance/ledger-row-gateway";
 
 export type FeeAutoComputeResult = {
   recorded_fees: number;
@@ -224,6 +225,8 @@ export function resolveLedgerRowGateway(
   const txType = String(row.transaction_type ?? "");
 
   if (txType === "payout") {
+    const recorded = ledgerRowGateway(row);
+    if (recorded !== "unknown") return recorded === targetGateway;
     return targetGateway === "paystack";
   }
 
@@ -244,6 +247,8 @@ export function resolveLedgerRowGateway(
   }
 
   if (PLATFORM_PAYSTACK_LEDGER_TYPES.has(txType) && row.provider_id) {
+    const recorded = ledgerRowGateway(row);
+    if (recorded !== "unknown") return recorded === targetGateway;
     return targetGateway === "paystack";
   }
 

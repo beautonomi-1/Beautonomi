@@ -19,7 +19,7 @@ describe("analyticsPageMetrics", () => {
 
   it("mix segments sum to platform net components", () => {
     const streams = {
-      booking_commission: 100,
+      booking_commission_net: 100,
       subscriptions: 50,
       ads: 10,
       service_fees: 5,

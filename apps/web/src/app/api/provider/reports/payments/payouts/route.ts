@@ -9,7 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { getProviderNetAfterRefundsTotal, getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_FINANCE_TRANSACTIONS, MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import {
@@ -29,7 +29,8 @@ const BATCH = 200;
  * GET /api/provider/reports/payments/payouts
  *
  * **Payout earnings (ledger)** — net provider earnings from `finance_transactions`
- * (`provider_earnings` only for headline totals, consistent with dashboard revenue cards).
+ * (`provider_earnings` only). The dashboard uses full recognized revenue; this report's
+ * `totalRecognizedRevenue` is that figure, and the headline is service earnings.
  *
  * The selected period applies to **ledger settlement timestamps** (`created_at`), not to
  * appointment `scheduled_at`. Bookings are loaded **by ID** when they appear on ledger rows,
@@ -263,6 +264,13 @@ export async function GET(request: NextRequest) {
       }));
 
     const platformFeeRateBooked = totalBookedAmount > 0 ? (totalPlatformFees / totalBookedAmount) * 100 : 0;
+    const totalRecognizedRevenue = await getProviderNetAfterRefundsTotal(
+      supabaseAdmin,
+      providerId,
+      fromDate,
+      toDate,
+      locationId ?? null,
+    );
 
     const reportBasis =
       `Ledger window ${fromYmd}–${toYmd} (${reportContext.timezone}): headline totals are net \`provider_earnings\` rows with settlement timestamps in range — not bank payout transfers. ` +
@@ -276,7 +284,7 @@ export async function GET(request: NextRequest) {
       reportBasis,
       basis: {
         headlineTotal:
-          "Sum of net provider_earnings finance_transactions with created_at in the selected range (after location attribution when filtered).",
+          "Service earnings: net provider_earnings in the selected range. Full recognized revenue (tips, travel, cancellation, walk-in) is totalRecognizedRevenue.",
         bookedAmount:
           "booking.total_amount or product_orders.total_amount for IDs present on those ledger rows — not filtered by appointment date.",
         payoutAmountPerRow:
@@ -291,6 +299,7 @@ export async function GET(request: NextRequest) {
       totalPayoutAmount,
       /** Alias clarifying headline semantics — same as totalPayoutAmount. */
       totalLedgerServiceEarnings: totalPayoutAmount,
+      totalRecognizedRevenue,
       totalBookedAmount,
       totalBookedNetOfRefunds,
       totalPlatformFees,

@@ -10,6 +10,7 @@ import {
   type BookingRetailStockLine,
 } from "@/lib/bookings/deduct-booking-retail-stock";
 import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
+import { missingBookingStatusTimestamp } from "@/lib/bookings/booking-status-timestamps";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 import { hasPermission } from "@/lib/auth/permissions";
@@ -1519,6 +1520,13 @@ export async function PATCH(
         updateData.cancelled_at = new Date().toISOString();
       }
     }
+
+    // Every location type must stamp the timestamp. Reports and payout holds
+    // treat a completed booking with a null completed_at as unfinished.
+    Object.assign(
+      updateData,
+      missingBookingStatusTimestamp(typeof dbStatus === "string" ? dbStatus : undefined, updateData, new Date().toISOString()),
+    );
 
     if (dbStatus === "completed" && (currentBooking as BookingRow).status !== "completed") {
       const allowUnpaid = body?.allow_unpaid === true || body?.allow_unpaid === "true";

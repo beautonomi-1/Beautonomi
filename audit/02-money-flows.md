@@ -655,3 +655,7 @@ Tracer F's HIGH on `credit_/debit_marketing_credit` was **not reproduced**: stag
 2. Mark each row Verified-static / UNVERIFIED with the evidence rule; carry F2-xx pointers.
 3. Cover: auth/onboarding, bookings lifecycle, calendar, services/catalog, staff/permissions, POS/till, terminals, finance screens, payouts, refunds, subscriptions/IAP, invoices, payroll, reports, notifications, settings/compliance.
 4. Phase 4 test plan: seeded staging scenarios for F2-06/14/16/08/21/24 (fail-first), concurrency (F2-03), RLS probes (F2-01/02/23) with synthetic JWTs, webhook replay with sandbox signatures. No production, no live rails.
+
+## 13. Per-gateway fees (2026-11-16)
+
+Platform-held gateways are Paystack (including terminal allocations), Stripe, Flutterwave, and Apple. Wallet and gift card are platform tenders. The platform absorbs those fees. Yoco and PayCloud stay the provider's acquirer cost and are excluded from platform gateway-fee totals. Ledger rows are classified from `metadata.fee_source`, then `payment_provider`, then `provider`. Finance reports list one total per gateway present in the period. Membership fees are stored on both `membership_sale` and `membership_provider_earnings`; totals use `membership_sale` only.

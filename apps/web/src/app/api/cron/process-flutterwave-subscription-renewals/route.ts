@@ -279,7 +279,7 @@ async function runJob() {
           reference,
           providerId: row.provider_id,
           amountMajor,
-          feesMajor: 0,
+          feesMajor: charged.ok ? charged.appFeeMajor : 0,
           planId: row.plan_id,
           paymentTransactionType: "charge",
           kind: "subscription_renewal",

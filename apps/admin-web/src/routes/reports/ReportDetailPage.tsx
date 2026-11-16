@@ -103,11 +103,13 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
 
   const kpis = [
     { label: "Scheduled gross booked value", value: fmtMoney(data.totalRevenue), sub: "Booking value by report period, not settled cash" },
-    { label: "Net collected", value: fmtMoney(data.netCollected), sub: "Cash collected − refunds" },
+    { label: "Net collected", value: fmtMoney(data.netCollected), sub: "Completed and confirmed bookings in period: collected − refunded" },
     ...(pr
       ? [
           { label: "Platform revenue (net)", value: fmtMoney(pr.total_platform_revenue_net), sub: "Take + subs + ads + Platform Fees" },
-          { label: "Booking commission (net)", value: fmtMoney(pr.booking_commission_net), sub: "After refund contra & gateway fees" },
+          { label: "Booking commission (net)", value: fmtMoney(pr.booking_commission_net), sub: "Commission only, after refund contra" },
+          { label: "Booking gateway fees", value: fmtMoney(pr.booking_gateway_fees), sub: "Platform-held gateway cost" },
+          { label: "Booking take (net)", value: fmtMoney(pr.booking_take_net), sub: "Commission minus booking gateway fees" },
           { label: "Subscription net", value: fmtMoney(pr.subscription_net) },
           { label: "Ads net", value: fmtMoney(pr.ads_net) },
           {
@@ -122,7 +124,7 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
   ];
 
   const showNegativeExplainer =
-    pr && typeof pr.booking_commission_net === "number" && pr.booking_commission_net < 0;
+    pr && typeof pr.booking_take_net === "number" && pr.booking_take_net < 0;
 
   return (
     <div className="space-y-6">
@@ -135,9 +137,9 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
         </p>
         {showNegativeExplainer && (
           <p className="mt-2 text-xs leading-5 text-amber-700">
-            Note: Booking commission can be <em>negative</em> in a period when gateway fees
+            Note: Booking take can be <em>negative</em> in a period when gateway fees
             or refund contra lines exceed the commission recognised from new bookings in the
-            same window. This is expected and reconciles with Finance / Gods&nbsp;Eye.
+            same window. Commission itself stays separate from those fees. This reconciles with Finance.
           </p>
         )}
       </AdminPanel>

@@ -4,13 +4,15 @@ import { recordBookingFlutterwavePayment } from "@/lib/bookings/record-booking-f
 import { recordBookingOnlineChargeLedger } from "@/lib/bookings/record-booking-online-charge-ledger";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { ensureWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
-import { roundCurrency } from "@beautonomi/utils";
+import { roundCurrency, toMinorUnits } from "@beautonomi/utils";
+import { resolveFlutterwaveGatewayFees } from "@/lib/payments/resolve-gateway-fees";
 
 type FlutterwaveChargeData = {
   id?: string | number;
   tx_ref?: string;
   flw_ref?: string;
   amount?: number;
+  app_fee?: number;
   currency?: string;
   status?: string;
   meta?: Record<string, unknown> & {
@@ -103,7 +105,10 @@ export async function handleFlutterwaveChargeCompleted(data: FlutterwaveChargeDa
     reference: ledgerReference,
     provider: "flutterwave",
     amountMajor,
-    feesMajor: 0,
+    feesMajor: resolveFlutterwaveGatewayFees({
+      feeMinor: toMinorUnits(Number(data.app_fee ?? 0), currency),
+      currency,
+    }).feesMajor,
     walletAmountApplied: walletAmount,
     giftCardAmountApplied: giftCardAmount,
     isDeposit,

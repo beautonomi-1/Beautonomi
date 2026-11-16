@@ -77,6 +77,8 @@ interface DashboardStats {
   };
   revenue_streams?: {
     booking_commission?: number;
+    booking_commission_net?: number;
+    booking_gateway_fees?: number;
     subscriptions?: number;
     ads?: number;
     service_fees?: number;
@@ -772,13 +774,13 @@ export function DashboardPage() {
                   {s.revenue_streams ? (
                     <AdminPanel className="mt-4">
                       <h3 className="text-sm font-semibold text-gray-900">Revenue mix (ledger window)</h3>
-                      <p className="mt-1 text-xs text-gray-500">Share of platform net components in the rolling window.</p>
+                      <p className="mt-1 text-xs text-gray-500">Share of platform revenue before gateway fees.</p>
                       <div className="mt-4">
                         <AdminCompositionBar
                           segments={[
                             {
-                              label: "Booking take",
-                              value: s.revenue_streams.booking_commission ?? 0,
+                              label: "Booking commission",
+                              value: s.revenue_streams.booking_commission_net ?? 0,
                               colorClass: "bg-emerald-600",
                             },
                             {
@@ -799,6 +801,9 @@ export function DashboardPage() {
                           ]}
                         />
                       </div>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Gateway fees (booking &amp; add-on): {formatAdminCurrency(s.revenue_streams.booking_gateway_fees ?? 0)}
+                      </p>
                     </AdminPanel>
                   ) : null}
                 </div>

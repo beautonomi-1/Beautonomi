@@ -333,10 +333,10 @@ export async function GET(request: NextRequest) {
     // legs are excluded so providerNetActivity is not over-clawed.
     const refundedAmount = financeRows
       .filter((r) => r.transaction_type === "refund" && isProviderEarningsRefundComponent(r.refund_component))
-      .reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? r.amount ?? 0))), 0);
+      .reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))), 0);
     const providerEarningsReversals = financeRows
-      .filter((r) => r.transaction_type === "provider_earnings" && Number(r.net ?? r.amount ?? 0) < 0)
-      .reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? r.amount ?? 0))), 0);
+      .filter((r) => r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0)
+      .reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))), 0);
     // Single source of truth: recognized provider revenue (incl. walk-in add-ons) net of
     // provider refund clawbacks. Keeps this report reconciled with the dashboard,
     // business overview and sales history. See provider-revenue-semantics.ts.
@@ -491,7 +491,7 @@ export async function GET(request: NextRequest) {
       basis: {
         grossBookedValue: "Non-cancelled bookings scheduled in the selected provider-timezone period.",
         settledLedgerAmount:
-          "Customer funds from finance_transactions in the settlement window: Paystack/Yoco splits sum payment + wallet + gift card (+ additional charges); wallet/gift-only bookings count wallet/gift rows only (payment rows there allocate commission, not extra customer cash).",
+          "Customer funds from finance_transactions in the settlement window: platform-held gateways and card-machine splits sum payment + wallet + gift card (+ additional charges); wallet/gift-only bookings count wallet/gift rows only (payment rows there allocate commission, not extra customer cash).",
         customerPaymentsByMethodTotal:
           "Successful payment_transactions plus wallet portions from split bookings where wallet is not duplicated by an internal wallet-settlement row.",
         providerEarnings:

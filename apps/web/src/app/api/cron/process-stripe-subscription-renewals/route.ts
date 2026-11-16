@@ -11,6 +11,7 @@ import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 import { generateTransactionReference } from "@/lib/payments/paystack";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
 import { getStripeClient } from "@/lib/payments/stripe-server";
+import { resolveStripeGatewayFees } from "@/lib/payments/resolve-gateway-fees";
 import { stripeOffSessionStillOpen } from "@/lib/payments/charge-stripe-off-session";
 import { upsertOnlinePaymentCheckout, markOnlinePaymentCheckoutStatus } from "@/lib/payments/online-payment-checkouts";
 import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
@@ -210,6 +211,7 @@ async function runJob() {
               kind: "subscription_renewal",
               tenant_id: tenantId ?? "",
             },
+            expand: ["latest_charge.balance_transaction"],
           },
           { idempotencyKey: reference },
         );
@@ -258,7 +260,10 @@ async function runJob() {
           planId: row.plan_id,
           reference,
           amountMajor,
-          feesMajor: 0,
+          feesMajor: resolveStripeGatewayFees({
+            feeMinor: stripeIntentProcessingFeeMinor(intent),
+            currency,
+          }).feesMajor,
           kind: "subscription_renewal",
           billingPeriod: isYearly ? "yearly" : "monthly",
           termEndsAt: periodEnd,
@@ -345,4 +350,14 @@ async function runJob() {
   } catch (error) {
     return handleApiError(error, "Cron: process-stripe-subscription-renewals failed");
   }
+}
+
+function stripeIntentProcessingFeeMinor(intent: { latest_charge?: unknown }): number {
+  const charge = intent.latest_charge;
+  if (!charge || typeof charge !== "object") return 0;
+  const balance = (charge as { balance_transaction?: unknown }).balance_transaction;
+  if (balance && typeof balance === "object" && typeof (balance as { fee?: unknown }).fee === "number") {
+    return (balance as { fee: number }).fee;
+  }
+  return 0;
 }

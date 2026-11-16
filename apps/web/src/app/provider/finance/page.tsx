@@ -1142,7 +1142,9 @@ export default function ProviderFinance() {
             <p className="text-2xl font-semibold text-gray-700">
               {fmt(earnings.walk_in_additional_charges_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">{t("web.provider.finance.walkInAddonsHint")}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {t("web.provider.finance.walkInAddonsHint")} Collected in person, so this is not part of the withdrawable balance.
+            </p>
           </div>
           <div className="provider-card provider-card-padding">
             <p className="text-sm text-gray-600 mb-2">{t("web.provider.finance.tips")}</p>

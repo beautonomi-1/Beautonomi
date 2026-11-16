@@ -80,6 +80,24 @@ describe("provider revenue cross-surface reconciliation", () => {
     expect(b.recognizedRevenue - b.refundDeduction).toBe(b.netAfterRefunds);
   });
 
+  it("does not claw back a refund leg whose net is 0 even when amount is the gross", () => {
+    const rows = [
+      row("provider_earnings", 100),
+      { transaction_type: "refund", amount: -100, net: 0, refund_component: "provider_earnings" },
+    ];
+    expect(providerNetAfterRefunds(rows)).toBe(100);
+  });
+
+  it("payout service earnings and recognized revenue reconcile on the same fixture", () => {
+    const serviceEarnings = computeProviderRevenueBreakdown(FIXTURE).serviceEarnings;
+    const recognized = recognizedRevenue(FIXTURE);
+    const payoutHeadline = serviceEarnings;
+    const payoutRecognized = providerNetAfterRefunds(FIXTURE) + 22;
+    expect(payoutHeadline).toBe(185);
+    expect(recognized).toBe(EXPECTED_RECOGNIZED);
+    expect(payoutRecognized).toBe(EXPECTED_RECOGNIZED);
+  });
+
   it("sums a >8000-row ledger without capping (dashboard undercount regression)", () => {
     const rows: ProviderRevenueLedgerRow[] = [];
     const ROWS = 9000;

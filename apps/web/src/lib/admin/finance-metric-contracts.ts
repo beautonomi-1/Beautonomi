@@ -1,4 +1,4 @@
-export const FINANCE_METRIC_CONTRACT_VERSION = "2026.11.16";
+export const FINANCE_METRIC_CONTRACT_VERSION = "2026.11.16.2";
 
 type MetricContract = {
   key: string;
@@ -61,9 +61,25 @@ const CONTRACTS: Record<string, MetricContract> = {
     timezone: "tenant",
     cadence: "near_realtime",
   },
+  bookingCommission: {
+    key: "bookingCommission",
+    label: "Booking commission (net)",
+    formula: "platform_commission_net — commission on payment and additional-charge legs, net of platform refund contra. Gateway fees are not included.",
+    source: ["finance_transactions", "aggregateFinanceLedgerRows"],
+    timezone: "tenant",
+    cadence: "near_realtime",
+  },
+  bookingTake: {
+    key: "bookingTake",
+    label: "Booking take (net)",
+    formula: "booking_commission_net − booking gateway fees + manual_adjustments_net",
+    source: ["finance_transactions", "aggregateFinanceLedgerRows"],
+    timezone: "tenant",
+    cadence: "near_realtime",
+  },
   gatewayFeesTotal: {
     key: "gatewayFeesTotal",
-    label: "Gateway Fees (All Paystack Flows)",
+    label: "Gateway Fees (All platform-held gateways)",
     formula:
       "gatewayFeesTotalFromAggregate — services + terminal + subscription + ads + marketing + gift/wallet + membership + payout transfers",
     source: ["finance_transactions", "aggregateFinanceLedgerRows"],
