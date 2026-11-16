@@ -738,14 +738,18 @@ export function DashboardPage() {
               {typeof s.gmv_total === "number" ? (
                 <div>
                   <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                    Ledger context (same rolling window as headline platform net)
+                    Ledger context (last {notes?.ledger_window_months ?? 24} months)
                   </h2>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <AdminMetricCard
                       variant="emerald"
                       label="Settled service GMV"
                       value={formatAdminCurrency(s.gmv_total)}
-                      hint="Ledger-backed, matches finance summary"
+                      hint={
+                        typeof notes?.ledger_window_months === "number"
+                          ? `Last ${notes.ledger_window_months} months — not all-time`
+                          : "Ledger-backed, matches finance summary"
+                      }
                       footer={metricFooterLink("/admin/finance", "Reconcile in Finance")}
                     />
                     {typeof s.subscription_net_total === "number" ? (

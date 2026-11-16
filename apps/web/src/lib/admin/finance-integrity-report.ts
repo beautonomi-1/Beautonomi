@@ -245,6 +245,7 @@ export async function buildFinanceIntegrityReport(
     unsettledCancellations,
     processingPayoutsMissingLedger,
     unfinalizedRescheduleCredits,
+    paidWalletTopupsMissingLedger,
   ] = await Promise.all([
     rpcRows(supabase, "list_integrity_overcharged_inclusive_bookings", tenantArg),
     rpcRows(supabase, "list_integrity_vat_debited_on_refunds", tenantArg),
@@ -263,6 +264,7 @@ export async function buildFinanceIntegrityReport(
     queryUnsettledCancellations(supabase, tenantId, limit),
     queryProcessingPayoutsMissingLedger(supabase, tenantId, limit),
     queryUnfinalizedRescheduleCredits(supabase, tenantId, limit),
+    rpcRows(supabase, "list_integrity_paid_wallet_topups_missing_ledger", tenantArg),
   ]);
 
   const missingLedgerLegs = [...missingOnlineLedger, ...missingProviderEarnings].slice(0, limit);
@@ -295,6 +297,7 @@ export async function buildFinanceIntegrityReport(
       unsettled_cancellations: section(unsettledCancellations),
       processing_payouts_missing_ledger: section(processingPayoutsMissingLedger),
       unfinalized_reschedule_credits: section(unfinalizedRescheduleCredits),
+      paid_wallet_topups_missing_ledger: section(paidWalletTopupsMissingLedger),
     },
   };
 }

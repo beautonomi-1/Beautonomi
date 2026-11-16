@@ -42,9 +42,8 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
   const topupRow = topup as TopupRow;
   const enteredPaid = topupRow.status === "paid";
 
-  // Primary idempotency guard: if the wallet was already credited for this
-  // top-up (ledger row exists), there is nothing to do. This is reliable even
-  // when verify and the webhook race each other after a successful charge.
+  // Wallet credit is applied once. A later delivery still posts the payment
+  // receipt and the finance row when those were missing.
   const { data: existingCredit } = await supabase
     .from("wallet_transactions")
     .select("id")
@@ -52,7 +51,6 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     .eq("reference_type", "wallet_topup")
     .limit(1)
     .maybeSingle();
-  if (existingCredit) return;
 
   let resolvedTenantId = topupRow.tenant_id ?? null;
   const metaTenant = payload.metadata?.tenant_id as string | undefined;
@@ -74,6 +72,85 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     tenant_id: resolvedTenantId,
     provider_id: null,
   });
+
+  const recordLedger = async () => {
+    const { data: existingReceipt, error: receiptLookupError } = await supabase
+      .from("payment_transactions")
+      .select("id")
+      .eq("reference", payload.reference)
+      .eq("transaction_type", "wallet_topup")
+      .limit(1)
+      .maybeSingle();
+    if (receiptLookupError) {
+      console.error("[wallet_topup] payment lookup failed:", receiptLookupError);
+      throw receiptLookupError;
+    }
+    if (!existingReceipt) {
+      const { error: paymentError } = await supabase.from("payment_transactions").insert({
+        booking_id: null,
+        reference: payload.reference,
+        amount: amountInCurrency,
+        fees: feesInCurrency,
+        net_amount: amountInCurrency,
+        status: "success",
+        provider: paymentProvider,
+        transaction_type: "wallet_topup",
+        metadata: { ...payload.metadata, fee_source: paymentProvider },
+        created_at: new Date().toISOString(),
+      });
+      if (paymentError && (paymentError as { code?: string }).code !== "23505") {
+        console.error("[wallet_topup] payment_transactions insert failed:", paymentError);
+        throw new Error("wallet topup payment was not recorded");
+      }
+    }
+
+    const description = `Wallet topup: ${topupId}`;
+    const { data: existingFinance, error: financeLookupError } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("transaction_type", "wallet_topup")
+      .eq("description", description)
+      .limit(1)
+      .maybeSingle();
+    if (financeLookupError) {
+      console.error("[wallet_topup] finance lookup failed:", financeLookupError);
+      throw financeLookupError;
+    }
+    if (existingFinance) return;
+
+    const { error: finErr } = await supabase.from("finance_transactions").insert({
+      booking_id: null,
+      provider_id: null,
+      tenant_id: topupWalletTenantId,
+      transaction_type: "wallet_topup",
+      amount: amountInCurrency,
+      fees: feesInCurrency,
+      commission: 0,
+      net: amountInCurrency,
+      currency: typeof payload.metadata.currency === "string" ? payload.metadata.currency : undefined,
+      description,
+      metadata: {
+        ...payload.metadata,
+        reference: payload.reference,
+        wallet_topup_id: topupId,
+      },
+      created_at: new Date().toISOString(),
+    });
+    if (finErr) {
+      const msg = String((finErr as { message?: string }).message || finErr || "");
+      const code = String((finErr as { code?: string }).code || "");
+      if (code === "23505" || msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
+        return;
+      }
+      console.error("[wallet_topup] finance_transactions insert failed:", finErr);
+      throw finErr;
+    }
+  };
+
+  if (existingCredit) {
+    await recordLedger();
+    return;
+  }
 
   // Atomically claim the pending -> paid transition. The single winner credits.
   const { data: claimed } = await supabase
@@ -128,49 +205,5 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     throw new Error(`Wallet credit failed for top-up ${topupId}: ${creditError.message}`);
   }
 
-  // Record the actual payment receipt for reconciliation (skip if already recorded).
-  const { data: existingReceipt } = await supabase
-    .from("payment_transactions")
-    .select("id")
-    .eq("reference", payload.reference)
-    .eq("transaction_type", "wallet_topup")
-    .limit(1)
-    .maybeSingle();
-  if (!existingReceipt) {
-    await supabase.from("payment_transactions").insert({
-      booking_id: null,
-      reference: payload.reference,
-      amount: amountInCurrency,
-      fees: feesInCurrency,
-      net_amount: amountInCurrency,
-      status: "success",
-      provider: paymentProvider,
-      transaction_type: "wallet_topup",
-      metadata: { ...payload.metadata, fee_source: paymentProvider },
-      created_at: new Date().toISOString(),
-    });
-  }
-
-  // Record in finance_transactions so the double-entry shadow ledger posts DR Cash / CR Wallet Liability.
-  // F21: unique index on description — concurrent webhooks treat 23505 as benign.
-  const { error: finErr } = await supabase.from("finance_transactions").insert({
-    booking_id: null,
-    provider_id: null,
-    tenant_id: topupWalletTenantId,
-    transaction_type: "wallet_topup",
-    amount: amountInCurrency,
-    fees: feesInCurrency,
-    commission: 0,
-    net: amountInCurrency,
-    description: `Wallet topup: ${topupId}`,
-    created_at: new Date().toISOString(),
-  });
-  if (finErr) {
-    const msg = String((finErr as { message?: string }).message || finErr || "");
-    const code = String((finErr as { code?: string }).code || "");
-    if (code === "23505" || msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
-      return;
-    }
-    console.error("[wallet_topup] finance_transactions insert failed:", finErr);
-  }
+  await recordLedger();
 }

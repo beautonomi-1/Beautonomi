@@ -8,6 +8,7 @@ import {
   resolveFinanceLedgerRowProviderId,
 } from "@/lib/admin/finance-ledger-tenant";
 import { aggregateFinanceLedgerRows, platformRevenueNetFromAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
+import { adminPeriodBounds } from "@/lib/admin/admin-period-bounds";
 
 type ProviderRow = {
   id: string;
@@ -43,18 +44,25 @@ export async function GET(request: NextRequest) {
     }
 
     const now = new Date();
-    // Use UTC boundaries so revenue periods align with finance-summary, analytics,
-    // and all other surfaces that bucket by UTC. Local-time boundaries (getFullYear,
-    // getMonth, getDate) would shift by the tenant's UTC offset and produce different
-    // totals for UTC+2 tenants (e.g. SA).
-    const utcY = now.getUTCFullYear();
-    const utcM = now.getUTCMonth();
-    const utcD = now.getUTCDate();
-    const startOfToday = new Date(Date.UTC(utcY, utcM, utcD, 0, 0, 0, 0));
-    // ISO week starts on Monday (day 1); adjust Sunday (0) to 7 so Math.floor works.
-    const dowUtc = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
-    const startOfWeek = new Date(Date.UTC(utcY, utcM, utcD - (dowUtc - 1), 0, 0, 0, 0));
-    const startOfMonth = new Date(Date.UTC(utcY, utcM, 1, 0, 0, 0, 0));
+    // Same timezone helper as Dashboard and Finance summary (platform_settings, else UTC).
+    let reportingTimeZone: string | null = null;
+    try {
+      const { data: tzRow } = await supabase
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const tzFromSettings = (tzRow?.settings as Record<string, unknown> | null)?.timezone;
+      if (typeof tzFromSettings === "string") reportingTimeZone = tzFromSettings;
+    } catch {
+      reportingTimeZone = null;
+    }
+    const period = adminPeriodBounds(now, reportingTimeZone);
+    const startOfToday = period.startOfToday;
+    const startOfWeek = period.startOfWeek;
+    const startOfMonth = period.startOfMonth;
 
     // Get overview counts
     const [
