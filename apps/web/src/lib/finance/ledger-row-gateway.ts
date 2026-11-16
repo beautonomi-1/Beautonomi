@@ -17,6 +17,7 @@ const ALIASES: Record<string, string> = {
   flw: "flutterwave",
   apple: "apple",
   apple_iap: "apple",
+  apple_commission: "apple",
   yoco: "yoco",
   paycloud: "paycloud",
   wallet: "wallet",
@@ -36,6 +37,9 @@ export function ledgerRowGateway(row: { metadata?: Record<string, unknown> | nul
     .find((value) => value.length > 0 && value !== "estimated") ?? "";
   if (!raw) return "unknown";
   if (raw.startsWith("paystack")) return "paystack";
+  if (raw.startsWith("apple")) return "apple";
+  if (raw.startsWith("stripe")) return "stripe";
+  if (raw.startsWith("flutterwave") || raw.startsWith("flw")) return "flutterwave";
   const normalized = raw.replace(/_fee_missing$/, "");
   return ALIASES[normalized] ?? normalized;
 }
