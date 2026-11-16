@@ -624,6 +624,10 @@ function buildSuperadminMetricQa(comparisons, report) {
     qaRow("finance.platform_cash.refunds_gross", 315, all.refunds_abs_gross),
     qaRow("finance.platform_cash.net", 267.27, netPlatformCash),
     qaRow("finance.platform_revenue.booking_commission", -20.23, all.platform_take_net),
+    qaRow("finance.booking_commission_net", 0, all.platform_commission_net),
+    qaRow("finance.booking_gateway_fees", 20.23, all.gateway_fees_services),
+    qaRow("finance.booking_take_net", -20.23, all.platform_take_net),
+    qaRow("finance.booking_take_identity", all.platform_take_net, subMoney(all.platform_commission_net, all.gateway_fees_services)),
     qaRow("finance.platform_revenue.customer_paid_platform_fees", 15, all.service_fee_revenue),
     qaRow("finance.platform_revenue.total", -5.23, all.platform_revenue_net),
     qaRow("finance.provider_revenue.net_after_refunds", 172.5, providerNetAfter),
@@ -648,7 +652,9 @@ function buildSuperadminMetricQa(comparisons, report) {
     qaRow("analytics.gateway_fees_total", all.gateway_fees_total, month.gateway_fees_total),
     qaRow("marketplace.take_numerator", -5.23, takeNumerator),
     qaRow("marketplace.contribution_margin", -25.46, contribution),
-    qaRow("reconciliation.gmv_variance", 0, subMoney(all.service_collected_gross, comparisons.source_vs_dashboard.bookings_total_paid)),
+    qaRow("reconciliation.gmv_variance", 0, subMoney(all.service_collected_gross, n(observed.bookings_gmv_aligned))),
+    qaRow("existing.completed_without_completed_at", 0, n(observed.completed_without_completed_at)),
+    qaRow("existing.duplicate_active_fee_configs", 0, n(observed.duplicate_active_fee_configs)),
   ];
   rows.push(qaRow("finance.gift_card_outstanding", 0, n(report.inventory?.gift_cards) === 0 ? 0 : n(report.inventory?.gift_cards), "no gift cards, so outstanding liability is 0"));
   const currencies = observed.currencies || [];

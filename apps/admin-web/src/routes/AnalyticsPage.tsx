@@ -60,6 +60,8 @@ interface AnalyticsPayload {
   channelBasisNote?: string;
   revenue_streams?: {
     booking_commission?: number;
+    booking_commission_net?: number;
+    booking_gateway_fees?: number;
     subscriptions?: number;
     ads?: number;
     service_fees?: number;
@@ -519,10 +521,15 @@ export function AnalyticsPage() {
                 {data?.revenue_streams ? (
                   <AdminPanel className="mt-6">
                     <h3 className="text-lg font-semibold text-gray-900">Revenue mix (selected period)</h3>
-                    <p className="mt-1 text-xs text-gray-500">{data?.financeNote}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {data?.financeNote} Mix is before gateway fees.
+                    </p>
                     <div className="mt-4">
                       <AdminCompositionBar segments={mixSegments} showShare />
                     </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Gateway fees (booking &amp; add-on): {formatAdminCurrency(data.revenue_streams.booking_gateway_fees ?? 0)}
+                    </p>
                     <p className="mt-4">{sectionLink("/reports/revenue", "Revenue report", period)}</p>
                   </AdminPanel>
                 ) : null}

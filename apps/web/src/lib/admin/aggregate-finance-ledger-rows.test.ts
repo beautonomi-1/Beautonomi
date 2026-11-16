@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateFinanceLedgerRows } from "./aggregate-finance-ledger-rows";
+import { aggregateFinanceLedgerRows, gatewayFeesTotalFromAggregate } from "./aggregate-finance-ledger-rows";
 import type { FinanceLedgerRow } from "./finance-ledger-tenant";
 
 describe("aggregateFinanceLedgerRows", () => {
@@ -67,5 +67,19 @@ describe("aggregateFinanceLedgerRows", () => {
     const agg = aggregateFinanceLedgerRows(rows);
     expect(agg.walk_in_additional_charges).toBe(25);
     expect(agg.provider_recognized_revenue_gross).toBe(125);
+  });
+
+  it("splits platform-held gateway fees by gateway and leaves card-machine fees out", () => {
+    const rows: FinanceLedgerRow[] = [
+      { transaction_type: "payment", amount: 100, fees: 4, net: 0, metadata: { fee_source: "paystack" } },
+      { transaction_type: "wallet_topup", amount: 50, fees: 2, net: 50, metadata: { fee_source: "stripe" } },
+      { transaction_type: "payment", amount: 80, fees: 3, net: 0, metadata: { fee_source: "yoco" } },
+    ];
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.gateway_fees_by_gateway.paystack).toBe(4);
+    expect(agg.gateway_fees_by_gateway.stripe).toBe(2);
+    expect(agg.gateway_fees_by_gateway.yoco).toBeUndefined();
+    const split = Object.values(agg.gateway_fees_by_gateway).reduce((s, n) => s + n, 0);
+    expect(split).toBe(gatewayFeesTotalFromAggregate(agg));
   });
 });

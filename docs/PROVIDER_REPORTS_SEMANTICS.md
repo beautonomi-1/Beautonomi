@@ -61,7 +61,9 @@ gross_total === provider_net + commission + platform_fee + tax + discount_contra
 ```
 
 - `discount_contra` = sum of absolute `net` on `promotion_discount`, `membership_discount`, `loyalty_discount`, `loyalty_redemption` rows (contra-revenue; does not reduce `provider_net`).
-- `walk_in_additional_charge` is included in `provider_net`.
+- `walk_in_additional_charge` is included in `provider_net`. It is collected in person and is not part of the withdrawable payout balance.
+- Platform-held gateway fees (Paystack, Stripe, Flutterwave, Apple, and Paystack fees on wallet, gift card, subscription, and ads flows) are absorbed by the platform. They are not deducted from provider earnings. Yoco and PayCloud card-machine fees stay with the provider's acquirer.
+- The payout earnings report headline is service earnings (`provider_earnings` only). `totalRecognizedRevenue` is the full recognized figure used by the dashboard.
 
 ## Location scoping
 
