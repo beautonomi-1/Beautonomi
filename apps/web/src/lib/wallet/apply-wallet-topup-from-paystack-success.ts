@@ -89,7 +89,13 @@ async function recordWalletTopupLedger(
     fees: input.feesInCurrency,
     commission: 0,
     net: input.amountInCurrency,
+    currency: typeof input.metadata.currency === "string" ? input.metadata.currency : undefined,
     description,
+    metadata: {
+      ...input.metadata,
+      reference: input.reference,
+      wallet_topup_id: input.topupId,
+    },
     created_at: new Date().toISOString(),
   });
   if (finErr) {

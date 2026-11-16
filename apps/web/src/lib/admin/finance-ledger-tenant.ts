@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { adminPeriodBounds } from "@/lib/admin/admin-period-bounds";
 
 /** Ledger fields used by admin finance summary (deduped by id). */
 export type FinanceLedgerRow = {
@@ -48,6 +49,7 @@ export function computeAdminFinancePreviousPeriodRange(params: {
   startDate: string | null;
   endDate: string | null;
   now?: Date;
+  timeZone?: string | null;
 }): {
   period: AdminFinanceComparisonPeriod;
   previousStart: string;
@@ -58,14 +60,11 @@ export function computeAdminFinancePreviousPeriodRange(params: {
   const period: AdminFinanceComparisonPeriod = startDate && endDate ? "custom" : "month";
 
   if (period === "month") {
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth();
-    const previousMonthStart = new Date(Date.UTC(year, month - 1, 1));
-    const previousMonthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+    const bounds = adminPeriodBounds(now, params.timeZone);
     return {
       period,
-      previousStart: previousMonthStart.toISOString(),
-      previousEnd: previousMonthEnd.toISOString(),
+      previousStart: bounds.startOfPreviousMonth.toISOString(),
+      previousEnd: bounds.endOfPreviousMonth.toISOString(),
     };
   }
 

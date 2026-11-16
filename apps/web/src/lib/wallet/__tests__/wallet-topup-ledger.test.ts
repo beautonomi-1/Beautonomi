@@ -94,6 +94,10 @@ describe("applyWalletTopupFromSuccessfulPaystackCharge", () => {
     expect(db.inserts.finance_transactions).toHaveLength(1);
     expect(db.inserts.finance_transactions[0].description).toBe("Wallet topup: topup-1");
     expect(db.inserts.finance_transactions[0].net).toBe(100);
+    expect(db.inserts.finance_transactions[0].metadata).toMatchObject({
+      reference: "ref-1",
+      wallet_topup_id: "topup-1",
+    });
   });
 
   it("does not post either row again when both are already saved", async () => {

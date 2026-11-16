@@ -8,6 +8,10 @@ import { manualAdjustmentSchema, postManualFinanceAdjustment } from "@/lib/finan
 import { checkPeriodLock } from "@/lib/finance/period-lock";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
+const walletTopupRepairSchema = z.object({
+  topup_id: z.string().uuid(),
+});
+
 const bodySchema = z.object({
   repair_key: z.string().min(1).max(128),
   idempotency_key: z.string().min(1).max(128),
@@ -159,6 +163,22 @@ async function previewRepair(
   tenantId: string | null,
   supabase: ReturnType<typeof getSupabaseAdmin>,
 ): Promise<Record<string, unknown>> {
+  if (repairKey === "paid_wallet_topup_missing_ledger") {
+    const parsed = walletTopupRepairSchema.safeParse(payload);
+    if (!parsed.success) return { valid: false, issues: parsed.error.issues };
+    const { data, error } = await supabase.rpc("list_integrity_paid_wallet_topups_missing_ledger", {
+      p_tenant_id: tenantId,
+      p_limit: 200,
+    });
+    const rows = Array.isArray(data) ? data : [];
+    const match = rows.find((row) => String((row as { topup_id?: string }).topup_id) === parsed.data.topup_id);
+    return {
+      valid: Boolean(match) && !error,
+      would_post: "payment_transactions and finance_transactions only; wallet balance is not credited again",
+      topup: match ?? null,
+      error: error?.message ?? null,
+    };
+  }
   if (repairKey === "manual_adjustment") {
     const parsed = manualAdjustmentSchema.safeParse(payload);
     if (!parsed.success) {
@@ -185,6 +205,34 @@ async function applyRepair(params: {
   | { ok: true; result: Record<string, unknown> }
   | { ok: false; message: string; code: string; httpStatus: number }
 > {
+  if (params.repairKey === "paid_wallet_topup_missing_ledger") {
+    const parsed = walletTopupRepairSchema.safeParse(params.payload);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        httpStatus: 400,
+        message: parsed.error.issues[0]?.message ?? "topup_id is required",
+      };
+    }
+    const { data, error } = await params.supabase.rpc("repair_paid_wallet_topup_missing_ledger", {
+      p_topup_id: parsed.data.topup_id,
+    });
+    if (error) {
+      return { ok: false, code: "POST_FAILED", httpStatus: 500, message: error.message };
+    }
+    const result = (data ?? {}) as { ok?: boolean; reason?: string };
+    if (result.ok === false) {
+      return {
+        ok: false,
+        code: "POST_FAILED",
+        httpStatus: 409,
+        message: result.reason ?? "Wallet top-up ledger repair did not post",
+      };
+    }
+    return { ok: true, result: { wallet_topup_ledger: result } };
+  }
+
   if (params.repairKey === "manual_adjustment") {
     const parsed = manualAdjustmentSchema.safeParse(params.payload);
     if (!parsed.success) {

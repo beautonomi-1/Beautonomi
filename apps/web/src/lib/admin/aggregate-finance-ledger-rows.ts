@@ -52,7 +52,7 @@ export type FinanceLedgerAggregate = {
   provider_earnings_net: number;
   gift_card_sales: number;
   membership_sales: number;
-  /** Sum of absolute refund amounts for gross operational reporting. */
+  /** Customer cash refunded: abs(net) of cash refund legs, not abs(amount). */
   refunds_abs_gross: number;
   refunds_gross: number;
   /** Net provider-side refund impact after removing platform contra allocation. */
@@ -228,15 +228,36 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     sumFees(tx, ["payout_transfer_fee"]),
   );
 
-  const bookingPlatformFees = tx
+  const bookingPlatformFeesGross = tx
     .filter((r) =>
       (r.transaction_type === "platform_fee" && !!r.booking_id) ||
       r.transaction_type === "service_fee"
     )
     .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
+  // Refunded customer platform fees leave recognized revenue. Cash legs store the
+  // reversal on `net` (often negative) while `amount` can stay positive, so net is
+  // the economic figure. Product-order fee refunds stay on ecommerce_platform_fees.
+  const bookingPlatformFeeRefundNet = tx
+    .filter(
+      (r) =>
+        r.transaction_type === "refund" &&
+        !r.product_order_id &&
+        (r.refund_component === "platform_fee" || r.refund_component === "service_fee"),
+    )
+    .reduce((s, r) => addMoney(s, Number(r.net ?? 0)), 0);
+  const bookingPlatformFeesNet = addMoney(bookingPlatformFeesGross, bookingPlatformFeeRefundNet);
   const ecommercePlatformFees = tx
     .filter((r) => r.transaction_type === "platform_fee" && !!r.product_order_id)
     .reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
+  const ecommercePlatformFeeRefundNet = tx
+    .filter(
+      (r) =>
+        r.transaction_type === "refund" &&
+        !!r.product_order_id &&
+        (r.refund_component === "platform_fee" || r.refund_component === "service_fee"),
+    )
+    .reduce((s, r) => addMoney(s, Number(r.net ?? 0)), 0);
+  const ecommercePlatformFeesNet = addMoney(ecommercePlatformFees, ecommercePlatformFeeRefundNet);
 
   // bookingGmv: Commissionable service base reconstructed from ledger legs.
   // The "payment" row's `amount` is the commission base (post-ratio of collected funds),
@@ -291,7 +312,7 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     sum(tx, ["tip"], "amount"),
     bookingTaxesGross,
     sum(tx, ["travel_fee"], "amount"),
-    bookingPlatformFees,
+    bookingPlatformFeesGross,
   );
   const additionalChargeGross = addMoney(
     sum(tx, ["additional_charge_payment"], "amount"),
@@ -397,8 +418,11 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     provider_earnings_net: sum(tx, ["provider_earnings", "membership_provider_earnings"], "net"),
     gift_card_sales: sum(tx, ["gift_card_sale"], "amount"),
     membership_sales: sum(tx, ["membership_sale"], "amount"),
-    refunds_abs_gross: tx.filter(isCashRefundRow).reduce((s, r) => addMoney(s, Math.abs(Number(r.amount ?? 0))), 0),
-    refunds_gross: tx.filter(isCashRefundRow).reduce((s, r) => addMoney(s, Math.abs(Number(r.amount ?? 0))), 0),
+    // Cash refund legs are not a partition of `amount` (the payment leg stores a
+    // negative service base while sibling legs store positive component amounts).
+    // Absolute `net` of the cash legs equals the customer cash refunded.
+    refunds_abs_gross: tx.filter(isCashRefundRow).reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))), 0),
+    refunds_gross: tx.filter(isCashRefundRow).reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))), 0),
     provider_refund_net_impact: providerRefundNetImpact,
     wallet_collected: walletCollected,
     gift_card_collected: giftCardCollected,
@@ -410,9 +434,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     wallet_topup_ledger: walletTopupLedger,
     payouts_paid_total: payoutsPaidTotal,
     gift_card_liability_reductions: giftCardLiabilityReductions,
-    ecommerce_platform_fees: ecommercePlatformFees,
-    platform_fee_revenue: bookingPlatformFees,
-    service_fee_revenue: bookingPlatformFees,
+    ecommerce_platform_fees: ecommercePlatformFeesNet,
+    platform_fee_revenue: bookingPlatformFeesNet,
+    service_fee_revenue: bookingPlatformFeesNet,
     travel_fees: sum(tx, ["travel_fee"], "amount"),
     walk_in_additional_charges: walkInAdditionalCharges,
     provider_recognized_revenue_gross: providerRecognizedRevenueGross,

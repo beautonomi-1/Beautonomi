@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { handleApiError, requireAdminSection } from "@/lib/supabase/api-helpers";
+import { adminPeriodBounds } from "@/lib/admin/admin-period-bounds";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
@@ -48,8 +49,22 @@ export async function GET(request: Request) {
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
     const now = new Date();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const rangeStart = startDate || monthStart.toISOString();
+    let reportingTimeZone: string | null = null;
+    try {
+      const { data: tzRow } = await getSupabaseAdmin()
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const tzFromSettings = (tzRow?.settings as Record<string, unknown> | null)?.timezone;
+      if (typeof tzFromSettings === "string") reportingTimeZone = tzFromSettings;
+    } catch {
+      reportingTimeZone = null;
+    }
+    const bounds = adminPeriodBounds(now, reportingTimeZone);
+    const rangeStart = startDate || bounds.startOfMonth.toISOString();
     const rangeEnd = endDate || now.toISOString();
     const normalizedRange = normalizeAdminLedgerRange({ start: rangeStart, end: rangeEnd });
     const providerIdFilter = searchParams.get("provider_id");
@@ -194,6 +209,7 @@ export async function GET(request: Request) {
       startDate,
       endDate,
       now,
+      timeZone: reportingTimeZone,
     });
 
     let previousGmv = 0;
@@ -431,16 +447,6 @@ export async function GET(request: Request) {
       error: null,
     });
   } catch (error) {
-    console.error("Unexpected error in /api/admin/finance/summary:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to fetch finance summary",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to fetch finance summary");
   }
 }
