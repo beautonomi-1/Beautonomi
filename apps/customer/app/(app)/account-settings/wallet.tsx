@@ -357,6 +357,14 @@ export default function WalletScreen() {
         if (outcome?.outcome === "success" && outcome.url && !isCancelledPaystackUrl(outcome.url)) {
           const parsed = parseOnlineCheckoutReturnUrl(outcome.url);
           if (parsed.status === "failed" || parsed.status === "cancelled") {
+            const failRef = parsed.reference || finalPaystackRef;
+            if (failRef) {
+              void verifyPaystackWithRetry(failRef, {
+                redirectStatus: parsed.status,
+                sessionId: parsed.sessionId,
+                maxAttempts: 1,
+              });
+            }
             setTopupStatus(null);
             Alert.alert(
               t("customer.walletScreen.topUpCancelledTitle", "Top-up cancelled") as string,
@@ -370,6 +378,12 @@ export default function WalletScreen() {
       }
 
       if (cancelled) {
+        if (finalPaystackRef) {
+          void verifyPaystackWithRetry(finalPaystackRef, {
+            redirectStatus: "cancelled",
+            maxAttempts: 1,
+          });
+        }
         setTopupStatus(null);
         Alert.alert(
           t("customer.walletScreen.topUpCancelledTitle", "Top-up cancelled") as string,

@@ -3,12 +3,14 @@ import { settleBookingFinanceById } from "@/lib/bookings/settle-booking-cancella
 import { sendCancellationNotification } from "@/lib/bookings/notifications";
 import { matchWaitlistOnCancellation } from "@/lib/waitlist/matching";
 import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
-import {
-  buildPendingExpiryRefundCopy,
-  pendingExpiryCancellationReason,
-} from "@/lib/bookings/lifecycle-deadlines";
+import { pendingExpiryCancellationReason } from "@/lib/bookings/lifecycle-deadlines";
+import { pendingExpiryRefundNotice } from "@/lib/bookings/pending-expiry-refund-notice";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_PENDING_REQUEST_EXPIRED } from "@/lib/analytics/amplitude/types";
+import { restoreBookingRetailStock } from "@/lib/bookings/deduct-booking-retail-stock";
+import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
+
+const STOCK_STILL_OUT_SUFFIX = " — products still out";
 
 export type PendingCancelReason = "sla" | "pre_slot" | "janitor";
 
@@ -23,6 +25,7 @@ export interface CancelPendingBookingOutcome {
   ok: boolean;
   reason?: string;
   walletRefundAmount?: number;
+  refundInfo?: string;
   currency?: string | null;
 }
 
@@ -71,23 +74,39 @@ export async function cancelPendingBookingRequest(
     return { ok: false, reason: "already_resolved" };
   }
 
-  let walletRefundAmount: number | undefined;
+  try {
+    await restoreBookingRetailStock(admin, bookingId);
+  } catch (stockErr) {
+    console.error("[cancel-pending-booking] stock restore failed", bookingId, stockErr);
+    await admin
+      .from("bookings")
+      .update({
+        cancellation_reason: `${cancellationReason}${STOCK_STILL_OUT_SUFFIX}`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", bookingId)
+      .eq("status", "cancelled");
+  }
+
+  const paymentStatus = options.paymentStatus ?? updated.payment_status;
+  let notice = pendingExpiryRefundNotice({
+    paymentStatus,
+    currency: updated.currency,
+    settlementFailed: true,
+  });
   try {
     const settlement = await settleBookingFinanceById(admin, bookingId, "admin");
-    walletRefundAmount = settlement?.walletRefundAmount;
+    notice = pendingExpiryRefundNotice({
+      paymentStatus,
+      currency: updated.currency,
+      settlement,
+    });
   } catch (err) {
     console.error("[cancel-pending-booking] settlement failed", bookingId, err);
   }
 
   if (updated.customer_package_entitlement_id && updated.customer_id) {
-    try {
-      await admin.rpc("restore_customer_package_entitlement", {
-        p_entitlement_id: updated.customer_package_entitlement_id,
-        p_customer_id: updated.customer_id,
-      });
-    } catch (err) {
-      console.error("[cancel-pending-booking] entitlement restore failed", bookingId, err);
-    }
+    await returnPackageSessionAfterCancel(admin, bookingId);
   }
 
   try {
@@ -96,14 +115,13 @@ export async function cancelPendingBookingRequest(
     console.error("[cancel-pending-booking] waitlist match failed", bookingId, err);
   }
 
-  const paymentStatus = options.paymentStatus ?? updated.payment_status;
   if (options.notify !== false) {
     await sendCancellationNotification(bookingId, {
       cancelledBy: "system",
       cancellationReason,
-      refundInfo: buildPendingExpiryRefundCopy(paymentStatus),
+      refundInfo: notice.refundInfo,
       feeRetained: 0,
-      walletRefund: walletRefundAmount,
+      walletRefund: notice.walletRefund,
       currency: updated.currency ?? undefined,
     });
   }
@@ -134,5 +152,46 @@ export async function cancelPendingBookingRequest(
     // analytics must not block cancellation
   }
 
-  return { ok: true, walletRefundAmount, currency: updated.currency ?? null };
+  return {
+    ok: true,
+    walletRefundAmount: notice.walletRefund,
+    refundInfo: notice.refundInfo,
+    currency: updated.currency ?? null,
+  };
+}
+
+/** Finish product returns for pending requests that were cancelled while stock was still out. */
+export async function retryPendingCancelProductStock(admin: SupabaseClient): Promise<number> {
+  const { data, error } = await admin
+    .from("bookings")
+    .select("id, cancellation_reason")
+    .eq("status", "cancelled")
+    .like("cancellation_reason", `%${STOCK_STILL_OUT_SUFFIX}`)
+    .limit(200);
+  if (error) {
+    console.error("[cancel-pending-booking] stock retry query failed", error);
+    return 0;
+  }
+
+  let finished = 0;
+  for (const row of (data ?? []) as Array<{ id: string; cancellation_reason?: string | null }>) {
+    const reason = String(row.cancellation_reason ?? "");
+    if (!reason.endsWith(STOCK_STILL_OUT_SUFFIX)) continue;
+    try {
+      await restoreBookingRetailStock(admin, row.id);
+      const { data: marked } = await admin
+        .from("bookings")
+        .update({
+          cancellation_reason: reason.slice(0, -STOCK_STILL_OUT_SUFFIX.length),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id)
+        .eq("cancellation_reason", reason)
+        .select("id");
+      if ((marked?.length ?? 0) > 0) finished += 1;
+    } catch (err) {
+      console.error("[cancel-pending-booking] stock retry failed", row.id, err);
+    }
+  }
+  return finished;
 }

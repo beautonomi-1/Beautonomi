@@ -3,13 +3,13 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   successResponse,
   errorResponse,
   handleApiError,
   getProviderIdForUser,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { notifyMembershipWinBack } from "@/lib/notifications/notification-service";
 
 const bodySchema = z.object({
@@ -25,10 +25,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request,
-    );
+    const permissionCheck = await requirePermission("send_messages", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const parsed = bodySchema.safeParse(await request.json().catch(() => ({})));

@@ -54,6 +54,19 @@ function captureWebhookFailure(
   }
 }
 
+/**
+ * F2-47: an error a handler has marked as permanent (`permanent: true` or
+ * `code: "PERMANENT"`) or that describes a missing/unknown entity cannot be
+ * fixed by a gateway retry; everything else is treated as transient.
+ */
+function isPermanentWebhookError(err: Error): boolean {
+  const flagged = err as Error & { permanent?: boolean; code?: string; retryable?: boolean };
+  if (flagged.permanent === true || flagged.retryable === false) return true;
+  if (typeof flagged.code === "string" && flagged.code.toUpperCase() === "PERMANENT") return true;
+  const msg = err.message.toLowerCase();
+  return /\b(not found|unknown subscription|unknown plan|invalid payload|malformed)\b/.test(msg);
+}
+
 function safeParseJson(text: string): { data?: Record<string, unknown> } | null {
   try {
     return JSON.parse(text);
@@ -466,7 +479,18 @@ export async function POST(request: Request) {
       // (they check for existing records before inserting), so retries are safe.
       // For informational or non-critical events, return 200 to stop retry loops.
       const RETRYABLE_EVENTS = ["charge.success", "transfer.success", "transfer.failed", "transfer.reversed", "refund.processed"];
-      if (RETRYABLE_EVENTS.includes(eventType) || eventType.startsWith("transfer.")) {
+      // F2-47: subscription.* / invoice.* drive provider billing (renewals,
+      // dunning, cancellation). Acking 200 on a transient failure silently
+      // loses the event, so these are retryable too — unless the handler
+      // flagged the error as permanent (e.g. unknown subscription), where a
+      // retry can never succeed.
+      const isPermanentError = isPermanentWebhookError(processingError);
+      if (
+        RETRYABLE_EVENTS.includes(eventType) ||
+        eventType.startsWith("transfer.") ||
+        (!isPermanentError &&
+          (eventType.startsWith("subscription.") || eventType.startsWith("invoice.")))
+      ) {
         return NextResponse.json(
           { received: false, error: processingError.message },
           { status: 500 }

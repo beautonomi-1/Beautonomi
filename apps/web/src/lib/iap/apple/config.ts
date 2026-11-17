@@ -4,6 +4,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { percentOf, subtractMoney } from "@beautonomi/utils";
 
 export type AppleIapConfig = {
   issuerId: string;
@@ -153,7 +154,7 @@ export function computeAppleCommission(
   commissionRate: number,
 ): { commissionMajor: number; proceedsMajor: number } {
   const rate = Math.min(Math.max(commissionRate, 0), 0.99);
-  const commissionMajor = Math.round(grossMajor * rate * 100) / 100;
-  const proceedsMajor = Math.round((grossMajor - commissionMajor) * 100) / 100;
+  const commissionMajor = percentOf(grossMajor, rate * 100);
+  const proceedsMajor = subtractMoney(grossMajor, commissionMajor);
   return { commissionMajor, proceedsMajor };
 }

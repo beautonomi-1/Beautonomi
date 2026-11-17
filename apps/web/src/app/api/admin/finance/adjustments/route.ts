@@ -6,6 +6,10 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { enforcePeriodLock } from "@/lib/finance/period-lock";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { manualAdjustmentSchema, postManualFinanceAdjustment } from "@/lib/finance/post-manual-adjustment";
+import {
+  evaluateManualAdjustment,
+  readManualAdjustmentControls,
+} from "@/lib/finance/manual-adjustment-controls";
 
 const createAdjustmentSchema = manualAdjustmentSchema;
 
@@ -40,10 +44,13 @@ export async function GET(request: NextRequest) {
  * POST /api/admin/finance/adjustments
  * Creates a controlled manual adjustment entry in the finance ledger.
  *
- * Maker-checker: only a superadmin posts directly (period-lock enforced).
- * Any other finance admin gets a `ledger_repair_proposals` row (status
- * `proposed`, 202) that a *different* superadmin must approve via
+ * Maker-checker: only a superadmin posts directly (period-lock enforced), and
+ * only up to `finance.manual_adjustments.direct_post_max_major` (F2-48).
+ * Anything above that — and every entry from a non-superadmin finance admin —
+ * becomes a `ledger_repair_proposals` row (status `proposed`, 202) that a
+ * *different* superadmin must approve via
  * POST /api/admin/finance/ledger-repair/[id]/approve.
+ * |amount| above `finance.manual_adjustments.hard_cap_major` is rejected (400).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -66,7 +73,36 @@ export async function POST(request: NextRequest) {
     const adjustmentCode = payload.data.adjustment_code?.trim() || "MANUAL_ADJUSTMENT";
     const reqMeta = extractRequestMeta(request);
 
-    if ((user.role as string) !== "superadmin") {
+    const { data: settingsRow } = await supabase
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    const controls = readManualAdjustmentControls(
+      (settingsRow as { settings?: Record<string, unknown> | null } | null)?.settings ?? null,
+    );
+    const control = evaluateManualAdjustment({ amount, role: user.role as string, controls });
+
+    if (control.decision === "reject") {
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: user.role,
+        action: "finance.adjustment.create",
+        entity_type: "finance_transaction",
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        status: "failed",
+        reason: control.code,
+        metadata: { amount, description, adjustment_code: adjustmentCode, hard_cap_major: controls.hard_cap_major },
+        ip_address: reqMeta.ip_address,
+        user_agent: reqMeta.user_agent,
+      });
+      return errorResponse(control.message, control.code, 400, { hard_cap_major: controls.hard_cap_major });
+    }
+
+    if (control.decision === "propose") {
       const { data: proposal, error: proposalError } = await supabase
         .from("ledger_repair_proposals")
         .insert({
@@ -75,7 +111,10 @@ export async function POST(request: NextRequest) {
           payload: { ...payload.data, description, effective_at: effectiveAt, adjustment_code: adjustmentCode },
           proposed_by: user.id,
           status: "proposed",
-          note: "Proposed from Finance → Adjustments",
+          note:
+            control.reason === "over_direct_post_limit"
+              ? `Proposed from Finance → Adjustments (exceeds direct-post limit of ${controls.direct_post_max_major})`
+              : "Proposed from Finance → Adjustments",
         })
         .select("*")
         .single();
@@ -91,7 +130,14 @@ export async function POST(request: NextRequest) {
         risk_level: "high",
         retention_tier: "financial",
         status: "succeeded",
-        metadata: { kind: "adjustment", amount, description, effective_at: effectiveAt, adjustment_code: adjustmentCode },
+        metadata: {
+          kind: "adjustment",
+          amount,
+          description,
+          effective_at: effectiveAt,
+          adjustment_code: adjustmentCode,
+          proposal_reason: control.reason,
+        },
         ip_address: reqMeta.ip_address,
         user_agent: reqMeta.user_agent,
       });
@@ -100,7 +146,10 @@ export async function POST(request: NextRequest) {
         {
           adjustment: null,
           proposal,
-          message: "Adjustment queued for superadmin approval (maker-checker).",
+          message:
+            control.reason === "over_direct_post_limit"
+              ? `Adjustments above ${controls.direct_post_max_major} require approval by a second superadmin.`
+              : "Adjustment queued for superadmin approval (maker-checker).",
         },
         202,
       );

@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const { data: syncs, error } = await supabase
       .from("calendar_syncs")
-      .select("*")
+      .select("id, provider_id, provider, calendar_id, calendar_name, ical_url, sync_direction, is_active, last_sync_at, sync_error, metadata, created_at, updated_at")
       .eq("provider_id", providerId)
       .order("created_at", { ascending: false });
 
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .select()
+      .select("id, provider_id, provider, calendar_id, calendar_name, ical_url, sync_direction, is_active, last_sync_at, sync_error, metadata, created_at, updated_at")
       .single();
 
     if (error) {

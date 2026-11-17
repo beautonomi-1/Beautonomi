@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { LEDGER_FULL_PROVIDER_NET_TYPES } from "@/lib/reports/constants";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { bookingLineShares } from "@/lib/reports/staff-ledger-revenue";
+import { addMoney } from "@beautonomi/utils";
 
 export type ServiceLedgerRow = {
   offeringId: string;
@@ -87,12 +89,12 @@ export async function buildServiceLedgerPerformance(
     if (!services?.length) continue;
 
     const bookingRevenue = revenueByBooking.get(booking.id) || 0;
-    const totalServicePrice = services.reduce((sum, s) => sum + Number(s.price || 0), 0);
+    const shares = bookingLineShares(bookingRevenue, services);
 
-    for (const bs of services) {
+    services.forEach((bs, index) => {
       const offering = bs.offerings;
       const offeringId = offering?.id || bs.offering_id;
-      if (!offeringId) continue;
+      if (!offeringId) return;
 
       const serviceName = offering?.title || "Unknown";
       const existing = serviceMap.get(offeringId) || {
@@ -103,13 +105,9 @@ export async function buildServiceLedgerPerformance(
       };
 
       existing.bookingIds.add(booking.id);
-      const proportion =
-        totalServicePrice > 0
-          ? Number(bs.price || 0) / totalServicePrice
-          : 1 / services.length;
-      existing.revenue += bookingRevenue * proportion;
+      existing.revenue = addMoney(existing.revenue, shares[index] ?? 0);
       serviceMap.set(offeringId, existing);
-    }
+    });
   }
 
   return Array.from(serviceMap.values())

@@ -338,6 +338,39 @@ describe("getRecordedTakingsForRange", () => {
     expect(r.byPaymentMethod.cash).toBe(130);
   });
 
+  it("keeps the cash still in the till after a partial cash refund", async () => {
+    const r = await getRecordedTakingsForRange(
+      mockSupabase({
+        providers: [providerRow()],
+        booking_payments: [],
+        bookings: [],
+        product_orders: [
+          {
+            id: "walk-partial",
+            provider_id: providerId,
+            order_source: "walk_in",
+            payment_status: "partially_refunded",
+            paid_at: inRange,
+            total_amount: 130,
+            refunded_amount: 50,
+            refund_method: "cash",
+            payment_method: "cash",
+            tenant_id: tenantId,
+            collection_location_id: null,
+            fulfillment_type: null,
+          },
+        ],
+        sales: [],
+        finance_transactions: [],
+      }),
+      { providerId, rangeStartIso: start, rangeEndIso: end },
+    );
+
+    expect(r.salesTotal).toBe(80);
+    expect(r.salesCount).toBe(1);
+    expect(r.byPaymentMethod.cash).toBe(80);
+  });
+
   it("splits a walk-in card sale into the till remainder and the wallet share", async () => {
     const r = await getRecordedTakingsForRange(
       mockSupabase({

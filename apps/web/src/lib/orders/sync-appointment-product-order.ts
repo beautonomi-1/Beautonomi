@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 
 type BookingProductRow = {
   id: string;
@@ -365,7 +366,7 @@ export async function syncAppointmentProductOrder(
     const qty = Number(p.quantity || 0);
     const unit = Number(p.unit_price || 0);
     const total = Number(p.total_price || 0);
-    return sum + (total > 0 ? total : qty * unit);
+    return addMoney(sum, total > 0 ? total : multiplyMoney(unit, qty));
   }, 0);
 
   const customer = one((booking as any).customers);
@@ -505,7 +506,7 @@ export async function syncAppointmentProductOrder(
     const product = one(p.products);
     const qty = Math.max(1, Math.floor(Number(p.quantity || 1)) || 1);
     const unit = Number(p.unit_price || 0);
-    const total = Number(p.total_price || 0) || qty * unit;
+    const total = Number(p.total_price || 0) || multiplyMoney(unit, qty);
     const name =
       product?.name ||
       (nameMap && p.product_id ? nameMap.get(String(p.product_id)) : "") ||

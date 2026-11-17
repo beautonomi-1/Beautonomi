@@ -53,8 +53,7 @@ export async function GET(
           location_type,
           location_id,
           users!bookings_customer_id_fkey (
-            full_name,
-            email
+            full_name
           ),
           providers (
             business_name
@@ -81,7 +80,7 @@ export async function GET(
     type AptBooking = {
       booking_number?: string;
       status?: string;
-      users?: { full_name?: string; email?: string } | Array<{ full_name?: string; email?: string }>;
+      users?: { full_name?: string } | Array<{ full_name?: string }>;
       providers?: { business_name?: string } | Array<{ business_name?: string }>;
       location?: { name?: string; address_line1?: string } | Array<{ name?: string; address_line1?: string }>;
     };
@@ -106,7 +105,6 @@ export async function GET(
         scheduled_at: apt.scheduled_start_at,
         duration_minutes: apt.duration_minutes,
         customer_name: apt.guest_name ?? customer?.full_name,
-        customer_email: customer?.email,
         service_title: offering?.title,
         location_name: location?.name,
         location_address: location?.address_line1,

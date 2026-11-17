@@ -17,10 +17,24 @@ import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id
 import { notifyProductOrderPaidIfTransitioned } from "@/lib/notifications/notify-product-order-paid";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { applyWalletTopupFromSuccessfulPaystackCharge } from "@/lib/wallet/apply-wallet-topup-from-paystack-success";
-import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
+import { processFailedPayment, processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { applyMarketingTopupFromPaystackSuccess } from "@/lib/marketing/apply-marketing-topup-from-paystack";
 import { enrichWalletTopupMetadataFromReference } from "@/lib/wallet/enrich-wallet-topup-metadata-from-reference";
+import {
+  mergeStoredCheckoutMetadata,
+  normalizePaystackMetadata,
+} from "@/lib/payments/normalize-paystack-metadata";
+import { enrichBookingMetadataFromReference } from "@/lib/bookings/enrich-booking-metadata-from-reference";
+import {
+  bookingPaymentAfterCharge,
+  clientStatusForBookingPayment,
+  isGuestSharePayment,
+  bookingIdForClientStatus,
+  recordedChargeClientStatus,
+  resolveSettledChargeClientStatus,
+  statusFromRecordedRow,
+} from "@/lib/payments/booking-payment-client-status";
 
 /**
  * GET /api/paystack/verify
@@ -42,18 +56,8 @@ export async function GET(request: NextRequest) {
       searchParams.get("trxref") ||
       searchParams.get("tx_ref");
     const transactionId = searchParams.get("transaction_id");
-    const redirectStatus = (searchParams.get("status") ?? "").toLowerCase();
-
     if (!reference) {
       return successResponse({ status: "error", message: "Reference required" });
-    }
-
-    if (redirectStatus === "failed" || redirectStatus === "cancelled") {
-      return successResponse({
-        status: "failed",
-        reference,
-        message: "Payment was not completed",
-      });
     }
 
     const sessionId = searchParams.get("session_id");
@@ -71,19 +75,26 @@ export async function GET(request: NextRequest) {
         { reference, tenantId, sessionId, transactionId },
         adminEarly,
       );
-      if (flwResult.paid) {
-        return successResponse({
-          status: "success",
-          provider: "flutterwave",
-          reference,
-          message: "Payment verified",
-        });
-      }
+      const capture = await bookingPaymentAfterCharge(adminEarly, reference, checkoutRow.metadata);
+      const status = await resolveSettledChargeClientStatus({
+        admin: adminEarly,
+        reference,
+        gatewayPaid: flwResult.paid,
+        bookingId: capture.bookingId,
+        paymentStatus: capture.payment_status,
+        metadata: checkoutRow.metadata,
+      });
       return successResponse({
-        status: "pending",
+        status,
         provider: "flutterwave",
         reference,
-        message: "Payment not completed yet",
+        bookingId: bookingIdForClientStatus(
+          checkoutRow.metadata as Record<string, unknown> | null,
+          status,
+          capture.bookingId,
+        ),
+        payment_status: capture.payment_status,
+        message: status === "success" ? "Payment verified" : "Payment not completed yet",
       });
     }
 
@@ -92,19 +103,27 @@ export async function GET(request: NextRequest) {
         { reference, tenantId, sessionId },
         adminEarly,
       );
-      if (stripeResult.paid) {
-        return successResponse({
-          status: "success",
-          provider: "stripe",
-          reference,
-          message: "Payment verified",
-        });
-      }
+      const capture = await bookingPaymentAfterCharge(adminEarly, reference, checkoutRow?.metadata);
+      const status = await resolveSettledChargeClientStatus({
+        admin: adminEarly,
+        reference,
+        gatewayPaid: stripeResult.paid,
+        bookingId: capture.bookingId,
+        paymentStatus: capture.payment_status,
+        metadata: checkoutRow?.metadata,
+        unpaidStatus: stripeResult.provider === "stripe" ? "pending" : "error",
+      });
       return successResponse({
-        status: stripeResult.provider === "stripe" ? "pending" : "error",
+        status,
         provider: stripeResult.provider,
         reference,
-        message: "Payment not completed yet",
+        bookingId: bookingIdForClientStatus(
+          (checkoutRow?.metadata ?? null) as Record<string, unknown> | null,
+          status,
+          capture.bookingId,
+        ),
+        payment_status: capture.payment_status,
+        message: status === "success" ? "Payment verified" : "Payment not completed yet",
       });
     }
 
@@ -131,11 +150,10 @@ export async function GET(request: NextRequest) {
     const data = await paystackResponse.json();
 
     if (data.data.status === "success") {
-      const rawMeta = data.data.metadata;
-      let metadata: Record<string, unknown> =
-        rawMeta && typeof rawMeta === "object" && !Array.isArray(rawMeta)
-          ? { ...(rawMeta as Record<string, unknown>) }
-          : {};
+      let metadata = mergeStoredCheckoutMetadata(
+        normalizePaystackMetadata(data.data.metadata),
+        checkoutRow?.metadata,
+      );
       // Paystack verify sometimes omits custom metadata on the transaction object.
       // We always persist `paystack_reference` on `ads_budget_orders` at init — resolve by reference
       // so charge.success + client verify can still fund the campaign (fixes "awaiting payment" stuck state).
@@ -148,6 +166,8 @@ export async function GET(request: NextRequest) {
           metadata.custom_offer_id ||
           metadata.bookingId ||
           metadata.booking_id ||
+          metadata.provider_invoice_id ||
+          metadata.terminal_order_id ||
           metadata.kind === "card_verification" ||
           metadata.marketing_credit_topup === true ||
           metadata.marketing_credit_topup === "true",
@@ -197,6 +217,11 @@ export async function GET(request: NextRequest) {
         const enriched = { ...metadata };
         await enrichWalletTopupMetadataFromReference(adminWt as never, reference, enriched);
         metadata = enriched;
+      }
+      if (reference && !metadata.booking_id && !metadata.bookingId) {
+        const enrichedBooking = { ...metadata };
+        await enrichBookingMetadataFromReference(getSupabaseAdmin(), reference, enrichedBooking);
+        metadata = enrichedBooking;
       }
       const verifiedChargeData = { ...data.data, metadata };
       // Keep server/client refs for role-aware lookups + service-role writes.
@@ -387,15 +412,25 @@ export async function GET(request: NextRequest) {
             403,
           );
         }
-        await applyWalletTopupFromSuccessfulPaystackCharge(
-          {
-            reference: String(reference),
-            metadata,
-            amount: data.data.amount,
-            fees: data.data.fees,
-          },
-          admin as any,
-        );
+        try {
+          await applyWalletTopupFromSuccessfulPaystackCharge(
+            {
+              reference: String(reference),
+              metadata,
+              amount: data.data.amount,
+              fees: data.data.fees,
+            },
+            admin as any,
+          );
+        } catch (topupErr) {
+          // The customer-facing outcome is the wallet credit. Receipt/finance rows
+          // are retried by the charge.success webhook; only fail if no credit exists.
+          console.error("[paystack/verify] wallet top-up completion failed", {
+            walletTopupId,
+            reference,
+            error: topupErr instanceof Error ? topupErr.message : topupErr,
+          });
+        }
         const { data: creditedRow } = await admin
           .from("wallet_transactions")
           .select("id")
@@ -435,11 +470,19 @@ export async function GET(request: NextRequest) {
           );
         }
         await processSuccessfulPayment(verifiedChargeData, admin);
+        const giftRecorded = await recordedChargeClientStatus(
+          admin,
+          metadata as Record<string, unknown>,
+          reference,
+        );
         return successResponse({
-          status: "success",
+          status: giftRecorded === "success" ? "success" : "pending",
           type: "gift_card_order",
           giftCardOrderId,
-          message: "Gift card purchase confirmed",
+          message:
+            giftRecorded === "success"
+              ? "Gift card purchase confirmed"
+              : "Payment received and still being applied",
         });
       }
 
@@ -461,11 +504,19 @@ export async function GET(request: NextRequest) {
           );
         }
         await processSuccessfulPayment(verifiedChargeData, admin);
+        const membershipRecorded = await recordedChargeClientStatus(
+          admin,
+          metadata as Record<string, unknown>,
+          reference,
+        );
         return successResponse({
-          status: "success",
+          status: membershipRecorded === "success" ? "success" : "pending",
           type: "membership_order",
           membershipOrderId,
-          message: "Membership payment confirmed",
+          message:
+            membershipRecorded === "success"
+              ? "Membership payment confirmed"
+              : "Payment received and still being applied",
         });
       }
 
@@ -581,12 +632,16 @@ export async function GET(request: NextRequest) {
           );
         }
         await processSuccessfulPayment(verifiedChargeData, admin);
+        const adsRecorded = await recordedChargeClientStatus(admin, metadata as Record<string, unknown>, reference);
         return successResponse({
-          status: "success",
+          status: adsRecorded === "success" ? "success" : "pending",
           type: "ads_budget_order",
           adsBudgetOrderId,
           campaignId: orderRow.campaign_id ?? (metadata.campaign_id ? String(metadata.campaign_id) : null),
-          message: "Ads payment confirmed",
+          message:
+            adsRecorded === "success"
+              ? "Ads payment confirmed"
+              : "Payment received and still being applied",
         });
       }
 
@@ -647,13 +702,21 @@ export async function GET(request: NextRequest) {
           );
         }
         await processSuccessfulPayment(verifiedChargeData, admin);
+        const subscriptionRecorded = await recordedChargeClientStatus(
+          admin,
+          metadata as Record<string, unknown>,
+          reference,
+        );
         return successResponse({
-          status: "success",
+          status: subscriptionRecorded === "success" ? "success" : "pending",
           type: "provider_subscription_order",
           subscriptionOrderId,
           planId: orderRow.plan_id ?? null,
           billingPeriod: orderRow.billing_period ?? null,
-          message: "Subscription payment confirmed",
+          message:
+            subscriptionRecorded === "success"
+              ? "Subscription payment confirmed"
+              : "Payment received and still being applied",
         });
       }
 
@@ -682,18 +745,40 @@ export async function GET(request: NextRequest) {
         // still pending / failed — the client then falls back to the tab.
         const { data: paidOffer } = await admin
           .from("custom_offers")
-          .select("booking_id")
+          .select("status, booking_id")
           .eq("id", offerId)
           .maybeSingle();
+        const offerRow = paidOffer as { status?: string | null; booking_id?: string | null } | null;
+        const recorded = statusFromRecordedRow("custom_offer", offerRow);
         const finalizedBookingId =
-          (paidOffer as { booking_id?: string | null } | null)?.booking_id ?? null;
+          recorded === "success" ? String(offerRow?.booking_id ?? "").trim() || null : null;
 
         return successResponse({
-          status: "success",
+          status: recorded,
           type: "custom_offer",
           customOfferId: offerId,
           bookingId: finalizedBookingId,
-          message: "Payment verified successfully",
+          message:
+            recorded === "success"
+              ? "Payment verified successfully"
+              : "Payment received and still being applied to the booking",
+        });
+      }
+
+      if (metadata?.provider_invoice_id || metadata?.terminal_order_id) {
+        await processSuccessfulPayment(verifiedChargeData, admin);
+        const recorded = await recordedChargeClientStatus(
+          admin,
+          metadata as Record<string, unknown>,
+          reference,
+        );
+        return successResponse({
+          status: recorded === "success" ? "success" : "pending",
+          type: metadata.provider_invoice_id ? "provider_invoice" : "terminal_order",
+          message:
+            recorded === "success"
+              ? "Payment verified successfully"
+              : "Payment received and still being applied",
         });
       }
 
@@ -737,11 +822,23 @@ export async function GET(request: NextRequest) {
       }
 
       if (booking.status === "cancelled" || booking.cancelled_at) {
-        return errorResponse(
-          "This booking was cancelled. If you were charged, contact support for a refund.",
-          "BOOKING_CANCELLED",
-          409,
+        const amountMajor = convertFromSmallestUnit(Number(data.data.amount || 0), paidCurrency);
+        const { revivePaymentFailedBooking } = await import(
+          "@/lib/bookings/revive-payment-failed-booking"
         );
+        const revived = await revivePaymentFailedBooking(admin, {
+          bookingId: String(bookingId),
+          reference: String(reference),
+          amountMajor,
+          paymentProvider: "paystack",
+        });
+        if (!revived.ok) {
+          return errorResponse(
+            "This booking was cancelled. If you were charged, contact support for a refund.",
+            "BOOKING_CANCELLED",
+            409,
+          );
+        }
       }
 
       await processSuccessfulPayment(verifiedChargeData, admin);
@@ -752,18 +849,47 @@ export async function GET(request: NextRequest) {
         .eq("id", bookingId)
         .maybeSingle();
       const psAfter = ((afterPay?.payment_status as string) || "pending") as string;
+      const guestShare = isGuestSharePayment(metadata as Record<string, unknown>);
+      const clientStatus = guestShare
+        ? ((await recordedChargeClientStatus(admin, metadata as Record<string, unknown>, reference)) ??
+          "pending")
+        : clientStatusForBookingPayment(psAfter);
 
       return successResponse({
-        status: "success",
+        status: clientStatus,
         bookingId: bookingId,
-        message: "Payment verified successfully",
+        message:
+          clientStatus === "success"
+            ? "Payment verified successfully"
+            : "Payment received and still being applied to the booking",
         payment_status: psAfter,
       });
     }
 
+    const gatewayStatus = String(data?.data?.status ?? "").toLowerCase();
+    if (gatewayStatus === "failed" || gatewayStatus === "abandoned" || gatewayStatus === "reversed") {
+      const failMeta = mergeStoredCheckoutMetadata(
+        normalizePaystackMetadata(data?.data?.metadata),
+        checkoutRow?.metadata,
+      );
+      await processFailedPayment(
+        { ...(data?.data ?? {}), reference, metadata: failMeta, gateway_response: gatewayStatus },
+        adminEarly,
+      );
+      const capture = await bookingPaymentAfterCharge(adminEarly, reference, failMeta);
+      return successResponse({
+        status: "failed",
+        reference,
+        bookingId: capture.bookingId,
+        payment_status: capture.payment_status,
+        message: "Payment was not completed",
+      });
+    }
+
     return successResponse({
-      status: "failed",
-      message: "Payment verification failed",
+      status: "pending",
+      reference,
+      message: "Payment not completed yet",
     });
   } catch (error) {
     return handleApiError(error, "Failed to verify payment");

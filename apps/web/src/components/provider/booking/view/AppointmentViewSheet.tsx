@@ -8,6 +8,7 @@ import type { Appointment } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { useAppointmentSidebar } from "@/stores/appointment-sidebar-store";
 import { getBookingNextStepCard, buildBookingCompletionChecklist } from "@beautonomi/provider-booking";
+import { subtractMoney, multiplyMoney } from "@beautonomi/utils";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -137,7 +138,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
 
   const totalPaid = Number(raw?.total_paid ?? 0);
   const totalRefunded = Number(raw?.total_refunded ?? 0);
-  const maxRefundable = Math.max(0, totalPaid - totalRefunded);
+  const maxRefundable = Math.max(0, subtractMoney(totalPaid, totalRefunded));
   const overpaidAmount = outstanding < 0 ? Math.abs(outstanding) : 0;
 
   useEffect(() => {
@@ -534,8 +535,8 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
                 quantity,
                 unitPrice,
                 unit_price: unitPrice,
-                totalPrice: unitPrice * quantity,
-                total_price: unitPrice * quantity,
+                totalPrice: multiplyMoney(unitPrice, quantity),
+                total_price: multiplyMoney(unitPrice, quantity),
               };
               const mappedExisting = existing.map((p) => ({
                 productId: String(p.productId ?? p.product_id ?? ""),

@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     // We fetch both so single AND bulk orders surface every code the buyer paid for.
     const { data: orders } = await supabase
       .from("gift_card_orders")
-      .select("id, gift_card_id, recipient_email")
+      .select("id, gift_card_id")
       .eq("purchaser_user_id", user.id)
       .eq("status", "paid");
 
@@ -119,14 +119,6 @@ export async function GET(request: NextRequest) {
       { deliver_at: string | null; delivered_at: string | null; delivery_channel: string | null }
     >();
     const recipientEmailByOrderId = new Map<string, string | null>();
-    for (const o of orders || []) {
-      if (o.id) {
-        recipientEmailByOrderId.set(
-          o.id as string,
-          typeof o.recipient_email === "string" ? o.recipient_email : null,
-        );
-      }
-    }
     if (orderIds.length > 0) {
       try {
         const orderRows = await fetchInIdChunks<Record<string, unknown>>(orderIds, (slice) =>

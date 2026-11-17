@@ -139,64 +139,32 @@ async function applySubscriptionEntitlement(
             apple_auto_renew_status: false,
             ...clearAppleMerchantOnFree(),
           })
-          .eq("provider_id", providerId);
+          .eq("provider_id", providerId)
+          .eq("billing_provider", "apple");
       }
       return;
     }
+    if (existingRow?.billing_provider !== "apple") return;
     await supabase
       .from("provider_subscriptions")
       .update({
         status: "expired",
+        past_due_since: null,
         auto_renew: false,
         expires_at: expiresIso,
         apple_auto_renew_status: false,
         ...clearAppleMerchantOnFree(),
       })
-      .eq("provider_id", providerId);
+      .eq("provider_id", providerId)
+      .eq("billing_provider", "apple");
     return;
   }
-
-  await disablePaystackSubscriptionForProvider(supabase, providerId, tenantId);
-  await failPendingProviderSubscriptionOrders(supabase, providerId, "switched_to_apple");
-
-  const { CLEAR_PENDING_UPGRADE_FIELDS } = await import(
-    "@/lib/subscriptions/pending-upgrade-fields"
-  );
-  await supabase.from("provider_subscriptions").upsert(
-    {
-      provider_id: providerId,
-      plan_id: planId,
-      status,
-      billing_period: billingPeriod,
-      auto_renew: !isRevoked,
-      expires_at: expiresIso,
-      billing_provider: "apple",
-      apple_original_transaction_id: tx.originalTransactionId,
-      apple_product_id: tx.productId,
-      apple_environment: tx.environment ?? "Production",
-      apple_auto_renew_status: !isRevoked,
-      apple_grace_period_expires_at: graceIso,
-      apple_offer_identifier: tx.offerIdentifier ?? null,
-      started_at: appleMillisToIso(tx.purchaseDate) ?? nowIso,
-      updated_at: nowIso,
-      paystack_subscription_code: null,
-      paystack_authorization_code: null,
-      paystack_customer_code: null,
-      paystack_sync_pending: false,
-      paystack_sync_note: null,
-      ...CLEAR_PENDING_UPGRADE_FIELDS,
-    },
-    { onConflict: "provider_id" },
-  );
-
-  if (isRevoked) return;
 
   const { commissionMajor, proceedsMajor } = computeAppleCommission(
     grossMajor,
     commissionRate,
   );
-
-  await recordProviderSubscriptionPayment({
+  const applePayment = await recordProviderSubscriptionPayment({
     supabase,
     reference: tx.transactionId,
     providerId,
@@ -207,6 +175,8 @@ async function applySubscriptionEntitlement(
     kind: "apple_iap_subscription",
     description: "Provider subscription (Apple In-App Purchase)",
     paymentProvider: "apple",
+    termEndsAt: expiresIso,
+    updateBillingPeriod: false,
     paymentMetadata: {
       original_transaction_id: tx.originalTransactionId,
       product_id: tx.productId,
@@ -214,6 +184,65 @@ async function applySubscriptionEntitlement(
       environment: tx.environment,
     },
   });
+  if (!applePayment.recorded && !applePayment.alreadyRecorded) {
+    throw new Error("subscription payment was not recorded");
+  }
+  if (applePayment.chargeReturned) return;
+  const recognizedEndMs = applePayment.termEnd ? Date.parse(applePayment.termEnd) : Number.NaN;
+  const accessEnd =
+    expiresIso ??
+    (Number.isFinite(recognizedEndMs) ? new Date(recognizedEndMs).toISOString() : null);
+
+  const paystackStop = await disablePaystackSubscriptionForProvider(supabase, providerId, tenantId);
+  await failPendingProviderSubscriptionOrders(
+    supabase,
+    providerId,
+    "This checkout was replaced by an App Store subscription.",
+  );
+
+  const { CLEAR_PENDING_UPGRADE_FIELDS } = await import(
+    "@/lib/subscriptions/pending-upgrade-fields"
+  );
+  await supabase.from("provider_subscriptions").upsert(
+    {
+      provider_id: providerId,
+      plan_id: planId,
+      status,
+      past_due_since: null,
+      billing_period: billingPeriod,
+      auto_renew: !isRevoked,
+      expires_at: accessEnd,
+      ...(accessEnd
+        ? {
+            billing_period_start: appleMillisToIso(tx.purchaseDate) ?? nowIso,
+            billing_period_end: accessEnd,
+          }
+        : {}),
+      billing_provider: "apple",
+      apple_original_transaction_id: tx.originalTransactionId,
+      apple_product_id: tx.productId,
+      apple_environment: tx.environment ?? "Production",
+      apple_auto_renew_status: !isRevoked,
+      apple_grace_period_expires_at: graceIso,
+      apple_offer_identifier: tx.offerIdentifier ?? null,
+      started_at: appleMillisToIso(tx.purchaseDate) ?? nowIso,
+      updated_at: nowIso,
+      paystack_authorization_code: null,
+      paystack_customer_code: null,
+      ...(paystackStop === "kept"
+        ? {
+            paystack_sync_note:
+              "We could not stop automatic billing. Contact support if charges continue.",
+          }
+        : {
+            paystack_subscription_code: null,
+            paystack_sync_pending: false,
+            paystack_sync_note: null,
+          }),
+      ...CLEAR_PENDING_UPGRADE_FIELDS,
+    },
+    { onConflict: "provider_id" },
+  );
 }
 
 async function applyConsumableEntitlement(
@@ -229,16 +258,7 @@ async function applyConsumableEntitlement(
   const { providerId, orderId, tx, grossMajor, commissionRate } = params;
   const { commissionMajor } = computeAppleCommission(grossMajor, commissionRate);
 
-  await supabase
-    .from("ads_budget_orders")
-    .update({
-      payment_provider: "apple",
-      apple_transaction_id: tx.transactionId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", orderId);
-
-  await recordAdsBudgetOrderPayment({
+  const adsPayment = await recordAdsBudgetOrderPayment({
     supabase,
     orderId,
     reference: tx.transactionId,
@@ -247,6 +267,18 @@ async function applyConsumableEntitlement(
     providerIdHint: providerId,
     paymentProvider: "apple",
   });
+  if (!adsPayment.finalized && !adsPayment.alreadyPaid) {
+    throw new Error("ads payment was not recorded");
+  }
+
+  await supabase
+    .from("ads_budget_orders")
+    .update({
+      payment_provider: "apple",
+      apple_transaction_id: tx.transactionId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId);
 }
 
 async function resolveSubscriptionLineageProvider(
@@ -528,12 +560,15 @@ export async function applyAppleRenewalInfo(params: {
   if (notificationType === "DID_RENEW" && row.status === "past_due") {
     update.status = "active";
     update.apple_grace_period_expires_at = null;
+    update.past_due_since = null;
   }
 
   await supabase
     .from("provider_subscriptions")
     .update(update)
-    .eq("provider_id", row.provider_id);
+    .eq("provider_id", row.provider_id)
+    .eq("billing_provider", "apple")
+    .eq("apple_original_transaction_id", renewal.originalTransactionId);
 }
 
 export async function handleAppleSubscriptionExpired(
@@ -557,10 +592,13 @@ export async function handleAppleSubscriptionExpired(
     .from("provider_subscriptions")
     .update({
       status: "expired",
+      past_due_since: null,
       plan_id: freePlanId,
       auto_renew: false,
       apple_auto_renew_status: false,
       ...clearAppleMerchantOnFree(),
     })
-    .eq("provider_id", (sub as { provider_id: string }).provider_id);
+    .eq("provider_id", (sub as { provider_id: string }).provider_id)
+    .eq("billing_provider", "apple")
+    .eq("apple_original_transaction_id", originalTransactionId);
 }

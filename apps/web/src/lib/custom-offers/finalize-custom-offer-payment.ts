@@ -17,9 +17,11 @@
  *
  * Caller MUST pass an admin-scoped Supabase client (service_role).
  */
+import { bookingGiftVoidOutcome, giftCardCaptureAnswer } from "@/lib/bookings/gift-value-still-due";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
-import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { addMoney, percentOf, subtractMoney } from "@beautonomi/utils";
+import { providerVatSnapshotColumns, resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveCommissionPercentageForBooking } from "@/lib/finance/resolve-commission-percentage-for-booking";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -40,6 +42,7 @@ import {
 } from "@/lib/bookings/resolve-commission-base-for-booking-payment";
 import { postBookingAuditLedgerLegsIfMissing } from "@/lib/bookings/post-booking-audit-ledger-legs";
 import { holdGiftCardOnBooking } from "@/lib/gift-cards/hold-gift-card-for-booking";
+import { markGiftCardStillHeld } from "@/lib/bookings/settle-booking-cancellation";
 
 export interface FinalizeCustomOfferPaymentInput {
   offerId: string;
@@ -85,6 +88,7 @@ export interface FinalizeCustomOfferPaymentResult {
 type OfferRow = {
   id?: string;
   status?: string;
+  payment_reference?: string | null;
   booking_id?: string;
   duration_minutes?: number;
   price?: number;
@@ -284,7 +288,7 @@ async function backfillMissingCustomOfferFinance(
     .eq("reference", reference)
     .maybeSingle();
   if (!existingPaymentTx) {
-    const paystackLeg = Math.max(0, bookingTotal - walletAmountApplied - giftCardAmountApplied);
+    const paystackLeg = Math.max(0, subtractMoney(subtractMoney(bookingTotal, walletAmountApplied), giftCardAmountApplied));
     try {
       await adminSupabase.from("payment_transactions").insert({
         booking_id: bookingId,
@@ -512,6 +516,25 @@ export async function finalizeCustomOfferPayment(
 
   // ── 2. Idempotency ─────────────────────────────────────────────────────────
   if (offer.status === "paid") {
+    // Already paid from a different card capture: this reference is a duplicate
+    // payment. Report it as stale so the caller refunds it.
+    if (
+      input.paystackAmountMajor > 0 &&
+      offer.payment_reference &&
+      offer.payment_reference !== input.reference
+    ) {
+      const { data: ownTx } = await adminSupabase
+        .from("payment_transactions")
+        .select("id")
+        .eq("reference", input.reference)
+        .maybeSingle();
+      if (!ownTx) {
+        console.warn(
+          `[finalizeCustomOfferPayment] offer ${offerId} already paid via ${offer.payment_reference}; ${input.reference} needs a refund`,
+        );
+        return { ok: false, reason: "unexpected_status:paid" };
+      }
+    }
     if (offer.booking_id) {
       // Defensive: a prior run may have marked the offer paid (this step) but
       // crashed before writing the finance ledger (step 10). Don't leave the
@@ -526,15 +549,60 @@ export async function finalizeCustomOfferPayment(
     );
     return { ok: false, reason: offer.status };
   }
-  // Only settle from payment_pending. After cancel-payment the offer is
-  // `pending` again (and any wallet debit has been credited back). Accepting
-  // finalize from `pending` would recreate a booking that still counts the
-  // refunded wallet leg as tender — the platform would absorb the gap.
+  // Prefer payment_pending. After cancel-payment the offer is `pending` again;
+  // accept that only when this reference still matches the offer's checkout
+  // and the captured amount covers the offer (wallet was credited back).
   if (offer.status !== "payment_pending") {
-    console.warn(
-      `[finalizeCustomOfferPayment] offer ${offerId} is ${offer.status}; refusing to create booking (expected payment_pending)`,
-    );
-    return { ok: false, reason: `unexpected_status:${offer.status}` };
+    if (offer.status === "pending") {
+      const { getOnlinePaymentCheckoutByReference } = await import(
+        "@/lib/payments/online-payment-checkouts"
+      );
+      const checkout = await getOnlinePaymentCheckoutByReference(String(input.reference ?? ""));
+      const metaOfferId = String(
+        (checkout?.metadata as { custom_offer_id?: string } | undefined)?.custom_offer_id ??
+          (checkout?.metadata as { offer_id?: string } | undefined)?.offer_id ??
+          "",
+      ).trim();
+      // Wallet and gift card value were returned when the checkout was abandoned,
+      // so only a card-only checkout can settle from `pending` without the
+      // platform absorbing the returned tender. The card must cover the price
+      // this checkout was issued for (deposit or total).
+      const checkoutMeta = (checkout?.metadata ?? {}) as Record<string, unknown>;
+      const cardOnly =
+        Number(checkoutMeta.wallet_amount_applied ?? 0) <= 0.009 &&
+        Number(checkoutMeta.gift_card_amount_applied ?? 0) <= 0.009;
+      const expectedCard =
+        String(checkoutMeta.payment_option ?? "full") === "deposit" &&
+        Number(checkoutMeta.deposit_amount ?? 0) > 0
+          ? Number(checkoutMeta.deposit_amount)
+          : Number(checkoutMeta.total_amount ?? 0);
+      const captured = Number(input.paystackAmountMajor ?? 0);
+      const amountOk =
+        expectedCard > 0 && captured > 0 && Math.abs(captured - expectedCard) <= 0.01;
+      if (metaOfferId === offerId && cardOnly && amountOk) {
+        const { data: reopened } = await adminSupabase
+          .from("custom_offers")
+          .update({
+            status: "payment_pending",
+            payment_reference: String(input.reference),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", offerId)
+          .eq("status", "pending")
+          .is("booking_id", null)
+          .select("id");
+        if ((reopened?.length ?? 0) > 0) {
+          offer.status = "payment_pending";
+          offer.payment_reference = String(input.reference);
+        }
+      }
+    }
+    if (offer.status !== "payment_pending") {
+      console.warn(
+        `[finalizeCustomOfferPayment] offer ${offerId} is ${offer.status}; refusing to create booking (expected payment_pending)`,
+      );
+      return { ok: false, reason: `unexpected_status:${offer.status}` };
+    }
   }
 
   // Reference-based dedupe: another concurrent finalize for the same payment.
@@ -584,7 +652,7 @@ export async function finalizeCustomOfferPayment(
   // ── 3. Currency + pricing inputs ───────────────────────────────────────────
   const { data: provForCurrency } = await adminSupabase
     .from("providers")
-    .select("tenant_id")
+    .select("tenant_id, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number")
     .eq("id", req.provider_id ?? "")
     .maybeSingle();
   const offerCurrencyFallback = await lastResortCurrencyFromTenantId(
@@ -599,6 +667,21 @@ export async function finalizeCustomOfferPayment(
   const tipAmount = Number(meta.tip_amount ?? 0);
   const taxAmount = Number(meta.tax_amount ?? 0);
   const taxRate = Number(meta.tax_rate ?? 0);
+  const resolvedVat = await resolveProviderVat(adminSupabase, {
+    tax_rate_percent: (provForCurrency as { tax_rate_percent?: number | null } | null)?.tax_rate_percent ?? null,
+    tax_inclusive: (provForCurrency as { tax_inclusive?: boolean | null } | null)?.tax_inclusive ?? null,
+    is_vat_registered: (provForCurrency as { is_vat_registered?: boolean | null } | null)?.is_vat_registered ?? null,
+    vat_number: (provForCurrency as { vat_number?: string | null } | null)?.vat_number ?? null,
+    tenant_id: (provForCurrency as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+    tax_rate_override_percent: null,
+  });
+  const vatSnapshot = {
+    ...providerVatSnapshotColumns(resolvedVat),
+    ...(typeof meta.tax_inclusive === "boolean" ? { tax_inclusive: meta.tax_inclusive } : {}),
+    ...(typeof meta.provider_vat_number_snapshot === "string"
+      ? { provider_vat_number_snapshot: meta.provider_vat_number_snapshot }
+      : {}),
+  };
   const serviceFeeAmount = Number(meta.service_fee_amount ?? 0);
   const serviceFeePercentage = Number(meta.service_fee_percentage ?? 0);
   const promotionDiscountAmount = Number(meta.promotion_discount_amount ?? 0);
@@ -638,11 +721,11 @@ export async function finalizeCustomOfferPayment(
   let loyaltyPointsRedeemed = Math.max(0, Number(input.loyaltyPointsRedeemed || 0));
   let loyaltyDiscountAmount = Math.max(0, Number(input.loyaltyDiscountAmount || 0));
 
-  let cashCollected = paystackAmountMajor + walletAmountApplied + giftCardAmountApplied;
+  let cashCollected = addMoney(addMoney(paystackAmountMajor, walletAmountApplied), giftCardAmountApplied);
   // For deposit, use the metadata total; otherwise the actual collected amount
   // (loyalty discount is reflected in pricing — not a tender — so doesn't add here).
   const bookingTotalAmount = isDepositPayment ? coTotalAmount : cashCollected;
-  const netGatewayAmount = paystackAmountMajor - paystackFeesMajor;
+  const netGatewayAmount = subtractMoney(paystackAmountMajor, paystackFeesMajor);
 
   // ── 4. Create offering (ephemeral; cleaned up if booking insert fails) ────
   const offeringTitle =
@@ -716,8 +799,9 @@ export async function finalizeCustomOfferPayment(
     membership_discount_amount: membershipDiscountAmount,
     ...(membershipPlanId ? { membership_plan_id: membershipPlanId } : {}),
     ...(membershipId ? { membership_id: membershipId } : {}),
-    tax_rate: taxRate,
+    tax_rate: taxRate || resolvedVat.ratePercent,
     tax_amount: taxAmount,
+    ...vatSnapshot,
     service_fee_percentage: serviceFeePercentage,
     service_fee_amount: serviceFeeAmount,
     total_amount: bookingTotalAmount,
@@ -902,15 +986,43 @@ export async function finalizeCustomOfferPayment(
           p_booking_id: booking.id,
         })
       : { data: false, error: null };
-    const giftTaken = held.ok && !captureError && captured !== false;
-    if (!giftTaken) {
+    const captureAnswer = !held.ok
+      ? "absent"
+      : captureError && /expired|no longer active/i.test(String(captureError.message ?? captureError))
+        ? "absent"
+        : captureError
+          ? "unknown"
+          : giftCardCaptureAnswer(captured);
+    const giftTaken = captureAnswer === "taken";
+    if (captureAnswer === "unknown") {
+      const { rememberGiftCaptureStillDue } = await import(
+        "@/lib/bookings/rollback-collectible-split-leg"
+      );
+      await rememberGiftCaptureStillDue(adminSupabase, booking.id as string, bookingTenantId);
+    }
+    if (giftTaken || captureAnswer === "unknown") {
+      if (held.ok && held.giftCardId) {
+        await adminSupabase.from("bookings").update({ gift_card_id: held.giftCardId }).eq("id", booking.id);
+      }
+    } else if (!giftTaken) {
+      let giftStillHeld = false;
       if (held.ok) {
-        await (adminSupabase.rpc as typeof adminSupabase.rpc)("void_gift_card_redemption", {
-          p_booking_id: booking.id,
-        });
+        try {
+          const { data: voided, error: voidErr } = await (adminSupabase.rpc as typeof adminSupabase.rpc)(
+            "void_gift_card_redemption",
+            { p_booking_id: booking.id },
+          );
+          giftStillHeld = Boolean(voidErr) || bookingGiftVoidOutcome(voided) === "unknown";
+          if (voidErr) {
+            console.warn("[finalizeCustomOfferPayment] gift card void failed:", voidErr);
+          }
+        } catch (voidErr) {
+          giftStillHeld = true;
+          console.warn("[finalizeCustomOfferPayment] gift card void failed:", voidErr);
+        }
       }
       giftCardAmountApplied = 0;
-      cashCollected = paystackAmountMajor + walletAmountApplied;
+      cashCollected = addMoney(paystackAmountMajor, walletAmountApplied);
       const nothingElseCollected = cashCollected <= 0.01;
       await adminSupabase
         .from("bookings")
@@ -924,11 +1036,12 @@ export async function finalizeCustomOfferPayment(
           updated_at: new Date().toISOString(),
         })
         .eq("id", booking.id);
+      if (giftStillHeld) {
+        await markGiftCardStillHeld(adminSupabase, booking.id as string, true);
+      }
       if (nothingElseCollected) {
         return { ok: false, reason: held.ok ? "gift_card_capture_failed" : "gift_card_reserve_failed" };
       }
-    } else if (held.ok && held.giftCardId) {
-      await adminSupabase.from("bookings").update({ gift_card_id: held.giftCardId }).eq("id", booking.id);
     }
   }
 
@@ -1123,7 +1236,7 @@ export async function finalizeCustomOfferPayment(
     fees: paystackFeesMajor,
     // net_amount represents the Paystack leg only (not wallet/gift — those have their own
     // finance_transactions rows and would double-count if included here).
-    net_amount: paystackAmountMajor - paystackFeesMajor,
+    net_amount: subtractMoney(paystackAmountMajor, paystackFeesMajor),
     status: "success",
     provider:
       input.paymentProvider ??

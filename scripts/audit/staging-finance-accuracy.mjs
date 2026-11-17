@@ -4,13 +4,12 @@
  *
  *   node scripts/audit/staging-finance-accuracy.mjs
  *
- * Runs scripts/audit/staging-finance-accuracy.sql against the linked Supabase
- * project (staging) via `supabase db query`. SELECT only. Writes JSON and CSV
- * under scripts/audit/out/. Does not print service-role keys.
+ * Runs scripts/audit/staging-finance-accuracy.sql against staging via the
+ * Supabase management API (SUPABASE_ACCESS_TOKEN). SELECT only. Writes JSON
+ * and CSV under scripts/audit/out/. Does not print service-role keys.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -172,7 +171,24 @@ function aggregate(rows) {
   );
   const providerEarnings = sum(rows, ["provider_earnings", "membership_provider_earnings"], "net");
   const providerRefundImpact = rows.filter(isProviderRefund).reduce((s, r) => addMoney(s, n(r.net)), 0);
-  const cashRefunds = rows.filter(isCashRefund).reduce((s, r) => addMoney(s, Math.abs(n(r.net))), 0);
+  const cashRefundRows = rows.filter(isCashRefund);
+  const cashRefunds = cashRefundRows.reduce((s, r) => addMoney(s, Math.abs(n(r.net))), 0);
+  const refundTender = (r) => {
+    const t = r.refund_tender ?? r.metadata?.refund_tender;
+    return typeof t === "string" && t.trim() ? t.trim() : "original";
+  };
+  let refunds_store_credit = 0;
+  let refunds_platform_cash_out = 0;
+  let refunds_in_person = 0;
+  for (const r of cashRefundRows) {
+    const absNet = Math.abs(n(r.net));
+    const tender = refundTender(r);
+    if (tender === "store_credit") refunds_store_credit = addMoney(refunds_store_credit, absNet);
+    else if (tender === "cash") refunds_in_person = addMoney(refunds_in_person, absNet);
+    else refunds_platform_cash_out = addMoney(refunds_platform_cash_out, absNet);
+  }
+  const wallet_collected = sum(rows, ["wallet_payment"], "amount");
+  const gift_card_collected = sum(rows, ["gift_card_payment"], "amount");
   const cancellationFees = sum(rows, ["cancellation_fee"], "net");
   const walkIn = sum(rows, ["walk_in_additional_charge"], "net");
   const travelFees = sum(rows, ["travel_fee"], "amount");
@@ -216,6 +232,11 @@ function aggregate(rows) {
     provider_refund_net_impact: providerRefundImpact,
     refunds_gross: cashRefunds,
     refunds_abs_gross: cashRefunds,
+    refunds_store_credit,
+    refunds_platform_cash_out,
+    refunds_in_person,
+    wallet_collected,
+    gift_card_collected,
     tips_gross: sum(rows, ["tip"], "amount"),
     taxes_gross: bookingTaxes,
     subscription_vat: rows.filter(isSubscriptionVat).reduce((s, r) => addMoney(s, n(r.amount)), 0),
@@ -245,28 +266,29 @@ function aggregate(rows) {
   };
 }
 
-function parseCliJson(stdout) {
-  const text = String(stdout);
-  const obj = text.indexOf("{");
-  const arr = text.indexOf("[");
-  const start = obj < 0 ? arr : arr < 0 ? obj : Math.min(obj, arr);
-  const end = Math.max(text.lastIndexOf("}"), text.lastIndexOf("]"));
-  if (start < 0 || end < start) throw new Error("supabase CLI did not return JSON");
-  return JSON.parse(text.slice(start, end + 1));
-}
-
-function runQuery(sqlPath) {
-  const result = spawnSync(
-    "supabase",
-    ["db", "query", "--linked", "-o", "json", "-f", sqlPath],
-    { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
-  );
-  if (result.status !== 0) {
-    const detail = (result.stderr || result.stdout || "query failed").slice(0, 4000);
-    throw new Error(detail);
+async function runQuery(sqlText) {
+  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  if (!token) {
+    throw new Error(
+      "SUPABASE_ACCESS_TOKEN is not set. The installed supabase.exe cannot be launched (Access denied), so this audit uses the management API.",
+    );
   }
-  const parsed = parseCliJson(result.stdout || "");
-  const report = parsed.rows?.[0]?.report;
+  const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ query: sqlText }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`database query failed (${res.status}): ${text.slice(0, 2000)}`);
+  }
+  const parsed = JSON.parse(text);
+  const row = Array.isArray(parsed) ? parsed[0] : parsed?.rows?.[0] ?? parsed;
+  const report = row?.report;
   if (!report) throw new Error("query returned no report row");
   return typeof report === "string" ? JSON.parse(report) : report;
 }
@@ -302,15 +324,8 @@ async function probeApis() {
 function runNamedLedgerAudit() {
   let key = "";
   try {
-    const raw = spawnSync("supabase", ["projects", "api-keys", "--project-ref", projectRef, "-o", "json"], {
-      cwd: root,
-      encoding: "utf8",
-    });
-    if (raw.status !== 0) return { status: "blocked", detail: "could not read staging API keys" };
-    const keys = parseCliJson(raw.stdout || "");
-    const list = Array.isArray(keys) ? keys : keys.rows || keys.keys || keys.items || [];
-    const row = list.find((k) => k.id === "service_role" || k.name === "service_role");
-    key = row?.api_key || row?.apiKey || "";
+    key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    if (!key) return { status: "blocked", detail: "SUPABASE_SERVICE_ROLE_KEY is not set; skipping CLI because supabase.exe is blocked" };
   } catch (error) {
     return {
       status: "blocked",
@@ -443,13 +458,10 @@ if (!template.includes("__AS_OF__")) {
   process.exit(2);
 }
 const sql = template.replaceAll("__AS_OF__", asOf);
-const tempSql = path.join(os.tmpdir(), `staging-finance-accuracy-${Date.now()}.sql`);
-fs.writeFileSync(tempSql, sql);
 
 console.log(`[staging-finance-audit] as_of ${asOf}`);
 console.log("[staging-finance-audit] running read-only SQL");
-const report = runQuery(tempSql);
-fs.unlinkSync(tempSql);
+const report = await runQuery(sql);
 
 console.log("[staging-finance-audit] probing staging HTTP APIs (no credentials)");
 const apiProbes = await probeApis();
@@ -554,10 +566,18 @@ function buildSuperadminMetricQa(comparisons, report) {
   const completedRefunds = n(observed.completed_booking_refunds);
   const providerNetAfter = subMoney(all.provider_recognized_revenue_gross, Math.abs(all.provider_refund_net_impact));
   const commissionOnly = sumMoney(all.platform_take_net, all.subscription_net, all.ads_net, all.marketing_credit_net);
-  const cashCollected = sumMoney(all.service_collected_gross, cash, all.gift_card_sales, all.subscription_gross, all.ads_gross, all.marketing_credit_gross);
-  const netPlatformCash = subMoney(subMoney(subMoney(cashCollected, all.payouts_paid_total), all.refunds_abs_gross), all.gateway_fees_total);
+  const cashCollected = subMoney(
+    sumMoney(all.service_collected_gross, cash, all.gift_card_sales, all.subscription_gross, all.ads_gross, all.marketing_credit_gross),
+    sumMoney(all.wallet_collected, all.gift_card_collected),
+  );
+  const cardRefundsOut = all.refunds_platform_cash_out ?? all.refunds_abs_gross;
+  const netPlatformCash = subMoney(
+    subMoney(subMoney(cashCollected, all.payouts_paid_total), cardRefundsOut),
+    all.gateway_fees_total,
+  );
   const takeNumerator = addMoney(all.platform_take_net, all.service_fee_revenue);
-  const contribution = subMoney(subMoney(all.platform_revenue_net, all.gateway_fees_total), Math.abs(all.platform_refund_impact));
+  const gatewayNonBooking = subMoney(all.gateway_fees_total, all.gateway_fees_services);
+  const contribution = subMoney(all.platform_revenue_net, gatewayNonBooking);
   const shadow = report.shadow_gl || {};
   const rows = [
     qaRow("service_collected_gross", 502.5, all.service_collected_gross, "paid bookings GMV"),
@@ -622,7 +642,9 @@ function buildSuperadminMetricQa(comparisons, report) {
     qaRow("finance.gateway_fees_breakdown.other", 0, sumMoney(all.terminal_gateway_fees, all.subscription_gateway_fees, all.ads_gateway_fees, all.marketing_credit_gateway_fees, all.other_gateway_fees, all.membership_gateway_fees, all.payout_transfer_fees)),
     qaRow("finance.platform_cash.collected", 602.5, cashCollected),
     qaRow("finance.platform_cash.refunds_gross", 315, all.refunds_abs_gross),
-    qaRow("finance.platform_cash.net", 267.27, netPlatformCash),
+    qaRow("finance.refunds_store_credit", 315, all.refunds_store_credit),
+    qaRow("finance.refunds_platform_cash_out", 0, all.refunds_platform_cash_out),
+    qaRow("finance.platform_cash.net", 582.27, netPlatformCash),
     qaRow("finance.platform_revenue.booking_commission", -20.23, all.platform_take_net),
     qaRow("finance.booking_commission_net", 0, all.platform_commission_net),
     qaRow("finance.booking_gateway_fees", 20.23, all.gateway_fees_services),
@@ -651,7 +673,7 @@ function buildSuperadminMetricQa(comparisons, report) {
     qaRow("analytics.platform_net_total", all.platform_revenue_net, month.platform_revenue_net),
     qaRow("analytics.gateway_fees_total", all.gateway_fees_total, month.gateway_fees_total),
     qaRow("marketplace.take_numerator", -5.23, takeNumerator),
-    qaRow("marketplace.contribution_margin", -25.46, contribution),
+    qaRow("marketplace.contribution_margin", -5.23, contribution),
     qaRow("reconciliation.gmv_variance", 0, subMoney(all.service_collected_gross, n(observed.bookings_gmv_aligned))),
     qaRow("existing.completed_without_completed_at", 0, n(observed.completed_without_completed_at)),
     qaRow("existing.duplicate_active_fee_configs", 0, n(observed.duplicate_active_fee_configs)),

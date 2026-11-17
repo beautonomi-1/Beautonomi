@@ -214,6 +214,32 @@ describe("pending expiry refund copy", () => {
     expect(buildPendingExpiryRefundCopy("paid")).toMatch(/fully refunded/);
   });
 
+  it("uses the wallet amount settlement credited when a pending request expires", async () => {
+    const { pendingExpiryRefundNotice } = await import("../pending-expiry-refund-notice");
+    const credited = pendingExpiryRefundNotice({
+      paymentStatus: "paid",
+      currency: "ZAR",
+      settlement: {
+        walletRefundAmount: 150,
+        refundResult: { success: true },
+        giftCardVoidAttempted: true,
+      },
+    });
+    expect(credited.walletRefund).toBe(150);
+    expect(credited.refundInfo).toContain("ZAR 150.00");
+    expect(credited.refundInfo).toContain("returned to the card");
+    expect(credited.refundInfo).not.toContain("fully refunded");
+
+    const pending = pendingExpiryRefundNotice({
+      paymentStatus: "paid",
+      currency: "ZAR",
+      settlementFailed: true,
+    });
+    expect(pending.walletRefund).toBeUndefined();
+    expect(pending.refundInfo).toContain("still processing");
+    expect(pending.refundInfo).not.toContain("fully refunded");
+  });
+
   it("uses distinct copy for SLA-bound expiry vs pre-slot", async () => {
     const { pendingExpiryCancellationReason } = await import("../lifecycle-deadlines");
     expect(pendingExpiryCancellationReason("sla")).toMatch(/reply window/);

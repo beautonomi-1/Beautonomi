@@ -197,8 +197,13 @@ export default function CustomRequestDetailScreen() {
   const isAtHome = request?.location_type === "at_home";
   const defaultDuration = request?.duration_minutes ?? 60;
   const requestCurrency = request?.currency ?? tenantCurrency;
+  const hasOfferBeingPaid = !!request?.offers?.some((o) =>
+    ["payment_pending", "paid", "finalize_failed", "accepted"].includes(String(o.status ?? "")),
+  );
   const canSendOffer =
-    !!request && ["pending", "offered"].includes(String(request.status ?? "pending").toLowerCase());
+    !!request &&
+    !hasOfferBeingPaid &&
+    ["pending", "offered"].includes(String(request.status ?? "pending").toLowerCase());
   const priceNum = price.trim() === "" ? NaN : Number(price);
   const durationNum = Number(durationMinutes);
   const expDaysNum = Number(expirationDays);
@@ -651,10 +656,13 @@ export default function CustomRequestDetailScreen() {
               </View>
             ) : null}
             {request.offers!.map((o) => {
-              const isInactive = o.status === "withdrawn" || o.status === "expired" || (o.expiration_at && new Date(o.expiration_at).getTime() < Date.now());
-              const isPaid = o.status === "paid";
-              const statusColour = isPaid ? "#166534" : isInactive ? "#6b7280" : "#1E40AF";
-              const statusBg = isPaid ? "#DCFCE7" : isInactive ? "#F3F4F6" : "#EFF6FF";
+              const pastExpiration = !!o.expiration_at && new Date(o.expiration_at).getTime() <= Date.now();
+              const isPaid = o.status === "paid" || (o.status === "accepted" && !!o.booking_id);
+              const isClosed = o.status === "withdrawn" || o.status === "declined" || o.status === "finalize_failed" || isPaid;
+              const isExpired = o.status === "expired" || (pastExpiration && !isClosed);
+              const isInactive = isClosed || isExpired;
+              const statusColour = isPaid ? "#166534" : o.status === "finalize_failed" ? "#991B1B" : isInactive ? "#6b7280" : "#1E40AF";
+              const statusBg = isPaid ? "#DCFCE7" : o.status === "finalize_failed" ? "#FEE2E2" : isInactive ? "#F3F4F6" : "#EFF6FF";
               return (
               <TouchableOpacity
                 key={o.id}
@@ -682,7 +690,7 @@ export default function CustomRequestDetailScreen() {
                 </Text>
                 {o.expiration_at ? (
                   <Text style={[twStyle("text-xs mt-0.5"), { color: isInactive ? "#B45309" : "#6b7280" }]}>
-                    {isInactive && o.status !== "paid" && o.status !== "withdrawn" ? cr("expiredPrefix") : cr("expiresPrefix")}
+                    {isExpired ? cr("expiredPrefix") : cr("expiresPrefix")}
                     {formatDateTimeSafe(o.expiration_at)}
                   </Text>
                 ) : null}
@@ -943,11 +951,16 @@ export default function CustomRequestDetailScreen() {
             ) : (() => {
               const d = offerDetailData;
               const req = d.request;
-              const isExpired = d.status === "expired" || (d.expiration_at && new Date(d.expiration_at).getTime() < Date.now());
+              const pastExpiration = !!d.expiration_at && new Date(d.expiration_at).getTime() <= Date.now();
               const isWithdrawn = d.status === "withdrawn";
-              const isPaid = d.status === "paid";
-              const isPending = d.status === "pending";
-              const isChangesRequested = d.status === "changes_requested";
+              const isDeclined = d.status === "declined";
+              const isPaid = d.status === "paid" || (d.status === "accepted" && !!d.booking_id);
+              const isFinalizeFailed = d.status === "finalize_failed" || (d.status === "accepted" && !d.booking_id);
+              const isExpired =
+                d.status === "expired" ||
+                (pastExpiration && !isPaid && !isFinalizeFailed && !isWithdrawn && !isDeclined);
+              const isPending = d.status === "pending" && !isExpired;
+              const isChangesRequested = d.status === "changes_requested" && !isExpired;
 
               const fmtDate = (iso: string | null | undefined) => {
                 if (!iso) return "—";
@@ -956,8 +969,12 @@ export default function CustomRequestDetailScreen() {
 
               const statusBadge = isWithdrawn
                 ? { label: cr("statusWithdrawn"), bg: "#FEF3C7", text: "#92400E" }
+                : isDeclined
+                ? { label: cr("statusDeclined", { defaultValue: "Declined" }), bg: "#F3F4F6", text: "#6B7280" }
                 : isExpired
                 ? { label: cr("statusExpired"), bg: "#F3F4F6", text: "#6B7280" }
+                : isFinalizeFailed
+                ? { label: cr("statusFinalizeFailed", { defaultValue: "Needs support" }), bg: "#FEE2E2", text: "#991B1B" }
                 : isPaid
                 ? { label: cr("statusPaidBooked"), bg: "#DCFCE7", text: "#166534" }
                 : d.status === "payment_pending"

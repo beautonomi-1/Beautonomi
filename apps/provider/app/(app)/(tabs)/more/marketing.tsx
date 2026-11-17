@@ -18,7 +18,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
-import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
@@ -204,7 +204,7 @@ export function MarketingCampaignsContent() {
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState("100");
   const credits = useMarketingCredits();
-  const { data, loading, error, refresh } = useApi<CampaignsListPayload | Record<string, unknown>>(
+  const { data, loading, error, errorCode, refresh } = useApi<CampaignsListPayload | Record<string, unknown>>(
     "/api/provider/campaigns?limit=50"
   );
   const onRefresh = useCallback(async () => {
@@ -529,7 +529,7 @@ export function MarketingCampaignsContent() {
   if (error && !data) {
     return (
       <View style={twStyle("flex-1 justify-center px-4")}>
-        <ErrorState message={error} onRetry={refresh} />
+        <FinanceReportError error={error} errorCode={errorCode} onRetry={refresh} />
       </View>
     );
   }

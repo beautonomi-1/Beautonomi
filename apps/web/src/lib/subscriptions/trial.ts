@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 /** Default trial length when a plan has no `trial_days` column/value. */
 export const DEFAULT_PROVIDER_TRIAL_DAYS = 14;
 
@@ -15,8 +16,8 @@ export function planPriceForPeriod(
   if (!plan) return 0;
   const yearly = Number(plan.price_yearly ?? 0);
   const monthly = Number(plan.price_monthly ?? 0);
-  if (period === "yearly") return yearly > 0 ? yearly : monthly * 12;
-  return monthly > 0 ? monthly : yearly / 12;
+  if (period === "yearly") return yearly > 0 ? yearly : multiplyMoney(monthly, 12);
+  return monthly > 0 ? monthly : multiplyMoney(yearly, 1 / 12);
 }
 
 /** Paid-to-paid downgrade: schedule at period end instead of switching immediately. */

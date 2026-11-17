@@ -3,6 +3,7 @@
  * Creates booking_services for each participant in a group booking
  */
 
+import { addMoney } from "@beautonomi/utils";
 import { SupabaseClient } from '@supabase/supabase-js';
 
 export interface GroupParticipantService {
@@ -55,7 +56,7 @@ export function calculateGroupBookingPrice(
     for (const serviceId of participant.serviceIds) {
       const service = servicesMap.get(serviceId);
       if (service) {
-        total += service.price;
+        total = addMoney(total, service.price);
       }
     }
   }

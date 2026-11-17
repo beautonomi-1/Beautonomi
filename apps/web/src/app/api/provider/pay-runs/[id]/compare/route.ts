@@ -12,6 +12,7 @@ import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
 import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
 import type { PayPeriodType } from "@/lib/payroll/pay-run-engine";
 import { resolvePayrollV2Enabled } from "@/lib/payroll/payroll-v2-gate";
+import { LAST_RESORT_CURRENCY, subtractMoney } from "@beautonomi/utils";
 
 /**
  * GET /api/provider/pay-runs/[id]/compare
@@ -68,7 +69,7 @@ export async function GET(
         staffName: leg.staffName,
         legacyNet: leg.netPay,
         v2Net: neu?.netPay ?? null,
-        delta: neu != null ? Math.round((neu.netPay - leg.netPay) * 100) / 100 : null,
+        delta: neu != null ? subtractMoney(neu.netPay, leg.netPay, LAST_RESORT_CURRENCY) : null,
       };
     });
 

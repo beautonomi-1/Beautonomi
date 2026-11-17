@@ -8,6 +8,7 @@ import type { AppointmentProduct } from "@/components/appointments/types";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { BookingSectionCard, BookingSectionLabel, BookingActionButton } from "../ui";
 import { useTranslation } from "@beautonomi/i18n";
+import { multiplyMoney } from "@beautonomi/utils";
 import {
   productCartLineKey,
   resolveProductLineUnitPrice,
@@ -93,7 +94,7 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
       onChange(
         products.map((x) =>
           productCartLineKey(x.productId, x.productVariantId) === key
-            ? { ...x, quantity: nextQty, totalPrice: nextQty * x.unitPrice }
+            ? { ...x, quantity: nextQty, totalPrice: multiplyMoney(x.unitPrice, nextQty) }
             : x,
         ),
       );
@@ -129,7 +130,7 @@ export function CreateProductsSection({ products, onChange }: CreateProductsSect
           const nextRaw = p.quantity + delta;
           const qty =
             maxStock == null ? Math.max(0, nextRaw) : Math.max(0, Math.min(nextRaw, maxStock));
-          return { ...p, quantity: qty, totalPrice: qty * p.unitPrice };
+          return { ...p, quantity: qty, totalPrice: multiplyMoney(p.unitPrice, qty) };
         })
         .filter((p) => p.quantity > 0),
     );

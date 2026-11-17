@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import { GET as getReceiptJson } from "../route";
@@ -300,10 +301,7 @@ export async function GET(
         ? [{ label: "Cancellation fee", value: moneyPdf(receipt.cancellation_fee, currency), tone: "warning" as const }]
         : []),
       ...(Number(receipt.discount || 0) > 0 &&
-      Number(receipt.package_discount_amount || 0) +
-        Number(receipt.promotion_discount_amount || 0) +
-        Number(receipt.membership_discount_amount || 0) +
-        Number(receipt.loyalty_discount_amount || 0) === 0
+      addMoney(addMoney(addMoney(Number(receipt.package_discount_amount || 0), Number(receipt.promotion_discount_amount || 0)), Number(receipt.membership_discount_amount || 0)), Number(receipt.loyalty_discount_amount || 0)) === 0
         ? [{ label: receipt.discount_reason ? `Discount (${receipt.discount_reason})` : "Discount", value: `-${moneyPdf(receipt.discount, currency)}`, tone: "success" as const }]
         : []),
       ...(Number(receipt.package_discount_amount || 0) > 0

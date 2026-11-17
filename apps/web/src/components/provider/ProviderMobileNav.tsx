@@ -53,6 +53,7 @@ import PlatformLogo from "@/components/platform/PlatformLogo";
 import { useAuth } from "@/providers/AuthProvider";
 import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import type { StaffPermissions } from "@/lib/auth/permissions";
@@ -223,6 +224,8 @@ export function ProviderMobileNav() {
   const { signOut } = useAuth();
   const { branding } = usePlatformSettings();
   const { hasPermission, isLoading: permissionsLoading } = usePermissions();
+  const { provider } = useProviderPortal();
+  const isFreelancer = provider?.business_type === "freelancer";
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
@@ -245,6 +248,9 @@ export function ProviderMobileNav() {
         .map((section) => ({
           ...section,
           items: section.items.filter((item) => {
+            if (isFreelancer && (item.href === "/provider/team/payroll" || item.href === "/provider/team/my-earnings")) {
+              return false;
+            }
             if (!passesNavFeatureFlag(item)) return false;
             if (!item.permission) return true;
             if (permissionsLoading) return true;
@@ -252,7 +258,7 @@ export function ProviderMobileNav() {
           }),
         }))
         .filter((section) => section.items.length > 0),
-    [permissionsLoading, hasPermission, yocoEnabled, paystackTerminalEnabled, unifiedPosEnabled],
+    [permissionsLoading, hasPermission, yocoEnabled, paystackTerminalEnabled, unifiedPosEnabled, isFreelancer],
   );
 
   const primaryColor = branding?.primary_color || "#FF0077";

@@ -80,7 +80,28 @@ function makeSupabasePair(options: {
       };
     }
     if (table === "stock_movements") {
-      return { insert: async () => ({ error: null }) };
+      const chain: Record<string, unknown> = {};
+      chain.select = () => chain;
+      chain.eq = () => chain;
+      chain.then = (onFulfilled: (value: { data: never[] }) => unknown) =>
+        Promise.resolve(onFulfilled({ data: [] }));
+      chain.insert = async () => ({ error: null });
+      return chain;
+    }
+    if (table === "product_orders") {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: {
+                order_source: "online",
+                delivered_at: "2026-01-01T00:00:00.000Z",
+                provider_id: "prov-1",
+              },
+            }),
+          }),
+        }),
+      };
     }
     if (table === "finance_transactions") {
       return {
@@ -206,6 +227,44 @@ describe("processProductReturnRefund", () => {
     const orderUpdate = updates.find((u) => u.table === "product_orders");
     expect(orderUpdate?.payload.payment_status).toBe("partially_refunded");
     expect(orderUpdate?.payload.refunded_amount).toBe(50);
+    expect(String(orderUpdate?.payload.refund_reason)).toContain("return:return-1");
+  });
+
+  it("does not add the refund again when this return was already recorded", async () => {
+    const { supabase, admin, rpcCalls, updates } = makeSupabasePair({
+      order: {
+        id: ORDER_ID,
+        provider_id: "prov-1",
+        payment_status: "partially_refunded",
+        payment_method: "cash",
+        total_amount: 200,
+        wallet_amount: 0,
+        customer_id: "cust-1",
+        currency: "ZAR",
+        tenant_id: "tenant-1",
+        order_number: "ORD-1",
+        refunded_amount: 50,
+        refund_reason: "Return refunded (return:return-1)",
+        status: "delivered",
+      },
+    });
+
+    const result = await processProductReturnRefund({
+      supabase,
+      admin,
+      returnId: RETURN_ID,
+      orderId: ORDER_ID,
+      orderItemId: ITEM_ID,
+      returnQuantity: 1,
+      refundAmount: 50,
+      refundMethod: "cash",
+      actorUserId: "user-1",
+    });
+
+    expect(result).toEqual({ fullyRefunded: false, refundAmount: 50 });
+    expect(updates).toEqual([]);
+    expect(rpcCalls.find((c) => c.fn === "wallet_credit_admin")).toBeUndefined();
+    expect(rpcCalls.find((c) => c.fn === "increment_product_stock")).toBeUndefined();
   });
 
   it("rejects store credit when order has no customer account", async () => {

@@ -16,7 +16,7 @@ import { NewPasswordFields } from "@/components/auth/NewPasswordFields";
 import { isCompleteOtpForLength, normalizeSupabaseSmsOtpToken } from "@/lib/supabase-sms-otp";
 import { DEFAULT_AUTH } from "@/lib/config-bundle";
 import { resolvePostLoginHref } from "@/lib/post-login-href";
-import { getNewPasswordIssue, type NewPasswordIssue } from "@/lib/auth/password-recovery";
+import { getNewPasswordIssue, passwordRecoveryRedirectUrl, type NewPasswordIssue } from "@/lib/auth/password-recovery";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useAuth } from "@/providers/AuthProvider";
 
@@ -59,14 +59,14 @@ export default function ForgotPasswordScreen() {
     : { width: "100%" as const };
 
   const sendResetEmail = async (trimmed: string): Promise<boolean> => {
-    const base = (APP_URL ?? "").replace(/\/$/, "");
-    if (!base) {
+    const redirectTo = passwordRecoveryRedirectUrl(APP_URL);
+    if (!redirectTo) {
       Alert.alert(fp("configErrorTitle"), fp("configErrorBody"));
       return false;
     }
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: `${base}/auth/callback`,
+        redirectTo,
       });
       if (error) {
         Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), error.message);

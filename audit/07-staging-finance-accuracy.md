@@ -1,5 +1,7 @@
 # Staging finance accuracy audit
 
+**Superseded (2026-11-17):** migration `10184_refund_tender_gl_fix.sql` and admin formula updates in this branch. Re-run `node scripts/audit/staging-finance-accuracy.mjs` for current expected figures.
+
 Read-only check of staging Supabase `byfzhyqvtbasxptxdupf`, frozen at **2026-11-16 08:55:00 UTC**. Every statement was a `SELECT`. Nothing on staging was inserted, updated, or repaired.
 
 How to re-run: `node scripts/audit/staging-finance-accuracy.mjs`. Queries live in `scripts/audit/staging-finance-accuracy.sql`. The run writes `scripts/audit/out/staging-finance-accuracy.json` and `.csv`. The nightly script `scripts/prod/audit-finance-ledger.mjs` was also run against staging and printed `OK — ledger invariants hold`.

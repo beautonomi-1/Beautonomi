@@ -1,3 +1,5 @@
+import { addMoney } from "@beautonomi/utils";
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -10,7 +12,7 @@ import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { syncUserAuthMetadataToPublicProfile } from "@/lib/auth/sync-user-auth-metadata";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
-import { resolveAgeBand, readSafetySettingsStored, effectiveSafetySettings } from "@/lib/age-assurance";
+import { resolveAgeBand, ageBandForLocks, readSafetySettingsStored, effectiveSafetySettings } from "@/lib/age-assurance";
 import { resolveUsersByWhatsAppPhone } from "@/lib/whatsapp/resolve-users-by-phone";
 import {
   medianDaysBetweenVisits,
@@ -118,7 +120,7 @@ export async function GET(
         .eq("customer_id", id)
         .in("status", ["completed", "confirmed"]);
 
-      const totalSpent = bookings?.reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
+      const totalSpent = bookings?.reduce((sum, b) => addMoney(sum, b.total_amount || 0), 0) || 0;
 
       const { data: lastBooking } = await supabase
         .from("bookings")
@@ -141,17 +143,21 @@ export async function GET(
 
       const { data: productOrdersForSpend } = await admin
         .from("product_orders")
-        .select("total_amount, payment_status, provider:providers!inner(tenant_id)")
+        .select("total_amount, refunded_amount, payment_status, provider:providers!inner(tenant_id)")
         .eq("customer_id", id)
         .eq("provider.tenant_id", tenantId);
 
       const poRows = (productOrdersForSpend ?? []) as {
         total_amount?: number;
+        refunded_amount?: number | null;
         payment_status?: string;
       }[];
       const product_orders_paid_total = poRows
-        .filter((o) => o.payment_status === "paid")
-        .reduce((s, o) => s + Number(o.total_amount ?? 0), 0);
+        .filter((o) => {
+          const payment = String(o.payment_status ?? "");
+          return payment === "paid" || payment === "partially_refunded" || payment === "refunded";
+        })
+        .reduce((s, o) => addMoney(s, productOrderKeptAmount(o)), 0);
 
       stats.product_orders_count = productOrderCount ?? 0;
       stats.product_orders_paid_total = product_orders_paid_total;
@@ -200,7 +206,7 @@ export async function GET(
       const { data: recentPo } = await admin
         .from("product_orders")
         .select(
-          "id, order_number, status, payment_status, total_amount, currency, fulfillment_type, created_at, provider:providers!inner(id, business_name, tenant_id)",
+          "id, order_number, status, payment_status, total_amount, refunded_amount, currency, fulfillment_type, created_at, provider:providers!inner(id, business_name, tenant_id)",
         )
         .eq("customer_id", id)
         .eq("provider.tenant_id", tenantId)
@@ -240,14 +246,14 @@ export async function GET(
             const amount = Number(row.amount ?? 0);
             const rowNet = Number(row.net ?? row.amount ?? 0);
             if (type === "payment" || type === "provider_earnings" || type === "tip" || type === "travel_fee" || type === "cancellation_fee") {
-              gross += amount;
-              fees += Number(row.fees ?? 0);
-              commission += Number(row.commission ?? 0);
-              net += rowNet;
+              gross = addMoney(gross, amount);
+              fees = addMoney(fees, Number(row.fees ?? 0));
+              commission = addMoney(commission, Number(row.commission ?? 0));
+              net = addMoney(net, rowNet);
             } else if (type === "refund") {
-              refunds += Math.abs(rowNet);
+              refunds = addMoney(refunds, Math.abs(rowNet));
             } else if (type === "payout") {
-              completedPayouts += Math.abs(rowNet);
+              completedPayouts = addMoney(completedPayouts, Math.abs(rowNet));
             }
           }
           const payoutData = await getAvailablePayoutBalance(admin, primaryProvider.id, { tenantId });
@@ -356,7 +362,7 @@ export async function GET(
         .neq("status", "dismissed"),
     ]);
 
-    const safetyEffective = await effectiveSafetySettings(ageBand.band, safetyStored, tenantId);
+    const safetyEffective = await effectiveSafetySettings(ageBandForLocks(ageBand), safetyStored, tenantId);
     const safetySettings: Record<string, boolean> = {};
     const safetyLocked: Record<string, boolean> = {};
     for (const key of [

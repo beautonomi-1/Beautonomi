@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   resolveAgeBand,
+  ageBandForLocks,
   readSafetySettingsStored,
   effectiveSafetySettings,
 } from "@/lib/age-assurance";
@@ -35,12 +36,13 @@ export async function getViewerSafetyContext(
   const tenantId = await resolveTenantIdWithZaFallback(request);
   const supabase = await getSupabaseServer(request);
   const admin = getSupabaseAdmin();
-  const [{ band }, stored, blockedUserIds, mutedUserIds] = await Promise.all([
+  const [resolved, stored, blockedUserIds, mutedUserIds] = await Promise.all([
     resolveAgeBand(userId, supabase),
     readSafetySettingsStored(userId, supabase),
     getBlockedUserIds(userId, admin),
     getMutedUserIds(userId, admin),
   ]);
+  const band = ageBandForLocks(resolved);
   const effective = await effectiveSafetySettings(band, stored, tenantId);
 
   const restricted =

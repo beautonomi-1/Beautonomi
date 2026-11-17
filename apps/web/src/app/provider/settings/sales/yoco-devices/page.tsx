@@ -35,10 +35,14 @@ import { Money } from "@/components/provider-portal/Money";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { fromMinorUnits } from "@beautonomi/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 export default function YocoDevicesPage() {
   const { t } = useTranslation();
   const { bundle, isLoading: isConfigLoading } = useConfigBundle();
+  const { currency: tenantCurrency } = useProviderMoneyFormat();
   const yocoEnabled = bundle?.flags?.payment_yoco?.enabled === true;
   const [devices, setDevices] = useState<YocoDevice[]>([]);
   const [salons, setSalons] = useState<Salon[]>([]);
@@ -397,7 +401,7 @@ export default function YocoDevicesPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">{t("web.provider.settings.pages.sales/yoco-devices.totalAmount")}</span>
                     <span className="font-medium">
-                      <Money amount={device.total_amount / 100} />
+                      <Money amount={fromMinorUnits(Number(device.total_amount ?? 0), tenantCurrency || LAST_RESORT_CURRENCY)} currency={tenantCurrency || LAST_RESORT_CURRENCY} />
                     </span>
                   </div>
                 )}

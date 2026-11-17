@@ -7,6 +7,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   checkMarketingFeatureAccess,
   type MarketingFeatureAccess,
@@ -32,7 +33,7 @@ export async function getProviderMarketingIntegrations(
       .select("is_enabled")
       .eq("provider_id", providerId)
       .maybeSingle(),
-    supabase
+    getSupabaseAdmin()
       .from("provider_twilio_integrations")
       .select("is_sms_enabled, sms_from_number, is_whatsapp_enabled, whatsapp_from_number")
       .eq("provider_id", providerId)

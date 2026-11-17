@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 describe("PATCH admin invoice payment refund", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequireSuperadmin.mockResolvedValue(undefined);
+    mockRequireSuperadmin.mockResolvedValue({ user: { id: "admin-1", role: "superadmin" } });
     mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === "provider_invoice_payments") {
@@ -50,6 +50,9 @@ describe("PATCH admin invoice payment refund", () => {
             return u;
           });
           return c;
+        }
+        if (table === "audit_logs") {
+          return { insert: vi.fn(async () => ({ error: null })) };
         }
         throw new Error(table);
       }),

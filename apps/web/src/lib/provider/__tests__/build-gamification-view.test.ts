@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBadgeLadder,
   buildProgressToNextBadge,
+  pointsInCurrentProviderTier,
   resolveJoinedBadge,
 } from "../build-gamification-view";
 
@@ -56,6 +57,17 @@ describe("buildProgressToNextBadge", () => {
       ratingAverage: 5,
     });
     expect(progress?.progress_percentage).toBe(20);
+  });
+});
+
+describe("pointsInCurrentProviderTier", () => {
+  it("counts every point before a badge is earned", () => {
+    expect(pointsInCurrentProviderTier(80, null)).toBe(80);
+  });
+
+  it("counts points above the current badge requirement", () => {
+    expect(pointsInCurrentProviderTier(250, badges[0])).toBe(150);
+    expect(pointsInCurrentProviderTier(40, badges[0])).toBe(0);
   });
 });
 

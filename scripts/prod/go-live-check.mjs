@@ -239,7 +239,7 @@ function supabaseClient(env) {
 async function prodHandleNewUserSearchPath() {
   const s = supabaseClient("production");
   const q =
-    "SELECT proconfig FROM pg_proc WHERE proname = 'handle_new_user' AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')";
+    "handle_new_user_search_path";
   const { data, error } = await s.rpc("finance_audit_run", { p_query: q });
   if (error) {
     return {

@@ -18,6 +18,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
+import { pendingSavedCardChargeRefusal } from "@/lib/iap/apple/billing-active";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 import { formatInTz, resolveTz } from "@/lib/dates/provider-tz";
@@ -26,14 +27,17 @@ import { enforceStaffCapForProviderPlan } from "@/lib/provider/enforce-staff-cap
 import { isPaidToPaidDowngrade } from "@/lib/subscriptions/trial";
 import {
   clearAppleMerchantOnFree,
-  computePaidPeriodExpiresAt,
+  accessEndFromNextCharge,
   paystackActivationFields,
+  paystackCodeAfterStop,
+  stopPaystackSubscriptionBeforeClear,
 } from "@/lib/subscriptions/provider-billing-merchant";
 import {
   resolveSubscriptionOnlineGatewayId,
   subscriptionGatewayUsesPaystackCustomer,
 } from "@/lib/subscriptions/resolve-subscription-online-gateway";
 import { CLEAR_PENDING_UPGRADE_FIELDS } from "@/lib/subscriptions/pending-upgrade-fields";
+import { markProviderSubscriptionPaymentsRelinquished } from "@/lib/subscriptions/provider-subscription-payment";
 
 const upgradeSubscriptionSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -157,13 +161,14 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       const existingPaystackCode = (existingPaidSub as { paystack_subscription_code?: string | null } | null)
         ?.paystack_subscription_code;
-      if (existingPaystackCode) {
-        try {
-          await disableSubscriptionByCode(existingPaystackCode, { tenantId: subscriptionTenantId });
-        } catch (disableError) {
-          console.warn("[subscription/upgrade] failed to disable Paystack subscription:", disableError);
-        }
-      }
+      const paystackStop = await stopPaystackSubscriptionBeforeClear({
+        supabase: supabaseAdmin,
+        code: existingPaystackCode,
+        tenantId: subscriptionTenantId,
+        providerId,
+      });
+
+      await markProviderSubscriptionPaymentsRelinquished(supabaseAdmin, providerId, now.toISOString());
 
       const { data: subscription, error: subError } = await supabaseAdmin
         .from("provider_subscriptions")
@@ -173,14 +178,13 @@ export async function POST(request: NextRequest) {
             tenant_id: subscriptionTenantId,
             plan_id,
             status: "active",
+            past_due_since: null,
             started_at: now.toISOString(),
             expires_at: null,
             billing_period: billing_period,
             auto_renew: false,
             cancelled_at: null,
-            paystack_sync_pending: false,
-            paystack_sync_note: null,
-            paystack_subscription_code: null,
+            ...paystackCodeAfterStop(paystackStop),
             next_payment_date: null,
             scheduled_plan_id: null,
             scheduled_change_at: null,
@@ -245,6 +249,28 @@ export async function POST(request: NextRequest) {
       }
 
       return successResponse({ subscription_id: (subscription as SubRow).id, is_free: true });
+    }
+
+    const { data: pendingSubscription } = await supabase
+      .from("provider_subscriptions")
+      .select(
+        "billing_provider, last_dunning_retry_at, dunning_retry_count, trial_ends_at, past_due_since, updated_at, apple_grace_period_expires_at",
+      )
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    const pendingCharge = pendingSavedCardChargeRefusal(
+      (pendingSubscription ?? {}) as {
+        billing_provider?: string | null;
+        last_dunning_retry_at?: string | null;
+        dunning_retry_count?: number | null;
+        trial_ends_at?: string | null;
+        past_due_since?: string | null;
+        updated_at?: string | null;
+        apple_grace_period_expires_at?: string | null;
+      },
+    );
+    if (pendingCharge) {
+      return errorResponse(pendingCharge, "SUBSCRIPTION_CHARGE_PENDING", 409);
     }
 
     const onlineGateway = await resolveSubscriptionOnlineGatewayId(tenantId);
@@ -427,20 +453,27 @@ export async function POST(request: NextRequest) {
 
       // Update or create subscription record
       const now = new Date();
+      const accessEnd = accessEndFromNextCharge(
+        paystackSubscription?.next_payment_date ?? null,
+        billing_period,
+        now,
+      );
       const { data: subscription, error: subError } = await supabase.from("provider_subscriptions")
         .upsert({
           provider_id: providerId,
           tenant_id: tenantId,
           plan_id,
           status: "active",
+          past_due_since: null,
           started_at: now.toISOString(),
-          expires_at: computePaidPeriodExpiresAt(billing_period, now),
+          expires_at: accessEnd,
+          billing_period_end: accessEnd,
           billing_period,
           auto_renew: true,
           paystack_subscription_code: paystackSubscription?.subscription_code,
           paystack_authorization_code: authorizationCode,
           paystack_customer_code: customerCode,
-          next_payment_date: paystackSubscription?.next_payment_date,
+          next_payment_date: accessEnd,
           scheduled_plan_id: null,
           scheduled_change_at: null,
           scheduled_billing_period: null,

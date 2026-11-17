@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -71,18 +72,18 @@ export async function GET(request: NextRequest) {
       const date = reportDateKey(row.created_at, reportContext.timezone);
 
       if (row.transaction_type === "membership_sale") {
-        grossSales += amount;
+        grossSales = addMoney(grossSales, amount);
         const existing = salesByDay.get(date) ?? { gross: 0, count: 0 };
-        existing.gross += amount;
+        existing.gross = addMoney(existing.gross, amount);
         existing.count += 1;
         salesByDay.set(date, existing);
       } else if (
         row.transaction_type === "membership_provider_earnings" ||
         isMembershipProviderEarnings(row)
       ) {
-        recognizedEarnings += net;
+        recognizedEarnings = addMoney(recognizedEarnings, net);
       } else if (row.transaction_type === "membership_discount") {
-        memberDiscounts += Math.abs(net);
+        memberDiscounts = addMoney(memberDiscounts, Math.abs(net));
       }
     }
 

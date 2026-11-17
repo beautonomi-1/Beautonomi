@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { roundCurrency, addMoney } from "@beautonomi/utils";
 import { sumKnownSpendForCampaign } from "./placement-metrics";
 
 export type PillarPackRow = {
@@ -58,8 +59,8 @@ export async function rollupPackByPillar(
     let known_spend = 0;
     let envelope = 0;
     for (const c of linked) {
-      envelope += Number(c.budget_envelope ?? 0);
-      known_spend += spendByCampaign.get(c.id) ?? 0;
+      envelope = addMoney(envelope, Number(c.budget_envelope ?? 0));
+      known_spend = addMoney(known_spend, spendByCampaign.get(c.id) ?? 0);
     }
 
     const pillarPlans = (plans ?? []).filter((p) => p.pillar_id === pillar.id);
@@ -68,27 +69,27 @@ export async function rollupPackByPillar(
       let plSpend = 0;
       let plEnv = 0;
       for (const c of planCampaigns) {
-        plEnv += Number(c.budget_envelope ?? 0);
-        plSpend += spendByCampaign.get(c.id) ?? 0;
+        plEnv = addMoney(plEnv, Number(c.budget_envelope ?? 0));
+        plSpend = addMoney(plSpend, spendByCampaign.get(c.id) ?? 0);
       }
       return {
         plan_id: pl.id,
         quarter: pl.quarter,
         plan_budget: Number(pl.budget ?? 0),
         campaign_count: planCampaigns.length,
-        known_spend: Math.round(plSpend * 100) / 100,
+        known_spend: roundCurrency(plSpend),
         budget_envelope: plEnv,
       };
     });
 
-    const plan_budget = planRows.reduce((s, p) => s + p.plan_budget, 0);
+    const plan_budget = planRows.reduce((s, p) => addMoney(s, p.plan_budget), 0);
 
     rows.push({
       pillar_id: pillar.id,
       pillar_name: pillar.name,
       campaign_count: linked.length,
       budget_envelope: envelope,
-      known_spend: Math.round(known_spend * 100) / 100,
+      known_spend: roundCurrency(known_spend),
       plan_budget,
       plans: planRows,
     });

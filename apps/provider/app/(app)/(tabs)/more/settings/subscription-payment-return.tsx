@@ -75,6 +75,14 @@ export default function SubscriptionPaymentReturnScreen() {
     };
 
     if (hostedStatus === "failed" || hostedStatus === "cancelled") {
+      if (reference) {
+        void verifyPaystackWithRetry(reference, {
+          redirectStatus: hostedStatus,
+          sessionId,
+          transactionId,
+          maxAttempts: 1,
+        });
+      }
       setStatus("cancel");
       const t = setTimeout(() => {
         if (!aborted) navigateBack("payment_failed");
@@ -85,6 +93,14 @@ export default function SubscriptionPaymentReturnScreen() {
       };
     }
     if (cancelledFlag === "1") {
+      if (reference) {
+        void verifyPaystackWithRetry(reference, {
+          redirectStatus: "cancelled",
+          sessionId,
+          transactionId,
+          maxAttempts: 1,
+        });
+      }
       setStatus("cancel");
       const t = setTimeout(() => {
         if (!aborted) navigateBack("payment_failed");

@@ -14,7 +14,11 @@ import {
   bookedProductCounts,
   computeCatalogPackageServiceDiscount,
   entitlementMismatch,
+  addMoney,
+  multiplyMoney,
   percentOf,
+  roundCurrency,
+  subtractMoney,
   sumMoney,
   resolveAtHomeAdjustmentForOffering,
 } from "@beautonomi/utils";
@@ -28,7 +32,7 @@ import { segmentFitsAnyShift } from "@/lib/availability/shift-fit";
 import { fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 import { calculateTravelFeeForHold } from "@/lib/travel/calculateTravelFeeForHold";
 import { normalizePersistedServiceFeePercentage } from "@/lib/platform-service-fee-settings";
-import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import { resolveProviderVat, type ResolvedProviderVat } from "@/lib/tax/resolve-provider-vat";
 import { computeVat } from "@beautonomi/utils";
 
 function atHomeAdjustmentForOffering(
@@ -80,6 +84,8 @@ export interface ValidatedBookingData {
   /** true = tax is already included in service prices (extract, don't add) */
   taxIncluded: boolean;
   taxAmount: number;
+  /** F2-39: VAT number / inclusive flag to snapshot onto the booking at create. */
+  providerVat: ResolvedProviderVat;
 
   serviceFeeAmount: number;
   serviceFeePercentage: number;
@@ -1059,10 +1065,10 @@ export async function validateBooking(
         return handleApiError(new Error("Invalid product price"), "Invalid product price", "VALIDATION_ERROR", 400);
       }
 
-      const lineTotal = unitPrice * qty;
+      const lineTotal = multiplyMoney(unitPrice, qty);
       (product as { unitPrice?: number; totalPrice?: number }).unitPrice = unitPrice;
       (product as { unitPrice?: number; totalPrice?: number }).totalPrice = lineTotal;
-      productsSubtotal += lineTotal;
+      productsSubtotal = addMoney(productsSubtotal, lineTotal);
     }
   }
 
@@ -1075,11 +1081,11 @@ export async function validateBooking(
       off.id,
       draft.location_type === "at_home"
     );
-    return sum + base + homeAdj;
+    return addMoney(sum, addMoney(base, homeAdj));
   }, 0);
 
   const addonsSubtotal = addonIds.reduce(
-    (sum, id) => sum + Number(addonById.get(id)?.price || 0),
+    (sum, id) => addMoney(sum, Number(addonById.get(id)?.price || 0)),
     0
   );
 
@@ -1351,9 +1357,12 @@ export async function validateBooking(
   let promotionId: string | null = null;
   let promoDiscountAmount = 0;
   const promoCode = (validatedDraft.promotion_code || "").toString().trim().toUpperCase();
-  const linesSubtotalBeforePromo =
-    Math.max(0, servicesSubtotal - packageDiscountAmount) + addonsSubtotal + productsSubtotal;
-  const prePromoSubtotal = linesSubtotalBeforePromo + travelFee;
+  const linesSubtotalBeforePromo = sumMoney(
+    Math.max(0, subtractMoney(servicesSubtotal, packageDiscountAmount)),
+    addonsSubtotal,
+    productsSubtotal,
+  );
+  const prePromoSubtotal = addMoney(linesSubtotalBeforePromo, travelFee);
 
   if (promoCode) {
     const providerId = draft.provider_id as string | undefined;
@@ -1381,7 +1390,7 @@ export async function validateBooking(
     promoDiscountAmount = promoResolved.promotionDiscountAmount;
   }
 
-  const combinedAfterPromo = Math.max(0, prePromoSubtotal - promoDiscountAmount);
+  const combinedAfterPromo = Math.max(0, subtractMoney(prePromoSubtotal, promoDiscountAmount));
   /** Persisted booking.subtotal: lines only (after catalog package on services), before promo/membership/loyalty. */
   const subtotal = linesSubtotalBeforePromo;
 
@@ -1399,8 +1408,17 @@ export async function validateBooking(
   }
 
   // ── Commission base ──────────────────────────────────────────────────────
-  const commissionBaseBeforeMembership =
-    Math.max(0, servicesSubtotal - packageDiscountAmount) + addonsSubtotal + productsSubtotal - promoDiscountAmount;
+  const commissionBaseBeforeMembership = Math.max(
+    0,
+    subtractMoney(
+      sumMoney(
+        Math.max(0, subtractMoney(servicesSubtotal, packageDiscountAmount)),
+        addonsSubtotal,
+        productsSubtotal,
+      ),
+      promoDiscountAmount,
+    ),
+  );
 
   // ── Membership discount ──────────────────────────────────────────────────
   // §Provider-audit 2026-05: routed through the shared helper so the public
@@ -1419,8 +1437,8 @@ export async function validateBooking(
   const membershipId = membershipResolved.membershipId;
   const membershipDiscountAmount = membershipResolved.membershipDiscountAmount;
 
-  const subtotalAfterMembership = Math.max(0, combinedAfterPromo - membershipDiscountAmount);
-  const commissionBase = Math.max(0, commissionBaseBeforeMembership - membershipDiscountAmount);
+  const subtotalAfterMembership = Math.max(0, subtractMoney(combinedAfterPromo, membershipDiscountAmount));
+  const commissionBase = Math.max(0, subtractMoney(commissionBaseBeforeMembership, membershipDiscountAmount));
 
   // ── Tips / Tax ───────────────────────────────────────────────────────────
   const tipsEnabled = Boolean((provider as any)?.tips_enabled ?? true);
@@ -1481,7 +1499,7 @@ export async function validateBooking(
       );
     }
 
-    const maxDiscount = (subtotalAfterMembership * maxPct) / 100;
+    const maxDiscount = percentOf(subtotalAfterMembership, maxPct, currency);
     const maxPointsByCap = Math.floor(maxDiscount * redemptionRate);
     const pointsToRedeem = Math.min(loyaltyPointsRequested, maxPointsByCap);
 
@@ -1519,10 +1537,10 @@ export async function validateBooking(
 
     const discount = pointsToRedeem / redemptionRate;
     loyaltyPointsRedeemed = pointsToRedeem;
-    loyaltyDiscountAmount = Math.round(discount * 100) / 100;
+    loyaltyDiscountAmount = roundCurrency(discount, currency);
   }
 
-  const baseAfterLoyalty = Math.max(0, subtotalAfterMembership - loyaltyDiscountAmount);
+  const baseAfterLoyalty = Math.max(0, subtractMoney(subtotalAfterMembership, loyaltyDiscountAmount));
 
   const taxAmount =
     taxRate > 0
@@ -1604,13 +1622,13 @@ export async function validateBooking(
     serviceFeePercentage = 0;
   }
 
-  const persistedSubtotalForFee = subtotal + packageDiscountAmount;
+  const persistedSubtotalForFee = addMoney(subtotal, packageDiscountAmount);
   const netAfterLineDiscounts = Math.max(
     0,
-    persistedSubtotalForFee -
-      packageDiscountAmount -
-      promoDiscountAmount -
+    subtractMoney(
+      subtractMoney(subtractMoney(persistedSubtotalForFee, packageDiscountAmount), promoDiscountAmount),
       membershipDiscountAmount,
+    ),
   );
   serviceFeePercentage = normalizePersistedServiceFeePercentage(
     serviceFeeAmount,
@@ -1623,7 +1641,7 @@ export async function validateBooking(
     : sumMoney(baseAfterLoyalty, tipAmount, taxAmount, serviceFeeAmount);
 
   let loyaltyPointsProjected = 0;
-  const earnBaseSubtotal = Math.max(0, subtotal + packageDiscountAmount);
+  const earnBaseSubtotal = Math.max(0, addMoney(subtotal, packageDiscountAmount));
   const { data: loyaltyRule } = await supabase
     .from("loyalty_rules")
     .select("points_per_currency_unit, currency")
@@ -1795,7 +1813,7 @@ export async function validateBooking(
           offering_id: off.id,
           staff_id: staffId,
           duration_minutes: Number(off.duration_minutes),
-          price: Number(off.price) + homeAdj,
+          price: addMoney(Number(off.price), homeAdj),
           currency,
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
@@ -1821,7 +1839,7 @@ export async function validateBooking(
         offering_id: off.id,
         staff_id: s.staff_id || null,
         duration_minutes: Number(off.duration_minutes),
-        price: Number(off.price) + homeAdj,
+        price: addMoney(Number(off.price), homeAdj),
         currency,
         scheduled_start_at: start.toISOString(),
         scheduled_end_at: end.toISOString(),
@@ -2367,6 +2385,7 @@ export async function validateBooking(
     taxRate,
     taxIncluded,
     taxAmount,
+    providerVat: resolvedVat,
 
     serviceFeeAmount,
     serviceFeePercentage,

@@ -3,14 +3,30 @@ import type { BookingDraft, ClientInfo } from "@/types/beautonomi";
 import { zPublicBookingStaffIdOptional } from "./zod-public-staff-id";
 
 /**
+ * Postgres uuid, any variant. Zod's RFC 4122 uuid check rejects staging seed
+ * ids (variant nibble c/d/e/f). Same rule as booking-holds.
+ */
+function zPostgresUuid(message?: string) {
+  return message ? z.guid(message) : z.guid();
+}
+
+/** Optional uuid; blank strings become null so salon checkout can omit a location. */
+function zOptionalPostgresUuid() {
+  return z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? null : val),
+    z.guid().optional().nullable(),
+  );
+}
+
+/**
  * One retail product line on a booking (web + mobile may send camelCase or snake_case; JSON numbers may be strings).
  */
 export const bookingProductLineSchema = z
   .object({
-    productId: z.string().uuid("Invalid product ID").optional(),
-    product_id: z.string().uuid("Invalid product ID").optional(),
-    productVariantId: z.string().uuid().optional().nullable(),
-    product_variant_id: z.string().uuid().optional().nullable(),
+    productId: zPostgresUuid("Invalid product ID").optional(),
+    product_id: zPostgresUuid("Invalid product ID").optional(),
+    productVariantId: zOptionalPostgresUuid(),
+    product_variant_id: zOptionalPostgresUuid(),
     quantity: z.coerce.number().int().positive("Quantity must be positive"),
     unitPrice: z.coerce.number().min(0, "Unit price must be non-negative"),
     totalPrice: z.coerce.number().min(0, "Total price must be non-negative"),
@@ -38,18 +54,18 @@ export type BookingProductLine = z.infer<typeof bookingProductLineSchema>;
  * POST /api/public/bookings JSON body (parsed + staff ids normalized for DB in the route).
  */
 export const bookingDraftSchema = z.object({
-  provider_id: z.string().uuid("Invalid provider ID"),
+  provider_id: zPostgresUuid("Invalid provider ID"),
   services: z
     .array(
       z.object({
-        offering_id: z.string().uuid("Invalid offering ID"),
+        offering_id: zPostgresUuid("Invalid offering ID"),
         staff_id: zPublicBookingStaffIdOptional,
       })
     )
     .min(1, "At least one service is required"),
   selected_datetime: z.string().datetime("Invalid datetime format"),
   location_type: z.enum(["at_home", "at_salon"]),
-  location_id: z.string().uuid().optional().nullable(),
+  location_id: zOptionalPostgresUuid(),
   address: z
     .object({
       line1: z.string().min(1),
@@ -69,24 +85,24 @@ export const bookingDraftSchema = z.object({
     })
     .optional()
     .nullable(),
-  addons: z.array(z.string().uuid("Invalid addon ID")).optional(),
+  addons: z.array(zPostgresUuid("Invalid addon ID")).optional(),
   products: z.array(bookingProductLineSchema).optional(),
-  package_id: z.string().uuid().optional().nullable(),
+  package_id: zOptionalPostgresUuid(),
   /** When redeeming a prepaid session row from `customer_package_entitlements` (must match `package_id`). */
-  customer_package_entitlement_id: z.string().uuid().optional().nullable(),
+  customer_package_entitlement_id: zOptionalPostgresUuid(),
   tip_amount: z.number().min(0).optional(),
   travel_fee: z.number().min(0).optional(),
   special_requests: z.string().optional().nullable(),
   house_call_instructions: z.string().optional().nullable(),
   client_info: z.unknown().optional(),
   payment_method: z.enum(["card", "cash", "giftcard"]).optional(),
-  payment_method_id: z.string().uuid().optional().nullable(),
+  payment_method_id: zOptionalPostgresUuid(),
   payment_option: z.enum(["deposit", "full"]).optional(),
   save_card: z.boolean().optional(),
   set_as_default: z.boolean().optional(),
   promotion_code: z.string().optional().nullable(),
   gift_card_code: z.string().optional().nullable(),
-  membership_plan_id: z.string().uuid().optional().nullable(),
+  membership_plan_id: zOptionalPostgresUuid(),
   use_wallet: z.boolean().optional(),
   is_group_booking: z.boolean().optional(),
   /** When `split`, organizer pays their share + fees at checkout; guests pay via invite. */
@@ -99,21 +115,21 @@ export const bookingDraftSchema = z.object({
         name: z.string(),
         email: z.string().optional().nullable(),
         phone: z.string().optional().nullable(),
-        service_ids: z.array(z.string().uuid()),
+        service_ids: z.array(zPostgresUuid()),
         notes: z.string().optional().nullable(),
       })
     )
     .optional()
     .nullable(),
-  hold_id: z.string().uuid().optional().nullable(),
+  hold_id: zOptionalPostgresUuid(),
   loyalty_points_used: z.number().int().min(0).optional(),
-  reschedule_booking_id: z.string().uuid().optional().nullable(),
+  reschedule_booking_id: zOptionalPostgresUuid(),
   /** Ordered resource UUIDs for offerings that require rooms/equipment (see booking-holds + consume flow). */
-  resource_ids: z.array(z.string().uuid("Invalid resource ID")).optional(),
+  resource_ids: z.array(zPostgresUuid("Invalid resource ID")).optional(),
   /** Minutes after service duration for mobile at-home slots; must match `/api/availability` `travelBuffer`. (Calendar also passes `providerId` to that route when staff is "any" — not part of this JSON body.) */
   availability_travel_buffer_minutes: z.coerce.number().int().min(0).max(360).optional(),
   /** Sponsored-listing campaign that led to this booking, used for server-side ad attribution/reporting. */
-  campaign_id: z.string().uuid().optional().nullable(),
+  campaign_id: zOptionalPostgresUuid(),
   /** When enabled, recurring series is created after payment (Paystack metadata) or immediately if no card redirect. */
   subscribe_recurring: z
     .object({

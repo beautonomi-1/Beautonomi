@@ -189,6 +189,21 @@ export async function resolveProviderVat(
   };
 }
 
+/**
+ * Columns snapshotted onto `bookings` / `product_orders` at creation (migration
+ * 10102) so invoices and VAT reports carry the VAT number that applied at the
+ * time of sale even if the provider later edits their tax settings (F2-39).
+ */
+export function providerVatSnapshotColumns(providerVat: ResolvedProviderVat): {
+  tax_inclusive: boolean;
+  provider_vat_number_snapshot: string | null;
+} {
+  return {
+    tax_inclusive: providerVat.inclusive,
+    provider_vat_number_snapshot: providerVat.registered ? providerVat.vatNumber ?? null : null,
+  };
+}
+
 /** Per-line rate: zero_or_exempt → 0; otherwise provider rate. */
 export function lineVatRatePercent(
   providerVat: ResolvedProviderVat,

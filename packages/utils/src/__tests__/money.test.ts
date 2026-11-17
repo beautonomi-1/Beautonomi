@@ -97,4 +97,21 @@ describe("currency-aware money", () => {
       formatMoney(1_250_000, "ZAR", "en-ZA"),
     );
   });
+
+  it("percentOf is idempotent under roundCurrency over random samples (F-09)", () => {
+    let seed = 123456789;
+    const rand = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 0xffffffff;
+    };
+    for (let i = 0; i < 200; i++) {
+      const amount = Math.round(rand() * 100_000) / 100;
+      const pct = Math.round(rand() * 2_500) / 100;
+      const got = percentOf(amount, pct, "ZAR");
+      expect(got).toBe(roundCurrency(got, "ZAR"));
+      expect(percentOf(amount, 0, "ZAR")).toBe(0);
+    }
+    expect(percentOf(100, 15, "ZAR")).toBe(15);
+    expect(percentOf(99.99, 100, "ZAR")).toBe(99.99);
+  });
 });

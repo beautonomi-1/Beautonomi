@@ -7,6 +7,7 @@ import {
   getProviderIdForUser,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 import { getRequestOrigin, resolvePublicBookingOrigin } from "@/lib/booking/resolve-public-booking-origin";
 import { getTenantDomainEnvironment } from "@/lib/tenant/tenant-domain-environment";
@@ -83,7 +84,9 @@ const updateBookingLinkSchema = z.object({
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 

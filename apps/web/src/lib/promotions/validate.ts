@@ -9,7 +9,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { percentOf } from "@beautonomi/utils";
+import { percentOf, subtractMoney } from "@beautonomi/utils";
 import {
   customerHasPromotionUsage,
   ONCE_PER_CUSTOMER_MESSAGE,
@@ -220,7 +220,7 @@ export async function validatePromoCode(
     discount: {
       amount: discountAmount,
       original_amount: amount,
-      final_amount: amount - discountAmount,
+      final_amount: subtractMoney(amount, discountAmount),
       percentage: promo.type === "percentage" ? Number(promo.value) : null,
     },
   };

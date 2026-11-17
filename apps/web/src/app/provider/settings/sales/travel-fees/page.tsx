@@ -1,5 +1,7 @@
 "use client";
 
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
+
 import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -241,7 +243,7 @@ export default function TravelFeesSettings() {
     const maximumRaw = settings.use_platform_default
       ? platformLimits?.default_maximum_fee
       : settings.maximum_fee;
-    const uncapped = minimum + km * rate;
+    const uncapped = addMoney(minimum, multiplyMoney(rate, km));
     return maximumRaw != null ? Math.min(uncapped, Number(maximumRaw)) : uncapped;
   })();
 

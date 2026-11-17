@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { codesForRollup } from "./codes";
 
@@ -59,7 +60,7 @@ export async function fetchMeasuredForCampaign(
       .gte("used_at", startIso)
       .lte("used_at", endIso);
     promo_redemptions = usage?.length ?? 0;
-    promo_discount = (usage ?? []).reduce((s, r) => s + Number(r.discount_amount ?? 0), 0);
+    promo_discount = (usage ?? []).reduce((s, r) => addMoney(s, Number(r.discount_amount ?? 0)), 0);
     const bookingIds = (usage ?? []).map((u) => u.booking_id).filter(Boolean) as string[];
     if (bookingIds.length) {
       const { data: bookings } = await supabase
@@ -68,7 +69,7 @@ export async function fetchMeasuredForCampaign(
         .in("id", bookingIds)
         .eq("tenant_id", tenantId)
         .eq("status", "completed");
-      promo_booking_value = (bookings ?? []).reduce((s, b) => s + Number(b.total_amount ?? 0), 0);
+      promo_booking_value = (bookings ?? []).reduce((s, b) => addMoney(s, Number(b.total_amount ?? 0)), 0);
     }
   }
 
@@ -88,7 +89,7 @@ export async function fetchMeasuredForCampaign(
         .in("customer_id", userIds)
         .gte("scheduled_at", startIso)
         .lte("scheduled_at", endIso);
-      attributed_booking_value = (bookings ?? []).reduce((s, b) => s + Number(b.total_amount ?? 0), 0);
+      attributed_booking_value = (bookings ?? []).reduce((s, b) => addMoney(s, Number(b.total_amount ?? 0)), 0);
     }
   }
 
@@ -117,7 +118,7 @@ export async function fetchMeasuredForCampaign(
     }
     const { data: refs } = await q;
     referral_completions = refs?.length ?? 0;
-    referral_rewards = (refs ?? []).reduce((s, r) => s + Number(r.reward_amount ?? 0), 0);
+    referral_rewards = (refs ?? []).reduce((s, r) => addMoney(s, Number(r.reward_amount ?? 0)), 0);
   }
 
   let ads_clicks = 0;

@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { Money } from "@/components/provider-portal/Money";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { providerPortalFetch } from "@/lib/http/fetcher";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { getDefaultMoneyLocale, roundCurrency, addMoney, subtractMoney } from "@beautonomi/utils";
 interface ClientHistory {
   id: string;
   type: "appointment" | "sale" | "note";
@@ -517,9 +517,9 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                     const travel = parseFloat(String(item.travel_fee || 0));
                     const total = parseFloat(String(item.amount || 0));
                     
-                    const calculatedServiceFee = total - subtotal + discount - tax - travel - tip;
+                    const calculatedServiceFee = subtractMoney(subtractMoney(subtractMoney(subtractMoney(addMoney(total, discount), subtotal), tax), travel), tip);
                     if (calculatedServiceFee > 0.01) {
-                      displayServiceFeeAmount = Math.round(calculatedServiceFee * 100) / 100;
+                      displayServiceFeeAmount = roundCurrency(calculatedServiceFee);
                     }
                   }
                   

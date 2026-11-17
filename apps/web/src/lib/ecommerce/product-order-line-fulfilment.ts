@@ -41,12 +41,97 @@ export function normalizeLineStatus(raw: string | null | undefined): LineFulfilm
   return (LINE_FULFILMENT_STATUSES as readonly string[]).includes(s) ? (s as LineFulfilmentStatus) : "pending";
 }
 
+/** Collection and in-store pickup share one path. Delivery uses the courier path. */
+export function isCollectionFulfillment(type: string | null | undefined): boolean {
+  const ft = String(type ?? "").toLowerCase();
+  return ft === "collection" || ft === "pickup";
+}
+
+/**
+ * `shipped` is the delivery dispatch status. `ready_for_collection` is the
+ * collection equivalent. Every other order status is shared.
+ */
+export function productOrderStatusFitsFulfillment(
+  status: string,
+  fulfillmentType: string | null | undefined,
+): boolean {
+  const collection = isCollectionFulfillment(fulfillmentType);
+  if (status === "shipped") return !collection;
+  if (status === "ready_for_collection") return collection;
+  return true;
+}
+
+export function filterProductOrderStatusActions<T extends { next: string }>(
+  actions: T[],
+  fulfillmentType: string | null | undefined,
+): T[] {
+  return actions.filter((action) => productOrderStatusFitsFulfillment(action.next, fulfillmentType));
+}
+
+/** Line status written when the whole order is marked at this fulfilment step. */
+export function lineStatusForOrderStatus(orderStatus: string): LineFulfilmentStatus | null {
+  if (orderStatus === "ready_for_collection") return "packed";
+  if (orderStatus === "shipped") return "shipped";
+  if (orderStatus === "delivered") return "delivered";
+  return null;
+}
+
+/** Line statuses that move forward with that order status. Delivered lines stay delivered. */
+export function lineStatusesAdvancedByOrderStatus(orderStatus: string): LineFulfilmentStatus[] | null {
+  if (orderStatus === "ready_for_collection") return ["pending"];
+  if (orderStatus === "shipped") return ["pending", "packed"];
+  if (orderStatus === "delivered") return ["pending", "packed", "shipped"];
+  return null;
+}
+
+/**
+ * Keep line fulfilment in step with an order-level status change.
+ * Courier sync and the provider "mark shipped / ready / collected" actions
+ * both go through this so the customer line labels match the order.
+ */
+export async function syncProductOrderLinesToOrderStatus(
+  supabase: { from: (table: string) => any },
+  orderId: string,
+  orderStatus: string,
+): Promise<void> {
+  const next = lineStatusForOrderStatus(orderStatus);
+  const fromStatuses = lineStatusesAdvancedByOrderStatus(orderStatus);
+  if (!next || !fromStatuses) return;
+
+  const { data, error } = await supabase
+    .from("product_order_items")
+    .select("id, quantity, fulfilment_status")
+    .eq("order_id", orderId);
+  if (error || !data) return;
+
+  const now = new Date().toISOString();
+  const advance = new Set<string>(fromStatuses);
+  for (const line of data) {
+    const from = normalizeLineStatus(line.fulfilment_status);
+    if (!advance.has(from)) continue;
+    const patch: Record<string, unknown> = {
+      fulfilment_status: next,
+      fulfilment_updated_at: now,
+    };
+    if (next === "shipped" || next === "delivered") {
+      patch.fulfilled_qty = Math.max(0, Number(line.quantity) || 0);
+    }
+    await supabase.from("product_order_items").update(patch).eq("id", line.id);
+  }
+}
+
 /** Forward-only transitions (plus cancel from any non-terminal state). */
-export function isValidLineTransition(from: LineFulfilmentStatus, to: LineFulfilmentStatus): boolean {
+export function isValidLineTransition(
+  from: LineFulfilmentStatus,
+  to: LineFulfilmentStatus,
+  fulfillmentType?: string | null,
+): boolean {
   if (from === to) return true;
   if (from === "cancelled") return false;
   if (from === "delivered") return false;
   if (to === "cancelled") return true;
+  // Collection orders are picked up. "Shipped" is the courier status.
+  if (to === "shipped" && isCollectionFulfillment(fulfillmentType)) return false;
   return RANK[to] > RANK[from];
 }
 
@@ -94,7 +179,7 @@ export function deriveOrderStatusFromLines(params: {
   const s = summarizeLineFulfilment(lines);
   if (s.active === 0) return null;
 
-  const isCollection = params.fulfillmentType === "collection";
+  const isCollection = isCollectionFulfillment(params.fulfillmentType);
   let derived: string | null = null;
   if (s.delivered === s.active) {
     derived = "delivered";

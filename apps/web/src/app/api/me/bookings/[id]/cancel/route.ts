@@ -5,15 +5,22 @@ import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabas
 import { loadCancellationOutcomeForBooking } from "@/lib/bookings/load-cancellation-outcome";
 import {
   assertCancellationAllowed,
-  describeRefundFromOutcome,
+  cancellationNoticeFromGroupChild,
+  cancellationNoticeFromSettlement,
   settleParamsFromCancellationOutcome,
 } from "@/lib/bookings/cancellation-outcome-bridge";
+import { recordSettledWalletOnCancelEvent } from "@/lib/bookings/record-settled-cancel-event-wallet";
 import {
   settleBookingCancellation,
   type BookingFinancialSnapshot,
 } from "@/lib/bookings/settle-booking-cancellation";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  lineUpBookingStockWithSavedStatus,
+  restoreBookingRetailStock,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import {
   hasPendingRescheduleReplacement,
@@ -168,6 +175,17 @@ export async function POST(
     };
 
     const currentVersion = (booking as BookingRow).version ?? 0;
+    let stockReturned: Awaited<ReturnType<typeof restoreBookingRetailStock>> = [];
+    try {
+      stockReturned = await restoreBookingRetailStock(adminSupabase, bookingId);
+    } catch (stockErr) {
+      return handleApiError(
+        stockErr instanceof Error ? stockErr : new Error("Product stock could not be restored"),
+        "Product stock could not be restored. The visit was not cancelled.",
+        "STOCK_ERROR",
+        409,
+      );
+    }
     const { data: updatedRows, error: updateError } = await adminSupabase
       .from('bookings')
       .update({
@@ -182,6 +200,19 @@ export async function POST(
       .eq('id', bookingId)
       .eq('version', currentVersion)
       .select();
+
+    if (updateError || !updatedRows || updatedRows.length === 0) {
+      try {
+        await lineUpBookingStockWithSavedStatus(adminSupabase, bookingId, [], stockReturned);
+      } catch (undoErr) {
+        return handleApiError(
+          undoErr instanceof Error ? undoErr : new Error("Product stock could not be deducted"),
+          "This booking changed, and the product stock could not be put back in line with it.",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+    }
 
     if (updateError) {
       throw updateError;
@@ -201,14 +232,7 @@ export async function POST(
     const entitlementId = (booking as { customer_package_entitlement_id?: string | null })
       .customer_package_entitlement_id;
     if (entitlementId) {
-      try {
-        await adminSupabase.rpc("restore_customer_package_entitlement", {
-          p_entitlement_id: entitlementId,
-          p_customer_id: user.id,
-        });
-      } catch (restoreErr) {
-        console.error("[cancel booking] restore_customer_package_entitlement", restoreErr);
-      }
+      await returnPackageSessionAfterCancel(adminSupabase, bookingId);
     }
 
     // Create booking event
@@ -271,17 +295,8 @@ export async function POST(
 
     const isGroupBooking = !!groupBookingData;
 
-    // Send cancellation notification
     const { sendCancellationNotification } = await import('@/lib/bookings/notifications');
-    const refundInfo = describeRefundFromOutcome(outcome, bookingTotal, cancelCurrency);
-    
-    await sendCancellationNotification(bookingId, {
-      cancelledBy: 'customer',
-      refundInfo,
-      feeRetained: cancellationFeeApplied,
-      walletRefund: walletRefundAmount,
-      currency: cancelCurrency,
-    });
+    let groupLeadNotice: ReturnType<typeof cancellationNoticeFromSettlement> | null = null;
 
     // §Group-booking-qa 2026-05: when a non-primary participant cancels their
     // individual booking the group continues but its total_price becomes stale
@@ -329,9 +344,10 @@ export async function POST(
 
     // If group booking, cancel entire group and notify all participants
     if (isGroupBooking && groupBookingData) {
+      let leadNoticeSent = false;
       try {
         const { cancelGroupBooking, getGroupBookingParticipantsForCancellation } = await import('@/lib/bookings/group-booking-cancellation');
-        await cancelGroupBooking(adminSupabase, groupBookingData.id, user.id, body.reason || 'Customer cancellation', {
+        const childSettlements = await cancelGroupBooking(adminSupabase, groupBookingData.id, user.id, body.reason || 'Customer cancellation', {
           settleFinance: true,
           financeActor: "customer",
           settleAlreadyCancelledBookingIds: [bookingId],
@@ -340,10 +356,29 @@ export async function POST(
             isLateCancellation: isLate,
           },
         });
+        const leadChild = childSettlements.find((child) => child.bookingId === bookingId);
+        groupLeadNotice = leadChild
+          ? cancellationNoticeFromGroupChild(leadChild)
+          : cancellationNoticeFromSettlement({
+              currency: cancelCurrency,
+              walletRefundAmount: 0,
+              refundSucceeded: false,
+              settlementFailed: true,
+            });
+        await sendCancellationNotification(bookingId, {
+          cancelledBy: 'customer',
+          refundInfo: groupLeadNotice.refundInfo,
+          feeRetained: cancellationFeeApplied,
+          walletRefund: groupLeadNotice.walletRefund,
+          currency: cancelCurrency,
+        });
+        leadNoticeSent = true;
+        await recordSettledWalletOnCancelEvent(
+          adminSupabase,
+          bookingId,
+          groupLeadNotice.walletRefund ?? 0,
+        );
 
-        // Notify all participants directly via OneSignal. Previously this used a
-        // server-side fetch('/api/notifications/send-email') which is unsafe in a
-        // Route Handler (relative URL has no origin) and required an admin role.
         const { sendToUser } = await import('@/lib/notifications/onesignal');
         const participants = await getGroupBookingParticipantsForCancellation(supabase, groupBookingData.id);
         const { notifyGroupGuestsWithoutAccountsOfCancellation } = await import("@/lib/bookings/group-booking-notifications");
@@ -352,9 +387,16 @@ export async function POST(
           providerId: booking.provider_id,
           bookingRef: booking.booking_number || bookingId,
           cancelledBy: "customer",
+          guestCardRefundPending: childSettlements.some((child) => child.guestShareRefundFailed),
         });
         for (const participant of participants) {
-          if (!participant.participant_email) continue;
+          if (participant.is_primary_contact || !participant.participant_email) continue;
+          const child = participant.booking_id
+            ? childSettlements.find((row) => row.bookingId === participant.booking_id)
+            : undefined;
+          const participantRefund = child
+            ? cancellationNoticeFromGroupChild(child).refundInfo
+            : "The group booking has been cancelled.";
           const { data: participantUser } = await adminSupabase
             .from('users')
             .select('id')
@@ -366,7 +408,7 @@ export async function POST(
               participantUser.id,
               {
                 title: `Group Booking Cancelled - ${booking.booking_number || bookingId}`,
-                message: `Hi ${participant.participant_name}, the group booking ${booking.booking_number || bookingId} has been cancelled. ${refundInfo}`,
+                message: `Hi ${participant.participant_name}, the group booking ${booking.booking_number || bookingId} has been cancelled. ${participantRefund}`,
                 type: 'group_booking_cancellation',
               },
               ['email'],
@@ -377,6 +419,21 @@ export async function POST(
         }
       } catch (groupError) {
         console.error('Error handling group booking cancellation:', groupError);
+        if (!leadNoticeSent) {
+          const pendingNotice = cancellationNoticeFromSettlement({
+            currency: cancelCurrency,
+            walletRefundAmount: 0,
+            refundSucceeded: false,
+            settlementFailed: true,
+          });
+          await sendCancellationNotification(bookingId, {
+            cancelledBy: 'customer',
+            refundInfo: pendingNotice.refundInfo,
+            feeRetained: cancellationFeeApplied,
+            walletRefund: pendingNotice.walletRefund,
+            currency: cancelCurrency,
+          });
+        }
         return handleApiError(
           groupError instanceof Error ? groupError : new Error(String(groupError)),
           'Your booking was cancelled but we could not finish cancelling the rest of the group. Please contact support.',
@@ -419,8 +476,20 @@ export async function POST(
     // Skip for group primaries: cancelGroupBooking(settleFinance: true) above already settled
     // every participant booking (including this one); settling again would re-run
     // processBookingRefund against a stale snapshot and double-credit the wallet.
-    let refundStatus: "settled" | "pending" | "none" = isGroupBooking ? "settled" : "none";
+    let refundStatus: "settled" | "pending" | "none" = isGroupBooking
+      ? groupLeadNotice?.refundPending
+        ? "pending"
+        : groupLeadNotice?.walletRefund
+          ? "settled"
+          : "none"
+      : "none";
     if (!isGroupBooking) {
+      let notice = cancellationNoticeFromSettlement({
+        currency: cancelCurrency,
+        walletRefundAmount: 0,
+        refundSucceeded: false,
+        settlementFailed: true,
+      });
       try {
         const settlement = await settleBookingCancellation(
           settleParamsFromCancellationOutcome(outcome, "customer", {
@@ -435,11 +504,22 @@ export async function POST(
           : settlement.refundResult.success === false
             ? "pending"
             : "settled";
+        notice = cancellationNoticeFromSettlement({
+          currency: cancelCurrency,
+          walletRefundAmount: settlement.walletRefundAmount ?? 0,
+          refundSucceeded: settlement.refundResult.success === true,
+          giftCardRestored: settlement.giftCardVoidAttempted === true,
+          giftValueStillDue: settlement.giftValueStillDue === true,
+          inPersonRefundDue: settlement.inPersonCashRefundDue,
+        });
         if (settlement.cancellationFeeApplied != null) {
-          await adminSupabase
+          const { error: feeError } = await adminSupabase
             .from("bookings")
             .update({ cancellation_fee: settlement.cancellationFeeApplied })
             .eq("id", bookingId);
+          if (feeError) {
+            console.error("Error saving cancellation fee:", feeError);
+          }
         }
       } catch (settleErr) {
         const message = settleErr instanceof Error ? settleErr.message : "settlement_failed";
@@ -450,6 +530,18 @@ export async function POST(
           .eq("id", bookingId);
         refundStatus = "pending";
       }
+      await sendCancellationNotification(bookingId, {
+        cancelledBy: "customer",
+        refundInfo: notice.refundInfo,
+        feeRetained: cancellationFeeApplied,
+        walletRefund: notice.walletRefund,
+        currency: cancelCurrency,
+      });
+      await recordSettledWalletOnCancelEvent(
+        adminSupabase,
+        bookingId,
+        notice.walletRefund ?? 0,
+      );
     }
 
     // Track Amplitude event

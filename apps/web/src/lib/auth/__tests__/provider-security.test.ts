@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { shouldApplyProviderSessionSecurity } from "@/lib/auth/provider-security";
+import {
+  DEFAULT_PROVIDER_PROTECTION_POLICY,
+  shouldApplyProviderSessionSecurity,
+} from "@/lib/auth/provider-security";
+
+describe("provider protection policy defaults (F2-10)", () => {
+  it("enforces step-up on bank/team changes by default", () => {
+    expect(DEFAULT_PROVIDER_PROTECTION_POLICY.step_up).toBe("enforce");
+  });
+});
 import { SECURITY_CHALLENGE_CODES, isSecurityChallengeCode } from "@beautonomi/auth-security";
 
 describe("shouldApplyProviderSessionSecurity", () => {

@@ -1,7 +1,8 @@
 "use client";
 
 import { useTranslation } from "@beautonomi/i18n";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { getDefaultMoneyLocale, subtractMoney } from "@beautonomi/utils";
+import { resolveAdPackAmountMajor } from "@/lib/ads/resolve-ad-pack-price";
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -314,10 +315,8 @@ export default function ProviderAdsPage() {
   const enabled = Boolean(adsConfig?.enabled) || adsEnabled;
   const cpcBudgetAvailable = availableModels.length === 0 || availableModels.includes("cpc_budget");
 
-  const packAmountMajor = (pack: { price_zar: number; price_minor?: number | null }) =>
-    pack.price_minor != null && Number.isFinite(Number(pack.price_minor))
-      ? Number(pack.price_minor) / 100
-      : Number(pack.price_zar);
+  const packAmountMajor = (pack: { price_zar: number; price_minor?: number | null; currency?: string | null }) =>
+    resolveAdPackAmountMajor(pack);
 
   const loadCampaigns = useCallback(async () => {
     try {
@@ -1230,7 +1229,7 @@ toast.message(t("web.provider.settings.pages.ads.pickImpressionPack"));
                         : t("web.provider.settings.pages.ads.impressionsRemaining", { value: formatCompactNumber(Math.max(0, Number(c.pack_impressions) - Number(metrics.impressions || 0))) })
                       : Number(c.budget || 0) > 0 && Number(c.spent ?? 0) >= Number(c.budget || 0)
 ? t("web.provider.settings.pages.ads.budgetFullyUsed")
-                        : t("web.provider.settings.pages.ads.budgetRemaining", { amount: fmt(Math.max(0, Number(c.budget || 0) - Number(c.spent || 0))) });
+                        : t("web.provider.settings.pages.ads.budgetRemaining", { amount: fmt(Math.max(0, subtractMoney(Number(c.budget || 0), Number(c.spent || 0)))) });
                 return (
                   <li
                     key={c.id}

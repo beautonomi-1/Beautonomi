@@ -17,6 +17,16 @@ export function passwordMeetsPolicyRequirements(
 
 export type NewPasswordIssue = "minLength" | "policy" | "mismatch";
 
+/**
+ * Email-link target for `resetPasswordForEmail`.
+ * Always the website (`EXPO_PUBLIC_APP_URL`), including when this app is open in a browser.
+ * `type=recovery` is what the website callback uses to open the reset-password page.
+ */
+export function passwordRecoveryRedirectUrl(appUrl: string | null | undefined): string {
+  const base = (appUrl ?? "").trim().replace(/\/$/, "");
+  return base ? `${base}/auth/callback?type=recovery` : "";
+}
+
 /** First blocking problem with a new password + confirmation under the platform policy, or null. */
 export function getNewPasswordIssue(
   password: string,

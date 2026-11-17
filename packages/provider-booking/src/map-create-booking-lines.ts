@@ -1,3 +1,5 @@
+import { addMoney, percentOf } from "@beautonomi/utils";
+
 export interface RawServiceAddonLine {
   addonId: string;
   addonName?: string;
@@ -40,7 +42,7 @@ function sumAddonDuration(addons?: RawServiceAddonLine[]): number {
 }
 
 function sumAddonPrice(addons?: RawServiceAddonLine[]): number {
-  return addons?.reduce((sum, a) => sum + Number(a.price || 0), 0) ?? 0;
+  return addons?.reduce((sum, a) => addMoney(sum, Number(a.price || 0)), 0) ?? 0;
 }
 
 /** Maps UI service lines to API create-booking `services[]` shape. */
@@ -108,5 +110,5 @@ export function resolveDepositChargeAmount(
 ): number {
   if (!collectDeposit || totalAmount <= 0) return totalAmount;
   const pct = Number.isFinite(depositPercentage) && depositPercentage > 0 ? depositPercentage : 50;
-  return Math.ceil((totalAmount * pct) / 100);
+  return percentOf(totalAmount, pct);
 }

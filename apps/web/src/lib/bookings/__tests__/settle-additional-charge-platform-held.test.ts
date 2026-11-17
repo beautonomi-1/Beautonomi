@@ -162,6 +162,40 @@ describe("settleAdditionalChargePlatformHeld", () => {
 
     // Exactly one booking_payments row
     expect(bpInsertCalls.length).toBe(1);
+    const commissionRow = (ftInsertCalls as Array<{ transaction_type: string; commission?: number }>).find(
+      (r) => r.transaction_type === "additional_charge_payment",
+    );
+    expect(commissionRow?.commission).toBe(15);
+  });
+
+  it("F2-60: provider_collected takes 0 platform commission", async () => {
+    const ftInsertCalls: unknown[] = [];
+    const { from } = buildAdminMock({ ftInsertCalls });
+
+    await settleAdditionalChargePlatformHeld(
+      { from } as any,
+      {
+        reference: "ref-terminal",
+        amountSmallestUnit: 10000,
+        feesSmallestUnit: 0,
+        bookingId: "booking-1",
+        chargeId: "charge-1",
+        customerId: "customer-1",
+        commissionMode: "provider_collected",
+      },
+    );
+
+    const commissionRow = (ftInsertCalls as Array<{
+      transaction_type: string;
+      commission?: number;
+      amount?: number;
+    }>).find((r) => r.transaction_type === "additional_charge_payment");
+    const earningsRow = (ftInsertCalls as Array<{
+      transaction_type: string;
+      amount?: number;
+    }>).find((r) => r.transaction_type === "provider_earnings");
+    expect(commissionRow?.commission).toBe(0);
+    expect(earningsRow?.amount).toBe(100);
   });
 
   it("idempotency: 23505 unique constraint on payment_transactions -> alreadySettled", async () => {

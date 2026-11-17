@@ -47,6 +47,8 @@ interface StaffMember {
   avatar_url?: string | null;
   role: string;
   is_active: boolean;
+  is_service_provider?: boolean | null;
+  clocked_in?: boolean;
   /** From API when available (e.g. from reviews); may be omitted. */
   average_rating?: number | null;
   commission_rate?: number | null;
@@ -178,8 +180,8 @@ export default function TeamListScreen() {
   const totalCount = staff?.length ?? 0;
   const activeCount = staff?.filter((s) => s.is_active).length ?? 0;
   const serviceProvidersCount =
-    staff?.filter((s) => s.role === "provider_staff" || s.role === "provider_manager").length ?? 0;
-  const onShiftCount = activeCount;
+    staff?.filter((s) => s.is_service_provider !== false).length ?? 0;
+  const onShiftCount = staff?.filter((s) => s.clocked_in === true).length ?? 0;
   // §Provider-audit 2026-04 (round 8): return null when no staff have been
   // rated yet so the summary card can show "—" instead of a misleading 0.0
   // stars (which looked like the whole team was rated 0/5).

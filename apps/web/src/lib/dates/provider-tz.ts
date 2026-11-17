@@ -188,6 +188,23 @@ export function formatDateYmd(date: Date, tz: string): string {
   return formatInTz(date, "yyyy-MM-dd", tz);
 }
 
+/**
+ * Wall-clock `scheduled_date` (YYYY-MM-DD) and `scheduled_time` (HH:mm) for an
+ * instant in the business timezone. Never use `toISOString()` / `toTimeString()`
+ * for these: serverless runtimes run in UTC, not the salon's clock.
+ */
+export function wallClockPartsInTz(
+  date: Date | null | undefined,
+  tz: string,
+): { scheduled_date: string; scheduled_time: string } {
+  if (!date || !isValidDateValue(date)) return { scheduled_date: "", scheduled_time: "" };
+  const safeTz = resolveTz(tz);
+  return {
+    scheduled_date: formatInTz(date, "yyyy-MM-dd", safeTz),
+    scheduled_time: formatInTz(date, "HH:mm", safeTz),
+  };
+}
+
 /** Is the given date "today" in the business timezone? */
 export function isTodayInTz(date: Date, tz: string): boolean {
   const zonedDate = toZonedTime(date, tz);

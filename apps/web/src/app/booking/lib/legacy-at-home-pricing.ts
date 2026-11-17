@@ -1,4 +1,4 @@
-import { computeAtHomeLinePrice } from "@beautonomi/utils";
+import { subtractMoney, computeAtHomeLinePrice } from "@beautonomi/utils";
 
 export type LegacyServiceCatalogRow = {
   id: string;
@@ -44,10 +44,10 @@ export function legacyCatalogBasePrice(
   }
   const adj = resolveLegacyParentAdjustment(sel, catalog);
   if (sel.at_home_price_adjustment != null && Number(sel.at_home_price_adjustment) > 0) {
-    return Math.max(0, Number(sel.price) - Number(sel.at_home_price_adjustment));
+    return Math.max(0, subtractMoney(Number(sel.price), Number(sel.at_home_price_adjustment)));
   }
   if (adj > 0 && Number(sel.price) > adj) {
-    return Number(sel.price) - adj;
+    return subtractMoney(Number(sel.price), adj);
   }
   return Number(sel.price);
 }

@@ -305,6 +305,50 @@ async function handlePost(
         );
       }
       if (status === "consumed") {
+        const { data: consumedHold } = await adminSupabase
+          .from("booking_holds")
+          .select("id, metadata, customer_id")
+          .eq("id", holdId)
+          .maybeSingle();
+        const meta =
+          consumedHold &&
+          typeof (consumedHold as { metadata?: unknown }).metadata === "object" &&
+          (consumedHold as { metadata?: Record<string, unknown> }).metadata
+            ? (consumedHold as { metadata: Record<string, unknown> }).metadata
+            : {};
+        const metaBookingId = String(meta.booking_id ?? "").trim();
+        if (metaBookingId && user?.id) {
+          const { resolveCachedBookingCheckout } = await import(
+            "@/app/api/public/bookings/_helpers/resolve-cached-booking-checkout"
+          );
+          const resolved = await resolveCachedBookingCheckout(
+            adminSupabase,
+            metaBookingId,
+            user.id,
+            typeof meta.payment_url === "string" ? meta.payment_url : null,
+          );
+          if (resolved.kind === "already_paid") {
+            return successResponse({
+              booking_id: resolved.bookingId,
+              payment_url: null,
+              payment_reference: resolved.paymentReference,
+              already_paid: true,
+            });
+          }
+          if (resolved.kind === "payable") {
+            return successResponse({
+              booking_id: resolved.bookingId,
+              payment_url: resolved.paymentUrl,
+              payment_reference: resolved.paymentReference,
+            });
+          }
+          return errorResponse(
+            "This checkout is no longer available. Please start a new booking.",
+            "CHECKOUT_NO_LONGER_PAYABLE",
+            409,
+            { booking_id: resolved.bookingId ?? metaBookingId },
+          );
+        }
         return handleApiError(
           new Error("Hold already consumed"),
           "This booking has already been completed.",

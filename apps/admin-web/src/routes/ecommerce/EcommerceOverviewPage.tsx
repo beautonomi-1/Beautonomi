@@ -1,4 +1,5 @@
 import { Link, useSearchParams } from "react-router";
+import { subtractMoney } from "@beautonomi/utils";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_ECOMMERCE } from "@beautonomi/admin-access";
@@ -372,7 +373,7 @@ export function EcommerceOverviewPage() {
                     <AdminTd>{prov?.business_name || "—"}</AdminTd>
                     <AdminTd>{str(o.status)}</AdminTd>
                     <AdminTd>{str(o.payment_status)}</AdminTd>
-                    <AdminTd className="tabular-nums">{Number(o.total_amount ?? 0).toFixed(2)}</AdminTd>
+                    <AdminTd className="tabular-nums">{Math.max(0, subtractMoney(Number(o.total_amount ?? 0), Math.max(0, Number(o.refunded_amount ?? 0)))).toFixed(2)}</AdminTd>
                   </tr>
                 );
               })}

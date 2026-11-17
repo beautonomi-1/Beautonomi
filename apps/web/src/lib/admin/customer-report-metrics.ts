@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   computeBookingFrequency,
@@ -69,7 +70,7 @@ export async function buildCustomerReportMetrics(
     const id = b.customer_id;
     if (!completedByCustomer[id]) completedByCustomer[id] = { count: 0, total_amount: 0 };
     completedByCustomer[id].count += 1;
-    completedByCustomer[id].total_amount += Number(b.total_amount ?? 0);
+    completedByCustomer[id].total_amount = addMoney(completedByCustomer[id].total_amount, Number(b.total_amount ?? 0));
     const prev = completedByCustomer[id].last_completed_at;
     if (!prev || new Date(b.scheduled_at) > new Date(prev)) {
       completedByCustomer[id].last_completed_at = b.scheduled_at;

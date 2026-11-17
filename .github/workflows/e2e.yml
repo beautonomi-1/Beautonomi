@@ -14,7 +14,8 @@ jobs:
         github.event.deployment_status.environment == 'Staging' ||
         github.event.deployment_status.environment == 'staging'
       )
-    runs-on: ubuntu-latest
+    # Playwright 1.59 has no Chromium build for ubuntu-latest (26.04). 1.61+ adds it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       IS_STAGING: ${{ contains(github.event.deployment_status.environment, 'taging') }}

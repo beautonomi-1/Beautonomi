@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { resolveSingleActivePaycloudMerchant } from "@/lib/payments/paycloud-merchant-helpers";
 import {
@@ -118,7 +118,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    // F3-07: adding a card machine is a settings change, not a payment action.
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const parsed = createTerminalSchema.safeParse(body);

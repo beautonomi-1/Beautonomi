@@ -38,6 +38,15 @@ describe("calculateProductDeliveryFee", () => {
     expect(result.fee).toBe(47.5);
   });
 
+  it("rounds fees with roundCurrency (half away from zero)", () => {
+    expect(
+      calculateProductDeliveryFee({
+        subtotal: 1,
+        config: { delivery_fee: 10.005 },
+      }).fee,
+    ).toBe(10.01);
+  });
+
   it("calculates distance between coordinates", () => {
     const distance = distanceKmBetween(
       { latitude: -26.2041, longitude: 28.0473 },

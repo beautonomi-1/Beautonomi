@@ -4,6 +4,7 @@ import {
   type OnlineTenderOrder,
 } from "@/lib/ecommerce/refund-product-order-online-tender";
 import { voidProductOrderGiftCardIfNeeded } from "@/lib/orders/product-order-lifecycle";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 export type ProductOrderRefundTenderResult = {
   onlineRefundedAmount: number;
@@ -13,6 +14,8 @@ export type ProductOrderRefundTenderResult = {
   onlineRefundFailed: boolean;
   /** Gift or card money already went back; the order must not be rolled back to paid. */
   tenderMoved: boolean;
+  /** The gift card return did not answer. No other tender was moved. */
+  giftVoidFailed: boolean;
 };
 
 /**
@@ -34,9 +37,10 @@ export async function splitProductOrderRefundTender(
   const isFullRefund = refundAmount + 0.01 >= orderTotal;
   const onlineCap = Math.max(
     0,
-    orderTotal -
-      Math.max(0, Number(order.wallet_amount ?? 0)) -
+    subtractMoney(
+      subtractMoney(orderTotal, Math.max(0, Number(order.wallet_amount ?? 0))),
       Math.max(0, Number(order.gift_card_amount ?? 0)),
+    ),
   );
 
   if (!isFullRefund) {
@@ -59,6 +63,7 @@ export async function splitProductOrderRefundTender(
         giftCardRestored: 0,
         onlineRefundFailed: Boolean(online.attempted && online.error),
         tenderMoved: online.refundedAmount > 0,
+        giftVoidFailed: false,
       };
     }
     return {
@@ -67,17 +72,32 @@ export async function splitProductOrderRefundTender(
       giftCardRestored: 0,
       onlineRefundFailed: false,
       tenderMoved: false,
+      giftVoidFailed: false,
     };
   }
 
-  const giftCardRestored = Math.min(
+  const giftPortion = Math.min(
     refundAmount,
     Math.max(0, Number(order.gift_card_amount ?? 0)),
   );
-  if (giftCardRestored > 0) {
-    await voidProductOrderGiftCardIfNeeded(admin, order);
+  let giftCardRestored = 0;
+  let giftPaidToWallet = 0;
+  if (giftPortion > 0) {
+    const voided = await voidProductOrderGiftCardIfNeeded(admin, order);
+    if (voided === "failed") {
+      return {
+        onlineRefundedAmount: 0,
+        walletCreditAmount: 0,
+        giftCardRestored: 0,
+        onlineRefundFailed: false,
+        tenderMoved: false,
+        giftVoidFailed: true,
+      };
+    }
+    if (voided === "missing") giftPaidToWallet = giftPortion;
+    else giftCardRestored = giftPortion;
   }
-  const afterGift = Math.round((refundAmount - giftCardRestored) * 100) / 100;
+  const afterGift = subtractMoney(refundAmount, addMoney(giftCardRestored, giftPaidToWallet));
 
   const online = await refundProductOrderOnlineTender(admin, order, {
     reason: opts.reason,
@@ -88,10 +108,11 @@ export async function splitProductOrderRefundTender(
     onlineRefundedAmount,
     walletCreditAmount: Math.max(
       0,
-      Math.round((afterGift - onlineRefundedAmount) * 100) / 100,
+      addMoney(subtractMoney(afterGift, onlineRefundedAmount), giftPaidToWallet),
     ),
     giftCardRestored,
     onlineRefundFailed: Boolean(online.attempted && online.error),
-    tenderMoved: giftCardRestored > 0 || onlineRefundedAmount > 0,
+    tenderMoved: giftCardRestored > 0 || giftPaidToWallet > 0 || onlineRefundedAmount > 0,
+    giftVoidFailed: false,
   };
 }

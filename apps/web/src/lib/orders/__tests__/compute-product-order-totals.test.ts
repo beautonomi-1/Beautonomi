@@ -87,6 +87,14 @@ describe("computeProductOrderTotals", () => {
     expect(res.totals.items[0]).toMatchObject({ product_id: "p1", unit_price: 100, total_price: 200 });
   });
 
+  it("returns the provider VAT snapshot so the order row can persist it (F2-39)", async () => {
+    const res = await computeProductOrderTotals(supabaseStub(), baseInput);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.totals.taxInclusive).toBe(false);
+    expect(res.totals.providerVatNumber).toBe("4123456789");
+  });
+
   it("omits platform fee for in-person tender", async () => {
     const res = await computeProductOrderTotals(supabaseStub(), { ...baseInput, onlineCheckout: false });
     expect(res.ok && res.totals.platformFee).toBe(0);

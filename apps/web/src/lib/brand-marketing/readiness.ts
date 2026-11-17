@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BrandCampaignStage } from "./types";
 import { UNATTRIBUTABLE_CHANNELS } from "./types";
@@ -140,7 +141,7 @@ async function blockersForTarget(
         });
       }
     }
-    const allocated = placements.reduce((s, p) => s + Number(p.budget ?? 0), 0);
+    const allocated = placements.reduce((s, p) => addMoney(s, Number(p.budget ?? 0)), 0);
     const envelope = Number(campaign.budget_envelope ?? 0);
     if (envelope > 0 && allocated > envelope) {
       blockers.push({

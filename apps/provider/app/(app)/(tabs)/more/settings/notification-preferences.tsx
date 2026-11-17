@@ -214,7 +214,11 @@ export default function NotificationPreferencesScreen() {
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setDirty(false);
-    emitAlertPrefsChanged();
+    emitAlertPrefsChanged({
+      booking_alert_sound: local.booking_alert_sound !== false,
+      order_alert_sound: local.order_alert_sound !== false,
+      message_alert_sound: local.message_alert_sound !== false,
+    });
     refresh();
   }
 

@@ -19,7 +19,7 @@ import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { retrieveStripeFeeMinorForPaymentIntent } from "@/lib/payments/stripe-balance-fee";
 import { verifyFlutterwaveTransactionById } from "@/lib/payments/flutterwave-server";
 import { recordFlutterwaveBookingSettlement } from "./record-flutterwave-booking-settlement";
-import { toMinorUnits } from "@beautonomi/utils";
+import { toMinorUnits, subtractMoney } from "@beautonomi/utils";
 import { tryNotifySlackEvent } from "@/lib/integrations/slack/dispatch";
 import { bookingNeedsReviewForPayment as reviewPaymentForReconcile, isGroupGuestSharePayment } from "./reconcile-guest-share-helpers";
 import { listMissingOnlineBookingPayments } from "./list-missing-ledger-booking-payments";
@@ -535,7 +535,7 @@ async function patchBackfilledFees(
       .from("payment_transactions")
       .update({
         fees: feesMajor,
-        net_amount: Math.round((amountMajor - feesMajor) * 100) / 100,
+        net_amount: subtractMoney(amountMajor, feesMajor),
         metadata: {
           ...meta,
           fee_source: "paystack_verify_reconcile",

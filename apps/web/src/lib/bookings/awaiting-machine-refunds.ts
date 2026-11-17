@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 /**
  * Card-machine refunds staff must perform on the machine (Yoco has no refund API).
@@ -27,7 +28,7 @@ const AWAITING_SELECT =
   "id, booking_id, payment_id, amount, reason, machine_refund_provider, awaiting_machine_since, created_at";
 
 function roundCurrency2(n: number): number {
-  return Math.round(n * 100) / 100;
+  return roundCurrency(n);
 }
 
 function mapRow(row: Record<string, unknown>): AwaitingMachineRefund {
@@ -143,7 +144,7 @@ export async function completeAwaitingMachineRefund(
   if (!(amount > 0) || amount > row.amount + 0.01) {
     return { ok: false, message: "Amount exceeds the outstanding machine refund." };
   }
-  const remaining = roundCurrency2(Math.max(0, row.amount - amount));
+  const remaining = Math.max(0, subtractMoney(row.amount, amount));
 
   const { error } = await supabase
     .from("booking_refunds")
@@ -177,7 +178,7 @@ export async function completeAwaitingMachineRefund(
 }
 
 export function sumAwaitingMachineRefunds(rows: AwaitingMachineRefund[]): number {
-  return roundCurrency2(rows.reduce((s, r) => s + r.amount, 0));
+  return rows.reduce((s, r) => addMoney(s, r.amount), 0);
 }
 
 /**
@@ -203,15 +204,15 @@ export async function releaseAwaitingMachineRefunds(
         .update({ status: "cancelled", notes: note })
         .eq("id", row.id)
         .eq("status", "pending");
-      left = roundCurrency2(left - row.amount);
-      released = roundCurrency2(released + row.amount);
+      left = subtractMoney(left, row.amount);
+      released = addMoney(released, row.amount);
     } else {
       await supabase
         .from("booking_refunds")
-        .update({ amount: roundCurrency2(row.amount - left) })
+        .update({ amount: subtractMoney(row.amount, left) })
         .eq("id", row.id)
         .eq("status", "pending");
-      released = roundCurrency2(released + left);
+      released = addMoney(released, left);
       left = 0;
     }
   }
@@ -254,7 +255,7 @@ export async function reconcileYocoRefundWebhook(
   const manual = (manualRows ?? []) as Array<{ id: string; amount: number | string }>;
 
   if (input.mode === "full") {
-    const manualTotal = roundCurrency2(manual.reduce((s, r) => s + Number(r.amount ?? 0), 0));
+    const manualTotal = manual.reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
     if (manual.length && manualTotal + 0.01 >= amount) {
       await supabase
         .from("booking_refunds")
@@ -290,7 +291,7 @@ export async function reconcileYocoRefundWebhook(
 
   const match = awaiting.find((r) => Math.abs(r.amount - amount) <= 0.01) ?? awaiting[0];
   if (match && amount <= match.amount + 0.01) {
-    const remaining = roundCurrency2(Math.max(0, match.amount - amount));
+    const remaining = Math.max(0, subtractMoney(match.amount, amount));
     await supabase
       .from("booking_refunds")
       .update({

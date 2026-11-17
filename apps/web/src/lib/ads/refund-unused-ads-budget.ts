@@ -10,6 +10,7 @@ import { createRefund } from "@/lib/payments/paystack-complete";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
 import { refundOnlinePayment } from "@/lib/payments/online-payment";
 import { getOnlinePaymentCheckoutByReference } from "@/lib/payments/online-payment-checkouts";
+import { LAST_RESORT_CURRENCY, subtractMoney } from "@beautonomi/utils";
 
 export type RefundUnusedAdsBudgetResult = {
   refunded: boolean;
@@ -51,7 +52,7 @@ export async function refundUnusedAdsBudget(params: {
 
   const budget = Number(campaign.budget ?? 0);
   const spent = Number(campaign.spent ?? 0);
-  const unspent = Math.max(0, Math.round((budget - spent) * 100) / 100);
+  const unspent = Math.max(0, subtractMoney(budget, spent, LAST_RESORT_CURRENCY));
   if (unspent < 0.01) {
     return { refunded: false, amountMajor: 0, tender: null, skippedReason: "nothing_unspent" };
   }

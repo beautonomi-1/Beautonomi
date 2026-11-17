@@ -22,12 +22,21 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
+import { MAX_CLIENT_AMOUNT_MINOR } from "@/lib/payments/client-amount-bounds";
 
 const initializeSchema = z
   .object({
     email: z.string().email("Invalid email address"),
-    /** Ignored when paying for a product order or booking — server derives amount. */
-    amount: z.number().min(100, "Minimum amount is 100").optional(),
+    /**
+     * Minor units. Ignored when paying for a product order or booking — server derives amount.
+     * F-07: when used (free-form), it must be an integer within [100, MAX_CLIENT_AMOUNT_MINOR].
+     */
+    amount: z
+      .number()
+      .int("Amount must be a whole number of minor units")
+      .min(100, "Minimum amount is 100")
+      .max(MAX_CLIENT_AMOUNT_MINOR, `Maximum amount is ${MAX_CLIENT_AMOUNT_MINOR}`)
+      .optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
     /** Optional mobile/native return target. Must be a trusted app/web URL. */
     callback_url: z
@@ -121,7 +130,8 @@ export async function POST(request: NextRequest) {
         : null;
     const isProductOrder = rawMeta.type === "product_order" || Boolean(productOrderIdForCallback);
 
-    const successQuery: Record<string, string | undefined> = {};
+    const reference = generateTransactionReference("paystack_init", user.id);
+    const successQuery: Record<string, string | undefined> = { reference };
     if (bookingIdForCallback) successQuery.booking_id = bookingIdForCallback;
     if (productOrderIdForCallback) successQuery.product_order_id = productOrderIdForCallback;
     const orderNumberRaw =
@@ -270,11 +280,43 @@ export async function POST(request: NextRequest) {
       }
       paystackAmount = resolved.amountSmallestUnit;
     } else if (bookingIdFromMeta) {
+      const adminForGuard = getSupabaseAdmin();
+      const { data: bookingGuard } = await adminForGuard
+        .from("bookings")
+        .select("id, status, cancelled_at, cancellation_reason, customer_id")
+        .eq("id", bookingIdFromMeta)
+        .eq("customer_id", user.id)
+        .maybeSingle();
+      const guard = bookingGuard as {
+        status?: string | null;
+        cancelled_at?: string | null;
+        cancellation_reason?: string | null;
+      } | null;
+      if (guard?.status === "cancelled" && guard.cancellation_reason === "Payment failed") {
+        await adminForGuard
+          .from("bookings")
+          .update({
+            status: "pending_payment",
+            payment_status: "pending",
+            cancelled_at: null,
+            cancelled_by: null,
+            cancellation_reason: null,
+          })
+          .eq("id", bookingIdFromMeta)
+          .eq("status", "cancelled")
+          .eq("cancellation_reason", "Payment failed");
+      } else if (guard?.cancelled_at || guard?.status === "cancelled") {
+        return errorResponse(
+          "This booking was cancelled and cannot be paid.",
+          "BOOKING_CANCELLED",
+          409,
+        );
+      }
       const resolved = await resolveBookingPaystackAmount(supabase, bookingIdFromMeta, user.id);
       if (resolved.ok === false) {
         return errorResponse(resolved.message, resolved.code, resolved.status);
       }
-      const slotOk = await revalidateBookingSlotBeforePayment(getSupabaseAdmin(), bookingIdFromMeta);
+      const slotOk = await revalidateBookingSlotBeforePayment(adminForGuard, bookingIdFromMeta);
       if (slotOk.ok === false) {
         return errorResponse(slotOk.message, slotOk.code, 409);
       }
@@ -313,7 +355,6 @@ export async function POST(request: NextRequest) {
     const setAsDefault = rawMeta.setAsDefault === "true" || rawMeta.setAsDefault === true;
     const channelExtras = paystackChannelsForInitialize({ saveCard });
 
-    const reference = generateTransactionReference("paystack_init", user.id);
     const lineItemName = bookingIdFromMeta
       ? "Booking payment"
       : productOrderIdRaw

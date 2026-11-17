@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/auth/requireRole";
+import { requirePaystackPayoutAdmin } from "@/lib/admin/require-paystack-payout-admin";
 import {
   fetchTransferRecipient,
   updateTransferRecipient,
@@ -68,13 +68,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const auth = await requirePaystackPayoutAdmin(request);
+    if (auth.ok === false) return auth.response;
 
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id } = await params;
@@ -111,13 +106,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const auth = await requirePaystackPayoutAdmin(request);
+    if (auth.ok === false) return auth.response;
 
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id } = await params;
@@ -178,13 +168,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const auth = await requirePaystackPayoutAdmin(request);
+    if (auth.ok === false) return auth.response;
 
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id } = await params;

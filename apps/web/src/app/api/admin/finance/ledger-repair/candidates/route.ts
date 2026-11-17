@@ -3,6 +3,7 @@ import { requireAdminSection, successResponse, handleApiError } from "@/lib/supa
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fromMinorUnits } from "@beautonomi/utils";
 
 const ONLINE_PROVIDERS = new Set(["paystack", "stripe", "flutterwave"]);
 
@@ -139,7 +140,7 @@ export async function GET(request: NextRequest) {
         amount: Number(p.amount ?? 0),
         booking_total: p.booking?.total_amount ?? null,
         /** Paystack stores fees in kobo/cents in payment_provider_data when present. */
-        fees_hint_major: feesRaw != null ? Math.round(feesRaw) / 100 : null,
+        fees_hint_major: feesRaw != null ? fromMinorUnits(Math.round(feesRaw)) : null,
         is_deposit: resolveIsDeposit(p, p.booking?.payment_option ?? null),
         created_at: p.created_at,
         needs_review: reasons.length > 0,

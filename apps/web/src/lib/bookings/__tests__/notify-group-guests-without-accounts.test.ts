@@ -77,6 +77,23 @@ describe("notifyGroupGuestsWithoutAccountsOfCancellation", () => {
     expect(mockResolveTwilioCredentials).toHaveBeenCalledTimes(1);
   });
 
+  it("says a guest card return is still in progress when that refund did not finish", async () => {
+    const { notifyGroupGuestsWithoutAccountsOfCancellation } = await import("../group-booking-notifications");
+    const { client } = buildSupabase([]);
+    await notifyGroupGuestsWithoutAccountsOfCancellation(client as never, {
+      participants: [{ participant_name: "Ann", participant_email: null, participant_phone: "+27822222222" }],
+      providerId: "provider-1",
+      bookingRef: "GB-4",
+      cancelledBy: "customer",
+      guestCardRefundPending: true,
+    });
+    expect(String(mockSendTwilioSMS.mock.calls[0]![2])).toContain(
+      "still being returned to the card you paid with",
+    );
+    expect(String(mockSendTwilioSMS.mock.calls[0]![2])).not.toContain("refunded in full");
+    expect(mockResolveTwilioCredentials).toHaveBeenCalledTimes(1);
+  });
+
   it("skips SMS when the tenant has no sender number and never looks up the provider without phones", async () => {
     mockResolveTwilioCredentials.mockResolvedValue({ smsFrom: null });
     const { notifyGroupGuestsWithoutAccountsOfCancellation } = await import("../group-booking-notifications");

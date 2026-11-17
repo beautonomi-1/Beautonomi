@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isAppleBillingActive } from "@/lib/iap/apple/billing-active";
+import {
+  isAppleBillingActive,
+  providerCheckoutFailureMessage,
+  subscriptionChargeNotAttempted,
+} from "@/lib/iap/apple/billing-active";
 import {
   effectiveInvoiceStatus,
   invoiceAmountDue,
@@ -8,6 +12,7 @@ import {
 } from "@/lib/invoices/provider-invoice-status";
 import { todayUtcYmd } from "@/lib/invoices/provider-invoices-query";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
+import { addMoney, roundCurrency } from "@beautonomi/utils";
 
 export type ObligationPayAction =
   | "invoice_pay"
@@ -55,6 +60,9 @@ type SubscriptionRow = {
   paystack_sync_pending?: boolean | null;
   paystack_sync_note?: string | null;
   apple_price_increase_status?: string | null;
+  last_dunning_retry_at?: string | null;
+  dunning_retry_count?: number | null;
+  trial_ends_at?: string | null;
   plan_id?: string | null;
   plan?: { name?: string | null; is_free?: boolean | null; currency?: string | null; price_monthly?: number | null } | null;
 };
@@ -94,7 +102,7 @@ function resolveSubscriptionDue(
     due = true;
     description =
       effectiveOrder?.status === "failed"
-        ? effectiveOrder.failure_reason?.trim() ||
+        ? providerCheckoutFailureMessage(effectiveOrder.failure_reason) ||
           "Subscription payment was not completed."
         : "Complete subscription checkout to activate the selected plan.";
   } else if (!currentPlanIsFree) {
@@ -105,7 +113,7 @@ function resolveSubscriptionDue(
       due = true;
       description =
         "Accept the Apple price increase in Apple ID → Subscriptions to keep renewing.";
-    } else if (sub.status === "past_due") {
+    } else if (sub.status === "past_due" && !subscriptionChargeNotAttempted(sub)) {
       due = true;
       description =
         sub.billing_provider === "apple"
@@ -119,7 +127,7 @@ function resolveSubscriptionDue(
     } else if (effectiveOrder?.status === "failed") {
       due = true;
       description =
-        effectiveOrder.failure_reason?.trim() ||
+        providerCheckoutFailureMessage(effectiveOrder.failure_reason) ||
         "Your subscription payment was not completed.";
     } else if (effectiveOrder?.status === "pending") {
       due = true;
@@ -161,7 +169,7 @@ export async function buildProviderBillingObligations(
   const { data: subscription } = await supabase
     .from("provider_subscriptions")
     .select(
-      "id, status, billing_provider, paystack_sync_pending, paystack_sync_note, apple_price_increase_status, plan_id, plan:subscription_plans!plan_id(name, is_free, currency, price_monthly)",
+      "id, status, billing_provider, paystack_sync_pending, paystack_sync_note, apple_price_increase_status, last_dunning_retry_at, dunning_retry_count, trial_ends_at, plan_id, plan:subscription_plans!plan_id(name, is_free, currency, price_monthly)",
     )
     .eq("provider_id", providerId)
     .maybeSingle();
@@ -286,11 +294,11 @@ export async function buildProviderBillingObligations(
   const dueRows = obligations.filter((o) => o.status === "due");
   const outstanding_total = dueRows
     .filter((o) => o.pay_action !== "payout_offset")
-    .reduce((sum, o) => sum + o.amount, 0);
+    .reduce((sum, o) => addMoney(sum, o.amount), 0);
 
   return {
     obligations,
-    outstanding_total: Math.round(outstanding_total * 100) / 100,
+    outstanding_total: roundCurrency(outstanding_total),
     due_count: dueRows.length,
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { computeVat } from "@beautonomi/utils";
+import { addMoney, computeVat, multiplyMoney, subtractMoney } from "@beautonomi/utils";
 import {
   Sheet,
   SheetContent,
@@ -584,7 +584,7 @@ export function NewSaleDialog({
       // Increment quantity for group bookings
       const newCart = [...cart];
       newCart[existingIndex].quantity += 1;
-      newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
+      newCart[existingIndex].total = multiplyMoney(newCart[existingIndex].unit_price, newCart[existingIndex].quantity);
       setCart(newCart);
       toast.success(t("web.provider.portal.newSaleDialog.serviceQtyUpdated", { count: newCart[existingIndex].quantity }));
     } else {
@@ -635,7 +635,7 @@ export function NewSaleDialog({
       // Increment quantity for group bookings
       const newCart = [...cart];
       newCart[existingIndex].quantity += 1;
-      newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
+      newCart[existingIndex].total = multiplyMoney(newCart[existingIndex].unit_price, newCart[existingIndex].quantity);
       setCart(newCart);
       toast.success(t("web.provider.portal.newSaleDialog.serviceQtyUpdated", { count: newCart[existingIndex].quantity }));
     } else {
@@ -719,7 +719,7 @@ export function NewSaleDialog({
     if (existingIndex >= 0) {
       const newCart = [...cart];
       newCart[existingIndex].quantity += 1;
-      newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
+      newCart[existingIndex].total = multiplyMoney(newCart[existingIndex].unit_price, newCart[existingIndex].quantity);
       setCart(newCart);
       toast.success(t("web.provider.portal.newSaleDialog.productQtyUpdated", { count: newCart[existingIndex].quantity }));
     } else {
@@ -753,7 +753,7 @@ export function NewSaleDialog({
     if (existingIndex >= 0) {
       const newCart = [...cart];
       newCart[existingIndex].quantity += 1;
-      newCart[existingIndex].total = newCart[existingIndex].quantity * newCart[existingIndex].unit_price;
+      newCart[existingIndex].total = multiplyMoney(newCart[existingIndex].unit_price, newCart[existingIndex].quantity);
       setCart(newCart);
       toast.success(t("web.provider.portal.newSaleDialog.productQtyUpdated", { count: newCart[existingIndex].quantity }));
     } else {
@@ -781,7 +781,7 @@ export function NewSaleDialog({
     if (newCart[index].quantity <= 0) {
       newCart.splice(index, 1);
     } else {
-      newCart[index].total = newCart[index].quantity * newCart[index].unit_price;
+      newCart[index].total = multiplyMoney(newCart[index].unit_price, newCart[index].quantity);
     }
     setCart(newCart);
   };
@@ -860,17 +860,17 @@ export function NewSaleDialog({
     }
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const taxableSubtotal = Math.max(0, subtotal - discountAmount);
+  const subtotal = cart.reduce((sum, item) => addMoney(sum, item.total), 0);
+  const taxableSubtotal = Math.max(0, subtractMoney(subtotal, discountAmount));
   const vatSplit = computeVat({
     baseAmount: taxableSubtotal,
     ratePercent: taxRatePercent,
     inclusive: taxInclusive,
   });
   const tax = vatSplit.taxAmount;
-  const saleGross = (taxInclusive ? taxableSubtotal : vatSplit.grossAmount) + tipAmount;
+  const saleGross = addMoney(taxInclusive ? taxableSubtotal : vatSplit.grossAmount, tipAmount);
   const giftCardApplied = Math.min(giftCardBalance, saleGross);
-  const total = Math.max(0, saleGross - giftCardApplied);
+  const total = Math.max(0, subtractMoney(saleGross, giftCardApplied));
 
   const mapPosMethodToSaleLeg = (method: string): string => {
     if (method === "card_machine" || method === "card") return "card";

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { multiplyMoney } from "@beautonomi/utils";
 
 /**
  * Mirrors Paystack + finalize-custom-offer-payment: commission base scales by collected / bookingTotal
@@ -21,7 +22,7 @@ function scaledCommissionBase(args: {
   const scaleDenom = isDepositPayment ? coTotalAmount : Math.max(0.01, bookingTotalForCommission);
   const scaleNumer = isDepositPayment ? cashCollected : Math.max(0, cashCollected);
   return scaleDenom > 0
-    ? Math.max(0, Math.round(((rawCommissionBase * scaleNumer) / scaleDenom) * 100) / 100)
+    ? Math.max(0, multiplyMoney(rawCommissionBase, scaleNumer / scaleDenom))
     : rawCommissionBase;
 }
 
@@ -37,7 +38,7 @@ describe("commission scaling parity (F2)", () => {
       isDepositPayment: false,
       coTotalAmount: 0,
     });
-    const paystackStyle = Math.round(((raw * collected) / bookingTotal) * 100) / 100;
+    const paystackStyle = multiplyMoney(raw, collected / bookingTotal);
     expect(got).toBe(paystackStyle);
     expect(got).toBe(40);
   });

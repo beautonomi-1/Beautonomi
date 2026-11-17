@@ -1,3 +1,4 @@
+import { roundCurrency, subtractMoney } from "@beautonomi/utils";
 /**
  * Mirrors `allowsInPersonProductOrderRefund` in
  * apps/web/src/lib/orders/product-order-tender.ts.
@@ -28,11 +29,11 @@ export function productOrderInPersonDue(order: {
   amount_still_due?: number | null;
 }): number {
   if (typeof order.amount_still_due === "number" && Number.isFinite(order.amount_still_due)) {
-    return Math.max(0, Math.round(order.amount_still_due * 100) / 100);
+    return Math.max(0, roundCurrency(order.amount_still_due));
   }
   if (order.amount_still_due === null) return 0;
   const total = Math.max(0, Number(order.total_amount ?? 0));
   const gift = Math.min(total, Math.max(0, Number(order.gift_card_amount ?? 0)));
-  const wallet = Math.min(Math.max(0, Number(order.wallet_amount ?? 0)), Math.max(0, total - gift));
-  return Math.round(Math.max(0, total - gift - wallet) * 100) / 100;
+  const wallet = Math.min(Math.max(0, Number(order.wallet_amount ?? 0)), Math.max(0, subtractMoney(total, gift)));
+  return Math.max(0, subtractMoney(subtractMoney(total, gift), wallet));
 }

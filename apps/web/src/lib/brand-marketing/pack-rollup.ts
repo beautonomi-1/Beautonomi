@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDemandFunnel, buildSupplyFunnel } from "./funnel";
 import { fetchMeasuredForCampaign } from "./measured";
@@ -67,8 +68,8 @@ export async function rollupTenantBrandPack(
     demandMeasured.ads_clicks += measured.ads_clicks;
     demandMeasured.leads_created += measured.leads_created;
     demandMeasured.leads_won += measured.leads_won;
-    demandMeasured.promo_booking_value += measured.promo_booking_value;
-    demandMeasured.attributed_booking_value += measured.attributed_booking_value;
+    demandMeasured.promo_booking_value = addMoney(demandMeasured.promo_booking_value, measured.promo_booking_value);
+    demandMeasured.attributed_booking_value = addMoney(demandMeasured.attributed_booking_value, measured.attributed_booking_value);
   }
 
   const primaryCode = list[0]?.tracking_code ?? "brand";

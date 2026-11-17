@@ -25,12 +25,16 @@ vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
   resolveTenantIdWithZaFallback: (...args: unknown[]) => mockResolveTenantIdWithZaFallback(...args),
 }));
 
-vi.mock("@/lib/age-assurance", () => ({
-  resolveAgeBand: (...args: unknown[]) => mockResolveAgeBand(...args),
-  readSafetySettingsStored: (...args: unknown[]) => mockReadSafetySettingsStored(...args),
-  writeSafetySettingsStored: (...args: unknown[]) => mockWriteSafetySettingsStored(...args),
-  effectiveSafetySettings: (...args: unknown[]) => mockEffectiveSafetySettings(...args),
-}));
+vi.mock("@/lib/age-assurance", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/age-assurance")>();
+  return {
+    ...actual,
+    resolveAgeBand: (...args: unknown[]) => mockResolveAgeBand(...args),
+    readSafetySettingsStored: (...args: unknown[]) => mockReadSafetySettingsStored(...args),
+    writeSafetySettingsStored: (...args: unknown[]) => mockWriteSafetySettingsStored(...args),
+    effectiveSafetySettings: (...args: unknown[]) => mockEffectiveSafetySettings(...args),
+  };
+});
 
 const teenLockedEffective = {
   restricted_mode: { value: true, locked: true },

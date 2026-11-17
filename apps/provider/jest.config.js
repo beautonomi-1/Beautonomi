@@ -19,6 +19,9 @@ module.exports = {
     "<rootDir>/../../tooling/mobile/jest-expo-winter-stub.js",
     "<rootDir>/../../tooling/mobile/jest-reanimated-mock.js",
   ],
+  // `jest-setup.js` is superseded by `jest.setup-after-env.js` (F-09). Wiring
+  // `@testing-library/jest-native/extend-expect` from the old file hangs Jest
+  // under jest-expo.
   setupFilesAfterEnv: ["<rootDir>/jest.setup-after-env.js"],
   testMatch: ["<rootDir>/__tests__/**/*.test.{ts,tsx}"],
   // The jest-expo / React Native test environment leaves recurring environment
@@ -49,4 +52,13 @@ module.exports = {
     "!**/*.d.ts",
     "!**/node_modules/**",
   ],
+  // F-09: floor only (`pnpm test:coverage`). App+src is large vs the Jest suite.
+  coverageThreshold: {
+    global: {
+      statements: 1,
+      branches: 0,
+      functions: 1,
+      lines: 1,
+    },
+  },
 };

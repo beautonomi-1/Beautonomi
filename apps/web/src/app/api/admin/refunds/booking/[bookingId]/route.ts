@@ -1,3 +1,4 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
@@ -11,10 +12,13 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { issueAdminWalletRefund } from "@/lib/finance/issue-admin-wallet-refund";
+import { refundableExcludingGiftStillDue } from "@/lib/bookings/settle-booking-cancellation";
+import { visitClosedForGiftReturn } from "@/lib/bookings/gift-value-still-due";
 import { z } from "zod";
+import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
 
 const processRefundSchema = z.object({
-  refund_amount: z.number().positive(),
+  refund_amount: clientMajorAmountSchema,
   refund_reason: z.string().min(1),
   notes: z.string().optional().nullable(),
   substitute_reason: z.string().optional().nullable(),
@@ -51,7 +55,7 @@ export async function POST(
       supabase,
       bookingId,
       tenantId,
-      "id, tenant_id, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, gift_card_amount",
+      "id, tenant_id, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, status, cancellation_settlement_error",
     );
     if ("error" in loaded) return loaded.error;
 
@@ -61,6 +65,8 @@ export async function POST(
       wallet_amount?: number;
       gift_card_amount?: number;
       payment_status?: string;
+      status?: string | null;
+      cancellation_settlement_error?: string | null;
     };
 
     const ps = String(b.payment_status ?? "");
@@ -74,9 +80,16 @@ export async function POST(
 
     const collected = Math.max(
       Number(b.total_paid ?? 0),
-      Number(b.wallet_amount ?? 0) + Number(b.gift_card_amount ?? 0),
+      addMoney(Number(b.wallet_amount ?? 0), Number(b.gift_card_amount ?? 0)),
     );
-    const available = Math.max(0, collected - Number(b.total_refunded ?? 0));
+    const available = refundableExcludingGiftStillDue(
+      subtractMoney(collected, Number(b.total_refunded ?? 0)),
+      b.cancellation_settlement_error,
+      {
+        giftCardAmount: Number(b.gift_card_amount ?? 0),
+        visitClosed: visitClosedForGiftReturn(b.status),
+      },
+    );
 
     if (refund_amount > available + 0.001) {
       return errorResponse(

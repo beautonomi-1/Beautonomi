@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 describe("PATCH admin invoice payment confirm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequireSuperadmin.mockResolvedValue(undefined);
+    mockRequireSuperadmin.mockResolvedValue({ user: { id: "admin-1", role: "superadmin" } });
     mockGetSupabaseAdmin.mockReturnValue({
       from: vi.fn(() => {
         const c: Record<string, unknown> = {};

@@ -13,6 +13,7 @@ import {
   clearUncollectedProviderPortalPlatformFeeIfNeeded,
   type BookingFeeClearRow,
 } from "@/lib/bookings/provider-booking-platform-fee";
+import { giftCardCaptureAnswer, giftCardCaptureSucceeded } from "@/lib/bookings/gift-value-still-due";
 import {
   allocateCheckoutGift,
   applyCheckoutBillAdjustment,
@@ -24,8 +25,11 @@ import {
   sumPendingWalletGiftBookingPayments,
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { assertYocoMarkPaidReference } from "@/lib/payments/assert-yoco-mark-paid-reference";
 import { recordCheckoutTipPayment } from "@/lib/bookings/record-checkout-tip-payment";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { releaseGiftCardOrRemember, rememberGiftCaptureStillDue } from "@/lib/bookings/rollback-collectible-split-leg";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 type AdditionalChargeRow = {
   id?: string;
@@ -400,14 +404,17 @@ export async function POST(
     let giftTipPaid = 0;
     const giftCode = typeof gift_card_code === "string" ? gift_card_code.trim().toUpperCase() : "";
     const giftRequested = Math.max(0, Number(gift_card_amount) || 0);
+    const bookingCurrency = (booking as { currency?: string }).currency || "ZAR";
     if (giftCode && giftRequested > 0) {
       const owedBeforeGift = Math.max(
         0,
-        Number(booking.total_amount || 0) -
+        subtractMoney(
+          Number(booking.total_amount || 0),
           Math.max(
-            Math.max(0, Number(booking.total_paid || 0) - Number((booking as { total_refunded?: number }).total_refunded || 0)),
-            Number(booking.wallet_amount || 0) + Number(booking.gift_card_amount || 0),
+            Math.max(0, subtractMoney(Number(booking.total_paid || 0), Number((booking as { total_refunded?: number }).total_refunded || 0))),
+            addMoney(Number(booking.wallet_amount || 0), Number(booking.gift_card_amount || 0)),
           ),
+        ),
       );
       const allocatedGift = allocateCheckoutGift({
         owedBase: owedBeforeGift,
@@ -415,7 +422,7 @@ export async function POST(
         giftRequested,
       });
       const giftBase = allocatedGift.giftBase;
-      const giftApply = Math.round((giftBase + allocatedGift.giftTip) * 100) / 100;
+      const giftApply = addMoney(giftBase, allocatedGift.giftTip, bookingCurrency);
       giftTipPaid = allocatedGift.giftTip;
       if (
         effectivePaymentMethod === "gift_card" &&
@@ -458,7 +465,7 @@ export async function POST(
           .eq("payment_provider", "gift_card")
           .in("status", ["pending", "completed", "partially_refunded"]);
         const recordedGiftPayments = (recordedGiftRows ?? []).reduce(
-          (sum, row) => sum + Number((row as { amount?: number }).amount || 0),
+          (sum, row) => addMoney(sum, Number((row as { amount?: number }).amount || 0)),
           0,
         );
         const giftLegId = buildSyntheticWalletGiftProviderId(
@@ -503,8 +510,14 @@ export async function POST(
           "capture_gift_card_redemption",
           { p_booking_id: bookingId },
         );
-        if (captureError || captured === false) {
-          await supabaseAdmin.rpc("void_gift_card_redemption", { p_booking_id: bookingId });
+        if (captureError || !giftCardCaptureSucceeded(captured)) {
+          if (!captureError && giftCardCaptureAnswer(captured) === "absent") {
+            await releaseGiftCardOrRemember(
+              supabaseAdmin,
+              bookingId,
+              (booking as { tenant_id?: string | null }).tenant_id ?? null,
+            );
+          }
           return errorResponse(
             captureError?.message || "Gift card capture failed",
             "GIFT_CARD_ERROR",
@@ -513,14 +526,14 @@ export async function POST(
         }
         if (!existingGiftPay && giftBase > 0 && giftDecision === "credit") {
           const previousGift = Number(booking.gift_card_amount || 0);
-          const nextGift = Math.round((previousGift + giftBase) * 100) / 100;
+          const nextGift = addMoney(previousGift, giftBase, bookingCurrency);
           const { error: giftUpdateError } = await supabaseAdmin
             .from("bookings")
             .update({ gift_card_amount: nextGift })
             .eq("id", bookingId);
           if (giftUpdateError) throw giftUpdateError;
           booking.gift_card_amount = nextGift;
-          booking.total_paid = Number(booking.total_paid || 0) + giftBase;
+          booking.total_paid = addMoney(Number(booking.total_paid || 0), giftBase);
           await ensureWalletGiftBookingPayments(supabaseAdmin, {
             bookingId,
             tenantId: (booking as { tenant_id?: string | null }).tenant_id,
@@ -540,7 +553,7 @@ export async function POST(
               .update({ gift_card_amount: previousGift })
               .eq("id", bookingId);
             booking.gift_card_amount = previousGift;
-            booking.total_paid = Number(booking.total_paid || 0) - giftBase;
+            booking.total_paid = subtractMoney(Number(booking.total_paid || 0), giftBase);
             throw new Error("Gift card payment was not recorded");
           }
         }
@@ -557,7 +570,7 @@ export async function POST(
             processedBy: user.id,
             providerPaymentId: `checkout-tip:${bookingId}:gift`,
           });
-          const withGiftTip = Math.round((Number(booking.gift_card_amount || 0) + giftTipPaid) * 100) / 100;
+          const withGiftTip = addMoney(Number(booking.gift_card_amount || 0), giftTipPaid, bookingCurrency);
           await supabaseAdmin.from("bookings").update({ gift_card_amount: withGiftTip }).eq("id", bookingId);
           booking.gift_card_amount = withGiftTip;
         }
@@ -566,7 +579,7 @@ export async function POST(
 
     const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
     const recordTillTip = async () => {
-      const remainder = Math.round((checkoutTipDue - giftTipPaid) * 100) / 100;
+      const remainder = subtractMoney(checkoutTipDue, giftTipPaid, bookingCurrency);
       if (remainder > 0) {
         const tipProvider =
           effectivePaymentMethod === "cash"
@@ -640,7 +653,7 @@ export async function POST(
         )
       : [];
     const unpaidAdditionalCharges = unpaidChargeRows.reduce(
-      (sum, charge) => sum + Number(charge?.amount || 0),
+      (sum, charge) => addMoney(sum, Number(charge?.amount || 0)),
       0,
     );
 
@@ -707,12 +720,26 @@ export async function POST(
       paymentProvider = payment_provider === "yoco" ? "yoco" : "other";
     }
 
-    if (paymentProvider === "yoco" && !stableReference) {
-      return errorResponse(
-        "Yoco terminal payments require a stable payment reference or Idempotency-Key",
-        "YOCO_REFERENCE_REQUIRED",
-        400
-      );
+    if (paymentProvider === "yoco") {
+      if (!stableReference) {
+        return errorResponse(
+          "Yoco terminal payments require a stable payment reference or Idempotency-Key",
+          "YOCO_REFERENCE_REQUIRED",
+          400
+        );
+      }
+      const yocoCheck = await assertYocoMarkPaidReference(supabaseAdmin, {
+        providerId,
+        reference: stableReference,
+        expectedEntityType: "booking",
+        expectedEntityId: bookingId,
+        expectedAppointmentId: bookingId,
+        expectedAmountMajor: paymentAmount,
+        currency: (booking as { currency?: string | null }).currency,
+      });
+      if (yocoCheck.ok === false) {
+        return errorResponse(yocoCheck.message, yocoCheck.code, 400);
+      }
     }
 
     if (effectivePaymentMethod === "card" && paymentProvider !== "cash" && !stableReference) {
@@ -886,7 +913,7 @@ export async function POST(
           `Payment created: ${formatMoney(paymentAmount)}. Booking total_paid: ${formatMoney(updatedBooking.total_paid || 0)}, status: ${updatedBooking.payment_status}`,
         );
 
-        const expectedTotalPaid = (currentTotalPaid || 0) + paymentAmount;
+        const expectedTotalPaid = addMoney(currentTotalPaid || 0, paymentAmount);
         if (Math.abs((updatedBooking.total_paid || 0) - expectedTotalPaid) > 0.01) {
           console.warn(
             `Payment trigger may not have fired correctly. Expected total_paid: ${formatMoney(expectedTotalPaid)}, Actual: ${formatMoney(updatedBooking.total_paid || 0)}`,
@@ -1037,15 +1064,13 @@ export async function POST(
         );
         if (giftCaptureErr || captured === false || captured === null) {
           const captureMessage = String(giftCaptureErr?.message || "");
-          const balanceRestored =
-            /expired|no longer active/i.test(captureMessage) ||
-            captured === false ||
-            captured === null;
+          const expired = /expired|no longer active/i.test(captureMessage);
+          const answeredNotHeld = !giftCaptureErr && giftCardCaptureAnswer(captured) === "absent";
           console.error("[mark-paid] gift card capture failed after the booking was paid", {
             bookingId,
             giftCaptureErr,
           });
-          if (balanceRestored) {
+          if (expired || answeredNotHeld) {
             await supabaseAdmin
               .from("booking_payments")
               .delete()
@@ -1060,6 +1085,12 @@ export async function POST(
                 payment_status: "partially_paid",
               })
               .eq("id", bookingId);
+          } else {
+            await rememberGiftCaptureStillDue(
+              supabaseAdmin,
+              bookingId,
+              (booking as { tenant_id?: string | null }).tenant_id ?? null,
+            );
           }
         }
       }

@@ -5,8 +5,8 @@
  * webhook (`charge.success`), the client verify path, refunds, disputes, and
  * any future entry point all agree:
  *
- *   - recordAdsBudgetOrderPayment(): mark the order paid, fund + activate the
- *     campaign (set funded_at + paid_order_id), and post the revenue ledger.
+ *   - recordAdsBudgetOrderPayment(): save the payment, then mark the order paid
+ *     and fund the campaign (set funded_at + paid_order_id).
  *   - reverseAdsBudgetOrderPayment(): stop serving (campaign -> ended), clear
  *     funding, mark the order failed/refunded, and post a full reversal ledger.
  *
@@ -15,6 +15,7 @@
  * reached. A campaign serves IFF status='active' AND funded_at IS NOT NULL, so
  * a reversed/never-paid campaign can never be served by the auction.
  */
+import { subtractMoney } from "@beautonomi/utils";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
@@ -145,7 +146,7 @@ export async function recordAdsBudgetOrderPayment(params: {
   }
 
   const nowIso = new Date().toISOString();
-  const netAmount = amountMajor - feesMajor;
+  const netAmount = subtractMoney(amountMajor, feesMajor);
 
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
@@ -164,18 +165,6 @@ export async function recordAdsBudgetOrderPayment(params: {
       return (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? LAST_RESORT_CURRENCY;
     })());
 
-  // 1) Mark the order paid.
-  await supabase
-    .from("ads_budget_orders")
-    .update({
-      status: "paid",
-      paystack_reference: reference,
-      paid_at: nowIso,
-      updated_at: nowIso,
-    })
-    .eq("id", orderId);
-
-  // 2) Fund + activate the campaign (sets funded_at — the serve-time guard key).
   const { data: campaignData } = await supabase
     .from("ads_campaigns")
     .select("billing_model, duration_days, targeting, bid_settings")
@@ -213,12 +202,6 @@ export async function recordAdsBudgetOrderPayment(params: {
       ? String(campaignUpdate.end_at ?? "")
       : null;
 
-  await supabase
-    .from("ads_campaigns")
-    .update(campaignUpdate)
-    .eq("id", campaignId)
-    .eq("provider_id", providerId);
-
   const billingLabel =
     campaignRow?.billing_model === "time_based"
       ? `Ads time-based boost (${campaignRow?.duration_days ?? "N"} days)`
@@ -227,48 +210,88 @@ export async function recordAdsBudgetOrderPayment(params: {
   // Marketing-credit-funded orders: recognition happens via marketing_credit_recognition
   // when credits are debited — do not post a deferred provider_ads_payment with no cash.
   if (!fundedByMarketingCredit) {
-    await supabase.from("payment_transactions").insert({
-      booking_id: null,
-      reference,
-      amount: amountMajor,
-      fees: feesMajor,
-      net_amount: netAmount,
-      status: "success",
-      provider: paymentProvider,
-      transaction_type: "charge",
-      metadata: {
-        kind: "ads_budget_order",
-        ads_budget_order_id: orderId,
-        provider_id: providerId,
-        campaign_id: campaignId,
-        payment_provider: paymentProvider,
-      },
-      created_at: nowIso,
-    });
+    const { data: existingPayment } = await supabase
+      .from("payment_transactions")
+      .select("id")
+      .eq("provider", paymentProvider)
+      .eq("reference", reference)
+      .maybeSingle();
+    if (!existingPayment) {
+      const { error: paymentError } = await supabase.from("payment_transactions").insert({
+        booking_id: null,
+        reference,
+        amount: amountMajor,
+        fees: feesMajor,
+        net_amount: netAmount,
+        status: "success",
+        provider: paymentProvider,
+        transaction_type: "charge",
+        metadata: {
+          kind: "ads_budget_order",
+          ads_budget_order_id: orderId,
+          provider_id: providerId,
+          campaign_id: campaignId,
+          payment_provider: paymentProvider,
+        },
+        created_at: nowIso,
+      });
+      if (paymentError && (paymentError as { code?: string }).code !== "23505") {
+        console.error("[ads_budget_order] payment_transactions insert failed:", paymentError);
+        throw new Error("ads payment was not recorded");
+      }
+    }
 
-    await supabase.from("finance_transactions").insert({
-      booking_id: null,
-      provider_id: providerId,
-      tenant_id: financeTenantId,
-      transaction_type: "provider_ads_payment",
-      amount: amountMajor,
-      fees: feesMajor,
-      commission: 0,
-      net: 0,
-      currency: resolvedCurrency,
-      description: billingLabel,
-      metadata: {
-        kind: "ads_budget_order",
-        ads_budget_order_id: orderId,
-        campaign_id: campaignId,
-        payment_provider: paymentProvider,
-        recognition_basis: campaignRow?.billing_model === "time_based" ? "term" : "consumption",
-        term_start: termStart,
-        ...(termEnd ? { term_end: termEnd } : {}),
-      },
-      created_at: nowIso,
-    });
+    const { data: existingFinance } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("transaction_type", "provider_ads_payment")
+      .contains("metadata", { ads_budget_order_id: orderId })
+      .maybeSingle();
+    if (!existingFinance) {
+      const { error: financeError } = await supabase.from("finance_transactions").insert({
+        booking_id: null,
+        provider_id: providerId,
+        tenant_id: financeTenantId,
+        transaction_type: "provider_ads_payment",
+        amount: amountMajor,
+        fees: feesMajor,
+        commission: 0,
+        net: 0,
+        currency: resolvedCurrency,
+        description: billingLabel,
+        metadata: {
+          kind: "ads_budget_order",
+          ads_budget_order_id: orderId,
+          campaign_id: campaignId,
+          payment_provider: paymentProvider,
+          recognition_basis: campaignRow?.billing_model === "time_based" ? "term" : "consumption",
+          term_start: termStart,
+          ...(termEnd ? { term_end: termEnd } : {}),
+        },
+        created_at: nowIso,
+      });
+      if (financeError && (financeError as { code?: string }).code !== "23505") {
+        console.error("[ads_budget_order] finance_transactions insert failed:", financeError);
+        throw new Error("ads payment was not recorded");
+      }
+    }
   }
+
+  await supabase
+    .from("ads_budget_orders")
+    .update({
+      status: "paid",
+      paystack_reference: reference,
+      paid_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq("id", orderId);
+
+  await supabase
+    .from("ads_campaigns")
+    .update(campaignUpdate)
+    .eq("id", campaignId)
+    .eq("provider_id", providerId);
 
   await notifyProviderSafe(providerId, {
     type: needsReview ? "ads_pending_review" : "ads_payment_confirmed",

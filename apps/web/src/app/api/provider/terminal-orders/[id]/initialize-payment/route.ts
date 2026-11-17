@@ -125,10 +125,10 @@ export async function POST(
 
     const cancelAction =
       inApp && isHttpsClientCallback
-        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_cancelled=1&order_id=${orderId}&context=provider_inapp`
+        ? `${callbackFromClient}${callbackFromClient!.includes("?") ? "&" : "?"}payment_cancelled=1&order_id=${orderId}&reference=${encodeURIComponent(reference)}&context=provider_inapp`
         : inApp
-          ? `${terminalReturnBase}?payment_cancelled=1&order_id=${orderId}${inAppParam}`
-          : `${appUrl}/provider/settings/sales/terminal-payment-return?payment_cancelled=1&order_id=${orderId}`;
+          ? `${terminalReturnBase}?payment_cancelled=1&order_id=${orderId}&reference=${encodeURIComponent(reference)}${inAppParam}`
+          : `${appUrl}/provider/settings/sales/terminal-payment-return?payment_cancelled=1&order_id=${orderId}&reference=${encodeURIComponent(reference)}`;
 
     const terminalCurrency = o.currency ?? LAST_RESORT_CURRENCY;
     const onlineInit = await initializeOnlinePayment({

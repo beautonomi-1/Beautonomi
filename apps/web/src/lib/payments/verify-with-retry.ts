@@ -15,12 +15,15 @@ type VerifyWithRetryOptions = {
   sessionId?: string | null;
   /** Flutterwave redirect query param */
   transactionId?: string | null;
+  /** Hosted-checkout redirect `status` (`failed` or `cancelled`). */
+  redirectStatus?: string | null;
 };
 
 export function buildOnlineVerifyQuery(
   reference: string,
   sessionId?: string | null,
   transactionId?: string | null,
+  redirectStatus?: string | null,
 ): string {
   const params = new URLSearchParams();
   params.set("reference", reference);
@@ -28,11 +31,22 @@ export function buildOnlineVerifyQuery(
   if (sid) params.set("session_id", sid);
   const tid = transactionId?.trim();
   if (tid) params.set("transaction_id", tid);
+  const redirect = redirectStatus?.trim().toLowerCase();
+  if (redirect === "failed" || redirect === "cancelled") params.set("status", redirect);
   return params.toString();
 }
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const TERMINAL_VERIFY_ERROR_CODES = new Set(["BOOKING_CANCELLED", "CHECKOUT_NO_LONGER_PAYABLE"]);
+
+function terminalVerifyMessageFromFetchError(error: unknown): string | null {
+  if (!(error instanceof FetchError)) return null;
+  const code = error.code?.trim();
+  if (!code || !TERMINAL_VERIFY_ERROR_CODES.has(code)) return null;
+  return error.message?.trim() || "Payment verification failed";
 }
 
 function readStatus(data: Record<string, unknown> | null): VerifyWithRetryResult["status"] {
@@ -46,9 +60,31 @@ function readStatus(data: Record<string, unknown> | null): VerifyWithRetryResult
         : null;
   const verified = typeof data.verified === "boolean" ? data.verified : null;
 
+  const recordedPayment = typeof data.payment_status === "string" ? data.payment_status.toLowerCase() : "";
+  const gateway = paystackStatus?.toLowerCase() ?? "";
+  // Gateway success with the booking still unpaid means capture has not landed yet.
+  if ((status === "success" || verified === true) && recordedPayment === "pending") return "pending";
+  // An explicit pending status wins over verified:false (bank still processing).
+  if (
+    status === "pending" ||
+    gateway === "pending" ||
+    gateway === "ongoing" ||
+    gateway === "processing" ||
+    gateway === "queued"
+  ) {
+    return "pending";
+  }
   if (status === "success" || verified === true) return "success";
-  if (status === "failed" || paystackStatus === "failed" || verified === false) return "failed";
-  if (status === "pending" || paystackStatus === "pending") return "pending";
+  if (
+    status === "failed" ||
+    status === "cancelled" ||
+    gateway === "failed" ||
+    gateway === "abandoned" ||
+    gateway === "reversed" ||
+    verified === false
+  ) {
+    return "failed";
+  }
   return "unknown";
 }
 
@@ -70,6 +106,7 @@ export async function verifyWithRetry<T = Record<string, unknown>>(
   const delayMs = options.delayMs ?? 1500;
   const sessionId = options.sessionId ?? null;
   const transactionId = options.transactionId ?? null;
+  const redirectStatus = options.redirectStatus ?? null;
 
   let attempts = 0;
   let lastData: Record<string, unknown> | null = null;
@@ -78,7 +115,7 @@ export async function verifyWithRetry<T = Record<string, unknown>>(
   while (attempts < maxAttempts) {
     attempts += 1;
     try {
-      const q = buildOnlineVerifyQuery(reference, sessionId, transactionId);
+      const q = buildOnlineVerifyQuery(reference, sessionId, transactionId, redirectStatus);
       const sep = endpoint.includes("?") ? "&" : "?";
       const res = await fetcher.get<{ data?: T }>(`${endpoint}${sep}${q}`, { staleTimeMs: 0 });
       const payload = (res?.data ?? null) as Record<string, unknown> | null;
@@ -104,6 +141,15 @@ export async function verifyWithRetry<T = Record<string, unknown>>(
         };
       }
     } catch (error) {
+      const terminalMessage = terminalVerifyMessageFromFetchError(error);
+      if (terminalMessage !== null) {
+        return {
+          attempts,
+          data: null,
+          status: "failed",
+          errorMessage: terminalMessage,
+        };
+      }
       const message = error instanceof FetchError ? error.message : "Payment verification failed";
       lastErrorMessage = message;
       if (attempts >= maxAttempts) {

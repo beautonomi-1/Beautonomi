@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
@@ -82,8 +83,8 @@ export async function GET(request: NextRequest) {
     if (endDate) bookingsQuery = bookingsQuery.lte("scheduled_at", `${endDate}T23:59:59.999Z`);
     const { data: bookings } = await bookingsQuery;
 
-    const totalTaxCollected = bookings?.reduce((sum, b) => sum + (Number(b.tax_amount) || 0), 0) || 0;
-    const taxableGmv = bookings?.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0) || 0;
+    const totalTaxCollected = bookings?.reduce((sum, b) => addMoney(sum, Number(b.tax_amount) || 0), 0) || 0;
+    const taxableGmv = bookings?.reduce((sum, b) => addMoney(sum, Number(b.total_amount) || 0), 0) || 0;
 
     // Fetch platform default tax rate from platform_settings for display
     let defaultTaxRate: number | null = null;

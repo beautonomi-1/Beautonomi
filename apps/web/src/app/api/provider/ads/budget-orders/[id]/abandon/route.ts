@@ -7,18 +7,20 @@
 
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   errorResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { reverseAdsBudgetOrderPayment } from "@/lib/ads/ads-budget-order-payment";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const { id: orderId } = await params;
     if (!orderId) return errorResponse("Order id is required", "VALIDATION", 400);
 

@@ -1,3 +1,5 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
+
 /** Pure helpers for optimistic group booking detail updates on the provider app. */
 
 export type GroupParticipantPatch = {
@@ -60,10 +62,10 @@ export function deriveGroupPaymentFields(
   const participants = group.participants ?? [];
   const withBooking = participants.filter((p) => p.booking_id);
   const isInvoiced = withBooking.length > 0;
-  const amountPaid = withBooking.reduce((sum, p) => sum + Number(p.total_paid ?? 0), 0);
-  const totalRefunded = withBooking.reduce((sum, p) => sum + Number(p.total_refunded ?? 0), 0);
+  const amountPaid = withBooking.reduce((sum, p) => addMoney(sum, Number(p.total_paid ?? 0)), 0);
+  const totalRefunded = withBooking.reduce((sum, p) => addMoney(sum, Number(p.total_refunded ?? 0)), 0);
   const balanceDue = withBooking.reduce(
-    (sum, p) => sum + Math.max(0, Number(p.balance_due ?? 0)),
+    (sum, p) => addMoney(sum, Math.max(0, Number(p.balance_due ?? 0))),
     0
   );
   const displayTotal = Number(group.total_price ?? 0);
@@ -165,10 +167,10 @@ export function patchParticipantRefund(
       if (!p) return {};
       const totalPaid = Number(p.total_paid ?? 0);
       const prevRefunded = Number(p.total_refunded ?? 0);
-      const totalRefunded = prevRefunded + refundAmount;
-      const netPaid = Math.max(0, totalPaid - totalRefunded);
+      const totalRefunded = addMoney(prevRefunded, refundAmount);
+      const netPaid = Math.max(0, subtractMoney(totalPaid, totalRefunded));
       const price = Number(p.price ?? 0);
-      const balanceDue = Math.max(0, price - netPaid);
+      const balanceDue = Math.max(0, subtractMoney(price, netPaid));
       let paymentStatus = p.payment_status ?? "pending";
       if (totalRefunded >= totalPaid - 0.01 && totalPaid > 0) {
         paymentStatus = "refunded";

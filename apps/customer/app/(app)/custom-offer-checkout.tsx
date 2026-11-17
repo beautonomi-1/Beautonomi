@@ -37,7 +37,7 @@ import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequi
 import { useAuth } from "@/providers/AuthProvider";
 import { haptic } from "@/lib/haptics";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { formatMoney, addMoney } from "@beautonomi/utils";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { useOwnedGiftCards } from "@/features/gift-cards/useOwnedGiftCards";
 import { OwnedGiftCardPicker } from "@/features/gift-cards/OwnedGiftCardPicker";
@@ -296,7 +296,7 @@ export default function CustomOfferCheckoutScreen() {
 
   const basePrice = Number(offer?.price ?? 0);
   const travel = Number(offer?.travel_fee ?? 0);
-  const subtotalPreview = basePrice + travel;
+  const subtotalPreview = addMoney(basePrice, travel);
   const quoteTotal = Number(quote?.pricing?.totalAmount ?? subtotalPreview);
   const dueBeforeSplit =
     quote?.deposit?.required && paymentOption === "deposit"
@@ -304,21 +304,26 @@ export default function CustomOfferCheckoutScreen() {
       : quoteTotal;
   const paystackDueNow = quote?.splits ? Number(quote.splits.paystackAmount || 0) : dueBeforeSplit;
 
-  const pollForBooking = useCallback(async (): Promise<string | null> => {
+  const pollForBooking = useCallback(async (): Promise<{ bookingId: string | null; needsSupport: boolean }> => {
     for (let i = 0; i < 30; i += 1) {
       try {
-        const state = await api.get<{ booking_id?: string | null }>(
+        const state = await api.get<{ status?: string; booking_id?: string | null }>(
           `/api/me/custom-offers/${offerId}`
         );
-        const bookingId =
-          (state.data as { booking_id?: string | null } | undefined)?.booking_id ?? null;
-        if (bookingId) return bookingId;
+        const status = String(state.data?.status ?? "").toLowerCase();
+        const bookingId = state.data?.booking_id ?? null;
+        if ((status === "paid" || status === "accepted") && bookingId) {
+          return { bookingId, needsSupport: false };
+        }
+        if (status === "finalize_failed" || (status === "paid" && !bookingId)) {
+          return { bookingId: null, needsSupport: true };
+        }
       } catch {
         /* ignore */
       }
       await new Promise((r) => setTimeout(r, 2000));
     }
-    return null;
+    return { bookingId: null, needsSupport: false };
   }, [offerId]);
 
   const runAcceptThenNavigate = useCallback(
@@ -373,12 +378,22 @@ export default function CustomOfferCheckoutScreen() {
           ).catch(() => null);
           const latestStatus = statusRes?.data?.status;
           const latestBookingId = statusRes?.data?.booking_id ?? null;
-          if (latestStatus === "paid" && latestBookingId) {
+          if ((latestStatus === "paid" || latestStatus === "accepted") && latestBookingId) {
             haptic.success();
             setSuccessOverlay({ rows: buildOfferSuccessRows() });
             setTimeout(() => {
               router.replace({ pathname: "/(app)/booking-detail", params: { id: latestBookingId } });
             }, 2200);
+            return;
+          }
+          if (latestStatus === "finalize_failed" || (latestStatus === "paid" && !latestBookingId)) {
+            setPayError(
+              coc(
+                "finalizeFailed",
+                undefined,
+                "We received your payment but could not finish creating the booking. Please contact support with your payment reference.",
+              ),
+            );
             return;
           }
           if (latestStatus === "payment_pending") {
@@ -409,14 +424,26 @@ export default function CustomOfferCheckoutScreen() {
           // When the server returns booking_id directly (inline finalize path),
           // skip polling entirely and navigate immediately.
           const directBookingId = (data as { booking_id?: string | null }).booking_id ?? null;
-          const bookingId = directBookingId ?? (await pollForBooking());
+          const polled = directBookingId
+            ? { bookingId: directBookingId, needsSupport: false }
+            : await pollForBooking();
           await refreshSavedCards().catch(() => {});
-          haptic.success();
           setProcessingPayment(false);
-          if (bookingId) {
+          if (polled.needsSupport) {
+            const supportMessage = coc(
+              "finalizeFailed",
+              undefined,
+              "We received your payment but could not finish creating the booking. Please contact support with your payment reference.",
+            );
+            setPayError(supportMessage);
+            Alert.alert(coc("paymentReceivedTitle", undefined, "Payment received"), supportMessage);
+            return;
+          }
+          haptic.success();
+          if (polled.bookingId) {
             setSuccessOverlay({ rows: buildOfferSuccessRows() });
             setTimeout(() => {
-              router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
+              router.replace({ pathname: "/(app)/booking-detail", params: { id: polled.bookingId! } });
             }, 2200);
           } else {
             Alert.alert(
@@ -495,18 +522,39 @@ export default function CustomOfferCheckoutScreen() {
           // The window closed — we don't know yet whether payment succeeded.
           // Check the offer status first; if it moved to 'paid' the webhook
           // already handled it. If still 'payment_pending', reset so retry works.
-          const checkRes = await api.get<{ status?: string; booking_id?: string | null }>(
-            `/api/me/custom-offers/${offerId}`
-          ).catch(() => null);
-          const latestStatus = checkRes?.data?.status;
-          const latestBookingId = (checkRes?.data as { booking_id?: string | null } | null)?.booking_id ?? null;
-          if (latestStatus === "paid" && latestBookingId) {
+          const checkRes = await api.get<{
+            status?: string;
+            booking_id?: string | null;
+            payment_reference?: string | null;
+          }>(`/api/me/custom-offers/${offerId}`).catch(() => null);
+          const pendingRef = checkRes?.data?.payment_reference?.trim() || "";
+          if (pendingRef) {
+            await verifyPaystackWithRetry(pendingRef, { maxAttempts: 3 }).catch(() => null);
+          }
+          const afterRes = pendingRef
+            ? await api.get<{ status?: string; booking_id?: string | null }>(
+                `/api/me/custom-offers/${offerId}`,
+              ).catch(() => checkRes)
+            : checkRes;
+          const latestStatus = afterRes?.data?.status;
+          const latestBookingId = afterRes?.data?.booking_id ?? null;
+          if ((latestStatus === "paid" || latestStatus === "accepted") && latestBookingId) {
             // Payment succeeded in the background — navigate to the booking.
             haptic.success();
             setSuccessOverlay({ rows: buildOfferSuccessRows() });
             setTimeout(() => {
               router.replace({ pathname: "/(app)/booking-detail", params: { id: latestBookingId } });
             }, 2200);
+            return;
+          }
+          if (latestStatus === "finalize_failed" || (latestStatus === "paid" && !latestBookingId)) {
+            setPayError(
+              coc(
+                "finalizeFailed",
+                undefined,
+                "We received your payment but could not finish creating the booking. Please contact support with your payment reference.",
+              ),
+            );
             return;
           }
           await api.post(`/api/me/custom-offers/${offerId}/cancel-payment`, {}).catch(() => {});
@@ -527,6 +575,10 @@ export default function CustomOfferCheckoutScreen() {
         if (pr.outcome === "success" && pr.url) {
           if (isCancelledPaystackUrl(pr.url)) {
             setProcessingPayment(false);
+            const cancelRef = parseOnlineCheckoutReturnUrl(pr.url).reference;
+            if (cancelRef) {
+              void verifyPaystackWithRetry(cancelRef, { redirectStatus: "cancelled", maxAttempts: 1 });
+            }
             setPayError(
               coc("paymentCancelled", undefined, "You cancelled the payment. Tap Pay to try again."),
             );
@@ -535,6 +587,14 @@ export default function CustomOfferCheckoutScreen() {
           const parsed = parseOnlineCheckoutReturnUrl(pr.url);
           if (parsed.status === "failed" || parsed.status === "cancelled") {
             setProcessingPayment(false);
+            if (parsed.reference) {
+              void verifyPaystackWithRetry(parsed.reference, {
+                redirectStatus: parsed.status,
+                sessionId: parsed.sessionId,
+                transactionId: parsed.transactionId,
+                maxAttempts: 1,
+              });
+            }
             setPayError(
               coc("paymentCancelled", undefined, "You cancelled the payment. Tap Pay to try again."),
             );
@@ -554,10 +614,10 @@ export default function CustomOfferCheckoutScreen() {
 
         setProcessingPayment(true);
         setProcessingMessage(coc("confirmingPayment", undefined, "Confirming payment…"));
-        let bookingId: string | null = await pollForBooking();
-        if (!bookingId) {
+        let polled = await pollForBooking();
+        if (!polled.bookingId && !polled.needsSupport) {
           await new Promise((r) => setTimeout(r, 1500));
-          bookingId = await pollForBooking();
+          polled = await pollForBooking();
         }
 
         // §custom-offer-save-card: refresh saved cards on success so a newly
@@ -565,11 +625,21 @@ export default function CustomOfferCheckoutScreen() {
         await refreshSavedCards().catch(() => {});
 
         setProcessingPayment(false);
-        if (bookingId) {
+        if (polled.needsSupport) {
+          const supportMessage = coc(
+            "finalizeFailed",
+            undefined,
+            "We received your payment but could not finish creating the booking. Please contact support with your payment reference.",
+          );
+          setPayError(supportMessage);
+          Alert.alert(coc("paymentReceivedTitle", undefined, "Payment received"), supportMessage);
+          return;
+        }
+        if (polled.bookingId) {
           haptic.success();
           setSuccessOverlay({ rows: buildOfferSuccessRows() });
           setTimeout(() => {
-            router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId! } });
+            router.replace({ pathname: "/(app)/booking-detail", params: { id: polled.bookingId! } });
           }, 2200);
         } else {
           Alert.alert(
@@ -590,12 +660,22 @@ export default function CustomOfferCheckoutScreen() {
         ).catch(() => null);
         const latestStatus = statusRes?.data?.status;
         const latestBookingId = statusRes?.data?.booking_id ?? null;
-        if (latestStatus === "paid" && latestBookingId) {
+        if ((latestStatus === "paid" || latestStatus === "accepted") && latestBookingId) {
           haptic.success();
           setSuccessOverlay({ rows: buildOfferSuccessRows() });
           setTimeout(() => {
             router.replace({ pathname: "/(app)/booking-detail", params: { id: latestBookingId } });
           }, 2200);
+          return;
+        }
+        if (latestStatus === "finalize_failed" || (latestStatus === "paid" && !latestBookingId)) {
+          setPayError(
+            coc(
+              "finalizeFailed",
+              undefined,
+              "We received your payment but could not finish creating the booking. Please contact support with your payment reference.",
+            ),
+          );
           return;
         }
         if (latestStatus === "payment_pending") {
@@ -640,8 +720,31 @@ export default function CustomOfferCheckoutScreen() {
       );
       return;
     }
-    if (offer.status === "paid" || offer.booking_id) {
-      router.replace({ pathname: "/(app)/booking-detail", params: { id: offer.booking_id! } });
+    if ((offer.status === "paid" || offer.status === "accepted") && offer.booking_id) {
+      router.replace({ pathname: "/(app)/booking-detail", params: { id: offer.booking_id } });
+      return;
+    }
+    const pastExpiration = !!offer.expiration_at && new Date(offer.expiration_at).getTime() <= Date.now();
+    if (
+      offer.status === "paid" ||
+      offer.status === "finalize_failed" ||
+      (offer.status === "accepted" && !offer.booking_id)
+    ) {
+      Alert.alert(
+        coc("paymentReceivedTitle", undefined, "Payment received"),
+        coc(
+          "finalizeFailed",
+          undefined,
+          "We received your payment but could not finish creating the booking. Please contact support with your payment reference.",
+        ),
+      );
+      return;
+    }
+    if (pastExpiration || (offer.status !== "pending" && offer.status !== "payment_pending")) {
+      Alert.alert(
+        coc("offerUnavailable", undefined, "Offer unavailable"),
+        coc("offerUnavailable", undefined, "This offer is no longer payable."),
+      );
       return;
     }
 
@@ -767,7 +870,7 @@ export default function CustomOfferCheckoutScreen() {
     );
   }
 
-  if (offer.status === "paid" && offer.booking_id) {
+  if ((offer.status === "paid" || offer.status === "accepted") && offer.booking_id) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
         {header}
@@ -795,6 +898,57 @@ export default function CustomOfferCheckoutScreen() {
             <Text style={{ color: "#fff", fontWeight: "700" }}>
               {coc("viewBooking", undefined, "View booking")}
             </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const pastExpiration = !!offer.expiration_at && new Date(offer.expiration_at).getTime() <= Date.now();
+  const needsSupport = offer.status === "paid" || (offer.status === "accepted" && !offer.booking_id);
+  const payable =
+    !pastExpiration && (offer.status === "pending" || offer.status === "payment_pending");
+  if (needsSupport || pastExpiration || (!payable && offer.status !== "changes_requested")) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
+        {header}
+        <View style={{ flex: 1, padding: contentPadding, justifyContent: "center" }}>
+          <Text style={{ fontSize: 16, color: "#374151", textAlign: "center" }}>
+            {needsSupport
+              ? coc(
+                  "finalizeFailed",
+                  undefined,
+                  "We received your payment but could not finish creating the booking. Please contact support with your payment reference.",
+                )
+              : coc("offerUnavailable", undefined, "This offer is no longer payable.")}
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ marginTop: 20, alignSelf: "center", paddingVertical: 12, paddingHorizontal: 24, backgroundColor: PRIMARY, borderRadius: 12 }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700" }}>{coc("goBack", undefined, "Go back")}</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  if (offer.status === "changes_requested") {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
+        {header}
+        <View style={{ flex: 1, padding: contentPadding, justifyContent: "center" }}>
+          <Text style={{ fontSize: 16, color: "#374151", textAlign: "center" }}>
+            {coc(
+              "changesRequested",
+              undefined,
+              "The provider is updating this offer. You can pay once they send a revised quote.",
+            )}
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ marginTop: 20, alignSelf: "center", paddingVertical: 12, paddingHorizontal: 24, backgroundColor: PRIMARY, borderRadius: 12 }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700" }}>{coc("goBack", undefined, "Go back")}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

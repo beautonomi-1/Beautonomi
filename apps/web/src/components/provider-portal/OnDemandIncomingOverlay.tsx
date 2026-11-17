@@ -5,7 +5,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
-import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useConfigBundle, useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { playRingtone } from "@/lib/on-demand/ringtone";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -22,6 +22,9 @@ interface OnDemandRequestRow {
 export function OnDemandIncomingOverlay() {
   const { t } = useTranslation();
   const onDemandConfig = useModuleConfig("on_demand");
+  const { bundle } = useConfigBundle();
+  const ringtoneEnvironment =
+    bundle?.meta.env ?? (process.env.NODE_ENV === "development" ? "development" : "production");
   const [incomingRequest, setIncomingRequest] = useState<OnDemandRequestRow | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [accepting, setAccepting] = useState(false);
@@ -57,7 +60,12 @@ export function OnDemandIncomingOverlay() {
   }, [onDemandConfig.enabled, onDemandAcceptEnabled]);
 
   useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState !== "visible") ringtoneStopRef.current?.();
+    };
+    document.addEventListener("visibilitychange", onHide);
     return () => {
+      document.removeEventListener("visibilitychange", onHide);
       ringtoneStopRef.current?.();
     };
   }, []);
@@ -73,11 +81,11 @@ export function OnDemandIncomingOverlay() {
         ring_duration_seconds: onDemandConfig.ring_duration_seconds ?? 20,
         ring_repeat: onDemandConfig.ring_repeat ?? true,
       },
-      { environment: typeof window !== "undefined" && (window as any).__DEV__ ? "development" : "production" }
+      { environment: ringtoneEnvironment }
     ).then((ctrl) => {
       ringtoneStopRef.current = ctrl.stop;
     });
-  }, [incomingRequest?.id, incomingRequest?.status, onDemandConfig.enabled, onDemandConfig.ringtone_asset_path]);
+  }, [incomingRequest?.id, incomingRequest?.status, onDemandConfig.enabled, onDemandConfig.ringtone_asset_path, ringtoneEnvironment]);
 
   useEffect(() => {
     if (!incomingRequest?.expires_at || incomingRequest.status !== "requested") return;

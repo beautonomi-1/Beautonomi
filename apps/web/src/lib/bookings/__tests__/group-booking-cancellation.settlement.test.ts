@@ -61,14 +61,28 @@ vi.mock("@/lib/bookings/bookings-admin-write", () => ({
         };
         return chain;
       },
-      select: () => {
+      select: (columns?: string) => {
+        if (
+          columns === "id" ||
+          (typeof columns === "string" && columns.includes("customer_package_entitlement_id"))
+        ) {
+          const chain = {
+            eq: () => chain,
+            is: () => chain,
+            not: () => chain,
+            limit: () => chain,
+            maybeSingle: async () => ({ data: null, error: null }),
+          };
+          return chain;
+        }
         let id = "";
         const chain = {
           eq: (_col: string, value: string) => {
             id = value;
             return chain;
           },
-          maybeSingle: async () => ({
+            not: async () => ({ data: [], error: null }),
+            maybeSingle: async () => ({
             data: { id, total_amount: 200, currency: "ZAR" },
             error: null,
           }),
@@ -136,7 +150,19 @@ describe("cancelGroupBooking settlement", () => {
       financeActor: "provider",
     });
 
-    expect(result).toEqual([{ bookingId: "b-cash", walletRefund: 0, inPersonRefundDue: 200 }]);
+    expect(result).toEqual([
+      {
+        bookingId: "b-cash",
+        walletRefund: 0,
+        inPersonRefundDue: 200,
+        currency: "ZAR",
+        settlementFailed: false,
+        refundSucceeded: true,
+        giftCardRestored: false,
+        giftValueStillDue: false,
+        guestShareRefundFailed: false,
+      },
+    ]);
     expect(groupStatusUpdated).toBe(true);
   });
 
@@ -152,7 +178,19 @@ describe("cancelGroupBooking settlement", () => {
       financeActor: "provider",
     });
 
-    expect(result).toEqual([{ bookingId: "b-online", walletRefund: 200, inPersonRefundDue: 0 }]);
+    expect(result).toEqual([
+      {
+        bookingId: "b-online",
+        walletRefund: 200,
+        inPersonRefundDue: 0,
+        currency: "ZAR",
+        settlementFailed: false,
+        refundSucceeded: true,
+        giftCardRestored: false,
+        giftValueStillDue: false,
+        guestShareRefundFailed: false,
+      },
+    ]);
     expect(mockSettleBookingCancellation).toHaveBeenCalledTimes(1);
   });
 
@@ -215,6 +253,47 @@ describe("cancelGroupBooking settlement", () => {
     expect(result.map((r) => r.bookingId).sort()).toEqual(["b-guest", "b-primary"]);
     expect(statusUpdates).toEqual(["b-guest"]);
     expect(mockSettleBookingCancellation).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a failed settlement off the wallet amount and records a restored gift card", async () => {
+    claimableIds = new Set(["b-gift", "b-down"]);
+    mockGetGroupBooking.mockResolvedValue({
+      bookings: [
+        { id: "b-gift", status: "confirmed" },
+        { id: "b-down", status: "confirmed" },
+      ],
+    });
+    mockLoadOutcome.mockResolvedValue({ outcome: outcome(200, 0) });
+    mockSettleBookingCancellation
+      .mockResolvedValueOnce({
+        walletRefundAmount: 150,
+        refundResult: { success: true },
+        giftCardVoidAttempted: true,
+        giftValueStillDue: false,
+        inPersonCashRefundDue: 0,
+      })
+      .mockRejectedValueOnce(new Error("wallet down"));
+
+    const { cancelGroupBooking } = await import("../group-booking-cancellation");
+    const result = await cancelGroupBooking(supabaseFor([]) as never, GROUP_ID, "user-1", "r", {
+      settleFinance: true,
+      financeActor: "customer",
+    });
+
+    const byId = Object.fromEntries(result.map((row) => [row.bookingId, row]));
+    expect(byId["b-gift"]).toMatchObject({
+      walletRefund: 150,
+      settlementFailed: false,
+      refundSucceeded: true,
+      giftCardRestored: true,
+      giftValueStillDue: false,
+    });
+    expect(byId["b-down"]).toMatchObject({
+      walletRefund: 0,
+      settlementFailed: true,
+      refundSucceeded: false,
+      giftCardRestored: false,
+    });
   });
 
   it("throws when a child update errors and does not mark the group cancelled", async () => {

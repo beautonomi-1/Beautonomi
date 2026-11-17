@@ -1,6 +1,7 @@
 /**
  * Product sales: retail lines from appointment add-ons + paid product orders (mixed date bases).
  */
+import { subtractMoney } from "@beautonomi/utils";
 import { useCallback } from "react";
 import { View, Text } from "react-native";
 import { useTranslation } from "@beautonomi/i18n";
@@ -97,7 +98,7 @@ export function ProductSalesReportView({ data }: { data: unknown }) {
 
   const totalCost = Number(data.totalCost ?? 0);
   const totalProfit =
-    typeof data.totalProfit === "number" ? data.totalProfit : Number(data.totalRevenue) - totalCost;
+    typeof data.totalProfit === "number" ? data.totalProfit : subtractMoney(Number(data.totalRevenue), totalCost);
 
   return (
     <View style={twStyle("gap-5 pb-8")}>

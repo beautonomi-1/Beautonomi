@@ -9618,7 +9618,7 @@
           "markPaid": "Mark e duetswe",
           "sectionTitle": "Go duela",
           "ownerHint": "Theha ho lefa bakeng sa nako, ebe o tlanya ho lela ho lokisa PAYE, UIF, le ho theoleha ka letsoho ho basebetsi. Amohela 'me o tshoae e lefetsoe ha o se o lokile.",
-          "staffHint": "Bona duela runs for your workplace. Only the Kgwebo mong can tlhola runs, amogela, or mark them e duetswe.",
+          "staffHint": "O bona fela karata ya gago ya tuelo. Mong wa kgwebo, kgotsa yo o neilweng tetla ya tuelo, o tlhola tefo, o e amogela, mme o e tshwaya e duetswe.",
           "emptyTitle": "Ga go na duela runs gajaana",
           "emptyOwner": "Tlhama tatelano ya tuelo ya paka ya beke le beke kgotsa ya kgwedi le kgwedi. Go tswa foo o e amogele le go e tshwaya e duetswe fano.",
           "emptyStaff": "Mong wa gago ga a ise a tlhame thulaganyo ya go duela. Ba kope go simolola e le nngwe go tswa mo sekirining seno.",
@@ -13913,7 +13913,8 @@
       "requestChangesTitle": "kopo fetolas",
       "requestChangesBody": "Vertel die verskaffer wat jy wil hê moet aangepas word.",
       "requestChangesEmpty": "Tsweetswee describe the fetolas you want.",
-      "requestChangesFailed": "E reteletswe go kopo fetolas"
+      "requestChangesFailed": "E reteletswe go kopo fetolas",
+      "offerStatusNeedsSupport": "Needs thekgo"
     },
     "walletScreen": {
       "balanceLabel": "sepatši masaledi",
@@ -15534,7 +15535,7 @@
           "emailRequiredTitle": "imeile go a tlhokega",
           "emailRequiredBody": "Kenya aterese ea imeile akhaonteng ea hau pele u lefa odara ena inthaneteng.",
           "paymentUnavailableTitle": "tefo ga e yo",
-          "paymentUnavailableBody": "We could not simolola tefo for this odara. Tsweetswee leka gape.",
+          "paymentUnavailableBody": "Ga re a kgona go simolola tuelo ya odara eno. Leka gape.",
           "shareErrorTitle": "Abelana",
           "shareErrorBody": "Couldn't abelana this rasiti.",
           "downloadReceiptTitle": "Laisa rasiti",
@@ -15575,7 +15576,7 @@
           "timelineShipped": "E rometswe",
           "timelineCollected": "E kgobokantswe",
           "timelineDelivered": "E isitswe",
-          "trackShipment": "Track shipment",
+          "trackShipment": "Latela thomelo",
           "trackingLabel": "Go latela: {{detail}}",
           "openTrackingA11y": "Bula Go latela",
           "openTrackingWithCarrierA11y": "Bula Go latela with {{carrier}}",
@@ -15585,7 +15586,7 @@
           "returnApproved": "Return e amogetswe",
           "itemReceived": "Selo Received",
           "returnRejected": "Return e gannwe",
-          "returnEscalated": "Return Escalated",
+          "returnEscalated": "Terugsend eskaleer",
           "returnCancelled": "Return e khansetswe",
           "returnStatusPending": "e emetse",
           "returnStatusApproved": "e amogetswe",
@@ -15600,7 +15601,7 @@
           "refundAmountLabel": "pusetso palo:",
           "requestedOn": "E kopilwe ka {{date}}",
           "items": "Dilo",
-          "itemQtyPrice": "{{count}} x {{price}}",
+          "itemQtyPrice": "{{count}} × {{price}}",
           "yourDetails": "dintlha ya gago",
           "nameLabel": "Leina",
           "emailLabel": "imeile",
@@ -15636,10 +15637,10 @@
           "promotion": "Phasalatso",
           "calculatedTotal": "Calculated palogotlhe",
           "chargedTotal": "Charged palogotlhe",
-          "totalDifferenceHint": "Small differences can come from rounding or papatsotions applied at go duela.",
+          "totalDifferenceHint": "Pharologano e nnye e ka tswa mo go dikologeng kgotsa ditheko tse di dirisitsweng fa go duelwa.",
           "soldBy": "E rekisitswe ke",
           "requestReturnCta": "kopo Return / pusetso",
-          "returnWindowPassed": "Return window ({{days}} malatsi) has passed. For thuso, bula porofaele → Thuso centre → New thekete.",
+          "returnWindowPassed": "Nako ya go busetsa (malatsi a {{days}}) e fetile. Go thuso, bula Porofaele → Setsi sa thuso → Thekete e ntšha.",
           "readyForPickupTitle": "E siametse go tsewa",
           "lineFulfilment": "Go phetha: {{status}}",
           "unitLabel": "Yuniti",
@@ -15647,7 +15648,11 @@
           "accessLabel": "Go tsena",
           "parkingLabel": "Go paka",
           "landmarksLabel": "Matshwao",
-          "partiallyRefundedContactProvider": "Otara eno e ne ya busediwa madi ka bontlhabongwe. Ikgolaganye le motlamedi go busetsa madi a a setseng."
+          "partiallyRefundedContactProvider": "Otara eno e ne ya busediwa madi ka bontlhabongwe. Ikgolaganye le motlamedi go busetsa madi a a setseng.",
+          "refunded": "E buseditswe",
+          "messageProvider": "Romela molaetsa go mophatlhalatsi",
+          "messageFailedTitle": "molaetsa",
+          "messageFailedBody": "Ga e a kgona go simolola puisano le moabi yo."
         },
         "customRequestsList": {
           "startPaymentFailed": "E reteletswe go simolola tefo",
@@ -18420,14 +18425,14 @@
     "memberDiscountFallback": "Member theolelo",
     "saveCardInfoA11y": "Info Mabapi e a boloka Karata",
     "customTipA11y": "Ya tlwaelo thepa palo",
-    "bookingSuccessTitleConfirmed": "bukingo netefatsaed!",
-    "bookingSuccessTitlePending": "bukingo received!",
-    "bookingSuccessTitlePendingPayment": "tefo e a dira...",
-    "bookingSuccessPendingPaymentBody": "tefo is being netefatsaed. You'll receive a kitsiso shortly. ya gago.",
-    "bookingSuccessPendingBody": "Wag op verskafferbevestiging - gewoonlik binne 8 uur",
-    "bookingSuccessFooter": "Taking you to your bukingo…",
+    "bookingSuccessTitleConfirmed": "Peeletso e netefaditswe!",
+    "bookingSuccessTitlePending": "Peeletso e amogetswe!",
+    "bookingSuccessTitlePendingPayment": "Tuelo e a dirwa…",
+    "bookingSuccessPendingPaymentBody": "Tuelo ya gago e a netefadiwa. O tla bona kitsiso mo nakong e e sa fediseng.",
+    "bookingSuccessPendingBody": "Re letile gore moabi a netefatse — re tla go itsise fa ba arabile",
+    "bookingSuccessFooter": "Re bula peeletso ya gago…",
     "totalPaidPrefix": "Palogotlhe e e duetsweng",
-    "platformFeeInclusive": " (go akaretse tšhelete ya sethala {{amount}})",
+    "platformFeeInclusive": " (go akaretsa tshireletso ya peeletso {{amount}})",
     "securePaymentTitle": "Secure tefo",
     "paymentCancelledTitle": "tefo e khansetswe",
     "paymentCancelledBody": "O khansetse tuelo. Peeletso ya gago ga e ise e netefadiwe.",
@@ -20926,7 +20931,8 @@
         "createOfferFailedShort": "E reteletswe go tlhola offer",
         "changeClient": "Fetola",
         "searchClientPlaceholder": "Batla ka leina, imeile kgotsa mogala (sek. 082…)",
-        "searchClientHint": "Kwala bonyane ditlhaka di le 2"
+        "searchClientHint": "Kwala bonyane ditlhaka di le 2",
+        "continuePayment": "tswelela tefo"
       },
       "privacyAndSharing": {
         "tabAccount": "Akhauunte",
@@ -35519,7 +35525,9 @@
         "editOffer": "Lokisa offer",
         "withdrawOfferConfirm": "O na le bonnete jwa gore o batla go gogela tjhebeletso e?",
         "withdrawOffer": "GO GOGA MADI A O A DUELANG",
-        "couldNotLoadOfferDetails": "Ga e kgona go laiša offer dintlha."
+        "couldNotLoadOfferDetails": "Ga e kgona go laiša offer dintlha.",
+        "statusNeedsSupport": "Needs thekgo",
+        "resumePayment": "tswelela tefo"
       },
       "customOfferModal": {
         "loadOfferFailed": "Ga e kgona go laiša offer",
@@ -36462,7 +36470,13 @@
         "waitingBody": "Re netefatsa tuelo ya gago. Ntšhwafatsa dikopo tsa gago tse di tlwaelegileng mo nakong e khutshwane.",
         "backToRequests": "morago to Ya tlwaelo dikopo",
         "changesRequestedTitle": "Thebolo e a tlhabololwa",
-        "changesRequestedBody": "Motlamedi wa gago o tlhabolola kabo eno morago ga kopo ya gago ya phetogo."
+        "changesRequestedBody": "Motlamedi wa gago o tlhabolola kabo eno morago ga kopo ya gago ya phetogo.",
+        "viewBooking": "Bona bukingo",
+        "needsSupportTitle": "tefo needs thekgo",
+        "resumePayment": "tswelela tefo",
+        "needsSupportBody": "Re amogetse tuelo, mme ga re a kgona go tlhama peekelo. Ikgolaganye le thuso ka nomoro ya gago ya tuelo.",
+        "unavailableBody": "Kopa moabi kakanyetso e ntšha fa o sa batla tirelo eno.",
+        "unavailableTitle": "Tshupo eno ga e sa ka duelwa"
       }
     },
     "groupInvite": {

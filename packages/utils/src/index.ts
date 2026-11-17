@@ -59,6 +59,7 @@ export {
   normalizeTipPercentPresets,
   validateTipPercentPresetsForSave,
   roundCurrency,
+  roundHalfAwayFromZero,
   splitMoneyProportionally,
   subtractMoney,
   sumMoney,
@@ -371,6 +372,7 @@ export { getCustomerEtaUiParts } from "./customer-tracking-eta";
 export {
   calculateBookingTotals,
   effectiveTravelFee,
+  expectedPersistedBookingTotal,
   type BookingPricingInput,
   type BookingPricingResult,
   type BookingTravelLocationType,

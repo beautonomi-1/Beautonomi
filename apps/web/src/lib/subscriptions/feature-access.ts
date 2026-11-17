@@ -22,7 +22,7 @@ import { isPastDueWithinGrace } from "@/lib/iap/apple/billing-active";
  *
  *   - `active` / `trialing` → full plan access.
  *   - `past_due`            → access only within {@link SUBSCRIPTION_PAST_DUE_GRACE_DAYS}
- *                             of the status change (single failed-charge grace).
+ *                             of `past_due_since` (the first failed charge).
  *   - anything else (`cancelled`, `expired`, `pending`) → fall back to free.
  *
  * Any lapse therefore always resolves to the free tier.
@@ -43,6 +43,13 @@ export const SUBSCRIPTION_PAST_DUE_GRACE_DAYS = 3;
  * run. Mirrored in SQL `get_provider_subscription_plan` (migration 1010).
  */
 export const SCHEDULED_DOWNGRADE_ENTITLED_OR = "scheduled_plan_id.not.is.null";
+
+/**
+ * A failed card renewal is still selectable after expires_at. The 3-day
+ * past_due_since window is applied after the row is read. Apple uses its own
+ * grace date in the same filter.
+ */
+export const PAST_DUE_ENTITLED_OR = "status.eq.past_due";
 
 /**
  * Request-aware Supabase client for feature-access checks.
@@ -180,6 +187,7 @@ export async function getProviderSubscriptionTier(
       plan_id,
       status,
       updated_at,
+      past_due_since,
       billing_provider,
       apple_grace_period_expires_at,
       plan:subscription_plans!plan_id(
@@ -196,7 +204,7 @@ export async function getProviderSubscriptionTier(
     // StoreKit grace window is still open, so that window has to be part of the
     // filter or the grace handling below would never see the row.
     .or(
-      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso},${SCHEDULED_DOWNGRADE_ENTITLED_OR}`,
+      `expires_at.gte.${nowIso},expires_at.is.null,apple_grace_period_expires_at.gte.${nowIso},${PAST_DUE_ENTITLED_OR},${SCHEDULED_DOWNGRADE_ENTITLED_OR}`,
     )
     .order("status", { ascending: true })
     .maybeSingle();
@@ -206,12 +214,13 @@ export async function getProviderSubscriptionTier(
     return null;
   }
 
-  // For past_due: Paystack uses a 3-day grace from status change; Apple honors
+  // For past_due: card billing uses 3 days from past_due_since; Apple honors
   // apple_grace_period_expires_at from StoreKit (up to 16 days). Apple without
-  // a grace date is not entitled — do not invent the Paystack window.
+  // a grace date is not entitled — do not invent the card-billing window.
   if (subscription?.status === "past_due") {
     const entitled = isPastDueWithinGrace({
       billingProvider: (subscription as { billing_provider?: string | null }).billing_provider,
+      pastDueSince: (subscription as { past_due_since?: string | null }).past_due_since,
       updatedAt: (subscription as { updated_at?: string | null }).updated_at,
       appleGracePeriodExpiresAt: (subscription as { apple_grace_period_expires_at?: string | null })
         .apple_grace_period_expires_at,

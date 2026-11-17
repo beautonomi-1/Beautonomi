@@ -15,6 +15,8 @@ vi.mock("@/lib/orders/product-order-lifecycle", () => ({
   applyProductOrderCancelRefundSideEffects: vi.fn(async () => ({ walletCreditFailed: false })),
   releaseUnpaidProductOrderHolds: vi.fn(async () => ({ credited: true, failed: false, amount: 40 })),
   restockProductOrderLineItems: vi.fn(async () => undefined),
+  productOrderHasStockStillOut: vi.fn(async () => false),
+  ABANDONED_ORDER_REFUND_STILL_DUE: "Payment was not completed in time — refund still due",
 }));
 vi.mock("@/lib/ecommerce/refund-product-order-online-tender", () => ({
   refundProductOrderOnlineTender: vi.fn(async () => ({
@@ -160,7 +162,7 @@ describe("PATCH /api/me/orders/[id]/cancel restocks at most once", () => {
     expect(restock).toHaveBeenCalledOnce();
   });
 
-  it("retry after any failure after the restock is rejected and does not restock again", async () => {
+  it("retry after a refund failure finishes the refund and does not restock again", async () => {
     const { restock, sideEffects } = await setup();
     sideEffects.mockRejectedValueOnce(new Error("db connection reset"));
 
@@ -168,9 +170,37 @@ describe("PATCH /api/me/orders/[id]/cancel restocks at most once", () => {
     const retry = await cancel();
 
     expect(first.status).toBeGreaterThanOrEqual(500);
-    expect(retry.status).toBe(400);
-    expect((await retry.json()).error?.code).toBe("ALREADY_CANCELLED");
+    expect(retry.status).toBe(200);
     expect(restock).toHaveBeenCalledOnce();
+    expect(sideEffects).toHaveBeenCalledTimes(2);
+  });
+
+  it("a finished cancel is rejected and does not refund again", async () => {
+    const { restock, sideEffects, onlineRefund } = await setup("cancelled", {
+      payment_status: "refunded",
+    });
+
+    const res = await cancel();
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error?.code).toBe("ALREADY_CANCELLED");
+    expect(restock).not.toHaveBeenCalled();
+    expect(sideEffects).not.toHaveBeenCalled();
+    expect(onlineRefund).not.toHaveBeenCalled();
+  });
+
+  it("puts products back when a cancelled order still has them out and does not refund again", async () => {
+    const { restock, sideEffects } = await setup("cancelled", {
+      payment_status: "refunded",
+    });
+    const lifecycle = await import("@/lib/orders/product-order-lifecycle");
+    vi.mocked(lifecycle.productOrderHasStockStillOut).mockResolvedValueOnce(true);
+
+    const res = await cancel();
+
+    expect(res.status).toBe(200);
+    expect(restock).toHaveBeenCalledOnce();
+    expect(sideEffects).not.toHaveBeenCalled();
   });
 
   it("a concurrent duplicate that loses the status compare-and-swap does not restock", async () => {

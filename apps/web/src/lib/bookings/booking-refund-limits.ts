@@ -1,4 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
+import {
+  giftSweepOwes,
+  refundableExcludingGiftStillDue,
+  visitClosedForGiftReturn,
+} from "@/lib/bookings/gift-value-still-due";
 
 export type BookingPaymentForRefundCap = {
   id?: string;
@@ -30,8 +36,8 @@ export function computeInPersonRefundableCap(
 ): number {
   const inPersonCollected = payments
     .filter((p) => (p.status === "completed" || p.status === "partially_refunded") && isInPersonCollected(p))
-    .reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
-  return Math.max(0, inPersonCollected - completedRefundsCashTotal);
+    .reduce((sum, p) => addMoney(sum, Number(p.amount ?? 0)), 0);
+  return Math.max(0, subtractMoney(inPersonCollected, completedRefundsCashTotal));
 }
 
 export async function fetchBookingPaymentsForRefundCap(
@@ -62,7 +68,7 @@ export async function fetchCompletedInPersonRefundsTotal(
       const method = (r.refund_method ?? "").toLowerCase();
       return method === "cash" || method === "original";
     })
-    .reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+    .reduce((sum, r) => addMoney(sum, Number(r.amount ?? 0)), 0);
 }
 
 /** @deprecated Use fetchCompletedInPersonRefundsTotal — subtracts cash and terminal reversals. */
@@ -87,11 +93,11 @@ export async function fetchCompletedStoreCreditRefundsTotal(
       const method = (r.refund_method ?? "").toLowerCase();
       return method === "store_credit" || method === "wallet";
     })
-    .reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+    .reduce((sum, r) => addMoney(sum, Number(r.amount ?? 0)), 0);
 }
 
 function roundMoney(n: number): number {
-  return Math.round(Math.max(0, n) * 100) / 100;
+  return roundCurrency(Math.max(0, n));
 }
 
 /**
@@ -128,13 +134,13 @@ export async function computeRefundCaps(
     const method = String(r.refund_method ?? "").toLowerCase();
     const amt = Number(r.amount ?? 0);
     if (method === "store_credit" || method === "wallet") {
-      onlineRefunded += amt;
+      onlineRefunded = addMoney(onlineRefunded, amt);
     } else if (method === "original") {
       const linked = r.payment_id ? paymentById.get(String(r.payment_id)) : undefined;
-      if (linked && isPlatformCollected(linked)) onlineRefunded += amt;
-      else inPersonRefunded += amt;
+      if (linked && isPlatformCollected(linked)) onlineRefunded = addMoney(onlineRefunded, amt);
+      else inPersonRefunded = addMoney(inPersonRefunded, amt);
     } else if (method === "cash") {
-      inPersonRefunded += amt;
+      inPersonRefunded = addMoney(inPersonRefunded, amt);
     }
   }
 
@@ -144,11 +150,29 @@ export async function computeRefundCaps(
     if (p.status !== "completed" && p.status !== "partially_refunded") continue;
     const amt = Number(p.amount ?? 0);
     if (amt <= 0) continue;
-    if (isPlatformCollected(p) || !isInPersonCollected(p)) onlineCollected += amt;
+    if (isPlatformCollected(p) || !isInPersonCollected(p)) onlineCollected = addMoney(onlineCollected, amt);
   }
-  const walletGift = Number(bookingMeta?.wallet_amount ?? 0) + Number(bookingMeta?.gift_card_amount ?? 0);
+  const walletPaid = Number(bookingMeta?.wallet_amount ?? 0);
+  const { data: markRows } = await supabase
+    .from("bookings")
+    .select("cancellation_settlement_error, status, gift_card_amount")
+    .eq("id", bookingId);
+  const markList = Array.isArray(markRows) ? markRows : markRows ? [markRows] : [];
+  const mark = markList[0] as
+    | {
+        cancellation_settlement_error?: string | null;
+        status?: string | null;
+        gift_card_amount?: number | null;
+      }
+    | undefined;
+  const settlementError = mark?.cancellation_settlement_error;
+  const visitClosed = visitClosedForGiftReturn(mark?.status);
+  const giftPaid = mark ? Number(mark.gift_card_amount ?? 0) : Number(bookingMeta?.gift_card_amount ?? 0);
+  const walletGift = addMoney(walletPaid, giftPaid);
   onlineCollected = Math.max(onlineCollected, walletGift);
-  let onlineCap = roundMoney(onlineCollected - onlineRefunded);
+  const heldGift = giftSweepOwes(settlementError, giftPaid, visitClosed);
+  onlineCollected = Math.max(0, subtractMoney(onlineCollected, heldGift));
+  let onlineCap = Math.max(0, subtractMoney(onlineCollected, onlineRefunded));
 
   const terminalCap = roundMoney(
     computeInPersonRefundableCap(
@@ -164,12 +188,11 @@ export async function computeRefundCaps(
   const cashCap = roundMoney(computeInPersonRefundableCap(payments, inPersonRefunded));
 
   const totalPaid = Number(bookingMeta?.total_paid ?? 0);
-  const walletPaid = Number(bookingMeta?.wallet_amount ?? 0);
-  const giftPaid = Number(bookingMeta?.gift_card_amount ?? 0);
   const totalRefunded = Number(bookingMeta?.total_refunded ?? 0);
-  const maxRefundable = Math.max(
-    0,
-    roundMoney(Math.max(totalPaid, walletPaid + giftPaid) - totalRefunded),
+  const maxRefundable = refundableExcludingGiftStillDue(
+    Math.max(0, subtractMoney(Math.max(totalPaid, addMoney(walletPaid, giftPaid)), totalRefunded)),
+    settlementError,
+    { giftCardAmount: giftPaid, visitClosed },
   );
   onlineCap = Math.max(0, Math.min(onlineCap, maxRefundable));
 

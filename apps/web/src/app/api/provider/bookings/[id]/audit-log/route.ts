@@ -80,7 +80,7 @@ export async function GET(
       .select(
         `
         *,
-        created_by_user:users!booking_audit_log_created_by_fkey(full_name, email)
+        created_by_user:users!booking_audit_log_created_by_fkey(full_name)
       `,
       )
       .eq("booking_id", id)
@@ -92,14 +92,14 @@ export async function GET(
     }
 
     const transformedLogs: BookingAuditLogRow[] = (auditLogs || []).map((log: Record<string, unknown>) => {
-      const u = log.created_by_user as { full_name?: string | null; email?: string | null } | undefined;
+      const u = log.created_by_user as { full_name?: string | null } | undefined;
       return {
         id: String(log.id),
         booking_id: String(log.booking_id),
         event_type: String(log.event_type),
         event_data: (log.event_data as Record<string, unknown> | null) ?? null,
         created_by: String(log.created_by ?? ""),
-        created_by_name: u?.full_name || u?.email || "System",
+        created_by_name: u?.full_name?.trim() || "System",
         created_at: String(log.created_at),
       };
     });

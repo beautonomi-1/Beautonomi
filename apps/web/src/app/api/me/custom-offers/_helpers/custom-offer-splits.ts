@@ -15,7 +15,7 @@
  * just before the Paystack call (so we can roll back on init failure).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { percentOf } from "@beautonomi/utils";
+import { percentOf, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export interface CustomOfferSplitInput {
   /** Amount the customer would owe before any wallet / gift / loyalty (after promo+tax+fees+tip). */
@@ -62,7 +62,8 @@ export async function computeCustomOfferSplits(
 ): Promise<CustomOfferSplitResult> {
   const warnings: string[] = [];
 
-  let remaining = Math.max(0, Math.round(input.collectibleAmount * 100) / 100);
+  const currency = input.currency || "ZAR";
+  let remaining = Math.max(0, roundCurrency(input.collectibleAmount, currency));
 
   // ── 1. Loyalty redemption preview ────────────────────────────────────────
   let loyaltyPointsRedeemed = 0;
@@ -144,8 +145,8 @@ export async function computeCustomOfferSplits(
           usedPoints = Math.floor(discount * rate);
         }
         loyaltyPointsRedeemed = Math.max(0, Math.floor(usedPoints));
-        loyaltyDiscountAmount = Math.max(0, Math.round(discount * 100) / 100);
-        remaining = Math.max(0, Math.round((remaining - loyaltyDiscountAmount) * 100) / 100);
+        loyaltyDiscountAmount = Math.max(0, roundCurrency(discount, currency));
+        remaining = Math.max(0, subtractMoney(remaining, loyaltyDiscountAmount, currency));
       }
     }
   }
@@ -188,7 +189,7 @@ export async function computeCustomOfferSplits(
     giftCardBalance = Math.max(0, Number(gc.balance) || 0);
     if (remaining > 0) {
       giftCardAmount = Math.min(giftCardBalance, remaining);
-      remaining = Math.max(0, Math.round((remaining - giftCardAmount) * 100) / 100);
+      remaining = Math.max(0, subtractMoney(remaining, giftCardAmount, currency));
     }
   }
 
@@ -208,7 +209,7 @@ export async function computeCustomOfferSplits(
       );
     } else if (balance > 0) {
       walletAmount = Math.min(balance, remaining);
-      remaining = Math.max(0, Math.round((remaining - walletAmount) * 100) / 100);
+      remaining = Math.max(0, subtractMoney(remaining, walletAmount, currency));
     }
   }
 

@@ -39,9 +39,12 @@ function createAdminClient() {
     from: vi.fn(() => ({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      not: vi.fn(async () => ({ data: [], error: null })),
       single: vi.fn(async () => ({ data: { id: "booking-wr-1" }, error: null })),
       update: updateMock.mockReturnValue({
-        eq: vi.fn(async () => ({ error: null })),
+        eq: vi.fn().mockReturnValue({
+          select: vi.fn(async () => ({ data: [{ id: "booking-wr-1" }], error: null })),
+        }),
       }),
     })),
   };

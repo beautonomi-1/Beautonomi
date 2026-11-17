@@ -6,15 +6,21 @@ import { validatePortalToken } from "@/lib/portal/token";
 import { loadCancellationOutcomeForBooking } from "@/lib/bookings/load-cancellation-outcome";
 import {
   assertCancellationAllowed,
-  describeRefundFromOutcome,
+  cancellationNoticeFromSettlement,
   settleParamsFromCancellationOutcome,
 } from "@/lib/bookings/cancellation-outcome-bridge";
+import { recordSettledWalletOnCancelEvent } from "@/lib/bookings/record-settled-cancel-event-wallet";
 import {
   settleBookingCancellation,
   type BookingFinancialSnapshot,
 } from "@/lib/bookings/settle-booking-cancellation";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  lineUpBookingStockWithSavedStatus,
+  restoreBookingRetailStock,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
 
 /**
  * POST /api/portal/booking/cancel
@@ -136,6 +142,18 @@ export async function POST(request: NextRequest) {
       loyalty_points_earned: (booking as { loyalty_points_earned?: number | null }).loyalty_points_earned,
     };
 
+    let stockReturned: Awaited<ReturnType<typeof restoreBookingRetailStock>> = [];
+    try {
+      stockReturned = await restoreBookingRetailStock(adminSupabase, validation.bookingId);
+    } catch (stockErr) {
+      return handleApiError(
+        stockErr instanceof Error ? stockErr : new Error("Product stock could not be restored"),
+        "Product stock could not be restored. The visit was not cancelled.",
+        "STOCK_ERROR",
+        409,
+      );
+    }
+
     const { data: updatedBooking, error: updateError } = await adminSupabase
       .from("bookings")
       .update({
@@ -149,9 +167,29 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
+    if (updateError || !updatedBooking) {
+      try {
+        await lineUpBookingStockWithSavedStatus(
+          adminSupabase,
+          validation.bookingId,
+          [],
+          stockReturned,
+        );
+      } catch (undoErr) {
+        return handleApiError(
+          undoErr instanceof Error ? undoErr : new Error("Product stock could not be deducted"),
+          "This booking changed, and the product stock could not be put back in line with it.",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+    }
+
     if (updateError) {
       throw updateError;
     }
+
+    await returnPackageSessionAfterCancel(adminSupabase, validation.bookingId);
 
     await adminSupabase.from("booking_events").insert({
       booking_id: validation.bookingId,
@@ -166,25 +204,46 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    let notice = cancellationNoticeFromSettlement({
+      currency: cancelCurrency,
+      walletRefundAmount: 0,
+      refundSucceeded: false,
+      settlementFailed: true,
+    });
     try {
-      await settleBookingCancellation(
+      const settlement = await settleBookingCancellation(
         settleParamsFromCancellationOutcome(outcome, "portal", {
           booking: financialSnapshot,
           currency: cancelCurrency,
           refundBookingTotal: bookingTotal,
         }),
       );
+      notice = cancellationNoticeFromSettlement({
+        currency: cancelCurrency,
+        walletRefundAmount: settlement.walletRefundAmount ?? 0,
+        refundSucceeded: settlement.refundResult.success === true,
+        giftCardRestored: settlement.giftCardVoidAttempted === true,
+        giftValueStillDue: settlement.giftValueStillDue === true,
+        inPersonRefundDue: settlement.inPersonCashRefundDue,
+      });
     } catch (settleErr) {
       console.error("Error processing portal cancellation settlement:", settleErr);
     }
 
     const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
-    const refundInfo = describeRefundFromOutcome(outcome, bookingTotal, cancelCurrency);
 
     await sendCancellationNotification(validation.bookingId, {
       cancelledBy: "customer",
-      refundInfo,
+      refundInfo: notice.refundInfo,
+      feeRetained: cancellationFeeApplied,
+      walletRefund: notice.walletRefund,
+      currency: cancelCurrency,
     });
+    await recordSettledWalletOnCancelEvent(
+      adminSupabase,
+      validation.bookingId,
+      notice.walletRefund ?? 0,
+    );
 
     try {
       const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");

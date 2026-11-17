@@ -20,6 +20,8 @@ jest.mock("@beautonomi/i18n", () => ({
 jest.mock("@/lib/legal-acceptance", () => ({
   hasAcceptedCurrentCustomerEula: jest.fn(() => Promise.resolve(true)),
   storeCustomerEulaAcceptance: jest.fn(() => Promise.resolve()),
+  isCustomerEulaSyncedForUser: jest.fn(() => Promise.resolve(false)),
+  markCustomerEulaSyncedForUser: jest.fn(() => Promise.resolve()),
   CUSTOMER_EULA_VERSION: "v1",
 }));
 
@@ -30,12 +32,23 @@ jest.mock("@/lib/legal-web", () => ({
 
 jest.mock("@/components/ui/BeautonomiLogo", () => ({ BeautonomiLogo: () => null }));
 
+// Real Ionicons calls Font.loadAsync. React 19's act() waits on that promise, and on CI
+// the font load outlives Jest's 5s test timeout before the EULA title can be queried.
+jest.mock("@expo/vector-icons", () => {
+  const React = require("react");
+  const { Text } = require("react-native");
+  return {
+    Ionicons: ({ name }: { name?: string }) =>
+      React.createElement(Text, { testID: `icon-${name ?? ""}` }, name ?? ""),
+  };
+});
+
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), replace: jest.fn() },
 }));
 
 import { LegalAcceptanceGate } from "@/components/legal/LegalAcceptanceGate";
-import { hasAcceptedCurrentCustomerEula } from "@/lib/legal-acceptance";
+import { hasAcceptedCurrentCustomerEula, isCustomerEulaSyncedForUser } from "@/lib/legal-acceptance";
 
 let mountCount = 0;
 function MountCounter() {
@@ -52,6 +65,7 @@ describe("LegalAcceptanceGate", () => {
     mountCount = 0;
     jest.clearAllMocks();
     (hasAcceptedCurrentCustomerEula as jest.Mock).mockResolvedValue(true);
+    (isCustomerEulaSyncedForUser as jest.Mock).mockResolvedValue(false);
     mockUseAuth.mockReturnValue({ session: { user: { id: "u1" } } });
     mockApiPost.mockResolvedValue({ data: {} });
   });
@@ -85,15 +99,23 @@ describe("LegalAcceptanceGate", () => {
     expect(screen.getByText("Checkout shell")).toBeTruthy();
   });
 
-  it("shows the EULA screen when enabled and not yet accepted", async () => {
-    (hasAcceptedCurrentCustomerEula as jest.Mock).mockResolvedValue(false);
+  it("shows the EULA screen when enabled and not yet accepted", () => {
+    // Resolve inside `.then()`, before it returns. A real Promise settles in a
+    // microtask, after render()'s act() scope has closed, and React then paints
+    // on a host callback. On a busy CI runner that callback does not run before
+    // Jest's 5s test timeout.
+    (hasAcceptedCurrentCustomerEula as jest.Mock).mockImplementation(() => ({
+      then(onFulfilled: (value: boolean) => void) {
+        onFulfilled(false);
+      },
+    }));
     const screen = render(
       <LegalAcceptanceGate enabled>
         <Text>App shell</Text>
       </LegalAcceptanceGate>,
     );
-    await waitFor(() =>
-      expect(screen.getByText("customer.mobile.components.legalAcceptanceGate.title")).toBeTruthy(),
+    expect(JSON.stringify(screen.toJSON())).toContain(
+      "customer.mobile.components.legalAcceptanceGate.title",
     );
     expect(screen.queryByText("App shell")).toBeNull();
   });
@@ -114,5 +136,17 @@ describe("LegalAcceptanceGate", () => {
     );
     await new Promise((r) => setTimeout(r, 50));
     expect(mockApiPost).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips the server sync when this user already synced the current version", async () => {
+    (isCustomerEulaSyncedForUser as jest.Mock).mockResolvedValue(true);
+    const screen = render(
+      <LegalAcceptanceGate enabled>
+        <Text>App shell</Text>
+      </LegalAcceptanceGate>,
+    );
+    await waitFor(() => expect(screen.getByText("App shell")).toBeTruthy());
+    await waitFor(() => expect(isCustomerEulaSyncedForUser).toHaveBeenCalledWith("u1"));
+    expect(mockApiPost).not.toHaveBeenCalled();
   });
 });

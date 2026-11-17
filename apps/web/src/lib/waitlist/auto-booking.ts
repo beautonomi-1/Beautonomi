@@ -7,6 +7,11 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import type { WaitlistMatch } from './matching';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { LAST_RESORT_CURRENCY } from '@/lib/regions/last-resort-currency';
+import {
+  resolveWaitlistProviderVat,
+  waitlistBookingMoney,
+  waitlistBookingRpcInsertMoney,
+} from '@/lib/waitlist/waitlist-booking-financials';
 
 /**
  * Check if provider has auto-booking enabled
@@ -78,22 +83,29 @@ export async function createAutoBooking(
   const bufferMinutes = Number((service as any).buffer_minutes || 0);
   const endTime = new Date(slotDate.getTime() + durationMinutes * 60000);
   const lockEndTime = new Date(slotDate.getTime() + (durationMinutes + bufferMinutes) * 60000);
+  const currency = service.currency || LAST_RESORT_CURRENCY;
 
-  // Create booking draft
   const adminSupabase = getSupabaseAdmin();
+  const waitlistVat = await resolveWaitlistProviderVat(adminSupabase, entry.provider_id);
+  const money = waitlistBookingMoney({
+    servicePrice: Number(service.price),
+    currency,
+    vat: waitlistVat,
+  });
   
   try {
-    // Create booking using the same RPC as regular bookings
     const bookingData = {
       provider_id: entry.provider_id,
       customer_id: entry.customer_id,
       guest_name: entry.customer_name,
       guest_email: entry.customer_email,
       guest_phone: entry.customer_phone,
-      location_type: 'at_salon', // Default to salon, could be configurable
+      location_type: 'at_salon',
       scheduled_at: slotDate.toISOString(),
-      status: 'pending', // Will need payment confirmation
+      status: 'pending',
       notes: `Auto-booked from waitlist. Original waitlist entry: ${entry.id}`,
+      ...waitlistBookingRpcInsertMoney(money),
+      booking_source: "online",
     };
 
     const bookingServicesData = [{
@@ -101,7 +113,7 @@ export async function createAutoBooking(
       staff_id: staffId,
       duration_minutes: durationMinutes,
       price: Number(service.price),
-      currency: service.currency || LAST_RESORT_CURRENCY,
+      currency,
       scheduled_start_at: slotDate.toISOString(),
       scheduled_end_at: endTime.toISOString(),
     }];
@@ -125,6 +137,11 @@ export async function createAutoBooking(
         error: bookingError?.message || 'Failed to create booking' 
       };
     }
+
+    await adminSupabase
+      .from('bookings')
+      .update(money)
+      .eq('id', bookingId);
 
     // Update waitlist entry status
     await supabase

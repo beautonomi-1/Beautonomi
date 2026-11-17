@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { FinanceLedgerRow } from "@/lib/admin/finance-ledger-tenant";
 import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
 
@@ -14,35 +15,28 @@ export function sumPlatformContributionForBookings(
   });
   if (filtered.length === 0) return 0;
   const agg = aggregateFinanceLedgerRows(filtered);
-  return agg.platform_take_net + agg.service_fee_revenue;
+  return addMoney(agg.platform_take_net, agg.service_fee_revenue);
 }
 
 export function sumPlatformContributionByCustomer(
   ledgerRows: FinanceLedgerRow[],
   bookingIdToCustomerId: Map<string, string>,
 ): Map<string, number> {
-  const out = new Map<string, number>();
+  const rowsByCustomer = new Map<string, FinanceLedgerRow[]>();
   for (const row of ledgerRows) {
     const bid = row.booking_id != null ? String(row.booking_id) : "";
     if (!bid) continue;
     const cid = bookingIdToCustomerId.get(bid);
     if (!cid) continue;
-    const type = String(row.transaction_type ?? "");
-    const net = Number(row.net ?? row.amount ?? 0);
-    let delta = 0;
-    if (type === "payment" || type === "additional_charge_payment") {
-      delta += Number(row.commission ?? 0) + Number(row.fees ?? 0);
-    }
-    if (type === "platform_fee" || type === "service_fee") {
-      delta += net;
-    }
-    if (type === "refund") {
-      delta -= Math.abs(net);
-    }
-    if (delta === 0 && (type === "payment" || type === "platform_fee")) {
-      delta = net;
-    }
-    out.set(cid, (out.get(cid) ?? 0) + delta);
+    const bucket = rowsByCustomer.get(cid) ?? [];
+    bucket.push(row);
+    rowsByCustomer.set(cid, bucket);
+  }
+
+  const out = new Map<string, number>();
+  for (const [customerId, rows] of rowsByCustomer) {
+    const agg = aggregateFinanceLedgerRows(rows);
+    out.set(customerId, addMoney(agg.platform_take_net, agg.service_fee_revenue));
   }
   return out;
 }

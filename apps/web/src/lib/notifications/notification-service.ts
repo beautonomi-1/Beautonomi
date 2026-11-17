@@ -4,6 +4,7 @@
  * Comprehensive service for triggering all notification templates
  * This service provides functions for every notification scenario in the platform
  */
+import { subtractMoney } from "@beautonomi/utils";
 
 import { type NotificationChannel } from "./onesignal";
 import type { TemplateDispatchChannel } from "./channel-types";
@@ -307,7 +308,7 @@ function buildCustomerPricingBreakdownHtml(booking: Record<string, unknown>, cur
     discount_amount: disc,
     promotion_discount_amount: promo,
   });
-  const pkgDisc = pkgApplied ? Math.max(0, disc - promo) : 0;
+  const pkgDisc = pkgApplied ? Math.max(0, subtractMoney(disc, promo)) : 0;
 
   if (sub > 0) rows.push(`Subtotal: ${fmt(sub, currency)}`);
   if (travel > 0) rows.push(`Travel: ${fmt(travel, currency)}`);
@@ -361,7 +362,7 @@ export async function notifyBookingConfirmed(
     discount_amount: discountAmt,
     promotion_discount_amount: promoAmt,
   });
-  const pkgDisc = pkgApplied ? Math.max(0, discountAmt - promoAmt) : 0;
+  const pkgDisc = pkgApplied ? Math.max(0, subtractMoney(discountAmt, promoAmt)) : 0;
   const pkgDisplayName =
     pkgApplied && booking.package?.name ? String(booking.package.name).trim() : "";
 
@@ -1618,7 +1619,7 @@ export async function notifyReceiptSent(
     discount_amount: discountAmt,
     promotion_discount_amount: promoAmt,
   });
-  const pkgDisc = pkgApplied ? Math.max(0, discountAmt - promoAmt) : 0;
+  const pkgDisc = pkgApplied ? Math.max(0, subtractMoney(discountAmt, promoAmt)) : 0;
   const pkgDisplayName =
     pkgApplied && booking.package?.name ? String(booking.package.name).trim() : "";
 

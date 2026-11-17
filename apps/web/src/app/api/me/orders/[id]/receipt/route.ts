@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -121,9 +120,7 @@ export async function GET(
       );
       user = { id: authed.user.id, role: authed.user.role as string };
     }
-    const supabase = tokenUserId ? getSupabaseAdmin() : await getSupabaseServer(request);
-
-    const { data: orderRaw, error } = await (supabase.from("product_orders") as any)
+    const { data: orderRaw, error } = await (getSupabaseAdmin().from("product_orders") as any)
       .select(
         `
         *,

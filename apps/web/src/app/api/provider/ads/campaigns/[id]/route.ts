@@ -2,8 +2,10 @@
  * PATCH /api/provider/ads/campaigns/[id] - Update campaign (status, budget, daily_budget, targeting, bid_cpc)
  */
 
+import { subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse, userHasProviderAccessAdmin } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, errorResponse, userHasProviderAccessAdmin } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { refundUnusedAdsBudget } from "@/lib/ads/refund-unused-ads-budget";
 import { notifyAdsCampaignEvent } from "@/lib/ads/notify-ads-campaign-event";
@@ -13,7 +15,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = getSupabaseAdmin();
     const { id: campaignId } = await params;
 
@@ -63,7 +67,7 @@ export async function PATCH(
           400
         );
       }
-      if (budget <= 0 || (!isTimeBased && budget - spent <= 0)) {
+      if (budget <= 0 || (!isTimeBased && subtractMoney(budget, spent) <= 0)) {
         return errorResponse(
           "This campaign needs a paid budget before it can be activated.",
           "ADS_PAYMENT_REQUIRED",

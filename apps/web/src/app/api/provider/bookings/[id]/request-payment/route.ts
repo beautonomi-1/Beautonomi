@@ -11,10 +11,13 @@ import type { Booking, AdditionalCharge } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { addMoney } from "@beautonomi/utils";
+import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
 
 const requestPaymentSchema = z.object({
   description: z.string().min(1, "Description is required"),
-  amount: z.number().positive("Amount must be positive"),
+  // F2-25: positive, ≤ 2dp, capped — provider-entered but never unbounded.
+  amount: clientMajorAmountSchema,
 });
 
 /**
@@ -130,7 +133,7 @@ export async function POST(
       .eq("booking_id", id);
     const unpaidAdditionalCharges = ((chargesForOutstanding as Array<{ amount?: number; status?: string }> | null) ?? [])
       .filter((charge) => charge.status !== "paid" && charge.status !== "rejected")
-      .reduce((sum, charge) => sum + Number(charge.amount || 0), 0);
+      .reduce((sum, charge) => addMoney(sum, Number(charge.amount || 0)), 0);
     const remainingBalance = computeBookingOutstandingDisplay({
       totalAmount: Number(bookingData.total_amount ?? 0),
       totalPaid: Number(bookingData.total_paid ?? 0),

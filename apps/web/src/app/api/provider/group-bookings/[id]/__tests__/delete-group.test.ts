@@ -57,6 +57,7 @@ vi.mock("@/lib/waitlist/matching", () => ({
 
 vi.mock("@/lib/bookings/group-booking-cancellation", () => ({
   cancelGroupBooking: (...args: unknown[]) => mockCancelGroupBooking(...args),
+  getGroupBookingParticipantsForCancellation: vi.fn(async () => []),
 }));
 
 describe("DELETE /api/provider/group-bookings/[id]", () => {
@@ -119,8 +120,18 @@ describe("DELETE /api/provider/group-bookings/[id]", () => {
     );
     await Promise.all(pendingAfter);
     expect(mockSendCancellationNotification).toHaveBeenCalledTimes(2);
-    expect(mockSendCancellationNotification).toHaveBeenCalledWith(B1, { cancelledBy: "provider" });
-    expect(mockSendCancellationNotification).toHaveBeenCalledWith(B2, { cancelledBy: "provider" });
+    expect(mockSendCancellationNotification).toHaveBeenCalledWith(B1, {
+      cancelledBy: "provider",
+      refundInfo: "A refund of ZAR 50.00 was credited to your wallet.",
+      walletRefund: 50,
+      currency: undefined,
+    });
+    expect(mockSendCancellationNotification).toHaveBeenCalledWith(B2, {
+      cancelledBy: "provider",
+      refundInfo: "ZAR 120.00 paid in person will be returned to you by the provider.",
+      walletRefund: undefined,
+      currency: undefined,
+    });
     expect(mockMatchWaitlistOnCancellation).toHaveBeenCalledTimes(2);
     expect(mockMatchWaitlistOnCancellation).toHaveBeenCalledWith(expect.anything(), B1);
     expect(mockMatchWaitlistOnCancellation).toHaveBeenCalledWith(expect.anything(), B2);

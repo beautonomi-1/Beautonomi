@@ -28,7 +28,7 @@ import { toast } from "sonner";
 import { useReferenceData } from "@/hooks/useReferenceData";
 import { AdvancedPricingModal } from "./AdvancedPricingModal";
 import { handleError } from "@/lib/provider-portal/error-handler";
-import { defaultRebookReminderForNewOffering } from "@beautonomi/utils";
+import { defaultRebookReminderForNewOffering, percentOf } from "@beautonomi/utils";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
@@ -651,7 +651,7 @@ export function ServiceCreateEditDialog({
   const allTeamMembersSelected = teamMembers.length > 0 && formData.selectedTeamMembers.length === teamMembers.length;
   const primaryPricing: PricingOption = pricingOptions[0] || { id: "1", duration: 60, priceType: "fixed", price: 0, pricingName: "" };
   const serviceCostAmount = primaryPricing.price > 0 && formData.serviceCostPercentage > 0
-    ? (primaryPricing.price * formData.serviceCostPercentage / 100)
+    ? percentOf(primaryPricing.price, formData.serviceCostPercentage, currencyCode)
     : 0;
 
   const includedServicesList = allServices.filter(s => formData.includedServices.includes(s.id));

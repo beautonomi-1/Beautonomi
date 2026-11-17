@@ -20,7 +20,7 @@ import { tabBarBottomInset, tabBarOuterHeight } from "@/constants/layout";
 import { haptic } from "@/lib/haptics";
 import { APP_URL } from "@/config/public-env";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { multiplyMoney, addMoney, formatMoney } from "@beautonomi/utils";
 import type { CartItem } from "@/types/api";
 import { useCart } from "@/features/shop/useCart";
 import { usePayableProductOrders } from "@/features/shop/usePayableProductOrders";
@@ -112,7 +112,7 @@ function variantLabel(item: CartItem): string {
 }
 
 function linePrice(item: CartItem): number {
-  return (item.effective_price ?? item.product?.retail_price ?? 0) * item.quantity;
+  return multiplyMoney(item.effective_price ?? item.product?.retail_price ?? 0, item.quantity);
 }
 
 export default function CartScreen() {
@@ -299,9 +299,9 @@ export default function CartScreen() {
     const pid = item.provider?.id ?? "unknown";
     if (!groups[pid]) groups[pid] = { provider: item.provider, items: [], subtotal: 0 };
     groups[pid].items.push(item);
-    groups[pid].subtotal += linePrice(item);
+    groups[pid].subtotal = addMoney(groups[pid].subtotal, linePrice(item));
   });
-  const total = items.reduce((sum, i) => sum + linePrice(i), 0);
+  const total = items.reduce((sum, i) => addMoney(sum, linePrice(i)), 0);
   const fb = getTenantDefaultCurrency();
   const fmt = (amount: number) => formatMoney(amount, fb);
 

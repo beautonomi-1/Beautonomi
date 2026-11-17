@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateBookingTotals } from "@beautonomi/utils";
+import { calculateBookingTotals, computeVat, expectedPersistedBookingTotal, percentOf, roundCurrency } from "@beautonomi/utils";
 import { computeTaxPlatformTipTotal } from "@/lib/pricing/booking-pricing";
 import { computeBookingReceiptFinancials } from "@/lib/receipts/build-booking-receipt";
 
@@ -51,7 +51,7 @@ type Decomposed = {
 };
 
 function r2(n: number) {
-  return Math.round(n * 100) / 100;
+  return roundCurrency(n);
 }
 
 /**
@@ -128,18 +128,17 @@ function providerDecompose(p: PricingInputs): Decomposed {
   const discount = pkg + manual;
   const taxableAmount = Math.max(0, subtotal - discount - promo - membership - loyalty);
 
-  const taxRate = (p.taxRatePercent ?? 0) / 100;
   const taxInclusive = p.taxIncluded ?? false;
-  const taxAmount = taxRate > 0
-    ? taxInclusive
-      ? r2(taxableAmount - taxableAmount / (1 + taxRate))
-      : r2(taxableAmount * taxRate)
-    : 0;
+  const taxAmount = computeVat({
+    baseAmount: taxableAmount,
+    ratePercent: p.taxRatePercent ?? 0,
+    inclusive: taxInclusive,
+  }).taxAmount;
 
   // Provider doesn't charge platform fee on walk-ins, but parity test runs them anyway.
   const platformFeeAmount = p.platformFeeType === "fixed_amount"
     ? r2(p.platformFeeFixed ?? 0)
-    : r2(taxableAmount * ((p.platformFeePct ?? 0) / 100));
+    : percentOf(taxableAmount, p.platformFeePct ?? 0);
 
   const total = taxInclusive
     ? r2(taxableAmount + tip + travel + platformFeeAmount)
@@ -251,6 +250,20 @@ describe("canonical pricing parity (public ↔ provider ↔ receipt readback)", 
 
       // Totals agree within 5c (different rounding strategies for tax-incl edge).
       expect(Math.abs(pub.total_amount - prov.total_amount)).toBeLessThanOrEqual(0.05);
+
+      const sqlTotal = expectedPersistedBookingTotal({
+        subtotal: pub.subtotal,
+        discountAmount: pub.discount_amount,
+        promotionDiscountAmount: pub.promotion_discount_amount,
+        membershipDiscountAmount: pub.membership_discount_amount,
+        loyaltyDiscountAmount: pub.loyalty_discount_amount,
+        taxAmount: pub.tax_amount,
+        taxInclusive: sc.inputs.taxIncluded ?? false,
+        serviceFeeAmount: pub.platform_fee_amount,
+        travelFee: pub.travel_fee,
+        tipAmount: pub.tip_amount,
+      });
+      expect(Math.abs(sqlTotal - pub.total_amount)).toBeLessThanOrEqual(0.01);
 
       // Readback through receipt builder reconstructs same totals.
       const readback = readbackDecompose(pub);

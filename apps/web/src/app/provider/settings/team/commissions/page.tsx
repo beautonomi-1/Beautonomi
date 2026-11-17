@@ -2,6 +2,7 @@
 
 import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Switch } from "@/components/ui/switch";
@@ -16,15 +17,18 @@ import { providerApi } from "@/lib/provider-portal/api";
 import { fetcher } from "@/lib/http/fetcher";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { toast } from "sonner";
-import { DollarSign, Percent, Clock, Calendar, TrendingUp, Plus, Trash2 } from "lucide-react";
+import { TrendingUp, Plus, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { StaffPayPlanFields } from "@/components/provider/team/StaffPayPlanFields";
 import type { PayPlanFormState } from "@/lib/payroll/pay-plan-form-state";
 import {
   defaultPayPlanFormState,
+  payModelUsesCommission,
+  payPlanDateError,
   payPlanFromApiRow,
   payPlanToPostBody,
+  staffMoneyFromPayPlan,
 } from "@/lib/payroll/pay-plan-form-state";
 
 interface CommissionTier {
@@ -48,6 +52,7 @@ export default function CommissionsSettings() {
   const { t } = useTranslation();
   const { hasPermission, isOwner } = usePermissions();
   const canManagePayroll = isOwner || hasPermission("manage_payroll");
+  const canViewOwnEarnings = isOwner || hasPermission("view_own_earnings");
   const payFieldsDisabled = !canManagePayroll;
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
@@ -195,29 +200,31 @@ export default function CommissionsSettings() {
         toast.error(t("web.provider.settings.pages.team/commissions.payPlanReadOnly"));
         return;
       }
-      await fetcher.post(
-        `/api/provider/staff/${selectedMember}/pay-plans`,
-        payPlanToPostBody(
-          payPlan,
-          settings.tiers.map((tier, i) => ({
+      const dateError = payPlanDateError(payPlan);
+      if (dateError) {
+        toast.error(dateError);
+        return;
+      }
+      const planMoney = staffMoneyFromPayPlan(payPlan);
+      const tierPayload = payModelUsesCommission(payPlan.pay_model)
+        ? settings.tiers.map((tier, i) => ({
             min_revenue: tier.min_revenue,
             commission_rate: tier.commission_rate,
             tier_order: tier.tier_order ?? i,
-          })),
-        ),
+          }))
+        : [];
+      await fetcher.post(
+        `/api/provider/staff/${selectedMember}/pay-plans`,
+        payPlanToPostBody(payPlan, tierPayload),
       );
       await fetcher.patch(`/api/provider/staff/${selectedMember}/commission`, {
-        commission_enabled: settings.enabled,
-        service_commission_rate: settings.service_commission_rate,
-        product_commission_rate: settings.product_commission_rate,
-        hourly_rate: settings.hourly_rate,
-        salary: settings.salary,
+        commission_enabled: planMoney.commission_enabled,
+        service_commission_rate: planMoney.service_commission_rate,
+        product_commission_rate: planMoney.product_commission_rate,
+        hourly_rate: planMoney.hourly_rate,
+        salary: planMoney.salary,
         tips_enabled: settings.tips_enabled,
-        tiers: settings.tiers.map((t, i) => ({
-          min_revenue: t.min_revenue,
-          commission_rate: t.commission_rate,
-          tier_order: t.tier_order ?? i,
-        })),
+        tiers: tierPayload,
       });
       toast.success(t("web.provider.settings.pages.team/commissions.commissionSettingsSavedSuccessfully"));
     } catch (error: any) {
@@ -257,6 +264,20 @@ export default function CommissionsSettings() {
         </SectionCard>
       ) : (
         <div className="space-y-4 sm:space-y-6">
+          <p className="text-sm text-gray-600">
+            {canManagePayroll
+              ? t("web.provider.settings.pages.team/commissions.payPlanIntro")
+              : t("web.provider.settings.pages.team/commissions.payPlanIntroReadOnly")}{" "}
+            {canManagePayroll ? (
+              <Link href="/provider/team/payroll" className="font-medium text-primary hover:underline">
+                {t("web.provider.sidebar.items.payroll")}
+              </Link>
+            ) : canViewOwnEarnings ? (
+              <Link href="/provider/team/my-earnings" className="font-medium text-primary hover:underline">
+                {t("web.provider.pages.team/payroll.myPayslips")}
+              </Link>
+            ) : null}
+          </p>
           {checklist ? (
             <SectionCard>
               <p className="text-sm font-semibold text-gray-900 mb-2">{t("web.provider.settings.pages.team/commissions.checklistTitle")}</p>
@@ -389,10 +410,8 @@ export default function CommissionsSettings() {
                 </p>
               )}
               <fieldset disabled={payFieldsDisabled} className="min-w-0 border-0 p-0 m-0">
-              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4 sm:mb-6">
+              <TabsList className="grid w-full grid-cols-2 mb-4 sm:mb-6">
                 <TabsTrigger value="commission" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.commission")}</TabsTrigger>
-                <TabsTrigger value="hourly" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.hourly")}</TabsTrigger>
-                <TabsTrigger value="salary" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.salary")}</TabsTrigger>
                 <TabsTrigger value="tips" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.tips")}</TabsTrigger>
               </TabsList>
 
@@ -400,85 +419,14 @@ export default function CommissionsSettings() {
               <TabsContent value="commission" className="space-y-4 sm:space-y-6">
                 <SectionCard>
                   <div className="space-y-4">
-                    <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
-                      <Switch
-                        checked={settings.enabled}
-                        onCheckedChange={(checked) => setSettings({ ...settings, enabled: checked })}
-                        className="mt-1"
-                      />
-                      <div className="flex-1">
-                        <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
-                          <Percent className="w-4 h-4" />
-                          {t("web.provider.settings.pages.team/commissions.enableCommission")}
-                        </Label>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {t("web.provider.settings.pages.team/commissions.enableCommissionHint")}
-                        </p>
-                      </div>
-                    </div>
+                    <p className="text-sm text-gray-600">
+                      {payModelUsesCommission(payPlan.pay_model)
+                        ? t("web.provider.settings.pages.team/commissions.payPlanOwnsRates")
+                        : t("web.provider.settings.pages.team/commissions.payPlanOwnsRatesNoLadder")}
+                    </p>
 
-                    {settings.enabled && (
-                      <div className="ms-0 sm:ms-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                        <div>
-                          <Label htmlFor="service_commission_rate" className="text-sm font-medium">
-                            {t("web.provider.settings.pages.team/commissions.serviceCommissionRate")}
-                          </Label>
-                          <div className="relative mt-1.5">
-                            <Input
-                              id="service_commission_rate"
-                              type="number"
-                              min={0}
-                              max={100}
-                              step={0.1}
-                              value={settings.service_commission_rate}
-                              onChange={(e) =>
-                                setSettings({
-                                  ...settings,
-                                  service_commission_rate: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="min-h-[44px] touch-manipulation pe-10"
-                              placeholder={t("web.provider.settings.pages.team/commissions.n00")}
-                            />
-                            <Percent className="absolute end-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1.5">
-                            {t("web.provider.settings.pages.team/commissions.serviceCommissionRateHint")}
-                          </p>
-                        </div>
-
-                        <Separator />
-
-                        <div>
-                          <Label htmlFor="product_commission_rate" className="text-sm font-medium">
-                            {t("web.provider.settings.pages.team/commissions.productCommissionRate")}
-                          </Label>
-                          <div className="relative mt-1.5">
-                            <Input
-                              id="product_commission_rate"
-                              type="number"
-                              min={0}
-                              max={100}
-                              step={0.1}
-                              value={settings.product_commission_rate}
-                              onChange={(e) =>
-                                setSettings({
-                                  ...settings,
-                                  product_commission_rate: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="min-h-[44px] touch-manipulation pe-10"
-                              placeholder={t("web.provider.settings.pages.team/commissions.n00")}
-                            />
-                            <Percent className="absolute end-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1.5">
-                            {t("web.provider.settings.pages.team/commissions.productCommissionRateHint")}
-                          </p>
-                        </div>
-
-                        <Separator />
-
+                    {payModelUsesCommission(payPlan.pay_model) ? (
+                    <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                         <div>
                           <Label className="text-sm font-medium">{t("web.provider.settings.pages.team/commissions.tieredCommission")}</Label>
                           <p className="text-xs text-gray-500 mt-1 mb-3">
@@ -555,103 +503,7 @@ export default function CommissionsSettings() {
                           </div>
                         </div>
                       </div>
-                    )}
-                  </div>
-                </SectionCard>
-              </TabsContent>
-
-              {/* Hourly Tab */}
-              <TabsContent value="hourly" className="space-y-4 sm:space-y-6">
-                <SectionCard>
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="hourly_rate" className="text-sm sm:text-base font-medium">
-                        {t("web.provider.settings.pages.team/commissions.hourlyRate")}
-                      </Label>
-                      <div className="relative mt-1.5">
-                        <Input
-                          id="hourly_rate"
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          value={settings.hourly_rate}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              hourly_rate: parseFloat(e.target.value) || 0,
-                            })
-                          }
-                          className="min-h-[44px] touch-manipulation ps-8"
-                          placeholder={t("web.provider.settings.pages.team/commissions.n000")}
-                        />
-                        <DollarSign className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1.5">
-                        {t("web.provider.settings.pages.team/commissions.hourlyRateHint")}
-                      </p>
-                    </div>
-
-                    <div className="p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-start gap-2">
-                        <Clock className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-xs font-medium text-blue-900 mb-1">
-                            {t("web.provider.settings.pages.team/commissions.timeClockIntegration")}
-                          </p>
-                          <p className="text-xs text-blue-700">
-                            {t("web.provider.settings.pages.team/commissions.timeClockHint")}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </SectionCard>
-              </TabsContent>
-
-              {/* Salary Tab */}
-              <TabsContent value="salary" className="space-y-4 sm:space-y-6">
-                <SectionCard>
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="salary" className="text-sm sm:text-base font-medium">
-                        {t("web.provider.settings.pages.team/commissions.monthlySalary")}
-                      </Label>
-                      <div className="relative mt-1.5">
-                        <Input
-                          id="salary"
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          value={settings.salary}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              salary: parseFloat(e.target.value) || 0,
-                            })
-                          }
-                          className="min-h-[44px] touch-manipulation ps-8"
-                          placeholder={t("web.provider.settings.pages.team/commissions.n000")}
-                        />
-                        <DollarSign className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1.5">
-                        {t("web.provider.settings.pages.team/commissions.monthlySalaryHint")}
-                      </p>
-                    </div>
-
-                    <div className="p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-start gap-2">
-                        <Calendar className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-xs font-medium text-blue-900 mb-1">
-                            {t("web.provider.settings.pages.team/commissions.salaryPayment")}
-                          </p>
-                          <p className="text-xs text-blue-700">
-                            {t("web.provider.settings.pages.team/commissions.salaryPaymentHint")}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                    ) : null}
                   </div>
                 </SectionCard>
               </TabsContent>

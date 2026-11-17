@@ -4,6 +4,7 @@
  * Aggregated terminal metrics for Superadmin dashboards.
  */
 
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
@@ -99,11 +100,11 @@ export async function GET(request: NextRequest) {
         !["cancelled", "refunded", "failed"].includes(String(o.order_status ?? ""));
       if (countsTowardRevenue && o.commercial_model) {
         revenueByModel[o.commercial_model] =
-          (revenueByModel[o.commercial_model] ?? 0) + Number(o.total_amount ?? 0);
+          addMoney(revenueByModel[o.commercial_model] ?? 0, Number(o.total_amount ?? 0));
       }
     }
 
-    const totalOrderRevenue = Object.values(revenueByModel).reduce((a, b) => a + b, 0);
+    const totalOrderRevenue = Object.values(revenueByModel).reduce((a, b) => addMoney(a, b), 0);
 
     let ledgerTerminalRevenue = 0;
     let ledgerTerminalGatewayFees = 0;

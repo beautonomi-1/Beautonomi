@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 /** Statuses that still represent a charge row with collectible/refundable balance. */
 export const CHARGE_ROW_STATUSES = [
   "success",
@@ -19,7 +20,7 @@ export function netPaymentTransactionAmount(row: {
 }): number {
   const gross = parsePaymentAmount(row.amount);
   const refunded = parsePaymentAmount(row.refund_amount);
-  return Math.max(0, Math.round((gross - refunded) * 100) / 100);
+  return Math.max(0, subtractMoney(gross, refunded));
 }
 
 export function isPrimaryChargeRow(row: {

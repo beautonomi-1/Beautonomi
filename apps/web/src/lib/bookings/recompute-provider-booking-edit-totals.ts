@@ -1,8 +1,4 @@
-import { calculateBookingTotals } from "@beautonomi/utils";
-
-function roundMoney2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
+import { addMoney, calculateBookingTotals, roundCurrency } from "@beautonomi/utils";
 
 /**
  * Booking edit totals. Tax follows the provider VAT snapshot for this save.
@@ -35,8 +31,8 @@ export function recomputeProviderBookingEditTotals(input: {
     tipAmount: Math.max(0, input.tipAmount),
   });
   return {
-    taxAmount: roundMoney2(totals.taxAmount),
+    taxAmount: roundCurrency(totals.taxAmount),
     taxRatePercent: ratePercent,
-    totalAmount: roundMoney2(totals.totalAmount + Math.max(0, input.serviceFeeAmount)),
+    totalAmount: addMoney(totals.totalAmount, Math.max(0, input.serviceFeeAmount)),
   };
 }

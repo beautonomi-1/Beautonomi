@@ -8,6 +8,7 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { assertPayrollEnabledForProvider } from "@/lib/payroll/payroll-access";
 import { requireManagePayroll } from "@/lib/payroll/require-manage-payroll";
+import { addMoney, percentOf, multiplyMoney } from "@beautonomi/utils";
 
 /**
  * GET /api/provider/pay-runs/[id]/export/emp201
@@ -41,6 +42,9 @@ export async function GET(
       .single();
 
     if (!payRun) return notFoundResponse("Pay run not found");
+    if (payRun.status === "draft") {
+      return handleApiError(new Error("EMP201 is available after approval"), "INVALID_STATE", 400);
+    }
 
     const { data: items } = await admin
       .from("provider_pay_run_items")
@@ -51,9 +55,9 @@ export async function GET(
     let uif = 0;
     let gross = 0;
     for (const row of items ?? []) {
-      paye += Number((row as { tax_deduction?: number }).tax_deduction ?? 0);
-      uif += Number((row as { uif_contribution?: number }).uif_contribution ?? 0);
-      gross += Number((row as { gross_pay?: number }).gross_pay ?? 0);
+      paye = addMoney(paye, Number((row as { tax_deduction?: number }).tax_deduction ?? 0));
+      uif = addMoney(uif, Number((row as { uif_contribution?: number }).uif_contribution ?? 0));
+      gross = addMoney(gross, Number((row as { gross_pay?: number }).gross_pay ?? 0));
     }
 
     let sdl = 0;
@@ -65,7 +69,7 @@ export async function GET(
         .eq("code", "sdl_employer")
         .in("pay_run_item_id", itemIds);
       for (const line of sdlLines ?? []) {
-        sdl += Number((line as { amount?: number }).amount ?? 0);
+        sdl = addMoney(sdl, Number((line as { amount?: number }).amount ?? 0));
       }
     }
     if (sdl === 0 && gross > 0) {
@@ -89,9 +93,9 @@ export async function GET(
           86400000 +
         1;
       const periodsPerYear = days <= 10 ? 52 : days <= 16 ? 26 : 12;
-      const estimatedAnnual = gross * periodsPerYear;
+      const estimatedAnnual = multiplyMoney(gross, periodsPerYear);
       if (estimatedAnnual > threshold) {
-        sdl = Math.round(gross * rate * 100) / 100;
+        sdl = percentOf(gross, rate * 100);
       }
     }
 

@@ -8,7 +8,7 @@
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { normalizePublicStaffIdForDatabase, resolveAtHomeAdjustmentForOffering } from "@beautonomi/utils";
+import { normalizePublicStaffIdForDatabase, resolveAtHomeAdjustmentForOffering, addMoney } from "@beautonomi/utils";
 import { checkBookingSnapshotSegmentConflicts } from "@/lib/bookings/conflict-check";
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
 import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
@@ -208,13 +208,6 @@ async function handlePost(request: NextRequest) {
         // constraint), but a UUID-keyed cached replay is the only way to
         // give the *client* a deterministic 200 response on retry.
         const holdIdempotencyKey = extractIdempotencyKey(request, body);
-        if (holdIdempotencyKey) {
-          const cached = await lookupIdempotentResponse(
-            PUBLIC_BOOKING_HOLDS_ENDPOINT,
-            holdIdempotencyKey,
-          );
-          if (cached) return cached.toResponse();
-        }
 
         // Wave 1.5 (audit 2026-04 final 100/100): CAPTCHA guard for
         // anonymous booking-holds. Previously this surface had no CAPTCHA
@@ -232,6 +225,14 @@ async function handlePost(request: NextRequest) {
           holdCaptchaSkipUserId = pre?.user?.id ?? null;
         } catch {
           holdCaptchaSkipUserId = null;
+        }
+        if (holdIdempotencyKey) {
+          const cached = await lookupIdempotentResponse(
+            PUBLIC_BOOKING_HOLDS_ENDPOINT,
+            holdIdempotencyKey,
+            { userId: holdCaptchaSkipUserId },
+          );
+          if (cached) return cached.toResponse();
         }
         const holdCaptcha = await verifyPublicBookingCaptcha(request, body, {
           skipForUserId: holdCaptchaSkipUserId,
@@ -600,7 +601,7 @@ async function handlePost(request: NextRequest) {
                   off.id
                 )
               : 0;
-          const price = basePrice + homeAdj;
+          const price = addMoney(basePrice, homeAdj);
           const start = new Date(cursor);
           const end = new Date(cursor.getTime() + duration * 60000);
           const lineRaw = s.staff_id ?? rawStaffKey ?? null;
@@ -664,6 +665,29 @@ async function handlePost(request: NextRequest) {
             }
           } else {
             return bookingHoldSlotUnavailableResponse("NO_STAFF_AVAILABLE");
+          }
+        }
+
+        if (holdCaptchaSkipUserId) {
+          const windowStart = new Date(startDate.getTime() - 4 * 60 * 60 * 1000);
+          const windowEnd = new Date(startDate.getTime() + 4 * 60 * 60 * 1000);
+          const { releaseOwnOpenCheckouts } = await import(
+            "@/app/api/public/bookings/_helpers/release-own-open-checkouts"
+          );
+          const own = await releaseOwnOpenCheckouts(supabase as SupabaseClient, {
+            customerId: holdCaptchaSkipUserId,
+            providerId: provider_id,
+            windowStart: windowStart.toISOString(),
+            windowEnd: windowEnd.toISOString(),
+            excludeBookingId: exclude_booking_id || null,
+          });
+          if (own.paymentInProgressBookingId) {
+            return errorResponse(
+              "A payment for your previous checkout is still confirming. Open that booking or wait a moment.",
+              "PAYMENT_IN_PROGRESS",
+              409,
+              { booking_id: own.paymentInProgressBookingId },
+            );
           }
         }
 
@@ -917,7 +941,7 @@ async function handlePost(request: NextRequest) {
           await rememberIdempotentResponse(
             PUBLIC_BOOKING_HOLDS_ENDPOINT,
             holdIdempotencyKey,
-            { status: 200, body: { data: successBody, error: null } },
+            { status: 200, body: { data: successBody, error: null }, userId: holdCaptchaSkipUserId },
           );
         }
         return successResponse(successBody);

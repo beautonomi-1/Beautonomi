@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   handleApiError,
@@ -10,6 +9,12 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact, redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
+import {
+  mergeWaitlistContact,
+  WAITLIST_COLUMNS_WITHOUT_CONTACT,
+} from "@/lib/waitlist/waitlist-columns";
 import { z } from "zod";
 
 const createWaitlistEntrySchema = z.object({
@@ -33,7 +38,12 @@ const createWaitlistEntrySchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("view_calendar", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     
     // Use service role client for better performance
     const supabaseAdmin = createClient(
@@ -157,7 +167,7 @@ export async function GET(request: NextRequest) {
     }));
 
     return successResponse({ 
-      entries: transformedEntries,
+      entries: redactBookingCustomerContacts(transformedEntries, canViewClients),
       total: count || 0,
     });
   } catch (error) {
@@ -177,6 +187,9 @@ export async function POST(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
@@ -215,7 +228,7 @@ export async function POST(request: NextRequest) {
       .insert(row)
       .select(
         `
-        *,
+        ${WAITLIST_COLUMNS_WITHOUT_CONTACT},
         offerings:service_id(id, title),
         provider_staff:staff_id(id, name:users(full_name))
       `
@@ -226,7 +239,11 @@ export async function POST(request: NextRequest) {
       throw insertError || new Error("Failed to create waitlist entry");
     }
 
-    const e = entry as any;
+    const [visibleEntry] = await mergeWaitlistContact(
+      [entry as unknown as { id: string }],
+      canViewClients,
+    );
+    const e = (visibleEntry ?? entry) as any;
     const transformedEntry = {
       id: e.id,
       customer_id: e.customer_id,
@@ -250,7 +267,7 @@ export async function POST(request: NextRequest) {
       location_id: e.location_id ?? null,
     };
 
-    return successResponse(transformedEntry);
+    return successResponse(redactBookingCustomerContact(transformedEntry, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to create waitlist entry");
   }

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashContent, createBrandApproval } from "./approvals";
 import { validateSecondApprover } from "./approvers";
 import { loadBrandSettings } from "./settings";
+import { roundCurrency, subtractMoney, addMoney } from "@beautonomi/utils";
 import { sumKnownSpendForCampaign } from "./placement-metrics";
 
 import type {
@@ -464,9 +465,9 @@ export async function rollupStrategyBudgets(
       let known = 0;
       let envelope = 0;
       for (const c of campaigns ?? []) {
-        envelope += Number(c.budget_envelope ?? 0);
+        envelope = addMoney(envelope, Number(c.budget_envelope ?? 0));
         const spend = await sumKnownSpendForCampaign(supabase, tenantId, c.id, window);
-        known += spend.known;
+        known = addMoney(known, spend.known);
       }
       const planBudget = Number(plan.budget ?? 0);
       rows.push({
@@ -475,8 +476,8 @@ export async function rollupStrategyBudgets(
         quarter: plan.quarter,
         plan_budget: planBudget,
         campaign_envelope: envelope,
-        known_spend: Math.round(known * 100) / 100,
-        variance: Math.round((planBudget - known) * 100) / 100,
+        known_spend: roundCurrency(known),
+        variance: subtractMoney(planBudget, known),
       });
     }
   }

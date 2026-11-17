@@ -1,8 +1,9 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dateRangeBoundsUtc } from "@/lib/dates/provider-tz";
 import { filterProductOrdersForLocation } from "@/lib/reports/provider-report-utils";
 import { providerCollectedRetailOrdersOrFilter } from "@/lib/reports/provider-retail-order-scope";
-import { productOrderTenderSplit } from "@/lib/orders/product-order-tender";
+import { productOrderTenderSplit, productOrderTillRefundAmount } from "@/lib/orders/product-order-tender";
 
 export type ProviderRetailTakingsPeriod = {
   amount: number;
@@ -26,6 +27,8 @@ type RetailOrderRow = {
   collection_location_id?: string | null;
   order_source?: string | null;
   payment_method?: string | null;
+  refunded_amount?: number | string | null;
+  refund_method?: string | null;
 };
 
 const PLATFORM_HELD_RETAIL_METHODS = new Set([
@@ -46,10 +49,13 @@ export function providerRetailTakingsAmount(row: {
   wallet_amount?: number | string | null;
   gift_card_amount?: number | string | null;
   payment_method?: string | null;
+  refunded_amount?: number | string | null;
+  refund_method?: string | null;
 }): number {
   const method = String(row.payment_method ?? "").trim().toLowerCase();
   if (PLATFORM_HELD_RETAIL_METHODS.has(method)) return 0;
-  return productOrderTenderSplit(row).remainder;
+  const remainder = productOrderTenderSplit(row).remainder;
+  return Math.max(0, subtractMoney(remainder, productOrderTillRefundAmount(row)));
 }
 
 async function fetchPaidProviderCollectedRetailOrders(
@@ -60,10 +66,10 @@ async function fetchPaidProviderCollectedRetailOrders(
   let q = supabaseAdmin
     .from("product_orders")
     .select(
-      "id, total_amount, wallet_amount, gift_card_amount, paid_at, fulfillment_type, collection_location_id, order_source, payment_method",
+      "id, total_amount, wallet_amount, gift_card_amount, paid_at, fulfillment_type, collection_location_id, order_source, payment_method, refunded_amount, refund_method",
     )
     .eq("provider_id", providerId)
-    .eq("payment_status", "paid")
+    .in("payment_status", ["paid", "partially_refunded", "refunded"])
     .not("paid_at", "is", null)
     .or(providerCollectedRetailOrdersOrFilter());
 
@@ -74,6 +80,18 @@ async function fetchPaidProviderCollectedRetailOrders(
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []) as RetailOrderRow[];
+}
+
+function sumTakings(orders: RetailOrderRow[]): ProviderRetailTakingsPeriod {
+  let amount = 0;
+  let count = 0;
+  for (const row of orders) {
+    const taken = providerRetailTakingsAmount(row);
+    if (taken <= 0) continue;
+    amount = addMoney(amount, taken);
+    count += 1;
+  }
+  return { amount, count };
 }
 
 function sumInRange(
@@ -90,7 +108,7 @@ function sumInRange(
     if (!Number.isFinite(paidAt) || paidAt < fromMs || paidAt > toMs) continue;
     const taken = providerRetailTakingsAmount(row);
     if (taken <= 0) continue;
-    amount += taken;
+    amount = addMoney(amount, taken);
     count += 1;
   }
   return { amount, count };
@@ -130,14 +148,7 @@ export async function getProviderRetailTakingsSummary(
   const weekBounds = dateRangeBoundsUtc(weekStartYmd, todayYmd, timezone);
   const monthBounds = dateRangeBoundsUtc(monthStartYmd, todayYmd, timezone);
 
-  const lifetime = orders.reduce(
-    (acc, row) => {
-      acc.amount += Number(row.total_amount ?? 0);
-      acc.count += 1;
-      return acc;
-    },
-    { amount: 0, count: 0 },
-  );
+  const lifetime = sumTakings(orders);
 
   return {
     today: sumInRange(orders, todayBounds.fromIso, todayBounds.toIso),

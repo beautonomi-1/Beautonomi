@@ -13924,7 +13924,8 @@
       "requestChangesTitle": "kopo fetolas",
       "requestChangesBody": "Vertel die verskaffer wat jy wil hê moet aangepas word.",
       "requestChangesEmpty": "Ka kopo describe the fetolas you want.",
-      "requestChangesFailed": "E hlolehile ho kopo fetolas"
+      "requestChangesFailed": "E hlolehile ho kopo fetolas",
+      "offerStatusNeedsSupport": "Needs tšehetso"
     },
     "walletScreen": {
       "balanceLabel": "sepache chelete e setseng",
@@ -15611,7 +15612,7 @@
           "refundAmountLabel": "puseletso chelete:",
           "requestedOn": "E kopiloeng ka {{date}}",
           "items": "Lintho",
-          "itemQtyPrice": "{{count}} x {{price}}",
+          "itemQtyPrice": "{{count}} × {{price}}",
           "yourDetails": "dintlha ya hau",
           "nameLabel": "Lebitso",
           "emailLabel": "imeile",
@@ -15658,7 +15659,11 @@
           "accessLabel": "Ho kena",
           "parkingLabel": "Ho paka",
           "landmarksLabel": "Matshwao",
-          "partiallyRefundedContactProvider": "Odara ena e khutliselitsoe hanyane. Ikopanye le mofani oa thepa hore u busetse chelete e setseng."
+          "partiallyRefundedContactProvider": "Odara ena e khutliselitsoe hanyane. Ikopanye le mofani oa thepa hore u busetse chelete e setseng.",
+          "refunded": "E puseleditswe",
+          "messageProvider": "Romela molaetsa ho mofani",
+          "messageFailedTitle": "molaetsa",
+          "messageFailedBody": "Ha e a kgona ho qala moqoqo le mofani enwa."
         },
         "customRequestsList": {
           "startPaymentFailed": "E hlolehile ho qala tefo",
@@ -18432,14 +18437,14 @@
     "memberDiscountFallback": "Member theolelo",
     "saveCardInfoA11y": "Info Mabapi e a boloka Karete",
     "customTipA11y": "Ea khethehileng thepa chelete",
-    "bookingSuccessTitleConfirmed": "buking netefatsaed!",
-    "bookingSuccessTitlePending": "buking received!",
-    "bookingSuccessTitlePendingPayment": "tefo e a sebetsa...",
-    "bookingSuccessPendingPaymentBody": "Jou betaling word bevestig. Jy sal binnekort 'n kennisgewing ontvang.",
-    "bookingSuccessPendingBody": "Wag op verskafferbevestiging - gewoonlik binne 8 uur",
-    "bookingSuccessFooter": "Taking you to your buking…",
+    "bookingSuccessTitleConfirmed": "Pehelo e netefalitsoe!",
+    "bookingSuccessTitlePending": "Pehelo e amohetsoe!",
+    "bookingSuccessTitlePendingPayment": "Tefo ea sebetsoa…",
+    "bookingSuccessPendingPaymentBody": "Tefo ea hau e ntse e netefatsoa. U tla fumana tsebiso haufinyane.",
+    "bookingSuccessPendingBody": "Re emetse netefatso ea mofani — re tla u tsebisa hang ha ba araba",
+    "bookingSuccessFooter": "Re bula pehelo ea hau…",
     "totalPaidPrefix": "Kakaretso e lefuoeng",
-    "platformFeeInclusive": " (ho kenyeletsa chelete ea sethala {{amount}})",
+    "platformFeeInclusive": " (ho kenyeletsa tšireletso ea pehelo {{amount}})",
     "securePaymentTitle": "Secure tefo",
     "paymentCancelledTitle": "tefo e hlakotsoe",
     "paymentCancelledBody": "U hlakotse tefo. Pehelo ea hau ha e so netefatsoe.",
@@ -20938,7 +20943,8 @@
         "createOfferFailedShort": "E hlolehile ho theha offer",
         "changeClient": "Fetola",
         "searchClientPlaceholder": "Batla ka lebitso, imeile kapa mohala (mohl. 082…)",
-        "searchClientHint": "Ngola bonyane litlhaku tse 2"
+        "searchClientHint": "Ngola bonyane litlhaku tse 2",
+        "continuePayment": "tsoela pele tefo"
       },
       "privacyAndSharing": {
         "tabAccount": "Akhaonto",
@@ -35565,7 +35571,9 @@
         "editOffer": "Lokisa offer",
         "withdrawOfferConfirm": "Na u na le bonnete ba hore u batla ho hulahula tjhebeletso ena?",
         "withdrawOffer": "Nyehelo ya ho ikgula",
-        "couldNotLoadOfferDetails": "Ha e a khona ho jaefa offer dintlha."
+        "couldNotLoadOfferDetails": "Ha e a khona ho jaefa offer dintlha.",
+        "statusNeedsSupport": "Needs tšehetso",
+        "resumePayment": "tsoela pele tefo"
       },
       "customOfferModal": {
         "loadOfferFailed": "Ha e a khona ho jaefa offer",
@@ -36508,7 +36516,13 @@
         "waitingBody": "Re netefatsa tefo ea hau. Hlahisa likopo tsa hau tsa tloaelo hang hang.",
         "backToRequests": "morao to Ea khethehileng likopo",
         "changesRequestedTitle": "Tlhahiso e ntse e ntlafatsoa",
-        "changesRequestedBody": "Mofani oa hau o ntse a ntlafatsa tlhahiso ena ka mor'a kopo ea hau ea phetoho."
+        "changesRequestedBody": "Mofani oa hau o ntse a ntlafatsa tlhahiso ena ka mor'a kopo ea hau ea phetoho.",
+        "viewBooking": "Sheba buking",
+        "needsSupportTitle": "tefo needs tšehetso",
+        "resumePayment": "tsoela pele tefo",
+        "needsSupportBody": "Re fumane tefo, empa ha re a kgona ho theha peekelo. Ikopanye le tshehetso ka nomoro ya hao ya tefo.",
+        "unavailableBody": "Kopa mofani tekanyetso e ncha ha o sa batla tshebeletso ena.",
+        "unavailableTitle": "Tlhahiso ena ha e sa ka lefshwa"
       }
     },
     "groupInvite": {

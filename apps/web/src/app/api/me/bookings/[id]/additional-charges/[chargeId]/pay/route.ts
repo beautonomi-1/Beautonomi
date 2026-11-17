@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
@@ -114,7 +115,7 @@ export async function POST(
     const alreadyHeld = await sumAdditionalChargeTenderLegs(admin, bookingId, chargeId);
     const stillDue = additionalChargeAmountStillDue(
       chargeAmount,
-      alreadyHeld.wallet + alreadyHeld.gift,
+      addMoney(alreadyHeld.wallet, alreadyHeld.gift),
     );
 
     let walletAmountApplied = 0;

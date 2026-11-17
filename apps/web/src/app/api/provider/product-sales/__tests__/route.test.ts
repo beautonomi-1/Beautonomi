@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
+const mockRequirePermission = vi.fn();
+const mockHasPermission = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
@@ -19,6 +21,22 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));
+
+vi.mock("@/lib/auth/requirePermission", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/requirePermission")>();
+  return {
+    ...actual,
+    requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
+  };
+});
+
+vi.mock("@/lib/auth/permissions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/permissions")>();
+  return {
+    ...actual,
+    hasPermission: (...args: unknown[]) => mockHasPermission(...args),
+  };
+});
 
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
   resolveTenantIdWithZaFallback: (...args: unknown[]) =>
@@ -171,6 +189,11 @@ describe("POST /api/provider/product-sales", () => {
     mockRequireRoleInApi.mockResolvedValue({
       user: { id: USER_ID, role: "provider_owner" },
     });
+    mockRequirePermission.mockResolvedValue({
+      authorized: true,
+      user: { id: USER_ID, role: "provider_owner" },
+    });
+    mockHasPermission.mockResolvedValue(true);
     mockGetProviderIdForUser.mockResolvedValue(PROVIDER_ID);
     mockRecordProductOrderPayment.mockResolvedValue({ ok: true, duplicate: false });
     mockGetTenantRegionConfig.mockResolvedValue({
@@ -204,6 +227,7 @@ describe("POST /api/provider/product-sales", () => {
     expect(body?.data?.order?.id).toBe("order-uuid-1");
     expect(insertCalls).toHaveLength(1);
     expect((insertCalls[0] as { tenant_id?: string }).tenant_id).toBe(tenantFromRow);
+    expect((insertCalls[0] as { tax_inclusive?: boolean }).tax_inclusive).toBeDefined();
     expect(mockRecordProductOrderPayment).toHaveBeenCalledWith(
       expect.objectContaining({
         productOrderId: "order-uuid-1",
@@ -379,4 +403,48 @@ describe("POST /api/provider/product-sales", () => {
     expect(pcInsert).toHaveBeenCalledTimes(1);
     expect((insertCalls[0] as { customer_id?: string | null }).customer_id).toBe(linkedCustomerId);
   }, 45_000);
+});
+
+describe("GET /api/provider/product-sales", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mockRequirePermission.mockResolvedValue({
+      authorized: true,
+      user: { id: USER_ID, role: "provider_staff" },
+    });
+    mockHasPermission.mockResolvedValue(false);
+    mockGetProviderIdForUser.mockResolvedValue(PROVIDER_ID);
+    mockGetSupabaseServer.mockResolvedValue({});
+  });
+
+  it("drops the customer phone unless the viewer can see clients", async () => {
+    const range = vi.fn(async () => ({
+      data: [
+        {
+          id: "order-1",
+          customer_name: "Ada",
+          customer_phone: "0820000000",
+          product_order_items: [],
+        },
+      ],
+      error: null,
+      count: 1,
+    }));
+    const order = vi.fn(() => ({ range }));
+    const eqProvider = vi.fn(() => ({ eq: vi.fn(() => ({ order })) }));
+    mockGetSupabaseAdmin.mockReturnValue({
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({ eq: eqProvider })),
+      })),
+    });
+
+    const { GET } = await import("../route");
+    const res = await GET(new NextRequest("http://localhost/api/provider/product-sales"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.sales[0].customer_name).toBe("Ada");
+    expect(body.data.sales[0].customer_phone).toBeNull();
+  });
 });

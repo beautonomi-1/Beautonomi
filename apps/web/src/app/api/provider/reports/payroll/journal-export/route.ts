@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -52,10 +53,10 @@ export async function GET(request: NextRequest) {
     let uif = 0;
     let net = 0;
     for (const row of items) {
-      gross += Number((row as { gross_pay?: number }).gross_pay ?? 0);
-      paye += Number((row as { tax_deduction?: number }).tax_deduction ?? 0);
-      uif += Number((row as { uif_contribution?: number }).uif_contribution ?? 0);
-      net += Number((row as { net_pay?: number }).net_pay ?? 0);
+      gross = addMoney(gross, Number((row as { gross_pay?: number }).gross_pay ?? 0));
+      paye = addMoney(paye, Number((row as { tax_deduction?: number }).tax_deduction ?? 0));
+      uif = addMoney(uif, Number((row as { uif_contribution?: number }).uif_contribution ?? 0));
+      net = addMoney(net, Number((row as { net_pay?: number }).net_pay ?? 0));
     }
 
     const date = run?.pay_period_end ?? "";

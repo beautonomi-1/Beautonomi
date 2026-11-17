@@ -30,6 +30,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
+import { api } from "@/lib/api-client";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import {
   clearReferenceProcessing,
@@ -155,6 +156,7 @@ export function PaystackReturnScreen({
   const flutterwaveTransactionId = pickTransactionId(paramRecord);
   const hostedStatus = pickHostedStatus(paramRecord);
   const cancelled = pickStr(paramRecord.cancelled);
+  const bookingId = pickStr(paramRecord.booking_id);
 
   const [mode, setMode] = useState<ReturnMode>(reference ? "verifying" : "returning");
   const [resolvedTarget, setResolvedTarget] = useState<RouteTarget | null>(null);
@@ -219,13 +221,30 @@ export function PaystackReturnScreen({
       timers.forEach(clearTimeout);
     };
 
-    if (cancelled === "1") {
-      setMode("cancelled");
-      addTimer(() => navigate(cancelledRoute), AUTO_REDIRECT_MS_CANCELLED);
-      return cleanup;
-    }
-
-    if (hostedStatus === "failed" || hostedStatus === "cancelled") {
+    if (cancelled === "1" || hostedStatus === "failed" || hostedStatus === "cancelled") {
+      const redirect = hostedStatus === "failed" ? "failed" : "cancelled";
+      void (async () => {
+        let ref = reference;
+        if (!ref && bookingId) {
+          try {
+            const bookingRes = await api.get<{ payment_reference?: string }>(
+              `/api/me/bookings/${encodeURIComponent(bookingId)}`,
+            );
+            const stored = bookingRes.data?.payment_reference;
+            if (typeof stored === "string") ref = stored.trim();
+          } catch {
+            // The cancel screen still leaves even if the lookup fails.
+          }
+        }
+        if (!ref || aborted) return;
+        void verifyPaystackWithRetry(ref, {
+          endpoint: verifyEndpoint,
+          sessionId: checkoutSessionId || null,
+          transactionId: flutterwaveTransactionId || null,
+          redirectStatus: redirect,
+          maxAttempts: 1,
+        });
+      })();
       setMode("cancelled");
       addTimer(() => navigate(cancelledRoute), AUTO_REDIRECT_MS_CANCELLED);
       return cleanup;
@@ -308,6 +327,7 @@ export function PaystackReturnScreen({
     checkoutSessionId,
     flutterwaveTransactionId,
     hostedStatus,
+    bookingId,
   ]);
 
   // ── Derived display values ─────────────────────────────────────────────────

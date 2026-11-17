@@ -8,7 +8,7 @@ import Link from "next/link";
 import Image from "next/image";
 import type { ProductOrder } from "./order-list-types";
 import { formatCurrency } from "@/lib/utils";
-import { isUnpaidOnlinePaystackHold, pinPayableProductOrders } from "@beautonomi/utils";
+import { isUnpaidOnlinePaystackHold, pinPayableProductOrders, subtractMoney } from "@beautonomi/utils";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { PayableOrdersBanner } from "@/components/shop/PayableOrdersBanner";
@@ -174,7 +174,7 @@ export default function OrderHistoryPage({
                           {t("web.accountSettings.orders.itemCount", { count: itemCount, date })}
                         </span>
                         <span className="text-lg font-bold text-pink-600">
-                          {formatCurrency(Number(order.total_amount))}
+                          {formatCurrency(Math.max(0, subtractMoney(Number(order.total_amount ?? 0), Math.max(0, Number(order.refunded_amount ?? 0)))))}
                         </span>
                       </div>
                       {order.returns && order.returns.length > 0 && (
@@ -182,7 +182,7 @@ export default function OrderHistoryPage({
 {t("web.accountSettings.orders.returnStatus", { status: order.returns[0].status })}
                         </p>
                       )}
-                      {order.tracking_number && (
+                      {order.fulfillment_type === "delivery" && order.tracking_number && (
                         <p className="mt-2 text-xs text-blue-600">
 {t("web.accountSettings.orders.tracking", { number: order.tracking_number })}
                         </p>

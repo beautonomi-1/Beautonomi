@@ -50,7 +50,11 @@ import {
   getHoldTimeRemaining,
   isBookingEmbedEnabled,
   lineHasHouseCallAdjustment,
+  addMoney,
+  multiplyMoney,
   percentOf,
+  roundCurrency,
+  subtractMoney,
   normalizeTipPercentPresets,
   serverNowToClockOffsetMs,
   appendBookingEmbedQuery,
@@ -66,6 +70,8 @@ type PublicBookingCreateResult = {
   booking_id: string;
   booking_number: string;
   payment_url?: string | null;
+  /** Idempotent replay found the booking already paid; open it instead of paying again. */
+  already_paid?: boolean;
   wallet_amount_applied?: number;
   gift_card_amount_applied?: number;
   paystack_amount?: number;
@@ -904,21 +910,23 @@ export default function StepPayment({
         .filter((p) => p.id !== PRIMARY_GROUP_PARTICIPANT_ID && p.name.trim())
         .reduce(
           (sum, p) =>
-            sum +
-            p.serviceIds.reduce(
-              (s, id) => s + (bookingState.selectedServices.find((svc) => svc.id === id)?.price ?? 0),
-              0
+            addMoney(
+              sum,
+              p.serviceIds.reduce(
+                (s, id) => addMoney(s, bookingState.selectedServices.find((svc) => svc.id === id)?.price ?? 0),
+                0
+              )
             ),
           0
         )
     : 0;
-  const checkoutBaseTotal = Math.max(0, totals.total - groupGuestShareTotal);
+  const checkoutBaseTotal = Math.max(0, subtractMoney(totals.total, groupGuestShareTotal));
   // Matches processPayment: the reschedule credit is applied to the amount due
   // now before gift card and wallet; anything above it stays in the wallet.
   const rescheduleCreditFor = (dueBeforeCredit: number) =>
-    Math.round(Math.min(rescheduleCredit, Math.max(0, dueBeforeCredit)) * 100) / 100;
+    roundCurrency(Math.min(rescheduleCredit, Math.max(0, dueBeforeCredit)), totals.currency);
   const afterRescheduleCredit = (dueBeforeCredit: number) =>
-    Math.max(0, dueBeforeCredit - rescheduleCreditFor(dueBeforeCredit));
+    Math.max(0, subtractMoney(dueBeforeCredit, rescheduleCreditFor(dueBeforeCredit), totals.currency));
 
   const createBookingDraft = async () => {
     if (!bookingState.providerId || !bookingState.selectedDate || !bookingState.selectedTimeSlot) {
@@ -1013,7 +1021,7 @@ export default function StepPayment({
           productVariantId: productVariantId || null,
           quantity: p.quantity,
           unitPrice: p.price,
-          totalPrice: p.price * p.quantity,
+          totalPrice: multiplyMoney(p.price, p.quantity),
         };
       }),
       package_id: bookingState.selectedPackage?.id || null,
@@ -1122,13 +1130,26 @@ export default function StepPayment({
       updateBookingState({ idempotencyKey });
     }
 
-    const response = await fetcher.post<{
-      data: PublicBookingCreateResult;
-    }>("/api/public/bookings", bookingData, {
-      headers: { "Idempotency-Key": idempotencyKey },
-      // Server often runs validate + create_booking RPC + Paystack init; 10s default aborts before response.
-      timeoutMs: 120000,
-    });
+    const postBooking = (key: string) =>
+      fetcher.post<{
+        data: PublicBookingCreateResult;
+      }>("/api/public/bookings", bookingData, {
+        headers: { "Idempotency-Key": key },
+        // Server often runs validate + create_booking RPC + Paystack init; 10s default aborts before response.
+        timeoutMs: 120000,
+      });
+
+    let response: Awaited<ReturnType<typeof postBooking>>;
+    try {
+      response = await postBooking(idempotencyKey);
+    } catch (error: any) {
+      // The cached checkout behind this key can no longer be paid (cancelled or
+      // missing). Rotate the key once and create a fresh booking.
+      if ((error?.code as string | undefined) !== "CHECKOUT_NO_LONGER_PAYABLE") throw error;
+      const rotatedKey = generateUuidV4();
+      updateBookingState({ idempotencyKey: rotatedKey });
+      response = await postBooking(rotatedKey);
+    }
 
     return response.data;
   };
@@ -1452,6 +1473,17 @@ export default function StepPayment({
           .catch(() => {});
       }
 
+      // Idempotent replay: this booking was already paid (for example the
+      // customer paid in another tab). Open it instead of starting a new charge.
+      if (bookingResult.already_paid) {
+        toast.success(t("web.booking.stepPayment.paymentSuccessful"));
+        notifyRecurringFromResult(bookingResult.recurring_subscription);
+        router.push(
+          `/checkout/success?booking_id=${encodeURIComponent(bookingResult.booking_id)}${bookingResult.booking_number ? `&booking_number=${encodeURIComponent(bookingResult.booking_number)}` : ""}`,
+        );
+        return;
+      }
+
       // Step 2: Process payment based on method
       if (paymentMethod === "cash") {
         // Cash payment - booking already created, just redirect
@@ -1529,9 +1561,9 @@ export default function StepPayment({
       const giftCardApplied = Math.min(bookingState.promotions.giftCardAmount || 0, amountDueNow);
       const walletApplied =
         paymentMethod === "card" && useWallet
-          ? Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied))
+          ? Math.min(walletBalance, Math.max(0, subtractMoney(amountDueNow, giftCardApplied)))
           : 0;
-      const amountToCharge = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
+      const amountToCharge = Math.max(0, subtractMoney(subtractMoney(amountDueNow, giftCardApplied), walletApplied));
       const freqFallback = bookingState.recurringFrequency || "weekly";
       const paystackFallbackRecurring =
         user &&
@@ -1679,7 +1711,7 @@ export default function StepPayment({
                 const participantServices = participant.serviceIds
                   .map((id) => bookingState.selectedServices.find((s) => s.id === id))
                   .filter(Boolean) as typeof bookingState.selectedServices;
-                const participantTotal = participantServices.reduce((sum, s) => sum + s.price, 0);
+                const participantTotal = participantServices.reduce((sum, s) => addMoney(sum, s.price), 0);
 
                 return (
                   <div
@@ -1766,7 +1798,7 @@ export default function StepPayment({
               </span>
               <span className="flex-shrink-0 font-medium whitespace-nowrap">
                 {formatCurrency(
-                  product.price * product.quantity,
+                  multiplyMoney(product.price, product.quantity),
                   product.currency || totals.currency
                 )}
               </span>
@@ -2097,7 +2129,7 @@ export default function StepPayment({
               const dueBeforeCredit =
                 paymentOption === "deposit" ? percentOf(checkoutBaseTotal, depositPercentage) : checkoutBaseTotal;
               const creditApplied = rescheduleCreditFor(dueBeforeCredit);
-              const creditLeftInWallet = Math.max(0, Math.round((rescheduleCredit - creditApplied) * 100) / 100);
+              const creditLeftInWallet = Math.max(0, subtractMoney(rescheduleCredit, creditApplied, totals.currency));
               return (
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm text-green-700">
@@ -2144,9 +2176,9 @@ export default function StepPayment({
               );
               const walletApplied = Math.min(
                 walletBalance,
-                Math.max(0, amountDueNow - giftCardApplied)
+                Math.max(0, subtractMoney(amountDueNow, giftCardApplied))
               );
-              const paystackRemainder = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
+              const paystackRemainder = Math.max(0, subtractMoney(subtractMoney(amountDueNow, giftCardApplied), walletApplied));
               return (
                 <div className="mt-3 pt-3 border-t border-dashed border-gray-300 space-y-1.5">
                   <div className="flex justify-between text-sm text-green-700">
@@ -2787,9 +2819,9 @@ export default function StepPayment({
           );
           const walletApplied =
             paymentMethod === "card" && useWallet
-              ? Math.min(walletBalance, Math.max(0, amountDueNow - giftCardApplied))
+              ? Math.min(walletBalance, Math.max(0, subtractMoney(amountDueNow, giftCardApplied)))
               : 0;
-          const chargeAmount = Math.max(0, amountDueNow - giftCardApplied - walletApplied);
+          const chargeAmount = Math.max(0, subtractMoney(subtractMoney(amountDueNow, giftCardApplied), walletApplied));
           const giftCardOnlyUnderfunded =
             paymentMethod === "giftcard" &&
             (bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow;

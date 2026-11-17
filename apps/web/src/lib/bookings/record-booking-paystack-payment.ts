@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { roundCurrency } from "@beautonomi/utils";
 
 export type RecordBookingPaystackPaymentResult =
   | { ok: true; paymentProviderId: string; inserted: boolean; bookingPaymentId: string }
@@ -33,7 +34,7 @@ export async function recordBookingPaystackPayment(
     return { ok: false, reason: "missing_provider_id" };
   }
 
-  const amount = Math.round(Number(input.amountMajor || 0) * 100) / 100;
+  const amount = roundCurrency(Number(input.amountMajor || 0));
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, reason: "invalid_amount" };
   }

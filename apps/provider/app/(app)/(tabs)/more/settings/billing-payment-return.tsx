@@ -39,27 +39,35 @@ export default function BillingPaymentReturnScreen() {
     let aborted = false;
     (async () => {
       if (navigatedRef.current) return;
-      if (cancelled) {
-        navigatedRef.current = true;
-        router.replace("/(app)/(tabs)/more/invoices" as never);
-        return;
-      }
-      if (isHostedCheckoutFailureStatus(hosted.status)) {
-        navigatedRef.current = true;
-        router.replace("/(app)/(tabs)/more/invoices" as never);
-        return;
-      }
+      const failedReturn = cancelled || isHostedCheckoutFailureStatus(hosted.status);
       if (reference) {
-        await verifyPaystackWithRetry(reference, {
+        const verified = await verifyPaystackWithRetry(reference, {
           sessionId: sessionId || null,
           transactionId,
+          redirectStatus: failedReturn
+            ? isHostedCheckoutFailureStatus(hosted.status)
+              ? hosted.status
+              : "cancelled"
+            : null,
+          maxAttempts: failedReturn ? 1 : 5,
         });
+        if (aborted || navigatedRef.current) return;
+        navigatedRef.current = true;
+        const paid = verified.status === "success";
+        router.replace({
+          pathname: "/(app)/(tabs)/more/invoices",
+          params: {
+            ...(invoiceId ? { invoice_id: invoiceId } : {}),
+            ...(paid ? { payment_success: "1" } : { payment_failed: "1" }),
+          },
+        } as never);
+        return;
       }
       if (aborted || navigatedRef.current) return;
       navigatedRef.current = true;
       router.replace({
         pathname: "/(app)/(tabs)/more/invoices",
-        params: invoiceId ? { invoice_id: invoiceId, payment_success: "1" } : { payment_success: "1" },
+        params: invoiceId ? { invoice_id: invoiceId } : {},
       } as never);
     })();
     return () => {

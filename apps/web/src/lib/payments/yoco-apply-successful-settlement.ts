@@ -78,11 +78,13 @@ export async function applyYocoSuccessfulSettlement(
     }
 
     const saleBeforeRow = saleBefore as { payment_status?: string; notes?: string | null } | null;
+    const statusBefore = String(saleBeforeRow?.payment_status ?? "").toLowerCase();
     const shouldDecrementStock =
-      saleBeforeRow?.payment_status !== "completed" &&
+      statusBefore !== "completed" &&
+      statusBefore !== "refunded" &&
       !isBookingCollectionSale(saleBeforeRow?.notes);
 
-    if (saleBeforeRow?.payment_status !== "completed") {
+    if (statusBefore !== "completed" && statusBefore !== "refunded") {
       if (!isBookingCollectionSale(saleBeforeRow?.notes)) {
         const providerIdForDue = String(existingPayment?.provider_id ?? mergedMeta.provider_id ?? "");
         const due = providerIdForDue
@@ -101,40 +103,52 @@ export async function applyYocoSuccessfulSettlement(
           `Gift card was not captured for sale ${saleId}: ${gift.message}`,
         );
       }
-    }
 
-    const { error: saleError } = await supabase
-      .from("sales")
-      .update({
-        payment_status: "completed",
-        payment_provider: "yoco",
-        payment_provider_id: yocoPaymentId,
-        payment_method: "yoco",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", saleId)
-      .neq("payment_status", "completed");
-    if (saleError) {
-      console.error("Yoco settle: failed to mark POS sale completed:", saleError);
-      throw new Error(
-        `Failed to complete POS sale for Yoco payment ${yocoPaymentId}: ${saleError.message}`,
-      );
-    }
-    if (shouldDecrementStock) {
-      const { data: saleItems } = await supabase
-        .from("sale_items")
-        .select("item_type, item_id, product_variant_id, quantity")
-        .eq("sale_id", saleId);
-      const stockItems = (saleItems || []).map((row: Record<string, unknown>) => ({
-        type: row.item_type as string,
-        item_id: (row.item_id as string | null) ?? null,
-        product_variant_id: (row.product_variant_id as string | null) ?? null,
-        quantity: Number(row.quantity ?? 1),
-      }));
-      try {
-        await applyPosProductStockDecrements(supabase, stockItems);
-      } catch (stockError) {
-        console.error("Yoco settle: POS sale completed but stock decrement failed:", stockError);
+      const { data: claimed, error: saleError } = await supabase
+        .from("sales")
+        .update({
+          payment_status: "completed",
+          payment_provider: "yoco",
+          payment_provider_id: yocoPaymentId,
+          payment_method: "yoco",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", saleId)
+        .neq("payment_status", "completed")
+        .neq("payment_status", "refunded")
+        .select("id")
+        .maybeSingle();
+      if (saleError) {
+        console.error("Yoco settle: failed to mark POS sale completed:", saleError);
+        throw new Error(
+          `Failed to complete POS sale for Yoco payment ${yocoPaymentId}: ${saleError.message}`,
+        );
+      }
+      if (claimed && shouldDecrementStock) {
+        const { data: saleItems } = await supabase
+          .from("sale_items")
+          .select("item_type, item_id, product_variant_id, quantity")
+          .eq("sale_id", saleId);
+        const stockItems = (saleItems || []).map((row: Record<string, unknown>) => ({
+          type: row.item_type as string,
+          item_id: (row.item_id as string | null) ?? null,
+          product_variant_id: (row.product_variant_id as string | null) ?? null,
+          quantity: Number(row.quantity ?? 1),
+        }));
+        try {
+          await applyPosProductStockDecrements(supabase, stockItems);
+        } catch (stockError) {
+          await supabase
+            .from("sales")
+            .update({
+              payment_status: statusBefore || "pending",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", saleId)
+            .eq("payment_status", "completed");
+          console.error("Yoco settle: POS sale stock was not taken:", stockError);
+          throw stockError;
+        }
       }
     }
   }

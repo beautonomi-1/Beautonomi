@@ -16,6 +16,7 @@ import { isCompleteE164 } from "@/lib/phone";
 import { toast } from "sonner";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { addMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 
 /** Seeded participant representing the booker; the server excludes it from guests. */
@@ -185,9 +186,9 @@ export default function StepGroupParticipants({
     return participants.reduce((total, participant) => {
       const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
         const service = availableServices.find(s => s.id === serviceId);
-        return sum + (service?.price || 0);
+        return addMoney(sum, service?.price || 0);
       }, 0);
-      return total + participantTotal;
+      return addMoney(total, participantTotal);
     }, 0);
   };
 
@@ -210,7 +211,7 @@ export default function StepGroupParticipants({
           const participantServices = participant.serviceIds
             .map(id => availableServices.find(s => s.id === id))
             .filter(Boolean) as typeof availableServices;
-          const participantTotal = participantServices.reduce((sum, s) => sum + s.price, 0);
+          const participantTotal = participantServices.reduce((sum, s) => addMoney(sum, s.price), 0);
 
           return (
             <motion.div

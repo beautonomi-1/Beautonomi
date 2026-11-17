@@ -1,3 +1,4 @@
+import { multiplyMoney, addMoney, subtractMoney } from "@beautonomi/utils";
 import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -214,7 +215,7 @@ function sumAdditionalChargesForDisplay(charges: AdditionalChargeRow[] | undefin
   return charges.reduce((s, c) => {
     const st = (c.status || "").toLowerCase();
     if (st === "rejected" || st === "cancelled") return s;
-    return s + (Number(c.amount) || 0);
+    return addMoney(s, Number(c.amount) || 0);
   }, 0);
 }
 
@@ -381,23 +382,25 @@ export function BookingDetailPage() {
   }
 
   const edit = isEditing ? { ...booking, ...editData } : booking;
-  const lineServicesSubtotal = booking.booking_services?.reduce((s, x) => s + (x.price || 0), 0) || 0;
-  const productTotal = booking.booking_products?.reduce((s, x) => s + (x.total_price || 0), 0) || 0;
-  const addonTotal = booking.booking_addons?.reduce((s, x) => s + (Number(x.price) || 0) * (x.quantity || 1), 0) || 0;
+  const lineServicesSubtotal = booking.booking_services?.reduce((s, x) => addMoney(s, x.price || 0), 0) || 0;
+  const productTotal = booking.booking_products?.reduce((s, x) => addMoney(s, x.total_price || 0), 0) || 0;
+  const addonTotal = booking.booking_addons?.reduce((s, x) => addMoney(s, multiplyMoney(Number(x.price) || 0, x.quantity || 1)), 0) || 0;
   const additionalChargesTotal = sumAdditionalChargesForDisplay(booking.additional_charges);
-  const goodsBeforeTravel =
-    lineServicesSubtotal + addonTotal + productTotal + additionalChargesTotal;
+  const goodsBeforeTravel = addMoney(
+    addMoney(lineServicesSubtotal, addonTotal),
+    addMoney(productTotal, additionalChargesTotal),
+  );
   const dbSubtotal =
     booking.subtotal != null && !Number.isNaN(Number(booking.subtotal)) ? Number(booking.subtotal) : goodsBeforeTravel;
   const travelFeeAmt = Number(booking.travel_fee ?? 0) || 0;
-  const travelListedSeparately = !travelFeeDoubleListed(dbSubtotal, lineServicesSubtotal + addonTotal + productTotal, travelFeeAmt);
+  const travelListedSeparately = !travelFeeDoubleListed(dbSubtotal, addMoney(addMoney(lineServicesSubtotal, addonTotal), productTotal), travelFeeAmt);
   const discountAmt = Number(booking.discount_amount ?? 0) || 0;
   const taxAmt = Number(booking.tax_amount ?? 0) || 0;
   const svcFeeAmt = Number(booking.service_fee_amount ?? 0) || 0;
   const tipAmt = Number(booking.tip_amount ?? 0) || 0;
   const cancelAmt = Number(booking.cancellation_fee ?? 0) || 0;
   const expectedTotalFromColumns =
-    dbSubtotal - discountAmt + taxAmt + svcFeeAmt + travelFeeAmt + tipAmt - cancelAmt;
+    subtractMoney(addMoney(addMoney(addMoney(addMoney(subtractMoney(dbSubtotal, discountAmt), taxAmt), svcFeeAmt), travelFeeAmt), tipAmt), cancelAmt);
   const totalMismatch =
     booking.total_amount != null &&
     Math.abs(expectedTotalFromColumns - Number(booking.total_amount)) > MONEY_TOL;
@@ -770,7 +773,7 @@ export function BookingDetailPage() {
                         <span className="ml-2 text-gray-500">×{a.quantity}</span>
                       ) : null}
                     </span>
-                    <span className="font-medium tabular-nums">{money(booking.currency, Number(a.price) * (a.quantity || 1))}</span>
+                    <span className="font-medium tabular-nums">{money(booking.currency, multiplyMoney(Number(a.price), a.quantity || 1))}</span>
                   </li>
                 ))}
               </ul>
@@ -1130,7 +1133,7 @@ export function BookingDetailPage() {
         <div className="space-y-4">
           <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
             <p>
-              <span className="font-medium">Collected:</span> {money(booking.currency, Math.max(Number(booking.total_paid ?? 0), Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0)))}
+              <span className="font-medium">Collected:</span> {money(booking.currency, Math.max(Number(booking.total_paid ?? 0), addMoney(Number(booking.wallet_amount ?? 0), Number(booking.gift_card_amount ?? 0))))}
             </p>
             {(booking.total_refunded ?? 0) > 0 ? (
               <p>

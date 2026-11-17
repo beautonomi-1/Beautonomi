@@ -7,7 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { generatePayslipHtml } from "@/lib/payroll/generate-payslip";
-import { payrollDisabledMessage } from "@/lib/payroll/payroll-access";
+import { payrollDisabledMessage, userCanManagePayroll } from "@/lib/payroll/payroll-access";
 
 /**
  * GET /api/provider/pay-runs/items/[itemId]/payslip
@@ -18,7 +18,10 @@ export async function GET(
   { params }: { params: Promise<{ itemId: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
     const { itemId } = await params;
     const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, admin, { request });
@@ -34,8 +37,9 @@ export async function GET(
       .eq("id", itemId)
       .single();
 
-    const run = (item as { provider_pay_runs?: { provider_id?: string; status?: string } })
+    const runRaw = (item as { provider_pay_runs?: { provider_id?: string; status?: string } | { provider_id?: string; status?: string }[] })
       ?.provider_pay_runs;
+    const run = Array.isArray(runRaw) ? runRaw[0] : runRaw;
     if (!item || run?.provider_id !== providerId) {
       return notFoundResponse("Pay run item not found");
     }
@@ -43,14 +47,16 @@ export async function GET(
       return handleApiError(new Error("Payslips are available after approval"), "INVALID_STATE", 400);
     }
 
-    if (user.role === "provider_staff") {
+    const canManage = user.role === "superadmin" || (await userCanManagePayroll(user.id, request));
+    if (!canManage) {
       const { data: staff } = await admin
         .from("provider_staff")
         .select("id")
+        .eq("id", (item as { staff_id: string }).staff_id)
         .eq("user_id", user.id)
         .eq("provider_id", providerId)
         .maybeSingle();
-      if (!staff || staff.id !== (item as { staff_id: string }).staff_id) {
+      if (!staff) {
         return notFoundResponse("Pay run item not found");
       }
     }
@@ -62,6 +68,8 @@ export async function GET(
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Content-Disposition": `inline; filename="${doc.filename}"`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

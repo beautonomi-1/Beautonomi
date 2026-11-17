@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 
 /**
  * GET /api/provider/custom-requests
@@ -8,7 +11,12 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("send_messages", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return successResponse([]);
@@ -33,7 +41,7 @@ export async function GET(request: NextRequest) {
         *,
         customer:users(id, full_name, email, avatar_url),
         attachments:custom_request_attachments(id, url, created_at),
-        offers:custom_offers(id, price, currency, duration_minutes, expiration_at, notes, status, payment_url, payment_reference, paid_at, created_at, staff_id, location_id, scheduled_at, change_request_note, changes_requested_at, staff:provider_staff(id, name), location:provider_locations(id, name))
+        offers:custom_offers(id, price, currency, duration_minutes, expiration_at, notes, status, booking_id, payment_url, payment_reference, paid_at, created_at, staff_id, location_id, scheduled_at, change_request_note, changes_requested_at, staff:provider_staff(id, name), location:provider_locations(id, name))
       `
       )
       .eq("provider_id", providerId)
@@ -50,7 +58,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return successResponse(result);
+    return successResponse(redactBookingCustomerContacts(result, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch custom requests");
   }

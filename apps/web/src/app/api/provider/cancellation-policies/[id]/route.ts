@@ -6,11 +6,12 @@ import {
   deriveEnforcementFields,
   normalizePolicyLocationType,
 } from "@/lib/provider/cancellation-policy-enforcement";
+import { cancellationFeeAmountError } from "@/lib/provider/cancellation-policy-bounds";
 import { z } from "zod";
 
 const updatePolicySchema = z.object({
   name: z.string().min(1).optional(),
-  hours_before: z.number().int().min(0).optional(),
+  hours_before: z.number().int().min(0).max(24 * 365).optional(),
   refund_percentage: z.number().int().min(0).max(100).optional(),
   fee_amount: z.number().min(0).optional(),
   fee_type: z.enum(["fixed", "percentage"]).optional(),
@@ -72,7 +73,7 @@ export async function PATCH(
     // Verify policy exists and load current values for derivation (hours_before_cutoff fallback for legacy rows)
     let verifyQuery = supabase
       .from('cancellation_policies')
-      .select('provider_id, name, hours_before, hours_before_cutoff, refund_percentage')
+      .select('provider_id, name, hours_before, hours_before_cutoff, refund_percentage, fee_type, fee_amount')
       .eq('id', id);
 
     if (providerId) {
@@ -95,6 +96,15 @@ export async function PATCH(
     }
 
     const d = validationResult.data;
+    if (d.fee_amount !== undefined || d.fee_type !== undefined) {
+      const feeErr = cancellationFeeAmountError(
+        d.fee_type ?? existingPolicy.fee_type,
+        d.fee_amount ?? existingPolicy.fee_amount,
+      );
+      if (feeErr) {
+        return errorResponse(feeErr, "VALIDATION_ERROR", 400);
+      }
+    }
     const merged = {
       name: d.name !== undefined ? d.name.trim() : (existingPolicy.name ?? 'Unnamed Policy'),
       hours_before: d.hours_before ?? existingPolicy.hours_before ?? existingPolicy.hours_before_cutoff ?? 24,

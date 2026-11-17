@@ -1,3 +1,4 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError } from "@/lib/supabase/api-helpers";
@@ -92,8 +93,8 @@ export async function GET(request: NextRequest) {
     for (const line of openingLines ?? []) {
       const id = line.account_id as string;
       if (!openingByAccount[id]) openingByAccount[id] = { debits: 0, credits: 0 };
-      if (line.side === "debit")  openingByAccount[id].debits  += Number(line.reporting_amount);
-      else                        openingByAccount[id].credits += Number(line.reporting_amount);
+      if (line.side === "debit")  openingByAccount[id].debits  = addMoney(openingByAccount[id].debits, Number(line.reporting_amount));
+      else                        openingByAccount[id].credits = addMoney(openingByAccount[id].credits, Number(line.reporting_amount));
     }
 
     // ── Aggregate period movements ────────────────────────────────────────────
@@ -101,8 +102,8 @@ export async function GET(request: NextRequest) {
     for (const line of periodLines ?? []) {
       const id = line.account_id as string;
       if (!periodByAccount[id]) periodByAccount[id] = { debits: 0, credits: 0 };
-      if (line.side === "debit")  periodByAccount[id].debits  += Number(line.reporting_amount);
-      else                        periodByAccount[id].credits += Number(line.reporting_amount);
+      if (line.side === "debit")  periodByAccount[id].debits  = addMoney(periodByAccount[id].debits, Number(line.reporting_amount));
+      else                        periodByAccount[id].credits = addMoney(periodByAccount[id].credits, Number(line.reporting_amount));
     }
 
     // ── Build trial balance rows ──────────────────────────────────────────────
@@ -118,13 +119,13 @@ export async function GET(request: NextRequest) {
     };
 
     const signedBalance = (normalSide: string, debits: number, credits: number) =>
-      normalSide === "debit" ? debits - credits : credits - debits;
+      normalSide === "debit" ? subtractMoney(debits, credits) : subtractMoney(credits, debits);
 
     const rows: TrialBalanceRow[] = (accounts ?? []).map((acct) => {
       const ob = openingByAccount[acct.id] ?? { debits: 0, credits: 0 };
       const pb = periodByAccount[acct.id] ?? { debits: 0, credits: 0 };
       const openingBalance = signedBalance(acct.normal_side, ob.debits, ob.credits);
-      const closingBalance = openingBalance + signedBalance(acct.normal_side, pb.debits, pb.credits);
+      const closingBalance = addMoney(openingBalance, signedBalance(acct.normal_side, pb.debits, pb.credits));
       return {
         account_code: acct.code,
         account_name: acct.name,
@@ -138,8 +139,8 @@ export async function GET(request: NextRequest) {
     });
 
     // ── Self-validating assert ────────────────────────────────────────────────
-    const totalDebits  = rows.reduce((s, r) => s + r.period_debits, 0);
-    const totalCredits = rows.reduce((s, r) => s + r.period_credits, 0);
+    const totalDebits  = rows.reduce((s, r) => addMoney(s, r.period_debits), 0);
+    const totalCredits = rows.reduce((s, r) => addMoney(s, r.period_credits), 0);
     const balanced = Math.abs(totalDebits - totalCredits) < 0.005;
 
     // ── Check period lock ─────────────────────────────────────────────────────
@@ -175,10 +176,10 @@ export async function GET(request: NextRequest) {
         // Totals row
         [
           "TOTAL", "", "", "",
-          rows.reduce((s, r) => s + r.opening_balance, 0).toFixed(2),
+          rows.reduce((s, r) => addMoney(s, r.opening_balance), 0).toFixed(2),
           totalDebits.toFixed(2),
           totalCredits.toFixed(2),
-          rows.reduce((s, r) => s + r.closing_balance, 0).toFixed(2),
+          rows.reduce((s, r) => addMoney(s, r.closing_balance), 0).toFixed(2),
         ].join(","),
       ];
       const csvBody = csvLines.join("\r\n");

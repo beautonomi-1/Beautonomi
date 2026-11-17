@@ -48,7 +48,7 @@ export async function POST(
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) return notFoundResponse("Provider not found");
     const payrollBlocked = await payrollDisabledMessage(supabaseAdmin, providerId);
     if (payrollBlocked) {
@@ -57,7 +57,7 @@ export async function POST(
 
     const { data: payRun, error: fetchError } = await supabaseAdmin
       .from("provider_pay_runs")
-      .select("id, status, pay_period_start, pay_period_end")
+      .select("id, status, pay_period_start, pay_period_end, currency")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -91,6 +91,7 @@ export async function POST(
       periodStart: payRun.pay_period_start as string,
       periodEnd: payRun.pay_period_end as string,
       paymentReference,
+      currency: (payRun as { currency?: string | null }).currency ?? null,
     }).catch((err) => console.warn("[pay-runs/mark-paid] notify failed:", err));
 
     return successResponse({ status: "paid", paid_at: paidAt, payment_reference: paymentReference });

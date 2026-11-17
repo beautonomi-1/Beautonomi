@@ -3,6 +3,7 @@
  * Maps and summarizes the full period scan without row enrichment; enriches only the list page.
  */
 
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { filterLedgerRowsForLocation } from "@/lib/reports/provider-report-utils";
@@ -49,8 +50,8 @@ export type ProviderTransactionsFeedParams = {
 
 function signedContributionForSummary(row: ProviderLedgerUiRow): number {
   if (row.type === "earning" || row.type === "tip") return row.amount;
-  if (row.type === "payout" || row.type === "refund" || row.type === "fee") return -row.amount;
-  if (row.type === "adjustment") return (row.sign ?? 1) * row.amount;
+  if (row.type === "payout" || row.type === "refund" || row.type === "fee") return multiplyMoney(row.amount, -1);
+  if (row.type === "adjustment") return multiplyMoney(row.amount, row.sign ?? 1);
   return 0;
 }
 
@@ -61,10 +62,10 @@ export function summarizeProviderLedgerUiRows(
   let totalIn = 0;
   let totalOut = 0;
   for (const row of rows) {
-    if (row.type === "earning" || row.type === "tip") totalIn += row.amount;
-    if (row.type === "payout" || row.type === "refund") totalOut += row.amount;
+    if (row.type === "earning" || row.type === "tip") totalIn = addMoney(totalIn, row.amount);
+    if (row.type === "payout" || row.type === "refund") totalOut = addMoney(totalOut, row.amount);
   }
-  const net = rows.reduce((s, r) => s + signedContributionForSummary(r), 0);
+  const net = rows.reduce((s, r) => addMoney(s, signedContributionForSummary(r)), 0);
   return {
     total_in: totalIn,
     total_out: totalOut,

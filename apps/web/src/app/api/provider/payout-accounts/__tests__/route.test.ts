@@ -67,6 +67,26 @@ vi.mock("@/lib/verification/apply-payout-name-match", () => ({
   applyPayoutNameMatchForAccount: vi.fn(async () => {}),
 }));
 
+// F2-10 made step-up enforce-by-default; the step-up gate has its own tests in
+// lib/auth/__tests__/provider-security.test.ts. Here we only exercise the Paystack flow.
+vi.mock("@/lib/auth/provider-security", () => ({
+  requireStepUp: vi.fn(async () => {}),
+}));
+
+vi.mock("@/lib/audit/audit", () => ({
+  writeAuditLog: vi.fn(async () => {}),
+  extractRequestMeta: vi.fn(() => ({ ip_address: "203.0.113.9", user_agent: "vitest" })),
+}));
+
+vi.mock("@/lib/auth/payout-cooling-off", () => ({
+  providerHasAnyPayoutAccount: vi.fn(async () => false),
+  notifyPayoutAccountChange: vi.fn(async () => {}),
+}));
+
+vi.mock("@/lib/auth/resolve-new-account-cooling-off", () => ({
+  resolveCoolingOffUntilForNewAccount: vi.fn(async () => null),
+}));
+
 const owner = MOCK_USERS.provider_owner;
 const PROVIDER_ID = "11111111-1111-1111-1111-111111111111";
 const TENANT_ID = "22222222-2222-2222-2222-222222222222";
@@ -222,6 +242,28 @@ describe("POST /api/provider/payout-accounts", () => {
     expect(body.data).toMatchObject({ id: "acc-1", recipient_code: "RCP_123" });
     expect(deleteTransferRecipient).not.toHaveBeenCalled();
     expect(admin.from).toHaveBeenCalledWith("provider_payout_accounts");
+
+    // F2-09: bank-account changes must leave an audit trail (no full account number).
+    const { writeAuditLog } = await import("@/lib/audit/audit");
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "provider.payout_account.added",
+        entity_type: "provider_payout_account",
+        entity_id: "acc-1",
+        actor_user_id: owner.id,
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        ip_address: "203.0.113.9",
+        metadata: expect.objectContaining({
+          provider_id: PROVIDER_ID,
+          account_number_last4: "7890",
+          payout_rail: "paystack",
+        }),
+      }),
+    );
+    const auditJson = JSON.stringify(vi.mocked(writeAuditLog).mock.calls);
+    expect(auditJson).not.toContain("1234567890");
     expect(createTransferRecipient).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "basa",
@@ -469,5 +511,141 @@ describe("POST /api/provider/payout-accounts", () => {
     });
     expect(createTransferRecipient).not.toHaveBeenCalled();
     expect(resolveFlutterwaveBankAccount).toHaveBeenCalled();
+
+    const { writeAuditLog } = await import("@/lib/audit/audit");
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "provider.payout_account.added",
+        entity_id: "acc-fw-1",
+        metadata: expect.objectContaining({ payout_rail: "flutterwave", account_number_last4: "7890" }),
+      }),
+    );
+  });
+});
+
+describe("PATCH/DELETE /api/provider/payout-accounts/[id] (F2-09 audit trail)", () => {
+  const ACCOUNT_ID = "33333333-3333-3333-3333-333333333333";
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { requireRoleInApi, getProviderIdForUser } = await import(
+      "@/lib/supabase/api-helpers"
+    );
+    const { getSupabaseServer } = await import("@/lib/supabase/server");
+    const { resolveTenantIdWithZaFallback } = await import(
+      "@/lib/tenant/resolve-tenant-from-db"
+    );
+    const { resourceTenantMatchesHostTenant } = await import(
+      "@/lib/bookings/resolve-payment-tenant"
+    );
+    vi.mocked(requireRoleInApi).mockResolvedValue({ user: owner } as any);
+    vi.mocked(getProviderIdForUser).mockResolvedValue(PROVIDER_ID);
+    vi.mocked(getSupabaseServer).mockResolvedValue({} as any);
+    vi.mocked(resolveTenantIdWithZaFallback).mockResolvedValue(TENANT_ID);
+    vi.mocked(resourceTenantMatchesHostTenant).mockReturnValue(true);
+  });
+
+  it("PATCH writes an audit log with before/after and changed fields", async () => {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const existing = {
+      id: ACCOUNT_ID,
+      provider_id: PROVIDER_ID,
+      recipient_code: "RCP_123",
+      account_name: "Old Name",
+      account_number_last4: "7890",
+      bank_name: "Standard Bank",
+      active: true,
+      is_primary: true,
+      metadata: {},
+    };
+    vi.mocked(getSupabaseAdmin).mockReturnValue(
+      buildAdminMock({
+        providers: { select: { data: { tenant_id: TENANT_ID }, error: null } },
+        provider_payout_accounts: {
+          select: { data: existing, error: null },
+          update: { data: { ...existing, account_name: "New Name" }, error: null },
+        },
+      }) as any,
+    );
+
+    const { PATCH } = await import("../[id]/route");
+    const response = await PATCH(
+      createMockNextRequest({
+        method: "PATCH",
+        url: `http://localhost/api/provider/payout-accounts/${ACCOUNT_ID}`,
+        body: { account_name: "New Name" },
+      }) as any,
+      { params: Promise.resolve({ id: ACCOUNT_ID }) },
+    );
+    expect(response.status).toBe(200);
+
+    const { writeAuditLog } = await import("@/lib/audit/audit");
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "provider.payout_account.updated",
+        entity_type: "provider_payout_account",
+        entity_id: ACCOUNT_ID,
+        actor_user_id: owner.id,
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        before_json: expect.objectContaining({ account_name: "Old Name" }),
+        after_json: expect.objectContaining({ account_name: "New Name" }),
+        metadata: expect.objectContaining({
+          provider_id: PROVIDER_ID,
+          changed_fields: ["account_name"],
+        }),
+      }),
+    );
+  });
+
+  it("DELETE writes an audit log for the soft-deleted account", async () => {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    vi.mocked(getSupabaseAdmin).mockReturnValue(
+      buildAdminMock({
+        providers: { select: { data: { tenant_id: TENANT_ID }, error: null } },
+        provider_payout_accounts: {
+          select: {
+            data: {
+              id: ACCOUNT_ID,
+              provider_id: PROVIDER_ID,
+              account_number_last4: "7890",
+              bank_name: "Standard Bank",
+              active: true,
+              is_primary: false,
+            },
+            error: null,
+          },
+          update: { data: null, error: null },
+        },
+      }) as any,
+    );
+
+    const { DELETE } = await import("../[id]/route");
+    const response = await DELETE(
+      createMockNextRequest({
+        method: "DELETE",
+        url: `http://localhost/api/provider/payout-accounts/${ACCOUNT_ID}`,
+      }) as any,
+      { params: Promise.resolve({ id: ACCOUNT_ID }) },
+    );
+    expect(response.status).toBe(200);
+
+    const { writeAuditLog } = await import("@/lib/audit/audit");
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "provider.payout_account.removed",
+        entity_type: "provider_payout_account",
+        entity_id: ACCOUNT_ID,
+        actor_user_id: owner.id,
+        risk_level: "high",
+        retention_tier: "financial",
+        metadata: expect.objectContaining({
+          provider_id: PROVIDER_ID,
+          account_number_last4: "7890",
+          bank_name: "Standard Bank",
+        }),
+      }),
+    );
   });
 });

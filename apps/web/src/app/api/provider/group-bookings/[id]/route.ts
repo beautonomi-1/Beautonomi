@@ -14,6 +14,8 @@ import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 import { rescheduleBookingServicesSequential } from "@/lib/bookings/reschedule-booking-services";
 import { requirePermission, requireAnyPermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
@@ -24,7 +26,18 @@ import {
 } from "@/lib/bookings/group-booking-package-pricing";
 import { requireManualCardEnabledForProvider } from "@/lib/payments/require-manual-card-enabled";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
-import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import {
+  deductBookingRetailStock,
+  lineUpBookingStockWithSavedStatus,
+  type BookingRetailStockLine,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import {
+  sumPendingWalletGiftBookingPayments,
+  sumPendingWalletGiftByBookingIds,
+} from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { wallClockPartsInTz } from "@/lib/dates/provider-tz";
+import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 import { autoInvoiceInlineGroupParticipants } from "@/lib/bookings/create-group-participant-booking";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -35,7 +48,7 @@ import {
 } from "@/lib/bookings/group-booking-postgrest";
 import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
 import { participantRowCountsTowardGroupTotal } from "@/lib/bookings/recalculate-group-total";
-import { computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
+import { subtractMoney, addMoney, computeCatalogPackageServiceDiscount } from "@beautonomi/utils";
 import { evaluateGroupCapacity, normalizeGroupCapacity } from "@/lib/bookings/group-capacity";
 import { cancelGroupBooking } from "@/lib/bookings/group-booking-cancellation";
 import { syncGroupBookingStatusFromChildren } from "@/lib/bookings/group-booking";
@@ -60,6 +73,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const { id: rawId } = await params;
     const id = normalizeGroupBookingId(rawId);
     const supabase = await getSupabaseServer(request);
@@ -141,25 +157,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ? (groupBooking as any).service_packages[0]
       : (groupBooking as any).service_packages;
     const groupChildBookings = (((groupBooking as any).bookings ?? []) as any[]);
-    const pendingByChild = new Map<string, number>();
-    for (const booking of groupChildBookings) {
-      const bookingId = String(booking?.id ?? "");
-      if (!bookingId) continue;
-      pendingByChild.set(bookingId, await sumPendingWalletGiftBookingPayments(admin, bookingId));
-    }
+    const [pendingByChild, { timezone: providerTz }] = await Promise.all([
+      sumPendingWalletGiftByBookingIds(
+        admin,
+        groupChildBookings.map((booking: any) => String(booking?.id ?? "")),
+      ),
+      getProviderReportContext(admin, providerId),
+    ]);
     const bookingPaymentById = new Map(
       groupChildBookings.map((booking: any) => {
         const paidAfterRefunds = Math.max(
           0,
-          Number(booking.total_paid ?? 0) - Number(booking.total_refunded ?? 0)
+          subtractMoney(Number(booking.total_paid ?? 0), Number(booking.total_refunded ?? 0))
         );
         const walletGiftCoverage =
-          Number(booking.wallet_amount ?? 0) + Number(booking.gift_card_amount ?? 0);
+          addMoney(Number(booking.wallet_amount ?? 0), Number(booking.gift_card_amount ?? 0));
         const coverage = Math.max(paidAfterRefunds, walletGiftCoverage);
         const unpaidAdditionalCharges = Array.isArray(booking.additional_charges)
           ? booking.additional_charges
               .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-              .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+              .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
           : 0;
         const balanceDue = computeWalletGiftCoverageOutstanding({
           totalAmount: Number(booking.total_amount ?? 0),
@@ -249,7 +266,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     );
     const linkedParticipantInvoiceTotal = (((groupBooking as any).bookings ?? []) as any[])
       .filter((booking: any) => booking?.status !== "cancelled" && booking?.status !== "no_show")
-      .reduce((sum: number, booking: any) => sum + (Number(booking?.total_amount ?? 0) || 0), 0);
+      .reduce((sum: number, booking: any) => addMoney(sum, Number(booking?.total_amount ?? 0) || 0), 0);
     const participantServiceTotal = (
       (((groupBooking as any).booking_participants ?? []) as any[]) ?? []
     ).reduce((sum: number, participant: any) => {
@@ -267,11 +284,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ) {
         return sum;
       }
-      return sum + (Number(participant?.price ?? 0) || 0);
+      return addMoney(sum, Number(participant?.price ?? 0) || 0);
     }, 0);
     const productTotal = Array.isArray((groupBooking as any).products)
       ? ((groupBooking as any).products as any[]).reduce(
-          (sum: number, product: any) => sum + groupProductLineTotal(product),
+          (sum: number, product: any) => addMoney(sum, groupProductLineTotal(product)),
           0
         )
       : 0;
@@ -316,7 +333,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
 
     const groupPayload = groupBooking as unknown as Record<string, unknown>;
-    return successResponse({
+    return successResponse(redactBookingCustomerContact({
       ...groupPayload,
       total_price: displayTotal,
       booking_participants: participants,
@@ -325,12 +342,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       package_discount_amount: packageDiscount,
       /** Align list + detail: detail fetch must not drop enrollment count in mobile modal. */
       current_participants: participants.length,
-      scheduled_date: scheduledAt ? scheduledAt.toISOString().split("T")[0] : "",
-      scheduled_time: scheduledAt ? scheduledAt.toTimeString().slice(0, 5) : "",
+      ...wallClockPartsInTz(scheduledAt, providerTz),
       team_member_id: (groupBooking as any).staff_id ?? null,
       open_terminal_payments: openTerminalPayments,
       ...groupPayment,
-    });
+    }, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch group booking");
   }
@@ -410,14 +426,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       sanitized.travel_fee = 0;
     }
 
-    // Mobile / portal sometimes send split date+time instead of ISO `scheduled_at`.
+    // Mobile sends split date+time (provider wall-clock) instead of ISO `scheduled_at`.
+    // An explicit `scheduled_at` (web portal) is already zoned and wins.
     const scheduledDate = typeof body.scheduled_date === "string" ? body.scheduled_date.trim() : "";
     const scheduledTime = typeof body.scheduled_time === "string" ? body.scheduled_time.trim() : "";
-    if (scheduledDate && scheduledTime && /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
+    const hasExplicitScheduledAt =
+      typeof body.scheduled_at === "string" &&
+      !Number.isNaN(new Date(body.scheduled_at).getTime());
+    if (
+      !hasExplicitScheduledAt &&
+      scheduledDate &&
+      scheduledTime &&
+      /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)
+    ) {
       const hm = scheduledTime.match(/^(\d{1,2}):(\d{2})/);
       if (hm) {
-        const isoLocal = `${scheduledDate}T${String(hm[1]).padStart(2, "0")}:${hm[2]}:00`;
-        const parsed = new Date(isoLocal);
+        const { timezone } = await getProviderReportContext(admin, providerId);
+        const parsed = parseSelectedDatetimeInProviderTz(
+          scheduledDate,
+          `${String(hm[1]).padStart(2, "0")}:${hm[2]}`,
+          timezone,
+        );
         if (!Number.isNaN(parsed.getTime())) {
           sanitized.scheduled_at = parsed.toISOString();
         }
@@ -562,11 +591,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           ? Math.max(0, Number(sanitized.travel_fee ?? existingTotals?.travel_fee ?? 0))
           : 0;
       const participantTotal = (participantRows ?? []).reduce(
-        (sum: number, p: any) => sum + Math.max(0, Number(p.price || 0)),
+        (sum: number, p: any) => addMoney(sum, Math.max(0, Number(p.price || 0))),
         0
       );
       const productTotal = nextProducts.reduce(
-        (sum: number, p: any) => sum + groupProductLineTotal(p),
+        (sum: number, p: any) => addMoney(sum, groupProductLineTotal(p)),
         0
       );
       const nextPackageId =
@@ -924,7 +953,44 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .filter((row) => childBookingEligibleForCompletionComplete(row as never))
         .map((row) => row.id);
 
-      const { error: bookingsError } =
+      const stockTaken = new Map<string, BookingRetailStockLine[]>();
+      const putTakenStockBack = async (bookingIds: string[]) => {
+        for (const bookingId of bookingIds) {
+          try {
+            await lineUpBookingStockWithSavedStatus(
+              admin,
+              bookingId,
+              stockTaken.get(bookingId) ?? [],
+              [],
+            );
+          } catch (undoErr) {
+            console.error("[group complete] stock could not be lined up:", undoErr);
+            return false;
+          }
+        }
+        return true;
+      };
+      for (const bookingId of eligibleIds) {
+        try {
+          stockTaken.set(bookingId, await deductBookingRetailStock(admin, bookingId));
+        } catch (stockErr) {
+          const linedUp = await putTakenStockBack([...stockTaken.keys()]);
+          if (!linedUp) {
+            return errorResponse(
+              "Product stock could not be put back in line with the visits that were kept.",
+              "STOCK_ERROR",
+              409,
+            );
+          }
+          return errorResponse(
+            stockErr instanceof Error ? stockErr.message : "Product stock could not be deducted",
+            "STOCK_ERROR",
+            409,
+          );
+        }
+      }
+
+      const { data: completedRows, error: bookingsError } =
         eligibleIds.length > 0
           ? await admin
               .from("bookings")
@@ -937,15 +1003,38 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               .in("id", eligibleIds)
               .eq("provider_id", providerId)
               .in("status", ["in_progress", "confirmed", "waiting", "checked_in"])
-          : { error: null };
-      if (bookingsError) {
-        console.warn(
-          "[provider group complete_service] child booking update failed (continuing):",
-          bookingsError
+              .select("id")
+          : { data: [] as Array<{ id: string }>, error: null };
+      const alreadyFinished = (childRows ?? [])
+        .filter(
+          (row) =>
+            eligibleIds.includes(String(row.id)) && String(row.status ?? "") === "completed",
+        )
+        .map((row) => String(row.id));
+      const finishedIds = new Set([
+        ...alreadyFinished,
+        ...(completedRows ?? []).map((row) => String(row.id)),
+      ]);
+      if (bookingsError || finishedIds.size !== eligibleIds.length) {
+        const missed = eligibleIds.filter((bookingId) => !finishedIds.has(bookingId));
+        const linedUp = await putTakenStockBack(bookingsError ? eligibleIds : missed);
+        if (!linedUp) {
+          return errorResponse(
+            "The products were taken, but the appointments could not be marked finished. Try again.",
+            "STOCK_ERROR",
+            409,
+          );
+        }
+        return errorResponse(
+          finishedIds.size > 0
+            ? "Some appointments could not be marked finished. Their product stock was put back. The ones that finished stay finished."
+            : "The appointments could not be marked finished. Product stock was put back in line with the visits that were kept.",
+          "STOCK_ERROR",
+          409,
         );
       }
       if (allowUnpaid && unpaidReason && completionCheck.balanceDue > 0.01) {
-        for (const bid of eligibleIds) {
+        for (const bid of finishedIds) {
           await admin.from("booking_events").insert({
             booking_id: bid,
             event_type: "completed_with_balance",
@@ -1121,7 +1210,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           const unpaidAdditionalCharges = Array.isArray(booking.additional_charges)
             ? booking.additional_charges
                 .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-                .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+                .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
             : 0;
           const remaining = computeWalletGiftCoverageOutstanding({
             totalAmount: Number(booking.total_amount ?? 0),
@@ -1264,7 +1353,6 @@ export async function DELETE(
     });
 
     if (childSettlements.length) {
-      const cancelledIds = childSettlements.map((c) => c.bookingId);
       after(async () => {
         try {
           const { getGroupBookingParticipantsForCancellation } = await import("@/lib/bookings/group-booking-cancellation");
@@ -1279,16 +1367,27 @@ export async function DELETE(
             providerId,
             bookingRef: (groupRef as { ref_number?: string | null } | null)?.ref_number || id,
             cancelledBy: "provider",
+            guestCardRefundPending: childSettlements.some((child) => child.guestShareRefundFailed),
           });
         } catch (guestNotifyErr) {
           console.warn("[provider group cancel] guest notice failed:", guestNotifyErr);
         }
         try {
           const { sendCancellationNotification } = await import("@/lib/bookings/notifications");
+          const { cancellationNoticeFromGroupChild } = await import(
+            "@/lib/bookings/cancellation-outcome-bridge"
+          );
           const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
           await Promise.allSettled(
-            cancelledIds.map(async (bookingId) => {
-              await sendCancellationNotification(bookingId, { cancelledBy: "provider" }).catch(
+            childSettlements.map(async (child) => {
+              const bookingId = child.bookingId;
+              const notice = cancellationNoticeFromGroupChild(child);
+              await sendCancellationNotification(bookingId, {
+                cancelledBy: "provider",
+                refundInfo: notice.refundInfo,
+                walletRefund: notice.walletRefund,
+                currency: child.currency,
+              }).catch(
                 (e: unknown) =>
                   console.warn("[provider group cancel] notification failed for booking", bookingId, e)
               );

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { isProviderOwner } from "@/lib/auth/permissions";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getDefaultStaffPermissionsForDbRole } from "@/lib/provider/staff-invite-default-permissions";
 import { parseStaffJobPreset, resolveStaffJobPreset } from "@/lib/provider/staff-job-presets";
@@ -11,7 +12,12 @@ import { sendStaffInvite, STAFF_INVITE_EXPIRY_DAYS } from "@/lib/provider/staff-
 import { recordStaffInvitationSent } from "@/lib/provider/staff-invitations";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_STAFF_INVITED } from "@/lib/analytics/amplitude/types";
-import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
+import {
+  canViewStaffPay,
+  getTeamRosterDetailLevel,
+  redactStaffPayFields,
+  redactStaffRowForViewer,
+} from "@/lib/auth/provider-team-roster-access";
 import { checkStaffManagementFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { checkStaffLimit } from "@/lib/subscriptions/limit-checker";
 import { formatLimitUpgradeMessage, getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
@@ -119,6 +125,8 @@ export async function GET(request: NextRequest) {
     const isFreelancer = providerData?.business_type === 'freelancer';
 
     const rosterDetailLevel = await getTeamRosterDetailLevel(user.id, request);
+    const viewerCanPay =
+      user.role === "superadmin" || (await canViewStaffPay(user.id, request));
     
     const scope = await resolveStaffLocationScope(supabase, providerId, locationId);
     let staffIds = scope.staffIds;
@@ -171,7 +179,8 @@ export async function GET(request: NextRequest) {
         is_service_provider,
         enable_in_online_booking,
         bookable_from,
-        public_title
+        public_title,
+        time_clock_enabled
       `
       )
       .eq("provider_id", providerId)
@@ -189,6 +198,21 @@ export async function GET(request: NextRequest) {
     }
 
     const idsForServiceAssignments = (staff || []).map((m: StaffMemberRow) => m.id);
+    const clockedInIds = new Set<string>();
+    if (idsForServiceAssignments.length > 0) {
+      const { data: openCards, error: openCardsError } = await getSupabaseAdmin()
+        .from("staff_time_cards")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .is("clock_out_time", null)
+        .in("staff_id", idsForServiceAssignments);
+      if (!openCardsError) {
+        for (const row of openCards ?? []) {
+          const id = (row as { staff_id?: string }).staff_id;
+          if (id) clockedInIds.add(id);
+        }
+      }
+    }
     const serviceIdsByStaff = new Map<string, string[]>();
     if (idsForServiceAssignments.length > 0) {
       const { data: svcAssignRows } = await supabase
@@ -293,9 +317,13 @@ export async function GET(request: NextRequest) {
           (member as { enable_in_online_booking?: boolean | null }).enable_in_online_booking ?? true,
         bookable_from: (member as { bookable_from?: string | null }).bookable_from ?? null,
         public_title: (member as { public_title?: string | null }).public_title ?? null,
+        time_clock_enabled: (member as { time_clock_enabled?: boolean | null }).time_clock_enabled === true,
+        clocked_in: clockedInIds.has(member.id),
       };
+      const payVisible = viewerCanPay || member.user_id === user.id;
+      const priced = redactStaffPayFields(row, payVisible);
       const redacted = redactStaffRowForViewer(
-        { ...row, user_id: member.user_id ?? null },
+        { ...priced, user_id: member.user_id ?? null },
         user.id,
         rosterDetailLevel,
       );
@@ -447,6 +475,19 @@ export async function POST(request: Request) {
       permissions = getDefaultStaffPermissionsForDbRole(dbRole);
     }
 
+    // Only the linked business owner (or superadmin) may create an owner-level
+    // staff row — mirrors the PATCH guard in staff/[id]/route.ts.
+    if (dbRole === "owner" || role === "provider_owner" || role === "owner") {
+      const ownerOps = user.role === "superadmin" || (await isProviderOwner(user.id, request));
+      if (!ownerOps) {
+        return errorResponse(
+          "Only the business owner can assign the owner role.",
+          "FORBIDDEN",
+          403,
+        );
+      }
+    }
+
     if (takes_appointments !== undefined) {
       isServiceProvider = takes_appointments;
       enableInOnlineBooking = takes_appointments;
@@ -478,7 +519,7 @@ export async function POST(request: Request) {
 
         // Create auth user with a temporary password (user will need to reset)
         const tempPassword = `Temp${Math.random().toString(36).slice(-12)}!`;
-        console.log("Creating auth user for:", email);
+        console.log("Creating auth user for staff invitee");
         const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
           email: email,
           password: tempPassword,

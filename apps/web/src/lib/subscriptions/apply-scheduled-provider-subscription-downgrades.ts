@@ -5,7 +5,7 @@ import {
   fetchSubscription,
 } from "@/lib/payments/paystack-complete";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { computePaidPeriodExpiresAt, paystackActivationFields } from "@/lib/subscriptions/provider-billing-merchant";
+import { accessEndFromNextCharge, paystackActivationFields } from "@/lib/subscriptions/provider-billing-merchant";
 
 export type ScheduledDowngradeRow = {
   id: string;
@@ -164,20 +164,25 @@ export async function applyScheduledProviderSubscriptionDowngrades(
         { tenantId },
       );
       const paystackSubscription = subscriptionResponse.data;
-      const periodStart = new Date();
+      const accessEnd = accessEndFromNextCharge(
+        paystackSubscription?.next_payment_date ?? null,
+        billingPeriod,
+      );
       await supabase
         .from("provider_subscriptions")
         .update({
           plan_id: targetPlanId,
           billing_period: billingPeriod,
           status: "active",
+          past_due_since: null,
           auto_renew: true,
           cancelled_at: null,
           paystack_subscription_code: paystackSubscription?.subscription_code ?? null,
           paystack_authorization_code: auth,
           paystack_customer_code: customer,
-          next_payment_date: paystackSubscription?.next_payment_date ?? null,
-          expires_at: computePaidPeriodExpiresAt(billingPeriod, periodStart),
+          next_payment_date: accessEnd,
+          expires_at: accessEnd,
+          billing_period_end: accessEnd,
           ...clearScheduled,
           ...paystackActivationFields(),
         })

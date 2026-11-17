@@ -13,6 +13,7 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { insertNotification } from "@/lib/notifications/insert-notification";
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+import { stalePendingUpgradePatch } from "@/lib/subscriptions/pending-upgrade-fields";
 
 const REMINDER_DAYS = [30, 14, 7, 3, 1] as const;
 const JOB_NAME = "subscription-reminders";
@@ -49,7 +50,8 @@ async function runJob(request: NextRequest) {
         status,
         plan:subscription_plans!plan_id(name)
       `)
-      .in("status", ["active", "past_due"])
+      .eq("status", "active")
+      .or("auto_renew.eq.false,cancelled_at.not.is.null")
       .not("expires_at", "is", null)
       .lte("expires_at", thirtyDaysOut)
       .gte("expires_at", now.toISOString());
@@ -59,22 +61,37 @@ async function runJob(request: NextRequest) {
       throw subErr;
     }
 
-    if (!subscriptions?.length) {
-      return successResponse({ message: "No expiring subscriptions", sent: 0 });
+    const expiring = subscriptions ?? [];
+    const providerMap = new Map<string, { userId: string; name?: string }>();
+    async function providerFor(providerId: string) {
+      const cached = providerMap.get(providerId);
+      if (cached?.userId) return cached;
+      const { data: pRow } = await supabase
+        .from("providers")
+        .select("id, user_id, business_name")
+        .eq("id", providerId)
+        .maybeSingle();
+      if (!pRow) return undefined;
+      const resolved = {
+        userId: (pRow as { user_id: string }).user_id,
+        name: (pRow as { business_name?: string }).business_name,
+      };
+      if (resolved.userId) providerMap.set(providerId, resolved);
+      return resolved.userId ? resolved : undefined;
+    }
+    if (expiring.length > 0) {
+      const providerIds = [...new Set(expiring.map((s) => s.provider_id))];
+      const { data: providerUsers } = await supabase
+        .from("providers")
+        .select("id, user_id, business_name")
+        .in("id", providerIds);
+      for (const p of providerUsers ?? []) {
+        const row = p as { id: string; user_id: string; business_name?: string };
+        if (row.user_id) providerMap.set(row.id, { userId: row.user_id, name: row.business_name });
+      }
     }
 
-    // Get provider owner user IDs for notifications
-    const providerIds = [...new Set(subscriptions.map((s) => s.provider_id))];
-    const { data: providerUsers } = await supabase
-      .from("providers")
-      .select("id, user_id, business_name")
-      .in("id", providerIds);
-
-    const providerMap = new Map(
-      (providerUsers ?? []).map((p: any) => [p.id, { userId: p.user_id, name: p.business_name }])
-    );
-
-    for (const sub of subscriptions) {
+    for (const sub of expiring) {
       const expiresAt = new Date(sub.expires_at!);
       const daysUntil = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -107,12 +124,12 @@ async function runJob(request: NextRequest) {
         await insertNotification({
           user_id: provider.userId,
           type: "system",
-          title: `Subscription expiring in ${matchedThreshold} day${matchedThreshold > 1 ? "s" : ""}`,
+          title: `Subscription expiring in ${daysUntil} day${daysUntil === 1 ? "" : "s"}`,
           message: `Your ${planName} subscription expires on ${expiryStr}. Renew to keep your features active.`,
           data: {
             reminder_key: reminderKey,
             subscription_id: sub.id,
-            days_until_expiry: matchedThreshold,
+            days_until_expiry: daysUntil,
           },
           action_url: "/settings/subscription",
         });
@@ -122,9 +139,10 @@ async function runJob(request: NextRequest) {
           [provider.userId],
           {
             plan_name: planName,
-            expiry_date: expiryStr,
-            days_remaining: matchedThreshold.toString(),
+            expires_at: expiryStr,
+            days_until: String(daysUntil),
             business_name: provider.name || "",
+            app_url: process.env.NEXT_PUBLIC_APP_URL ?? "",
           },
           ["push"],
           // In-app bell row inserted manually above; skip template auto-insert.
@@ -138,12 +156,13 @@ async function runJob(request: NextRequest) {
       }
     }
 
-    // Trial ending reminders (3 and 1 day thresholds).
-    const trialReminderDays = [3, 1] as const;
+    // Trial ending reminders. A missed day-3 run still sends while 2 days remain.
     const trialHorizon = new Date(now.getTime() + 3 * 86400000).toISOString();
     const { data: trialing } = await supabase
       .from("provider_subscriptions")
-      .select("id, provider_id, trial_ends_at, plan:subscription_plans!plan_id(name)")
+      .select(
+        "id, provider_id, trial_ends_at, expires_at, billing_provider, paystack_authorization_code, stripe_customer_id, stripe_payment_method_id, plan:subscription_plans!plan_id(name)",
+      )
       .eq("status", "trialing")
       .not("trial_ends_at", "is", null)
       .lte("trial_ends_at", trialHorizon)
@@ -152,19 +171,9 @@ async function runJob(request: NextRequest) {
     for (const sub of trialing ?? []) {
       const endsAt = new Date((sub as { trial_ends_at: string }).trial_ends_at);
       const daysUntil = Math.ceil((endsAt.getTime() - now.getTime()) / 86400000);
-      const matched = trialReminderDays.find((d) => daysUntil <= d && daysUntil > d - 1);
+      const matched = daysUntil <= 1 ? 1 : daysUntil <= 3 ? 3 : null;
       if (!matched) continue;
-      let provider = providerMap.get((sub as { provider_id: string }).provider_id);
-      if (!provider?.userId) {
-        const { data: pRow } = await supabase
-          .from("providers")
-          .select("id, user_id, business_name")
-          .eq("id", (sub as { provider_id: string }).provider_id)
-          .maybeSingle();
-        if (pRow) {
-          provider = { userId: (pRow as { user_id: string }).user_id, name: (pRow as { business_name?: string }).business_name };
-        }
-      }
+      const provider = await providerFor((sub as { provider_id: string }).provider_id);
       if (!provider?.userId) continue;
       const reminderKey = `sub_trial_${(sub as { id: string }).id}_${matched}d`;
       const { data: existingTrial } = await supabase
@@ -180,20 +189,53 @@ async function runJob(request: NextRequest) {
           ? (sub as { plan: Array<{ name?: string }> }).plan[0]?.name
           : (sub as { plan: { name?: string } }).plan?.name) ||
         "your plan";
+      const trialRow = sub as {
+        billing_provider?: string | null;
+        expires_at?: string | null;
+        paystack_authorization_code?: string | null;
+        stripe_customer_id?: string | null;
+        stripe_payment_method_id?: string | null;
+      };
+      const trialBilling = String(trialRow.billing_provider ?? "paystack").toLowerCase();
+      const cardWillBeCharged =
+        (Boolean(trialRow.paystack_authorization_code?.trim()) &&
+          (trialBilling === "paystack" ||
+            trialBilling === "manual" ||
+            trialBilling === "flutterwave")) ||
+        (trialRow.billing_provider === "stripe" &&
+          Boolean(trialRow.stripe_payment_method_id?.trim()) &&
+          Boolean(trialRow.stripe_customer_id?.trim()));
       try {
-        await sendTemplateNotification(
-          "subscription_trial_ending",
-          [provider.userId],
-          {
-            business_name: provider.name || "",
-            days_until: String(matched),
-            trial_ends_at: endsAt.toLocaleDateString(),
-            plan_name: planName,
-            app_url: process.env.NEXT_PUBLIC_APP_URL ?? "",
-          },
-          ["push", "email"],
-          { appType: "provider" },
-        );
+        if (cardWillBeCharged) {
+          await insertNotification({
+            user_id: provider.userId,
+            type: "system",
+            title: `Trial ending in ${daysUntil} day${daysUntil === 1 ? "" : "s"}`,
+            message: `Your free trial of ${planName} ends on ${endsAt.toLocaleDateString()}. ${
+              trialRow.billing_provider === "stripe" &&
+              trialRow.expires_at &&
+              new Date(trialRow.expires_at).getTime() > endsAt.getTime()
+                ? `The card on file will be charged on ${new Date(trialRow.expires_at).toLocaleDateString()}.`
+                : "The card on file will be charged when the trial ends."
+            }`,
+            data: { reminder_key: reminderKey, subscription_id: (sub as { id: string }).id },
+            action_url: "/settings/subscription",
+          });
+        } else {
+          await sendTemplateNotification(
+            "subscription_trial_ending",
+            [provider.userId],
+            {
+              business_name: provider.name || "",
+              days_until: String(daysUntil),
+              trial_ends_at: endsAt.toLocaleDateString(),
+              plan_name: planName,
+              app_url: process.env.NEXT_PUBLIC_APP_URL ?? "",
+            },
+            ["push", "email"],
+            { appType: "provider" },
+          );
+        }
         sent++;
       } catch (err) {
         errors.push(`trial ${(sub as { id: string }).id}: ${String(err)}`);
@@ -203,20 +245,16 @@ async function runJob(request: NextRequest) {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
     const { data: stalePending } = await supabase
       .from("provider_subscriptions")
-      .select("id, provider_id, pending_upgrade_set_at")
+      .select("id, provider_id, status, pending_upgrade_set_at")
       .not("pending_upgrade_plan_id", "is", null)
       .lt("pending_upgrade_set_at", thirtyDaysAgo);
 
     for (const row of stalePending ?? []) {
+      const stale = row as { id: string; status?: string | null };
       await supabase
         .from("provider_subscriptions")
-        .update({
-          pending_upgrade_plan_id: null,
-          pending_upgrade_billing_period: null,
-          pending_upgrade_set_at: null,
-          updated_at: now.toISOString(),
-        })
-        .eq("id", (row as { id: string }).id);
+        .update(stalePendingUpgradePatch({ status: stale.status, now }))
+        .eq("id", stale.id);
     }
 
     const { data: pendingUpgrades } = await supabase
@@ -237,7 +275,7 @@ async function runJob(request: NextRequest) {
             ? "24h"
             : null;
       if (!bucket) continue;
-      const provider = providerMap.get((row as { provider_id: string }).provider_id);
+      const provider = await providerFor((row as { provider_id: string }).provider_id);
       if (!provider?.userId) continue;
       const reminderKey = `pending_upgrade_${(row as { id: string }).id}_${bucket}`;
       const { data: existingPending } = await supabase
@@ -267,7 +305,7 @@ async function runJob(request: NextRequest) {
     return successResponse({
       message: `Subscription reminders sent`,
       sent,
-      checked: subscriptions.length,
+      checked: expiring.length,
       pending_upgrade_nudges: pendingUpgrades?.length ?? 0,
       stale_pending_cleared: stalePending?.length ?? 0,
       errors: errors.length > 0 ? errors : undefined,

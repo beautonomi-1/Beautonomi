@@ -649,8 +649,8 @@ describe("getAvailablePayoutBalance — payout exclusion matrix", () => {
       providerId,
     );
 
-    /** -0.005 floats to 0 (or -0) after round2; safe band, not flagged as negative. */
-    expect(Math.abs(result.rawBalance)).toBe(0);
+    /** Canonical addMoney rounds 100.005 to 100.01, so net is -0.01 — still inside the 1c gate. */
+    expect(Math.abs(result.rawBalance)).toBe(0.01);
     expect(result.hasNegativeBalance).toBe(false);
   });
 });

@@ -133,7 +133,7 @@ const POST_510_ALLOWLIST_MIGRATIONS: Record<string, string[]> = {
   "977_gateway_fee_delta_and_adjustment.sql": ["gateway_fee_adjustment"],
 };
 
-const LIVE_SHADOW_FUNCTION_MIGRATION = "870_ledger_consistency_followups.sql";
+const LIVE_SHADOW_FUNCTION_MIGRATION = "10184_refund_tender_gl_fix.sql";
 
 /**
  * Types that are allowed to appear in code but deliberately skipped by
@@ -239,6 +239,8 @@ describe("Reconciliation drift (Wave 5.3)", { timeout: 120_000 }, () => {
     expect(liveSql).toContain("'membership_discount'");
     expect(liveSql).toContain("refund_component");
     expect(liveSql).toContain("'cashback'");
+    expect(liveSql).toContain("_shadow_refund_outflow_account_id");
+    expect(liveSql).toContain("refund_tender");
     expect(liveSql).toContain("'subscription_recognition'");
     expect(liveSql).toContain("9999");
   });

@@ -7,7 +7,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { loadCancellationOutcomeForBooking } from "@/lib/bookings/load-cancellation-outcome";
 import {
-  describeRefundFromOutcome,
+  cancellationNoticeFromSettlement,
   settleParamsFromCancellationOutcome,
 } from "@/lib/bookings/cancellation-outcome-bridge";
 import {
@@ -16,6 +16,11 @@ import {
 } from "@/lib/bookings/settle-booking-cancellation";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  lineUpBookingStockWithSavedStatus,
+  restoreBookingRetailStock,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
 
 const BOOKING_CANCEL_SELECT =
   "id, status, customer_id, booking_number, tenant_id, provider_id, location_type, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, currency, loyalty_points_used, loyalty_points_redeemed, loyalty_points_earned";
@@ -57,6 +62,17 @@ export async function POST(
       return errorResponse("Booking is already cancelled", "INVALID_STATE", 400);
     }
 
+    let stockReturned: Awaited<ReturnType<typeof restoreBookingRetailStock>> = [];
+    try {
+      stockReturned = await restoreBookingRetailStock(supabase, id);
+    } catch (stockErr) {
+      return errorResponse(
+        stockErr instanceof Error ? stockErr.message : "Product stock could not be restored",
+        "STOCK_ERROR",
+        409,
+      );
+    }
+
     const bookingTotal = Number(bookingRow.total_amount ?? 0);
     const explicitFee =
       body.cancellation_fee != null && Number.isFinite(Number(body.cancellation_fee))
@@ -69,6 +85,11 @@ export async function POST(
       { explicitCancellationFee: explicitFee ?? null },
     );
     if (outcomeError || !outcome) {
+      try {
+        await lineUpBookingStockWithSavedStatus(supabase, id, [], stockReturned);
+      } catch (undoErr) {
+        console.error("[admin cancel] stock could not be lined up:", undoErr);
+      }
       return errorResponse("Booking not found", "NOT_FOUND", 404);
     }
     const policy = outcome.policy;
@@ -115,10 +136,26 @@ export async function POST(
       .single();
 
     if (updateError || !updatedBooking) {
+      try {
+        await lineUpBookingStockWithSavedStatus(supabase, id, [], stockReturned);
+      } catch (undoErr) {
+        console.error("[admin cancel] stock could not be lined up:", undoErr);
+        return errorResponse(
+          "This booking changed, and the product stock could not be put back in line with it.",
+          "STOCK_ERROR",
+          409,
+        );
+      }
       return handleApiError(updateError, "Failed to cancel booking");
     }
+    await returnPackageSessionAfterCancel(supabase, id);
 
-    let settlementWalletRefund = outcome.walletRefund;
+    let notice = cancellationNoticeFromSettlement({
+      currency,
+      walletRefundAmount: 0,
+      refundSucceeded: false,
+      settlementFailed: true,
+    });
     try {
       const settlement = await settleBookingCancellation(
         settleParamsFromCancellationOutcome(outcome, "admin", {
@@ -127,7 +164,14 @@ export async function POST(
           refundBookingTotal: bookingTotal,
         }),
       );
-      settlementWalletRefund = settlement.walletRefundAmount;
+      notice = cancellationNoticeFromSettlement({
+        currency,
+        walletRefundAmount: settlement.walletRefundAmount ?? 0,
+        refundSucceeded: settlement.refundResult.success === true,
+        giftCardRestored: settlement.giftCardVoidAttempted === true,
+        giftValueStillDue: settlement.giftValueStillDue === true,
+        inPersonRefundDue: settlement.inPersonCashRefundDue,
+      });
     } catch (settleErr) {
       console.error("[admin cancel] finance settlement failed:", settleErr);
     }
@@ -139,11 +183,7 @@ export async function POST(
       const refundInfo =
         typeof body.refund_info === "string" && body.refund_info.trim()
           ? body.refund_info.trim()
-          : describeRefundFromOutcome(
-              { ...outcome, walletRefund: settlementWalletRefund },
-              bookingTotal,
-              currency,
-            );
+          : notice.refundInfo;
       const { customerBookingChannels } = await import(
         "@/lib/notifications/customer-booking-channels"
       );
@@ -164,7 +204,7 @@ export async function POST(
         await notifyBookingCancelled(id, "system", refundInfo, channels, {
           cancellationReason: typeof body.reason === "string" ? body.reason : null,
           feeRetained: outcome.feeRetained,
-          walletRefund: settlementWalletRefund,
+          walletRefund: notice.walletRefund,
           currency,
         });
       }

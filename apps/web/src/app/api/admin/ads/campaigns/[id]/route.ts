@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -223,7 +224,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (status === "active" && (prev === "paused" || prev === "pending_review")) {
       const budget = Number(ex.budget ?? 0);
       const spent = Number(ex.spent ?? 0);
-      if (!ex.funded_at || budget <= 0 || budget - spent <= 0) {
+      if (!ex.funded_at || budget <= 0 || subtractMoney(budget, spent) <= 0) {
         return errorResponse(
           "Cannot resume: campaign must be funded with remaining budget.",
           "INVALID_STATE",

@@ -4,6 +4,7 @@ import {
   feeReconciliationDateBounds,
   normalizeGatewayName,
 } from "@/lib/admin/fee-reconciliation-compute";
+import { subtractMoney } from "@beautonomi/utils";
 
 export type AutoFeeReconciliationResult = {
   reconciliation_date: string;
@@ -103,7 +104,7 @@ export async function runAutoFeeReconciliationForDay(
     const recorded = computed.recorded_fees;
     const expected = computed.expected_fees_from_config;
     const actual = recorded;
-    const variance = Math.round((actual - expected) * 100) / 100;
+    const variance = subtractMoney(actual, expected);
     const hasActivity =
       recorded > 0 ||
       expected > 0 ||

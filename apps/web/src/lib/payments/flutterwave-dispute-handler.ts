@@ -1,15 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import { roundCurrency } from "@beautonomi/utils";
 import { upsertOpenPaymentDispute } from "@/lib/bookings/paystack-dispute-lifecycle";
 import { processBookingChargeback } from "@/lib/bookings/process-booking-chargeback";
 
-function disputeAmountMajor(data: Record<string, unknown>): number {
+/**
+ * Flutterwave webhook amounts (`amount`, `chargeback_amount`, `dispute_amount`)
+ * are ALWAYS major currency units (e.g. 500 = ZAR 500.00). Never rescale by
+ * magnitude.
+ */
+export function flutterwaveDisputeAmountMajor(data: Record<string, unknown>): number {
   const raw = data.amount ?? data.chargeback_amount ?? data.dispute_amount;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  const currency = String(data.currency ?? "ZAR").toUpperCase();
-  return n >= 1000 ? convertFromSmallestUnit(n, currency) : n;
+  return roundCurrency(n);
 }
+
+const disputeAmountMajor = flutterwaveDisputeAmountMajor;
 
 /**
  * Flutterwave chargeback / dispute webhooks (event names vary by dashboard version).

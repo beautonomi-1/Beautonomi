@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -68,13 +69,13 @@ export async function GET(request: NextRequest) {
       existing.name = name;
       if (bs.booking_id) existing.bookingIds.add(bs.booking_id);
       existing.lineCount += 1;
-      existing.revenue += Number(bs.price || 0);
+      existing.revenue = addMoney(existing.revenue, Number(bs.price || 0));
       existing.totalDuration += Number(bs.duration_minutes || 0);
       serviceMap.set(key, existing);
     });
 
     const entries = Array.from(serviceMap.values());
-    const totalRevenue = entries.reduce((s, d) => s + d.revenue, 0);
+    const totalRevenue = entries.reduce((s, d) => addMoney(s, d.revenue), 0);
     const totalLines = entries.reduce((s, d) => s + d.lineCount, 0);
 
     return successResponse({
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
         minutes: d.lineCount > 0 ? Math.round(d.totalDuration / d.lineCount) : 0,
       })),
       total_service_revenue: totalRevenue,
-      avg_service_price: totalLines > 0 ? totalRevenue / totalLines : 0,
+      avg_service_price: totalLines > 0 ? multiplyMoney(totalRevenue, 1 / totalLines) : 0,
     });
   } catch (error) {
     console.error("Error in services report:", error);

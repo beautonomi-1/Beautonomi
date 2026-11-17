@@ -9,7 +9,14 @@ import {
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getDisplayFeatureBulletsForSubscriptionPlans } from "@/lib/subscription/pricing-plan-display-features";
 import { resolveIosPurchaseEligibility } from "@/lib/iap/apple/ios-eligibility";
-import { isAppleBillingActive } from "@/lib/iap/apple/billing-active";
+import {
+  isAppleBillingActive,
+  isPastDueWithinGrace,
+  pastDueBillingMessage,
+  providerCheckoutFailureMessage,
+  subscriptionChargeNotAttempted,
+} from "@/lib/iap/apple/billing-active";
+import { SUBSCRIPTION_PAST_DUE_GRACE_DAYS } from "@/lib/subscriptions/feature-access";
 
 /**
  * GET /api/provider/subscription
@@ -71,21 +78,75 @@ export async function GET(request: NextRequest) {
 
     // Auto-mark expired if past expires_at (best-effort). Apple-billed rows are
     // owned by ASN + reconcile: expires_at can lapse while Apple is still in
-    // billing retry (up to 16 days). Flipping those to expired here would drop
-    // paid features before DID_FAIL_TO_RENEW / EXPIRED arrives.
+    // billing retry (up to 16 days). A card plan that is still set to renew
+    // stays active until the renewal job records success or past_due; expiring
+    // it here would skip the 3-day grace window. Cancel-at-period-end and
+    // auto_renew off still lapse, matching the expire cron.
     const expiresAt = (subscription as any).expires_at
       ? new Date((subscription as any).expires_at)
       : null;
+    const renewalStillExpected =
+      (subscription as { auto_renew?: boolean | null }).auto_renew !== false &&
+      !sub.cancelled_at;
     if (
       (subscription as any).status === "active" &&
       expiresAt &&
       expiresAt < new Date() &&
-      sub.billing_provider !== "apple"
+      sub.billing_provider !== "apple" &&
+      !renewalStillExpected
     ) {
+      const { resolveCatalogPlanIdForProviderSubscription } = await import(
+        "@/lib/subscriptions/ensure-provider-free-subscription"
+      );
+      const { clearAppleMerchantOnFree, stopPaystackSubscriptionBeforeClear } = await import(
+        "@/lib/subscriptions/provider-billing-merchant"
+      );
+      const freePlanId = await resolveCatalogPlanIdForProviderSubscription(supabase);
+      const nowIso = new Date().toISOString();
+      const paystackStop = await stopPaystackSubscriptionBeforeClear({
+        supabase,
+        code: (subscription as { paystack_subscription_code?: string | null }).paystack_subscription_code,
+        tenantId: (subscription as { tenant_id?: string | null }).tenant_id,
+        providerId,
+      });
       await (supabase.from("provider_subscriptions") as any)
-        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .update({
+          status: "expired",
+          auto_renew: false,
+          past_due_since: null,
+          next_payment_date: null,
+          ...(paystackStop === "kept"
+            ? {
+                paystack_sync_pending: true,
+                paystack_sync_note:
+                  "We could not stop automatic billing. Contact support if charges continue.",
+              }
+            : { paystack_subscription_code: null, paystack_sync_pending: false, paystack_sync_note: null }),
+          ...(freePlanId ? { plan_id: freePlanId } : {}),
+          ...clearAppleMerchantOnFree(),
+          updated_at: nowIso,
+        })
         .eq("id", (subscription as any).id);
       sub.status = "expired";
+      sub.plan_id = freePlanId ?? sub.plan_id;
+      if (freePlanId && sub.plan && sub.plan.id !== freePlanId) {
+        const { data: freePlan } = await supabase
+          .from("subscription_plans")
+          .select("id, name, description, price_monthly, price_yearly, currency, features, is_free")
+          .eq("id", freePlanId)
+          .maybeSingle();
+        if (freePlan) sub.plan = freePlan as Record<string, unknown>;
+      }
+      if (!currentPlanIsFree && freePlanId) {
+        try {
+          const { enforceStaffCapForProviderPlan } = await import(
+            "@/lib/provider/enforce-staff-cap-after-downgrade"
+          );
+          await enforceStaffCapForProviderPlan(providerId);
+        } catch (capErr) {
+          console.error("[provider/subscription] staff cap after lapse failed:", capErr);
+        }
+      }
     }
 
     const { data: latestOrder } = await supabase
@@ -127,13 +188,21 @@ export async function GET(request: NextRequest) {
     const pendingUpgradePlanIdEarly = (subscription as {
       pending_upgrade_plan_id?: string | null;
     }).pending_upgrade_plan_id?.trim();
+    const trialChargePending = subscriptionChargeNotAttempted(
+      subscription as {
+        billing_provider?: string | null;
+        last_dunning_retry_at?: string | null;
+        dunning_retry_count?: number | null;
+        trial_ends_at?: string | null;
+      },
+    );
 
     const billingIssue = checkoutIssueOnFree
       ? effectiveOrder?.status === "failed"
         ? {
             type: "payment_failed",
             message:
-              effectiveOrder.failure_reason?.trim() ||
+              providerCheckoutFailureMessage(effectiveOrder.failure_reason) ||
               "Your subscription payment was not completed. This can happen when the card has insufficient funds or the bank declines the charge.",
             action: "retry_payment",
           }
@@ -163,11 +232,26 @@ export async function GET(request: NextRequest) {
         : sub.status === "past_due"
         ? {
             type: "past_due",
-            message:
-              sub.billing_provider === "apple"
-                ? "Apple could not renew this plan. Update the payment method on your Apple ID to keep premium features."
-                : "Your last subscription payment did not go through. Update your card or pay now to keep premium features active.",
-            action: sub.billing_provider === "apple" ? "manage_apple" : "pay_now",
+            message: pastDueBillingMessage(
+              sub.billing_provider,
+              isPastDueWithinGrace({
+                billingProvider: sub.billing_provider,
+                pastDueSince: (subscription as { past_due_since?: string | null }).past_due_since,
+                updatedAt: (subscription as { updated_at?: string | null }).updated_at,
+                appleGracePeriodExpiresAt: (subscription as { apple_grace_period_expires_at?: string | null })
+                  .apple_grace_period_expires_at,
+                nowIso: new Date().toISOString(),
+                graceCutoffIso: new Date(
+                  Date.now() - SUBSCRIPTION_PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000,
+                ).toISOString(),
+              }),
+              trialChargePending,
+            ),
+            action: sub.billing_provider === "apple"
+              ? "manage_apple"
+              : trialChargePending
+                ? "charge_pending"
+                : "pay_now",
           }
         : sub.paystack_sync_pending
           ? {
@@ -181,7 +265,7 @@ export async function GET(request: NextRequest) {
             ? {
                 type: "payment_failed",
                 message:
-                  effectiveOrder.failure_reason?.trim() ||
+                  providerCheckoutFailureMessage(effectiveOrder.failure_reason) ||
                   "Your subscription payment was not completed. This can happen when the card has insufficient funds or the bank declines the charge.",
                 action: "retry_payment",
               }

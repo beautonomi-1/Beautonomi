@@ -72,11 +72,14 @@ import { Colors } from "@/constants/colors";
 import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+  addMoney,
   calculateBookingTotals,
   effectiveTravelFee,
   normalizeTipPercentPresets,
+  multiplyMoney,
   percentOf,
   safeNum,
+  subtractMoney,
   manualCardCollectOptionLabel,
 } from "@beautonomi/utils";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
@@ -1270,23 +1273,23 @@ export default function NewBookingScreen() {
     let subtotal = 0;
     selectedServices.forEach((sel) => {
       if (sel.isCustom) {
-        subtotal += safeNum(sel.customPrice);
+        subtotal = addMoney(subtotal, safeNum(sel.customPrice));
         return;
       }
       const svc = services?.find((s) => s.id === sel.serviceId);
       if (!svc) return;
       const svcPrice = safeNum(svc.price);
-      subtotal += svcPrice;
+      subtotal = addMoney(subtotal, svcPrice);
       sel.addOnIds.forEach((aoId) => {
         const ao = svc.add_ons?.find((a) => a.id === aoId);
         if (!ao) return;
-        subtotal += safeNum(ao.price);
+        subtotal = addMoney(subtotal, safeNum(ao.price));
       });
     });
     selectedProducts.forEach((p) => {
       const unit = safeNum(p.unitPrice);
       const qty = Math.max(1, Math.floor(safeNum(p.quantity)) || 1);
-      subtotal += unit * qty;
+      subtotal = addMoney(subtotal, multiplyMoney(unit, qty));
     });
     return subtotal;
   }, [selectedServices, selectedProducts, services]);
@@ -1312,8 +1315,8 @@ export default function NewBookingScreen() {
       if (sel.isCustom) {
         const svcPrice = safeNum(sel.customPrice);
         const svcMinutes = safeNum(sel.customDuration ?? 60);
-        subtotal += svcPrice;
-        servicesSubtotal += svcPrice;
+        subtotal = addMoney(subtotal, svcPrice);
+        servicesSubtotal = addMoney(servicesSubtotal, svcPrice);
         totalMinutes += svcMinutes;
         const staffName = isAnyStaffId(sel.staffId)
           ? nb("anyAvailableStaff")
@@ -1330,8 +1333,8 @@ export default function NewBookingScreen() {
       if (!svc) return;
       const svcPrice = safeNum(svc.price);
       const svcMinutes = safeNum(svc.duration_minutes);
-      subtotal += svcPrice;
-      servicesSubtotal += svcPrice;
+      subtotal = addMoney(subtotal, svcPrice);
+      servicesSubtotal = addMoney(servicesSubtotal, svcPrice);
       totalMinutes += svcMinutes;
       const staffName = isAnyStaffId(sel.staffId)
         ? nb("anyAvailableStaff")
@@ -1342,8 +1345,8 @@ export default function NewBookingScreen() {
         if (!ao) return;
         const aoPrice = safeNum(ao.price);
         const aoMinutes = safeNum(ao.duration_minutes);
-        subtotal += aoPrice;
-        servicesSubtotal += aoPrice;
+        subtotal = addMoney(subtotal, aoPrice);
+        servicesSubtotal = addMoney(servicesSubtotal, aoPrice);
         totalMinutes += aoMinutes;
         items.push({ name: `  + ${ao.name}`, price: aoPrice, duration: aoMinutes });
       });
@@ -1351,8 +1354,8 @@ export default function NewBookingScreen() {
     selectedProducts.forEach((p) => {
       const unit = safeNum(p.unitPrice);
       const qty = Math.max(1, Math.floor(safeNum(p.quantity)) || 1);
-      const lineTotal = unit * qty;
-      subtotal += lineTotal;
+      const lineTotal = multiplyMoney(unit, qty);
+      subtotal = addMoney(subtotal, lineTotal);
       items.push({
         name: p.productVariantName ? `${p.productName} · ${p.productVariantName}` : p.productName,
         price: lineTotal,
@@ -1363,7 +1366,7 @@ export default function NewBookingScreen() {
     const discountNumeric = safeNum(discountValue);
     const manualDiscount = discountValue
       ? discountType === "percentage"
-        ? (subtotal * discountNumeric) / 100
+        ? percentOf(subtotal, discountNumeric, tenantCurrency)
         : discountNumeric
       : 0;
     const promoDiscount = promoApplied ? safeNum(promoApplied.discount) : 0;
@@ -1377,7 +1380,7 @@ export default function NewBookingScreen() {
       ? packagesList.find((p) => p.id === selectedPackageId)
       : null;
     const packageDiscount = activePackage && activePackage.price != null
-      ? Math.max(0, servicesSubtotal - safeNum(activePackage.price))
+      ? Math.max(0, subtractMoney(servicesSubtotal, safeNum(activePackage.price)))
       : 0;
 
     const membershipDiscountAmt = safeNum(membershipPricingPreview?.membershipDiscountAmount);
@@ -1437,6 +1440,7 @@ export default function NewBookingScreen() {
     packagesList,
     membershipPricingPreview?.membershipDiscountAmount,
     membershipPricingPreview?.membershipPlanName,
+    tenantCurrency,
   ]);
 
   /** Deduped rooms/equipment linked to selected offerings (offering_resources). */
@@ -2156,7 +2160,7 @@ export default function NewBookingScreen() {
         productName: p.productName,
         quantity: qty,
         unitPrice: unit,
-        totalPrice: unit * qty,
+        totalPrice: multiplyMoney(unit, qty),
         productVariantId: p.productVariantId || null,
       };
     });
@@ -2252,7 +2256,7 @@ export default function NewBookingScreen() {
             name: ao.name,
             quantity: ao.quantity,
             unit_price: ao.price,
-            total: ao.price * ao.quantity,
+            total: multiplyMoney(ao.price, ao.quantity),
             addon_id: ao.addon_id,
             service_id: ao.service_id,
           })),
@@ -4615,16 +4619,16 @@ export default function NewBookingScreen() {
                 if (it.offering_id) {
                   const catalogue = services?.find((s) => s.id === it.offering_id);
                   const unit = safeNum(catalogue?.price ?? it.offering?.price);
-                  return sum + unit * qty;
+                  return addMoney(sum, multiplyMoney(unit, qty));
                 }
                 if (it.product_id) {
                   const catalogue = productsList.find((p) => p.id === it.product_id);
                   const unit = safeNum(catalogue?.price ?? it.product?.retail_price);
-                  return sum + unit * qty;
+                  return addMoney(sum, multiplyMoney(unit, qty));
                 }
                 return sum;
               }, 0);
-              const saving = Math.max(0, itemsSubtotal - safeNum(pkg.price));
+              const saving = Math.max(0, subtractMoney(itemsSubtotal, safeNum(pkg.price)));
               const itemsLabel = (pkg.items ?? [])
                 .slice(0, 3)
                 .map((it) => {

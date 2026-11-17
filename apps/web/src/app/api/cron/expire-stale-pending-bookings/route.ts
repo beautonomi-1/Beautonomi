@@ -14,7 +14,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
-import { cancelPendingBookingRequest } from "@/lib/bookings/cancel-pending-booking-request";
+import {
+  cancelPendingBookingRequest,
+  retryPendingCancelProductStock,
+} from "@/lib/bookings/cancel-pending-booking-request";
 import {
   filterDuePreSlotPendingBookings,
   groupHasConfirmedChild,
@@ -235,9 +238,12 @@ async function runJob(request: NextRequest) {
     }
   }
 
+  const stockRetried = await retryPendingCancelProductStock(admin);
+
   return NextResponse.json({
     ok: true,
     ttl_hours: ttlHours,
+    stock_retried: stockRetried,
     pre_slot: {
       candidates: (preSlotCandidates ?? []).length,
       due: duePreSlot.length,

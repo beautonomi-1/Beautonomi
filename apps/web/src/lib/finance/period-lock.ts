@@ -7,7 +7,8 @@
  * Locked periods are stored in the `financial_period_locks` table:
  *   id, tenant_id, period_start, period_end, locked_at, locked_by, notes
  *
- * If no table exists yet the guard always returns {locked: false} — safe fallback.
+ * If no table exists yet the guard returns {locked: false} (feature not deployed).
+ * Any other query failure returns {locked: true, error} — fail closed (F2-50).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -20,6 +21,8 @@ export interface PeriodLockCheckResult {
   periodEnd?: string;
   lockedAt?: string;
   notes?: string;
+  /** Set when the lock table could not be queried — the write is blocked (fail closed, F2-50). */
+  error?: string;
 }
 
 /**
@@ -56,8 +59,9 @@ export async function checkPeriodLock(
       ) {
         return { locked: false };
       }
+      // F2-50: fail closed. An outage must not become a back-dating bypass.
       console.warn("[period-lock] check error:", error.message);
-      return { locked: false };
+      return { locked: true, error: String(error.message ?? "period lock check failed") };
     }
 
     if (!data) return { locked: false };
@@ -70,8 +74,11 @@ export async function checkPeriodLock(
       lockedAt: data.locked_at,
       notes: data.notes,
     };
-  } catch {
-    return { locked: false };
+  } catch (err) {
+    // F2-50: fail closed on transport / unexpected errors as well.
+    const message = err instanceof Error ? err.message : "period lock check failed";
+    console.warn("[period-lock] check threw:", message);
+    return { locked: true, error: message };
   }
 }
 
@@ -90,6 +97,20 @@ export async function enforcePeriodLock(
 ): Promise<NextResponse | null> {
   const result = await checkPeriodLock(supabase, tenantId, dateToCheck);
   if (!result.locked) return null;
+
+  if (result.error) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          message:
+            "The accounting period lock could not be verified. The change was not applied — please retry shortly.",
+          code: "PERIOD_LOCK_UNAVAILABLE",
+        },
+      },
+      { status: 503 },
+    );
+  }
 
   const period =
     result.periodStart && result.periodEnd

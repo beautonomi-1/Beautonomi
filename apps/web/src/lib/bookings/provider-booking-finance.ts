@@ -1,3 +1,4 @@
+import { subtractMoney, multiplyMoney, addMoney, percentOf, roundCurrency } from "@beautonomi/utils";
 export function normalizeProviderCreateDiscounts({
   discountAmount,
   promotionDiscountAmount,
@@ -27,7 +28,7 @@ export function normalizeProviderCreateDiscounts({
   }
 
   if (normalizedMembership > 0.001) {
-    normalizedDiscount = Math.max(0, normalizedDiscount - normalizedMembership);
+    normalizedDiscount = Math.max(0, subtractMoney(normalizedDiscount, normalizedMembership));
   }
 
   return {
@@ -41,7 +42,7 @@ export function sumExplicitProviderAddonsSubtotal(addons: unknown): number {
   if (!Array.isArray(addons)) return 0;
   return addons.reduce((sum: number, addon: Record<string, unknown>) => {
     const qty = Math.max(1, Math.floor(Number(addon.quantity ?? 1)) || 1);
-    return sum + (Number(addon.price) || 0) * qty;
+    return addMoney(sum, multiplyMoney(Number(addon.price) || 0, qty));
   }, 0);
 }
 
@@ -58,10 +59,16 @@ export function computeProviderCreateTaxableAmount({
 }): number {
   return Math.max(
     0,
-    (Number(subtotal) || 0) -
-      Math.max(0, Number(discountAmount) || 0) -
-      Math.max(0, Number(promotionDiscountAmount) || 0) -
+    subtractMoney(
+      subtractMoney(
+        subtractMoney(
+          Number(subtotal) || 0,
+          Math.max(0, Number(discountAmount) || 0),
+        ),
+        Math.max(0, Number(promotionDiscountAmount) || 0),
+      ),
       Math.max(0, Number(membershipDiscountAmount) || 0),
+    ),
   );
 }
 
@@ -115,8 +122,8 @@ export function resolveProviderBookingDeposit({
     return {
       paymentOption: "full",
       depositRequired: Boolean(depositRequired),
-      depositPercentage: hasValidPercentage ? Math.round(rawPercentage * 100) / 100 : null,
-      depositAmount: hasValidAmount ? Math.min(total, Math.round(rawAmount * 100) / 100) : null,
+      depositPercentage: hasValidPercentage ? roundCurrency(rawPercentage) : null,
+      depositAmount: hasValidAmount ? Math.min(total, roundCurrency(rawAmount)) : null,
       warnings,
     };
   }
@@ -134,11 +141,11 @@ export function resolveProviderBookingDeposit({
     };
   }
 
-  const resolvedPercentage = hasValidPercentage ? Math.round(rawPercentage * 100) / 100 : null;
+  const resolvedPercentage = hasValidPercentage ? roundCurrency(rawPercentage) : null;
   const requestedAmount =
     resolvedPercentage != null
-      ? Math.round(total * resolvedPercentage) / 100
-      : Math.round(rawAmount * 100) / 100;
+      ? percentOf(total, resolvedPercentage)
+      : roundCurrency(rawAmount);
   const resolvedAmount = Math.min(total, requestedAmount);
 
   if (resolvedPercentage == null && requestedAmount > total + 0.01) {
@@ -174,9 +181,9 @@ export function computeWalletGiftCoverageOutstanding({
   /** Wallet and gift booking payments still pending, so they are not in totalPaid yet. */
   pendingWalletGiftAmount?: number;
 }): number {
-  const paidAfterRefunds = Math.max(0, (Number(totalPaid) || 0) - (Number(totalRefunded) || 0));
-  const walletGiftCoverage = Math.max(0, (Number(walletAmount) || 0) + (Number(giftCardAmount) || 0));
+  const paidAfterRefunds = Math.max(0, subtractMoney(Number(totalPaid) || 0, Number(totalRefunded) || 0));
+  const walletGiftCoverage = Math.max(0, addMoney(Number(walletAmount) || 0, Number(giftCardAmount) || 0));
   const pendingWalletGift = Math.max(0, Number(pendingWalletGiftAmount) || 0);
-  const coverage = Math.max(paidAfterRefunds + pendingWalletGift, walletGiftCoverage);
-  return Math.max(0, (Number(totalAmount) || 0) - coverage + (Number(unpaidAdditionalCharges) || 0));
+  const coverage = Math.max(addMoney(paidAfterRefunds, pendingWalletGift), walletGiftCoverage);
+  return Math.max(0, addMoney(subtractMoney(Number(totalAmount) || 0, coverage), Number(unpaidAdditionalCharges) || 0));
 }

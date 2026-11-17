@@ -1,3 +1,4 @@
+import { multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     let pointsBalance = 0;
+    let lifetimePoints = 0;
     let pointsHistory: any[] = [];
 
     try {
@@ -49,6 +51,13 @@ export async function GET(request: NextRequest) {
           created_at: row.created_at,
         }));
       }
+
+      const { data: balanceSummary } = await supabase
+        .from("loyalty_points_balance")
+        .select("total_earned")
+        .eq("customer_id", user.id)
+        .maybeSingle();
+      lifetimePoints = Number(balanceSummary?.total_earned) || 0;
     } catch {
       console.warn("Loyalty ledger read failed, using default balance");
     }
@@ -79,16 +88,19 @@ export async function GET(request: NextRequest) {
 
       if (!milestonesError && allMilestones) {
         milestones = allMilestones;
-        nextMilestone = allMilestones.find((m) => m.points_threshold > pointsBalance) || null;
+        const milestoneBasis = Math.max(lifetimePoints, pointsBalance);
+        nextMilestone = allMilestones.find((m) => m.points_threshold > milestoneBasis) || null;
       }
     } catch {
       console.warn("loyalty_milestones table not found");
     }
 
-    const redemptionValue = redemptionRate > 0 ? pointsBalance / redemptionRate : 0;
+    const redemptionValue = redemptionRate > 0 ? multiplyMoney(pointsBalance, 1 / redemptionRate) : 0;
+    const lifetimeForMilestones = Math.max(lifetimePoints, pointsBalance);
 
     const res = successResponse({
       points_balance: pointsBalance,
+      lifetime_points: lifetimeForMilestones,
       redemption_value: redemptionValue,
       redemption_currency: currency,
       redemption_rate: redemptionRate,

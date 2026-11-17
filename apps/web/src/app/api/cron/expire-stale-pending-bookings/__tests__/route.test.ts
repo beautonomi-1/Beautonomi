@@ -104,6 +104,7 @@ function makeChain(resolveQuery: (state: ChainState) => { data: unknown; error: 
       return chain;
     },
     order: () => chain,
+    like: () => chain,
     limit: () => chain,
     maybeSingle: () => Promise.resolve(resolveQuery(state)),
     then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => {
@@ -143,6 +144,13 @@ function resolveQuery(table: string, state: ChainState): { data: unknown; error:
     }
     if (state.filters["gt:scheduled_at"]) {
       return { data: config.preSlotCandidates, error: null };
+    }
+    if (state.filters.rescheduled_from_booking_id) {
+      return { data: null, error: null };
+    }
+    if (state.filters.id && !state.updatePayload) {
+      const id = state.filters.id[0] as string;
+      return { data: config.bookingUpdateResult[id] ?? null, error: null };
     }
     return { data: [], error: null };
   }

@@ -1,3 +1,5 @@
+import { addMoney } from "@beautonomi/utils";
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
@@ -50,19 +52,27 @@ export async function GET(request: NextRequest) {
 
     let orderStatQuery = supabase
       .from("product_orders")
-      .select("status, payment_status, total_amount, provider:providers!inner(tenant_id)")
+      .select("status, payment_status, total_amount, refunded_amount, provider:providers!inner(tenant_id)")
       .eq("provider.tenant_id", tenantId);
     if (startAt) orderStatQuery = orderStatQuery.gte("created_at", startAt.toISOString());
     if (endAt) orderStatQuery = orderStatQuery.lte("created_at", endAt.toISOString());
     const { data: orderStatRows } = await orderStatQuery;
 
-    type O = { status?: string; payment_status?: string; total_amount?: number | string };
+    type O = {
+      status?: string;
+      payment_status?: string;
+      total_amount?: number | string;
+      refunded_amount?: number | string | null;
+    };
     const orders = (orderStatRows ?? []) as O[];
     const order_summary = {
       total_orders: orders.length,
       total_revenue_paid: orders
-        .filter((o) => o.payment_status === "paid")
-        .reduce((s, o) => s + Number(o.total_amount ?? 0), 0),
+        .filter((o) => {
+          const payment = String(o.payment_status ?? "");
+          return payment === "paid" || payment === "partially_refunded" || payment === "refunded";
+        })
+        .reduce((s, o) => addMoney(s, productOrderKeptAmount(o)), 0),
       pending: orders.filter((o) => o.status === "pending").length,
       by_status: orders.reduce<Record<string, number>>((acc, o) => {
         const k = String(o.status ?? "unknown");
@@ -131,7 +141,7 @@ export async function GET(request: NextRequest) {
     let recentQuery = supabase
       .from("product_orders")
       .select(
-        `id, order_number, status, payment_status, total_amount, currency, fulfillment_type, created_at,
+        `id, order_number, status, payment_status, total_amount, refunded_amount, currency, fulfillment_type, created_at,
          customer:users!product_orders_customer_id_fkey(id, full_name, email),
          provider:providers!inner(id, business_name, tenant_id)`,
       )

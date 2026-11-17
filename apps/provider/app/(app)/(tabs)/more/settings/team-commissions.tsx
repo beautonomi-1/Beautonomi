@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -27,8 +27,11 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { StaffPayPlanForm } from "@/components/payroll/StaffPayPlanForm";
 import {
   defaultPayPlanFormState,
+  payModelUsesCommission,
+  payPlanDateError,
   payPlanFromApiRow,
   payPlanToPostBody,
+  staffMoneyFromPayPlan,
   type PayPlanFormState,
 } from "@/lib/pay-plan-form-state";
 
@@ -37,6 +40,12 @@ interface CommissionTier {
   minRevenue: number;
   commissionRate: number;
   tierOrder: number;
+}
+
+function memberRates(member: StaffCommission) {
+  const service = member.serviceCommissionRate ?? member.commissionPercentage;
+  const product = member.productCommissionRate ?? member.commissionPercentage;
+  return { service, product, split: service !== product };
 }
 
 interface StaffCommission {
@@ -54,6 +63,7 @@ interface StaffCommission {
 
 export default function TeamCommissionsScreen() {
   const { staffId: staffIdParam } = useLocalSearchParams<{ staffId?: string }>();
+  const router = useRouter();
   const { t } = useTranslation();
   const tc = useCallback(
     (key: string, opts?: Record<string, unknown>) =>
@@ -62,8 +72,6 @@ export default function TeamCommissionsScreen() {
   );
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<StaffCommission | null>(null);
-  const [serviceRate, setServiceRate] = useState("");
-  const [productRate, setProductRate] = useState("");
   const [tiers, setTiers] = useState<CommissionTier[]>([]);
   const [search, setSearch] = useState("");
   const [payPlan, setPayPlan] = useState<PayPlanFormState>(defaultPayPlanFormState);
@@ -103,13 +111,22 @@ export default function TeamCommissionsScreen() {
 
   const avgCommission = useMemo(() => {
     if (!staff?.length) return 0;
-    const sum = staff.reduce((acc, s) => acc + s.commissionPercentage, 0);
+    const sum = staff.reduce((acc, member) => {
+      const rates = memberRates(member);
+      const rate = rates.split ? (rates.service + rates.product) / 2 : rates.service;
+      return acc + rate;
+    }, 0);
     return (sum / staff.length).toFixed(1);
   }, [staff]);
 
   const maxCommission = useMemo(() => {
     if (!staff?.length) return 0;
-    return Math.max(...staff.map((s) => s.commissionPercentage));
+    return Math.max(
+      ...staff.flatMap((member) => {
+        const rates = memberRates(member);
+        return [rates.service, rates.product];
+      }),
+    );
   }, [staff]);
 
   const tieredCount = useMemo(
@@ -121,8 +138,6 @@ export default function TeamCommissionsScreen() {
     setSelected(member);
     const svc = member.serviceCommissionRate ?? member.commissionPercentage;
     const prod = member.productCommissionRate ?? member.commissionPercentage;
-    setServiceRate(String(svc));
-    setProductRate(String(prod));
     setTiers(member.tiers.length > 0 ? [...member.tiers] : []);
     try {
       const { api } = await import("@/lib/api-client");
@@ -185,20 +200,28 @@ export default function TeamCommissionsScreen() {
       Alert.alert(tc("errorTitle"), tc("payPlanReadOnly"));
       return;
     }
-    const svc = Number(serviceRate);
-    const prod = Number(productRate);
+    const dateError = payPlanDateError(payPlan);
+    if (dateError) {
+      Alert.alert(tc("invalidTitle"), dateError);
+      return;
+    }
+    const planMoney = staffMoneyFromPayPlan(payPlan);
     if (
-      isNaN(svc) || svc < 0 || svc > 100 ||
-      isNaN(prod) || prod < 0 || prod > 100
+      planMoney.service_commission_rate < 0 ||
+      planMoney.service_commission_rate > 100 ||
+      planMoney.product_commission_rate < 0 ||
+      planMoney.product_commission_rate > 100
     ) {
       Alert.alert(tc("invalidTitle"), tc("invalidRates"));
       return;
     }
-    const tierPayload = tiers.map((tier, i) => ({
-      min_revenue: tier.minRevenue,
-      commission_rate: tier.commissionRate,
-      tier_order: i,
-    }));
+    const tierPayload = payModelUsesCommission(payPlan.pay_model)
+      ? tiers.map((tier, i) => ({
+          min_revenue: tier.minRevenue,
+          commission_rate: tier.commissionRate,
+          tier_order: i,
+        }))
+      : [];
     const { error: planErr } = await savePayPlan(
       `/api/provider/staff/${selected.staffId}/pay-plans`,
       payPlanToPostBody(payPlan, tierPayload),
@@ -210,9 +233,11 @@ export default function TeamCommissionsScreen() {
     const { error } = await saveCommission(
       `/api/provider/staff/${selected.staffId}/commission`,
       {
-        commission_enabled: svc > 0 || prod > 0 || tiers.length > 0,
-        service_commission_rate: svc,
-        product_commission_rate: prod,
+        commission_enabled: planMoney.commission_enabled,
+        service_commission_rate: planMoney.service_commission_rate,
+        product_commission_rate: planMoney.product_commission_rate,
+        hourly_rate: planMoney.hourly_rate,
+        salary: planMoney.salary,
         tiers: tierPayload,
       },
     );
@@ -236,8 +261,32 @@ export default function TeamCommissionsScreen() {
       <ScreenHeader
         title={tc("title")}
         showBack
-        subtitle={tc("subtitle")}
+        subtitle={
+          canManagePayroll
+            ? tc("payPlanSubtitle", {
+                defaultValue:
+                  "Salary, hourly pay, commission, and tax. Payroll uses this. Commission and tips count on the day the client pays, not the appointment day.",
+              })
+            : tc("payPlanSubtitleReadOnly", {
+                defaultValue:
+                  "How you are paid. Only the owner, or someone granted payroll access, can change it. Commission and tips count on the day the client pays.",
+              })
+        }
       />
+      <TouchableOpacity
+        onPress={() =>
+          router.push(
+            (canManagePayroll
+              ? "/(app)/(tabs)/more/team-pay?tab=payroll"
+              : "/(app)/(tabs)/more/team-pay?tab=my-earnings") as never,
+          )
+        }
+        style={twStyle("mb-3 px-1")}
+      >
+        <Text style={twStyle("text-sm font-semibold text-[#FF0077]")}>
+          {canManagePayroll ? "Open payroll" : "My payslips"}
+        </Text>
+      </TouchableOpacity>
 
       {staff && staff.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
@@ -307,7 +356,9 @@ export default function TeamCommissionsScreen() {
           contentContainerStyle={{ paddingBottom: 120 }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: member }: { item: StaffCommission }) => {
-            const commColor = getCommissionColor(member.commissionPercentage);
+            const rates = memberRates(member);
+            const shown = rates.split ? Math.max(rates.service, rates.product) : rates.service;
+            const commColor = getCommissionColor(shown);
             return (
               <TouchableOpacity
                 style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
@@ -326,9 +377,18 @@ export default function TeamCommissionsScreen() {
                   </View>
                   <View style={twStyle("items-end")}>
                     <Text
-                      style={[twStyle("text-lg font-bold"), { color: commColor }]}
+                      style={[
+                        twStyle(rates.split ? "text-xs font-semibold text-end" : "text-lg font-bold"),
+                        { color: commColor, maxWidth: rates.split ? 160 : undefined },
+                      ]}
                     >
-                      {tc("percentValue", { value: member.commissionPercentage })}
+                      {rates.split
+                        ? tc("splitPercent", {
+                            service: rates.service,
+                            product: rates.product,
+                            defaultValue: "{{service}}% services · {{product}}% products",
+                          })
+                        : tc("percentValue", { value: rates.service })}
                     </Text>
                     {member.tiers.length > 0 && (
                       <Text style={twStyle("text-[10px] text-gray-400")}>
@@ -342,7 +402,7 @@ export default function TeamCommissionsScreen() {
                 <View style={twStyle("mt-3 h-2 overflow-hidden rounded-full bg-gray-100")}>
                   <View
                     style={[twStyle("h-2 rounded-full"), {
-                      width: `${Math.min(member.commissionPercentage, 100)}%`,
+                      width: `${Math.min(shown, 100)}%`,
                       backgroundColor: commColor,
                     }]}
                   />
@@ -406,31 +466,14 @@ export default function TeamCommissionsScreen() {
               label={(key) => tc(key)}
             />
 
-            <Text style={twStyle("mb-1 mt-4 text-sm font-medium text-gray-700")}>
-              {tc("serviceCommission")}
+            <Text style={twStyle("mb-3 mt-4 text-xs text-gray-500")}>
+              {payModelUsesCommission(payPlan.pay_model)
+                ? "Salary, hourly pay, and commission rates are set on the pay plan above. A pay run and a payslip use that plan. Tiers below are saved with it."
+                : "Salary, hourly pay, and commission rates are set on the pay plan above. A pay run and a payslip use that plan. This pay model does not use a commission ladder."}
             </Text>
-            <TextInput
-              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              value={serviceRate}
-              onChangeText={setServiceRate}
-              keyboardType="decimal-pad"
-              placeholder={tc("ratePlaceholder")}
-              placeholderTextColor="#9ca3af"
-              editable={canManagePayroll}
-            />
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              {tc("productCommission")}
-            </Text>
-            <TextInput
-              style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              value={productRate}
-              onChangeText={setProductRate}
-              keyboardType="decimal-pad"
-              placeholder={tc("ratePlaceholder")}
-              placeholderTextColor="#9ca3af"
-              editable={canManagePayroll}
-            />
 
+            {payModelUsesCommission(payPlan.pay_model) ? (
+            <>
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
                 {tc("tieredCommissions")}
@@ -488,6 +531,8 @@ export default function TeamCommissionsScreen() {
                 </TouchableOpacity>
               </View>
             ))}
+            </>
+            ) : null}
 
             <View style={twStyle("mt-4")}>
               <ActionButton

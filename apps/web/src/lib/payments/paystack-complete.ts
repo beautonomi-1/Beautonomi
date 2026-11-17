@@ -1272,6 +1272,15 @@ export async function disableSubscriptionByCode(
   options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Subscription>> {
   const res = await fetchSubscription(code, options);
+  const status = String(res.data?.status ?? "").toLowerCase();
+  if (
+    status === "non-renewing" ||
+    status === "completed" ||
+    status === "cancelled" ||
+    status === "canceled"
+  ) {
+    return res;
+  }
   const emailToken = res.data?.email_token;
   if (!emailToken) {
     throw new Error("Could not get subscription email_token from Paystack");
@@ -1556,11 +1565,13 @@ export async function resolveDispute(
  */
 
 export async function createRefund(
-  request: CreateRefundRequest
+  request: CreateRefundRequest,
+  options?: { tenantId?: string | null },
 ): Promise<PaystackResponse<Refund>> {
   return paystackRequest("/refund", {
     method: "POST",
     body: request,
+    tenantId: options?.tenantId,
   });
 }
 

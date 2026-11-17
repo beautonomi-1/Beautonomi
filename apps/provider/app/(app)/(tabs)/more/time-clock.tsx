@@ -32,6 +32,8 @@ interface StaffMember {
   name: string;
   email?: string;
   avatar_url?: string | null;
+  is_active?: boolean;
+  time_clock_enabled?: boolean;
 }
 
 interface TimeCard {
@@ -144,7 +146,7 @@ export default function TimeClockScreen() {
 
   const allStaffWithStatus = useMemo(() => {
     if (!staff) return [];
-    return staff.map((s) => {
+    return staff.filter((s) => s.is_active !== false && s.time_clock_enabled === true).map((s) => {
       const card = timeCards?.find(
         (t) => t.team_member_id === s.id && t.status === "clocked_in"
       );

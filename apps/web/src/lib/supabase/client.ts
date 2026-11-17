@@ -12,16 +12,46 @@ import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "./database.types";
 
 let clientInstance: ReturnType<typeof createBrowserClient<Database>> | null = null;
+let missingEnvReported = false;
+
+/**
+ * Resolves the public Supabase config. Returns null when either variable is
+ * missing instead of silently falling back to a placeholder project (audit F-02):
+ * in production a misconfigured build throws so it is caught at deploy time;
+ * elsewhere it logs once and callers receive `null`, which they already handle.
+ */
+export function resolvePublicSupabaseConfig(
+  env?: { NEXT_PUBLIC_SUPABASE_URL?: string; NEXT_PUBLIC_SUPABASE_ANON_KEY?: string },
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+): { url: string; anonKey: string } | null {
+  const source = env ?? {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  };
+  const url = source.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
+  const anonKey = source.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
+  if (url && anonKey) return { url, anonKey };
+  const missing = [
+    !url ? "NEXT_PUBLIC_SUPABASE_URL" : null,
+    !anonKey ? "NEXT_PUBLIC_SUPABASE_ANON_KEY" : null,
+  ].filter(Boolean);
+  const message = `Supabase browser client is not configured: missing ${missing.join(", ")}`;
+  if (nodeEnv === "production") {
+    throw new Error(message);
+  }
+  if (!missingEnvReported) {
+    missingEnvReported = true;
+    console.error(message);
+  }
+  return null;
+}
 
 export function getSupabaseClient(): ReturnType<typeof createBrowserClient<Database>> | null {
   if (typeof window === "undefined") return null;
   if (!clientInstance) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTIwMDAsImV4cCI6MTk2MDc2ODAwMH0.placeholder";
-    clientInstance =
-      supabaseUrl && supabaseAnonKey && supabaseUrl !== "" && supabaseAnonKey !== ""
-        ? createBrowserClient<Database>(supabaseUrl, supabaseAnonKey)
-        : createBrowserClient<Database>("https://placeholder.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTIwMDAsImV4cCI6MTk2MDc2ODAwMH0.placeholder");
+    const config = resolvePublicSupabaseConfig();
+    if (!config) return null;
+    clientInstance = createBrowserClient<Database>(config.url, config.anonKey);
   }
   return clientInstance;
 }

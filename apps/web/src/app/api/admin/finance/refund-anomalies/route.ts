@@ -1,3 +1,4 @@
+import { addMoney, roundCurrency } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
@@ -48,8 +49,8 @@ export async function GET(request: NextRequest) {
         const key = String(p.booking_id);
         const share = sharesByBooking.get(key) ?? { online: 0, inPerson: 0 };
         const amount = Number(p.amount ?? 0);
-        if (isPlatformCollected(p)) share.online += amount;
-        else if (isInPersonCollected(p)) share.inPerson += amount;
+        if (isPlatformCollected(p)) share.online = addMoney(share.online, amount);
+        else if (isInPersonCollected(p)) share.inPerson = addMoney(share.inPerson, amount);
         sharesByBooking.set(key, share);
       }
     }
@@ -58,8 +59,8 @@ export async function GET(request: NextRequest) {
         const share = sharesByBooking.get(String(r.booking_id)) ?? { online: 0, inPerson: 0 };
         return {
           ...r,
-          online_collected: Math.round(share.online * 100) / 100,
-          in_person_collected: Math.round(share.inPerson * 100) / 100,
+          online_collected: roundCurrency(share.online),
+          in_person_collected: roundCurrency(share.inPerson),
         };
       })
       .filter((r) => r.in_person_collected > r.online_collected + 0.01);

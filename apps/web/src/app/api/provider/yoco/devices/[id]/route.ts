@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 import { z } from "zod";
 
@@ -20,7 +21,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireAnyPermission(["process_payments", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 
@@ -140,7 +143,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -243,7 +248,7 @@ export async function PUT(
       .update(legacyPatch)
       .eq("id", id)
       .eq("provider_id", providerId)
-      .select()
+      .select("id, device_id, device_name, location_name, active, created_at")
       .maybeSingle();
     if (legacyUpdated) {
       return NextResponse.json({
@@ -304,7 +309,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 

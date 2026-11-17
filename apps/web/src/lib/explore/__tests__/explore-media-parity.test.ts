@@ -613,20 +613,28 @@ describe("explore media parity — E2E-critical units", () => {
       }
     });
 
-    it("v1: web customer Explore UI has no sound bed (mobile explore-video only)", () => {
+    it("catalog sound plays on video posts and stays off the photo grid", () => {
       const webExploreDir = join(repoRoot, "apps/web/src/components/explore");
-      const names = ["ExplorePostDetail.tsx", "ExploreFeed.tsx", "ExplorePostCard.tsx"];
-      for (const name of names) {
+      for (const name of ["ExploreFeed.tsx", "ExplorePostCard.tsx"]) {
         const src = readFileSync(join(webExploreDir, name), "utf8");
         expect(src).not.toContain("sound_url");
-        expect(src).not.toMatch(/ExploreSoundBed/);
       }
+      const detail = readFileSync(join(webExploreDir, "ExplorePostDetail.tsx"), "utf8");
+      const reel = readFileSync(join(webExploreDir, "ExploreSingleVideoReelView.tsx"), "utf8");
+      expect(detail).toContain("sound_url");
+      expect(reel).toContain("sound_url");
       const customerVideo = readFileSync(
         join(repoRoot, "apps/customer/app/(app)/explore-video.tsx"),
         "utf8",
       );
+      const customerPost = readFileSync(
+        join(repoRoot, "apps/customer/app/(app)/explore-post.tsx"),
+        "utf8",
+      );
       expect(customerVideo).toContain("ExploreSoundBed");
       expect(customerVideo).toContain("sound_url");
+      expect(customerPost).toContain("ExploreSoundBed");
+      expect(customerPost).toContain("sound_url");
     });
 
     it("v1: admin platform sounds — hide only, no DELETE handler", () => {

@@ -103,3 +103,19 @@ export function parseOptionalAmount(raw: unknown): number | null {
   if (Number.isNaN(n) || n <= 0) return null;
   return n;
 }
+
+/** F3-05: percentage 0–100; fixed amounts positive and capped. */
+export function promotionValueError(
+  type: string | null | undefined,
+  value: number,
+): string | null {
+  if (!Number.isFinite(value)) return "Invalid numeric value for promotion";
+  const t = type === "fixed_amount" ? "fixed" : type;
+  if (t === "percentage" && (value < 0 || value > 100)) {
+    return "Percentage value must be between 0 and 100";
+  }
+  if (t === "fixed" && (value <= 0 || value > 100_000)) {
+    return "Fixed amount must be between 0.01 and 100000";
+  }
+  return null;
+}

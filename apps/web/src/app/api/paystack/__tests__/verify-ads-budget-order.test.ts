@@ -47,6 +47,8 @@ vi.mock("@/lib/analytics/amplitude/server", () => ({
   trackServer: vi.fn(() => Promise.resolve()),
 }));
 
+let adsOrderStatus = "pending";
+
 const ADS_ORDER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ADS_CAMPAIGN_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const ADS_PROVIDER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -79,7 +81,7 @@ function adminClientForAdsVerify() {
                       provider_id: ADS_PROVIDER_ID,
                       campaign_id: ADS_CAMPAIGN_ID,
                       amount: 100,
-                      status: "pending",
+                      status: adsOrderStatus,
                       currency: "ZAR",
                     },
                     error: null,
@@ -143,7 +145,10 @@ describe("GET /api/paystack/verify ads budget orders", () => {
         })),
       })),
     });
-    mockProcessSuccessfulPayment.mockResolvedValue(undefined);
+    adsOrderStatus = "pending";
+    mockProcessSuccessfulPayment.mockImplementation(async () => {
+      adsOrderStatus = "paid";
+    });
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({

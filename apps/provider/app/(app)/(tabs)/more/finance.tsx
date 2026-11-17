@@ -56,9 +56,9 @@ interface FinanceEarnings {
   membership_discounts_this_period?: number;
   loyalty_discounts_this_period?: number;
   promo_discounts_this_period?: number;
-  membership_discounts_total?: number;
-  loyalty_discounts_total?: number;
-  promo_discounts_total?: number;
+  membership_discounts_total?: number | null;
+  loyalty_discounts_total?: number | null;
+  promo_discounts_total?: number | null;
   payout_hold_days?: number;
   payout_reconciliation?: {
     recognized_payoutable_earnings: number;

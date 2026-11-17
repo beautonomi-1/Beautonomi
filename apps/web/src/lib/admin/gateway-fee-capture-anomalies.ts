@@ -104,11 +104,11 @@ export async function countGatewayFeeCaptureAnomalies(
     if (est <= 0) continue;
 
     rowCount += 1;
-    expectedTotal += est;
+    expectedTotal = addMoney(expectedTotal, est);
   }
 
   return {
     row_count: rowCount,
-    expected_fees_total: Math.round(expectedTotal * 100) / 100,
+    expected_fees_total: roundCurrency(expectedTotal),
   };
 }

@@ -3,6 +3,11 @@ import { addDays } from "date-fns";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 import { formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
 import { insertWithInvoiceNumber } from "@/lib/invoices/insert-with-invoice-number";
+import {
+  buildProviderInvoiceLineItems,
+  PROVIDER_FEE_LEDGER_TYPES,
+  type InvoiceLedgerRow,
+} from "@/lib/invoices/build-provider-invoice-line-items";
 import { isNonPayableInvoiceType } from "@/lib/invoices/provider-invoice-status";
 
 export type ProviderInvoiceType =
@@ -41,17 +46,6 @@ export class ProviderInvoiceGenerationError extends Error {
     super(message);
     this.name = "ProviderInvoiceGenerationError";
   }
-}
-
-interface LineItem {
-  line_item_type: string;
-  description: string;
-  quantity: number;
-  unit_price: number;
-  total_price: number;
-  reference_type: string | null;
-  reference_id: string | null;
-  metadata: Record<string, unknown>;
 }
 
 /**
@@ -113,12 +107,58 @@ export async function generateProviderInvoice(
     }
   }
 
-  const lineItems: LineItem[] = [];
-  let subtotal = 0;
-
   if (invoiceType === "subscription") {
     return { invoice: null, skipped: "already_collected" };
   }
+
+  const currency = (providerData as { currency?: string | null }).currency ?? "ZAR";
+
+  // F2-42: lines come from the period's ledger rows; totals are computed from
+  // the lines (never from a hard-coded zero subtotal).
+  const periodEndExclusive = formatDateYmd(addDays(new Date(`${periodEnd}T12:00:00.000Z`), 1), "UTC");
+  const { data: ledgerData, error: ledgerError } = await supabase
+    .from("finance_transactions")
+    .select("id, transaction_type, amount, booking_id, created_at, description, metadata")
+    .eq("provider_id", providerId)
+    .in(
+      "transaction_type",
+      invoiceType === "transaction_fee" ? [...PROVIDER_FEE_LEDGER_TYPES] : ["adjustment", "platform_fee", "commission", "other"],
+    )
+    .gte("created_at", `${periodStart}T00:00:00.000Z`)
+    .lt("created_at", `${periodEndExclusive}T00:00:00.000Z`)
+    .order("created_at", { ascending: true });
+  if (ledgerError) throw ledgerError;
+  const ledgerRows = (ledgerData ?? []) as InvoiceLedgerRow[];
+
+  const bookingIds = [...new Set(ledgerRows.map((r) => r.booking_id).filter((id): id is string => !!id))];
+  const paymentProvidersByBooking: Record<string, string[]> = {};
+  const bookingRefs: Record<string, string> = {};
+  if (bookingIds.length > 0) {
+    const { data: payments } = await supabase
+      .from("booking_payments")
+      .select("booking_id, payment_provider")
+      .in("booking_id", bookingIds)
+      .eq("status", "completed");
+    for (const p of (payments ?? []) as Array<{ booking_id?: string; payment_provider?: string | null }>) {
+      if (!p.booking_id) continue;
+      (paymentProvidersByBooking[p.booking_id] ??= []).push(String(p.payment_provider ?? ""));
+    }
+    const { data: bookingRows } = await supabase
+      .from("bookings")
+      .select("id, booking_number")
+      .in("id", bookingIds);
+    for (const b of (bookingRows ?? []) as Array<{ id?: string; booking_number?: string | null }>) {
+      if (b.id && b.booking_number) bookingRefs[b.id] = b.booking_number;
+    }
+  }
+
+  const { lineItems, subtotal } = buildProviderInvoiceLineItems({
+    invoiceType,
+    ledgerRows,
+    paymentProvidersByBooking,
+    bookingRefs,
+    currency,
+  });
 
   if (skipIfEmpty && subtotal <= 0) {
     return { invoice: null, skipped: "no_billable_activity" };
@@ -157,7 +197,7 @@ export async function generateProviderInvoice(
     tax_amount: taxAmount,
     total_amount: totalAmount,
     // Pinned at issue time — see migration 881.
-    currency: (providerData as { currency?: string | null }).currency ?? "ZAR",
+    currency,
     status: "draft",
     description: `Invoice for ${invoiceType} from ${periodStart} to ${periodEnd}`,
     line_items: lineItems,

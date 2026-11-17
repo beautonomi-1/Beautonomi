@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -144,7 +145,7 @@ export async function GET(request: NextRequest) {
 
       const totalRevenue = ledgerNetByStaff.get(staff.id) ?? 0;
 
-      const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
+      const averageBookingValue = totalBookings > 0 ? multiplyMoney(totalRevenue, 1 / totalBookings) : 0;
 
       const deliveredHours = deliveredHoursForStaff(staff.id, staffBookings);
 
@@ -209,7 +210,7 @@ export async function GET(request: NextRequest) {
        * multiple staff share an appointment.
        */
       staffAssignmentTouches: assignmentTouches,
-      totalRevenue: staffPerformance.reduce((sum, s) => sum + s.totalRevenue, 0),
+      totalRevenue: staffPerformance.reduce((sum, s) => addMoney(sum, s.totalRevenue), 0),
       averageRating: averageRatingWeighted,
     };
 

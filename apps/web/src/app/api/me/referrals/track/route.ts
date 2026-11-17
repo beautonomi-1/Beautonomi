@@ -278,18 +278,35 @@ export async function POST(request: NextRequest) {
 
     if (rewardAmount > 0) {
       try {
-        const pointsToAward = Math.round(rewardAmount);
-        const { error: loyaltyRpcErr } = await (supabaseAdmin.rpc as any)("append_loyalty_ledger_entry", {
-          p_customer_id: referrerUser.id,
-          p_transaction_type: "bonus",
-          p_points_amount: pointsToAward,
-          p_booking_id: null,
-          p_description: "Referral reward",
-          p_metadata: { referral_id: referralRecord?.id, source: "referral_track" },
-          p_expires_at: null,
-        });
-        if (loyaltyRpcErr) {
-          console.warn("[referrals/track] loyalty append_loyalty_ledger_entry:", loyaltyRpcErr);
+        const { data: loyaltyCfg } = await supabaseAdmin
+          .from("loyalty_point_config")
+          .select("bonus_multipliers")
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const configuredReferralPoints = Number(
+          (loyaltyCfg as { bonus_multipliers?: { referral?: number } } | null)?.bonus_multipliers?.referral ?? 0,
+        );
+        const pointsToAward =
+          configuredReferralPoints > 0 ? Math.floor(configuredReferralPoints) : Math.round(rewardAmount);
+        const awardReferralPoints = async (customerId: string, description: string) => {
+          const { error: loyaltyRpcErr } = await (supabaseAdmin.rpc as any)("append_loyalty_ledger_entry", {
+            p_customer_id: customerId,
+            p_transaction_type: "bonus",
+            p_points_amount: pointsToAward,
+            p_booking_id: null,
+            p_description: description,
+            p_metadata: { referral_id: referralRecord?.id, source: "referral_track" },
+            p_expires_at: null,
+          });
+          if (loyaltyRpcErr) {
+            console.warn("[referrals/track] loyalty append_loyalty_ledger_entry:", loyaltyRpcErr);
+          }
+        };
+        await awardReferralPoints(referrerUser.id, "Referral reward");
+        if (user.id !== referrerUser.id) {
+          await awardReferralPoints(user.id, "Referral welcome bonus");
         }
       } catch (loyaltyErr) {
         console.warn("[referrals/track] loyalty point insert:", loyaltyErr);

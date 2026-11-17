@@ -47,7 +47,7 @@ import {
   PAYCLOUD_SETUP_LABEL,
 } from "@/lib/payments/paycloud-collect-cta";
 import { useTranslation } from "@beautonomi/i18n";
-import { normalizeTipPercentPresets, percentOf } from "@beautonomi/utils";
+import { addMoney, multiplyMoney, normalizeTipPercentPresets, percentOf, subtractMoney } from "@beautonomi/utils";
 
 interface ServiceItem {
   id: string;
@@ -208,27 +208,27 @@ export function CheckoutDialog({
     if (!checkoutData) return { subtotal: 0, discount: 0, tip: 0, total: 0 };
 
     const servicesTotal = checkoutData.services.reduce(
-      (sum, s) => sum + s.price * s.quantity,
+      (sum, s) => addMoney(sum, multiplyMoney(s.price, s.quantity)),
       0
     );
     const productsTotal = checkoutData.products?.reduce(
-      (sum, p) => sum + p.price * p.quantity,
+      (sum, p) => addMoney(sum, multiplyMoney(p.price, p.quantity)),
       0
     ) || 0;
-    const lineSum = servicesTotal + productsTotal;
+    const lineSum = addMoney(servicesTotal, productsTotal);
     const bookedBalance = Number(checkoutData.amountDue);
     const subtotal = Number.isFinite(bookedBalance) ? Math.max(0, bookedBalance) : lineSum;
 
     let discount = 0;
     if (discountValue) {
       if (discountType === "percentage") {
-        discount = (subtotal * parseFloat(discountValue)) / 100;
+        discount = percentOf(subtotal, parseFloat(discountValue) || 0, paymentsCurrency);
       } else {
         discount = parseFloat(discountValue);
       }
     }
 
-    const afterDiscount = Math.max(subtotal - discount, 0);
+    const afterDiscount = Math.max(0, subtractMoney(subtotal, discount, paymentsCurrency));
 
     let tip = 0;
     if (customTip) {
@@ -237,7 +237,7 @@ export function CheckoutDialog({
       tip = percentOf(afterDiscount, tipPercentage, paymentsCurrency);
     }
 
-    const total = afterDiscount + tip;
+    const total = addMoney(afterDiscount, tip, paymentsCurrency);
 
     return { subtotal, discount, tip, total };
   }, [checkoutData, discountType, discountValue, tipPercentage, customTip, paymentsCurrency]);
@@ -297,7 +297,7 @@ export function CheckoutDialog({
     if (paymentMethod === "split") {
       const primary = parseFloat(splitPrimaryAmount);
       if (Number.isFinite(primary) && primary > 0) {
-        const secondary = Math.max(0, calculations.total - primary);
+        const secondary = Math.max(0, subtractMoney(calculations.total, primary));
         opts.secondary_payment_method = splitSecondaryMethod;
         opts.payments = [
           { method: "gift_card", amount: primary },
@@ -354,12 +354,19 @@ export function CheckoutDialog({
       onPrepareSplitCard
     ) {
       const primary = parseFloat(splitPrimaryAmount);
-      const secondary = Math.round((calculations.total - primary) * 100) / 100;
+      const secondary = subtractMoney(calculations.total, primary, paymentsCurrency);
       if (!giftCardCode.trim() || !Number.isFinite(primary) || primary <= 0 || secondary <= 0.01) {
         return;
       }
-      const baseAfterDiscount = Math.max(0, Math.round((calculations.total - calculations.tip) * 100) / 100);
-      const unpaidTip = Math.max(0, Math.round((calculations.tip - Math.max(0, primary - baseAfterDiscount)) * 100) / 100);
+      const baseAfterDiscount = Math.max(0, subtractMoney(calculations.total, calculations.tip, paymentsCurrency));
+      const unpaidTip = Math.max(
+        0,
+        subtractMoney(
+          calculations.tip,
+          Math.max(0, subtractMoney(primary, baseAfterDiscount, paymentsCurrency)),
+          paymentsCurrency,
+        ),
+      );
       if (!splitCardPreparedRef.current) {
         splitCardPreparedRef.current = true;
         setIsProcessing(true);
@@ -580,7 +587,7 @@ export function CheckoutDialog({
                           </div>
                         </div>
                         <p className="font-semibold">
-                          {formatCurrency(service.price * service.quantity)}
+                          {formatCurrency(multiplyMoney(service.price, service.quantity))}
                         </p>
                       </div>
                     ))}
@@ -609,7 +616,7 @@ export function CheckoutDialog({
                             </div>
                           </div>
                           <p className="font-semibold">
-                            {formatCurrency(product.price * product.quantity)}
+                            {formatCurrency(multiplyMoney(product.price, product.quantity))}
                           </p>
                         </div>
                       ))}
@@ -675,7 +682,7 @@ export function CheckoutDialog({
                       {tipPresetPercents.map((percent) => {
                         const afterDiscount = Math.max(
                           0,
-                          calculations.subtotal - calculations.discount,
+                          subtractMoney(calculations.subtotal, calculations.discount),
                         );
                         const tipForPercent =
                           percent > 0 ? percentOf(afterDiscount, percent, paymentsCurrency) : 0;

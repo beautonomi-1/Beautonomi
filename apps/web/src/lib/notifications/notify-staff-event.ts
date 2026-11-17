@@ -65,9 +65,42 @@ export async function notifyStaffUser(
   });
 }
 
+/** Personal pay alert. Push follows the provider "Payout updates" preference (on unless turned off). */
+async function pushProviderPayAlert(
+  userId: string,
+  title: string,
+  message: string,
+  actionUrl: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const { sendToUsers } = await import("@/lib/notifications/onesignal");
+    await sendToUsers(
+      [userId],
+      {
+        title,
+        message,
+        type: "payout_processed",
+        url: actionUrl,
+        data: {
+          ...metadata,
+          type: "payout_processed",
+          action_url: actionUrl,
+        },
+      },
+      ["push"],
+      { appType: "provider" },
+    );
+  } catch (err) {
+    console.warn("[notifyPayRunStaff] push failed:", err);
+  }
+}
+
 function formatMoney(amount: number, currency?: string | null): string {
   const n = Number(amount ?? 0);
-  return `${currency ?? "R"} ${n.toFixed(2)}`;
+  const code = (currency ?? "ZAR").trim().toUpperCase();
+  const prefix = code === "ZAR" || code === "R" ? "R" : code;
+  return `${prefix} ${n.toFixed(2)}`;
 }
 
 /**
@@ -85,28 +118,82 @@ export async function notifyPayRunStaff(
     .select("staff_id, net_pay")
     .eq("pay_run_id", payRunId);
 
+  const { data: run } = await admin
+    .from("provider_pay_runs")
+    .select("provider_id")
+    .eq("id", payRunId)
+    .maybeSingle();
+  const providerId = (run as { provider_id?: string | null } | null)?.provider_id ?? null;
+
   let sent = 0;
+  const period = `${ctx.periodStart} – ${ctx.periodEnd}`;
+  const referenceSuffix = ctx.paymentReference ? ` (ref ${ctx.paymentReference})` : "";
   for (const item of (items ?? []) as Array<{ staff_id: string; net_pay: number | null }>) {
     if (!item.staff_id) continue;
+    const { data: staff } = await admin
+      .from("provider_staff")
+      .select("user_id")
+      .eq("id", item.staff_id)
+      .maybeSingle();
+    const userId = (staff as { user_id?: string | null } | null)?.user_id;
+    if (!userId) continue;
     const net = formatMoney(Number(item.net_pay ?? 0), ctx.currency);
-    const period = `${ctx.periodStart} – ${ctx.periodEnd}`;
-    const referenceSuffix = ctx.paymentReference ? ` (ref ${ctx.paymentReference})` : "";
+    const title = event === "staff_pay_run_paid" ? "You have been paid" : "Pay run approved";
+    const message =
+      event === "staff_pay_run_paid"
+        ? `Your pay for ${period} (${net}) was marked as paid${referenceSuffix}.`
+        : `Your pay for ${period} (${net}) has been approved.`;
+    const metadata = {
+      pay_run_id: payRunId,
+      period_start: ctx.periodStart,
+      period_end: ctx.periodEnd,
+      net_pay: Number(item.net_pay ?? 0),
+      payment_reference: ctx.paymentReference ?? null,
+    };
     await notifyStaffUser(item.staff_id, event, {
-      title: event === "staff_pay_run_paid" ? "You have been paid" : "Pay run approved",
-      message:
+      title,
+      message,
+      url: "/provider/team/my-earnings",
+      metadata,
+    }).catch(() => undefined);
+    await pushProviderPayAlert(userId, title, message, "/provider/team/my-earnings", metadata);
+    sent++;
+  }
+
+  if (providerId) {
+    const { data: owner } = await admin
+      .from("providers")
+      .select("user_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const ownerId = (owner as { user_id?: string | null } | null)?.user_id;
+    if (ownerId) {
+      const title = event === "staff_pay_run_paid" ? "Pay run marked paid" : "Pay run approved";
+      const message =
         event === "staff_pay_run_paid"
-          ? `Your pay for ${period} (${net}) was marked as paid${referenceSuffix}.`
-          : `Your pay for ${period} (${net}) has been approved.`,
-      url: "/provider/my-earnings",
-      metadata: {
+          ? `Pay for ${period} was marked as paid. Each person on the run has been notified${referenceSuffix}.`
+          : `Pay for ${period} was approved. Each person on the run has been notified.`;
+      const metadata = {
         pay_run_id: payRunId,
         period_start: ctx.periodStart,
         period_end: ctx.periodEnd,
-        net_pay: Number(item.net_pay ?? 0),
-        payment_reference: ctx.paymentReference ?? null,
-      },
-    }).catch(() => undefined);
-    sent++;
+        payroll_summary: true,
+      };
+      await insertNotification({
+        user_id: ownerId,
+        type: EVENT_TO_TYPE[event],
+        title,
+        message,
+        action_url: "/provider/team/payroll",
+        metadata: {
+          staff_event: event,
+          provider_id: providerId,
+          ...metadata,
+        },
+      });
+      await pushProviderPayAlert(ownerId, title, message, "/provider/team/payroll", metadata);
+      sent++;
+    }
   }
   return sent;
 }
@@ -137,7 +224,7 @@ export async function notifyStaffTipReceived(
     await notifyStaffUser(line.staff_id, "staff_tip_received", {
       title: "You received a tip",
       message: `A ${formatMoney(line.amount, ctx.currency)} tip was added${ctx.customerName ? ` for ${ctx.customerName}` : ""}${ctx.bookingDate ? ` (${ctx.bookingDate})` : ""}.`,
-      url: "/provider/my-earnings",
+      url: "/provider/team/my-earnings",
       metadata: {
         booking_id: line.booking_id,
         amount: line.amount,

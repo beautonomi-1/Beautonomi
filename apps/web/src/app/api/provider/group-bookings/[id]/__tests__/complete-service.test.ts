@@ -21,10 +21,12 @@ const mockRequirePermission = vi.fn();
 const bookingsUpdateChain: {
   eq: ReturnType<typeof vi.fn>;
   in: ReturnType<typeof vi.fn>;
+  select: ReturnType<typeof vi.fn>;
   then: (resolve: (v: { error: null }) => unknown) => unknown;
 } = {
   eq: vi.fn(),
   in: vi.fn(),
+  select: vi.fn(),
   then: (resolve) => resolve({ error: null }),
 };
 
@@ -61,6 +63,10 @@ describe("POST /api/provider/group-bookings/[id]?action=complete_service", () =>
 
     bookingsUpdateChain.eq.mockReturnValue(bookingsUpdateChain);
     bookingsUpdateChain.in.mockReturnValue(bookingsUpdateChain);
+    bookingsUpdateChain.select.mockImplementation(() => ({
+      then: (resolve: (value: { data: { id: string }[]; error: null }) => unknown) =>
+        resolve({ data: [{ id: "child-paid" }], error: null }),
+    }));
 
     const groupUpdateSingle = vi.fn().mockResolvedValue({
       data: { id: GROUP_ID, status: "completed" },
@@ -108,6 +114,13 @@ describe("POST /api/provider/group-bookings/[id]?action=complete_service", () =>
             select: vi.fn().mockReturnValue(selectChain),
             update: vi.fn().mockReturnValue(bookingsUpdateChain),
           };
+        }
+        if (table === "booking_products") {
+          const productChain: Record<string, unknown> = {};
+          productChain.select = vi.fn().mockReturnValue(productChain);
+          productChain.eq = vi.fn().mockReturnValue(productChain);
+          productChain.is = vi.fn().mockResolvedValue({ data: [], error: null });
+          return productChain;
         }
         throw new Error(`unexpected ${table}`);
       }),

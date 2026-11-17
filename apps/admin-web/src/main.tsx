@@ -1,3 +1,4 @@
+import { installCsrfFetchGuard } from "../../web/src/lib/http/csrf-fetch-guard";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router";
@@ -9,6 +10,10 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import App from "./App";
 import "./index.css";
 import { publicEnv } from "@/config/publicEnv";
+
+// Admin is a Vite SPA, so it does not load apps/web instrumentation-client.ts.
+// Patch fetch before any mutation so raw uploads still send x-csrf-token.
+installCsrfFetchGuard();
 
 const rootEl = document.getElementById("root")!;
 

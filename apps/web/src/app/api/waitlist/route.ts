@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { WAITLIST_COLUMNS_WITHOUT_CONTACT } from "@/lib/waitlist/waitlist-columns";
 import { requireAuthInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
@@ -74,12 +76,13 @@ export async function POST(request: NextRequest) {
         notes: validated.notes,
         status: "waiting",
       })
-      .select()
+      .select(WAITLIST_COLUMNS_WITHOUT_CONTACT)
       .single();
 
     if (error) {
       throw error;
     }
+    const created = (entry ?? null) as unknown as (Record<string, unknown> & { id?: string }) | null;
 
     // Notify provider
     try {
@@ -97,7 +100,7 @@ export async function POST(request: NextRequest) {
           title: "New Waitlist Entry",
           message: `${validated.customer_name} joined the waitlist for your service.`,
           data: {
-            waitlist_id: entry.id,
+            waitlist_id: created?.id,
             customer_name: validated.customer_name,
           },
           action_url: `/provider/waitlist`,
@@ -108,7 +111,13 @@ export async function POST(request: NextRequest) {
     }
 
     return successResponse({
-      entry,
+      entry: created
+        ? {
+            ...created,
+            customer_email: validated.customer_email || user.email || null,
+            customer_phone: validated.customer_phone ?? null,
+          }
+        : created,
       message: "Added to waitlist successfully",
     });
   } catch (error) {
@@ -131,7 +140,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
     const { data: entries, error } = await supabase
       .from("waitlist_entries")

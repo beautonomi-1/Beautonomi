@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { subtractMoney, roundCurrency } from "@beautonomi/utils";
 
 export const PROVIDER_PORTAL_BOOKING_SOURCES = new Set(["provider", "walk_in"]);
 
@@ -20,7 +21,7 @@ export function bookingTotalAfterRemovingPlatformFee(
   totalAmount: number,
   feeAmount: number,
 ): number {
-  return Math.round(Math.max(0, Number(totalAmount) - Math.max(0, feeAmount)) * 100) / 100;
+  return roundCurrency(Math.max(0, subtractMoney(Number(totalAmount), Math.max(0, feeAmount))));
 }
 
 export type BookingFeeClearRow = {

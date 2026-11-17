@@ -82,11 +82,7 @@ export async function adjustProductStock(
     const newQuantity = current + input.delta;
     if (newQuantity < 0) throw new Error("Insufficient stock for this adjustment");
 
-    const { error: uErr } = await supabase
-      .from("product_variants")
-      .update({ quantity: newQuantity })
-      .eq("id", variantId);
-    if (uErr) throw uErr;
+    await claimAdjustedQuantity(supabase, "product_variants", variantId, current, newQuantity);
 
     const { data: movement, error: mErr } = await supabase
       .from("stock_movements")
@@ -105,7 +101,17 @@ export async function adjustProductStock(
       })
       .select("id")
       .single();
-    if (mErr) throw mErr;
+    if (mErr) {
+      await restoreAdjustedQuantity(
+        supabase,
+        "product_variants",
+        variantId,
+        newQuantity,
+        current,
+        mErr.message,
+      );
+      throw new Error(mErr.message || "Stock movement could not be saved");
+    }
     return { newQuantity, movementId: movement.id };
   }
 
@@ -125,11 +131,7 @@ export async function adjustProductStock(
   const newQuantity = current + input.delta;
   if (newQuantity < 0) throw new Error("Insufficient stock for this adjustment");
 
-  const { error: uErr } = await supabase
-    .from("products")
-    .update({ quantity: newQuantity })
-    .eq("id", input.productId);
-  if (uErr) throw uErr;
+  await claimAdjustedQuantity(supabase, "products", input.productId, current, newQuantity);
 
   const { data: movement, error: mErr } = await supabase
     .from("stock_movements")
@@ -148,8 +150,63 @@ export async function adjustProductStock(
     })
     .select("id")
     .single();
-  if (mErr) throw mErr;
+  if (mErr) {
+    await restoreAdjustedQuantity(
+      supabase,
+      "products",
+      input.productId,
+      newQuantity,
+      current,
+      mErr.message,
+    );
+    throw new Error(mErr.message || "Stock movement could not be saved");
+  }
   return { newQuantity, movementId: movement.id };
+}
+
+async function claimAdjustedQuantity(
+  supabase: SupabaseClient,
+  table: "products" | "product_variants",
+  id: string,
+  current: number,
+  newQuantity: number,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from(table)
+    .update({ quantity: newQuantity })
+    .eq("id", id)
+    .eq("quantity", current)
+    .select("id");
+  if (error) throw error;
+  if (!data?.length) {
+    throw new Error("Stock changed before this adjustment was saved");
+  }
+}
+
+async function restoreAdjustedQuantity(
+  supabase: SupabaseClient,
+  table: "products" | "product_variants",
+  id: string,
+  writtenQuantity: number,
+  previousQuantity: number,
+  movementError: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from(table)
+    .update({ quantity: previousQuantity })
+    .eq("id", id)
+    .eq("quantity", writtenQuantity)
+    .select("id");
+  if (error || !data?.length) {
+    console.error("[adjustProductStock] movement was not saved and the quantity could not be restored", {
+      table,
+      id,
+      writtenQuantity,
+      previousQuantity,
+      movementError,
+      restoreError: error?.message ?? "quantity changed after this adjustment",
+    });
+  }
 }
 
 export function mapReasonToMovementType(reason: string, delta: number): StockMovementType {

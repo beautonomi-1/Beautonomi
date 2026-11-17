@@ -1,8 +1,11 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
+
 /**
  * Documentation-only posting map for a simple booking payment journal.
  *
  * The live shadow writer is `_shadow_replay_finance_tx_row` in migrations
- * 809 / 863 / 870 (plus 880 for `gift_card_refund`). Do not treat this
+ * 809 / 863 / 870 / 10184 (refund tender + wallet-tender GL; plus 880 for
+ * `gift_card_refund`). Do not treat this
  * TypeScript map as the allowlist — `reconciliation-drift.test.ts` pins
  * that. `sum-of-legs.test.ts` uses `isBalanced` / `postBookingPayment` as
  * the app-level journal invariant for the gateway charge fixture.
@@ -54,7 +57,7 @@ export interface BookingPaymentInput {
  */
 export function postBookingPayment(input: BookingPaymentInput): JournalEntrySpec {
   const providerNet =
-    input.gross - input.platformFee - input.taxAmount - input.tipAmount;
+    subtractMoney(subtractMoney(subtractMoney(input.gross, input.platformFee), input.taxAmount), input.tipAmount);
   const lines: JournalLineSpec[] = [
     { account: "1000", side: "debit",  amount: input.gross },
     { account: "4000", side: "debit",  amount: input.gatewayFee },
@@ -93,9 +96,9 @@ export function postBookingRefund(input: BookingRefundInput): JournalEntrySpec {
 export function isBalanced(entry: JournalEntrySpec): boolean {
   const debits = entry.lines
     .filter((l) => l.side === "debit")
-    .reduce((s, l) => s + l.amount, 0);
+    .reduce((s, l) => addMoney(s, l.amount), 0);
   const credits = entry.lines
     .filter((l) => l.side === "credit")
-    .reduce((s, l) => s + l.amount, 0);
-  return Math.round((debits - credits) * 100) === 0;
+    .reduce((s, l) => addMoney(s, l.amount), 0);
+  return subtractMoney(debits, credits) === 0;
 }

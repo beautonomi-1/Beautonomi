@@ -75,6 +75,34 @@ function parseJsonBody(raw: string): unknown | null {
   }
 }
 
+const PUBLIC_API_ERROR_BY_CODE: Record<string, string> = {
+  FORBIDDEN: "You do not have permission to do this.",
+  INVALID_STATUS: "This request is not allowed in its current status.",
+  INVALID_AMOUNT: "Enter a valid amount and try again.",
+  INSUFFICIENT_BALANCE: "There is not enough balance for this request.",
+  PAYOUT_HELD: "Payouts are temporarily on hold. Contact support if you need help.",
+  OVER_REFUND: "Refund exceeds the amount collected.",
+  LEDGER_POSTING_FAILED: "The payment could not be recorded. Please retry.",
+  PERIOD_LOCKED: "This financial period is locked.",
+  NOT_SUPPORTED: "This action is not available.",
+  VALIDATION_ERROR: "Check the details and try again.",
+  IDEMPOTENCY_KEY_CONFLICT: "This request was already processed.",
+};
+
+function looksLikeRawApiError(message: string): boolean {
+  return /finance ledger posting failed|violates check constraint|SQLSTATE|P0001|new_total_refunded|Refund amount validation failed/i.test(
+    message,
+  );
+}
+
+/** Keep a normal API sentence. Replace database text before either app shows it. */
+export function publicApiErrorMessage(code: string | undefined, message: string): string {
+  const raw = message.trim();
+  if (raw && !looksLikeRawApiError(raw)) return raw;
+  if (code && PUBLIC_API_ERROR_BY_CODE[code]) return PUBLIC_API_ERROR_BY_CODE[code];
+  return "Something went wrong. Please try again.";
+}
+
 /** True if the human `message` already names this permission (snake key or "words with spaces"). */
 function messageAlreadyCoversPermission(message: string, permissionKey: string): boolean {
   if (!permissionKey) return false;
@@ -88,7 +116,7 @@ function extractErrorFromPayload(
   fallback: string,
 ): { message: string; code?: string; details?: unknown } {
   if (!json || typeof json !== "object") {
-    return { message: fallback };
+    return { message: publicApiErrorMessage(undefined, fallback) };
   }
   const o = json as Record<string, unknown>;
   /** Many routes set `error` (short code) and `message` (human text); prefer the latter. */
@@ -103,9 +131,10 @@ function extractErrorFromPayload(
     if (permissionKey && !messageAlreadyCoversPermission(message, permissionKey)) {
       message = `${message}\n\nPermission: ${permissionKey}`;
     }
+    const code = typeof o.code === "string" ? o.code : undefined;
     return {
-      message,
-      code: typeof o.code === "string" ? o.code : undefined,
+      message: publicApiErrorMessage(code, message),
+      code,
       details: o.details,
     };
   }
@@ -117,9 +146,10 @@ function extractErrorFromPayload(
     if (permissionKey && !messageAlreadyCoversPermission(message, permissionKey)) {
       message = `${message}\n\nPermission: ${permissionKey}`;
     }
+    const code = typeof e.code === "string" ? e.code : undefined;
     return {
-      message,
-      code: typeof e.code === "string" ? e.code : undefined,
+      message: publicApiErrorMessage(code, message),
+      code,
       details: e.details,
     };
   }
@@ -128,13 +158,14 @@ function extractErrorFromPayload(
     if (permissionKey && !messageAlreadyCoversPermission(message, permissionKey)) {
       message = `${message}\n\nPermission: ${permissionKey}`;
     }
+    const code = typeof o.code === "string" ? o.code : undefined;
     return {
-      message,
-      code: typeof o.code === "string" ? o.code : undefined,
+      message: publicApiErrorMessage(code, message),
+      code,
       details: o.details,
     };
   }
-  return { message: fallback };
+  return { message: publicApiErrorMessage(undefined, fallback) };
 }
 
 /**
@@ -266,7 +297,12 @@ export async function apiFetch<T>(
       const fromJson =
         parsed !== null
           ? extractErrorFromPayload(parsed, `Request failed: ${response.statusText}`)
-          : { message: rawText.trim().slice(0, 500) || `Request failed: ${response.statusText}` };
+          : {
+              message: publicApiErrorMessage(
+                undefined,
+                rawText.trim().slice(0, 500) || `Request failed: ${response.statusText}`,
+              ),
+            };
       return {
         data: null,
         error: {

@@ -19,7 +19,7 @@ import { usePayableProductOrders } from "@/features/shop/usePayableProductOrders
 import { PayableOrdersBanner } from "@/components/shop/PayableOrdersBanner";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney, isUnpaidOnlinePaystackHold, pinPayableProductOrders } from "@beautonomi/utils";
+import { formatMoney, isUnpaidOnlinePaystackHold, pinPayableProductOrders, subtractMoney } from "@beautonomi/utils";
 import { horizontalFlatListPerf, verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
@@ -77,7 +77,10 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
   const { t } = useTranslation();
   const { contentPadding } = useResponsive();
   const fb = getTenantDefaultCurrency();
-  const totalLabel = formatMoney(Number(order.total_amount), order.currency ?? fb);
+  const totalLabel = formatMoney(
+    Math.max(0, subtractMoney(Number(order.total_amount ?? 0), Math.max(0, Number(order.refunded_amount ?? 0)))),
+    order.currency ?? fb,
+  );
   const firstImage = order.items?.[0]?.product_image_url;
   const itemCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const date = formatDateSafe(order.created_at);
@@ -179,7 +182,7 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
               </Text>
             </View>
           )}
-          {order.tracking_number && (
+          {order.fulfillment_type === "delivery" && order.tracking_number && (
             <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
               <Ionicons name="location-outline" size={14} color="#3B82F6" />
               <Text style={{ fontSize: 12, color: "#3B82F6", marginStart: 4 }}>

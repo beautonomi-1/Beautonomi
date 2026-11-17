@@ -1,5 +1,7 @@
 "use client";
 
+import { percentOf, roundCurrency } from "@beautonomi/utils";
+
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Ticket, Gift, Star, X } from "lucide-react";
@@ -169,7 +171,7 @@ export default function StepPromotions({
 
   const maxRedeemablePointsOnBooking = useMemo(() => {
     if (bookingSubtotalForLoyalty <= 0) return 0;
-    const maxDiscount = (bookingSubtotalForLoyalty * maxRedemptionPercentage) / 100;
+    const maxDiscount = percentOf(bookingSubtotalForLoyalty, maxRedemptionPercentage, tenantCurrency);
     return Math.floor(maxDiscount * redemptionRate);
   }, [bookingSubtotalForLoyalty, maxRedemptionPercentage, redemptionRate]);
 
@@ -406,7 +408,7 @@ export default function StepPromotions({
         promotions: {
           ...bookingState.promotions,
           loyaltyPointsUsed: points_to_redeem,
-          loyaltyDiscount: Math.round(discount_amount * 100) / 100,
+          loyaltyDiscount: roundCurrency(discount_amount),
         },
       });
       setLoyaltyPoints(points_to_redeem);

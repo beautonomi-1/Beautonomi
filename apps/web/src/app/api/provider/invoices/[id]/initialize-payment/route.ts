@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
@@ -99,7 +100,7 @@ export async function POST(
       );
     }
 
-    const amountDue = Number(inv.total_amount ?? 0) - Number(inv.amount_paid ?? 0);
+    const amountDue = subtractMoney(Number(inv.total_amount ?? 0), Number(inv.amount_paid ?? 0));
     if (amountDue <= 0) {
       return errorResponse("This invoice is already settled.", "INVALID_STATUS", 409);
     }

@@ -7,6 +7,8 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { canViewStaffPay } from "@/lib/auth/provider-team-roster-access";
+import { resolveStaffRates } from "@/lib/payroll/resolve-staff-rates";
 
 /**
  * GET /api/provider/staff/onboarding-checklist?staff_id=
@@ -27,13 +29,19 @@ export async function GET(request: NextRequest) {
     const { data: staff } = await supabaseAdmin
       .from("provider_staff")
       .select(
-        "id, invite_accepted_at, is_service_provider, commission_enabled, service_commission_rate, time_clock_enabled, time_clock_pin",
+        "id, user_id, invite_accepted_at, is_service_provider, commission_enabled, service_commission_rate, product_commission_rate, commission_rate, commission_percentage, time_clock_enabled, time_clock_pin",
       )
       .eq("id", staffId)
       .eq("provider_id", providerId)
       .maybeSingle();
 
     if (!staff) return notFoundResponse("Staff not found");
+
+    const payVisible =
+      user.role === "superadmin" ||
+      staff.user_id === user.id ||
+      (await canViewStaffPay(user.id, request));
+    if (!payVisible) return notFoundResponse("Staff not found");
 
     const [{ count: locCount }, { count: svcCount }, { data: schedule }] = await Promise.all([
       supabaseAdmin
@@ -53,6 +61,10 @@ export async function GET(request: NextRequest) {
 
     const isServiceProvider = (staff as { is_service_provider?: boolean | null }).is_service_provider !== false;
 
+    const rates = resolveStaffRates(staff);
+    const commissionConfigured =
+      staff.commission_enabled === false || rates.serviceRate > 0 || rates.productRate > 0;
+
     const items = [
       { key: "invite_accepted", done: Boolean(staff.invite_accepted_at) },
       { key: "locations_assigned", done: (locCount ?? 0) > 0 },
@@ -64,9 +76,7 @@ export async function GET(request: NextRequest) {
       { key: "schedule_set", done: (schedule?.length ?? 0) > 0 },
       {
         key: "commission_configured",
-        done:
-          staff.commission_enabled === false ||
-          Number(staff.service_commission_rate ?? 0) > 0,
+        done: commissionConfigured,
       },
       {
         key: "time_clock_ready",

@@ -72,12 +72,16 @@ export default function TerminalPaymentReturnScreen() {
   );
 
   useEffect(() => {
-    if (status === "cancel") {
-      navigateBack("payment_cancelled");
-      return;
-    }
-    if (isHostedCheckoutFailureStatus(hosted.status)) {
-      navigateBack("payment_failed");
+    if (status === "cancel" || isHostedCheckoutFailureStatus(hosted.status)) {
+      if (reference) {
+        void verifyPaystackWithRetry(reference, {
+          redirectStatus: isHostedCheckoutFailureStatus(hosted.status) ? hosted.status : "cancelled",
+          sessionId,
+          transactionId,
+          maxAttempts: 1,
+        });
+      }
+      navigateBack(status === "cancel" ? "payment_cancelled" : "payment_failed");
       return;
     }
     if (status !== "verifying" || !reference) {

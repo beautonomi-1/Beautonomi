@@ -12,6 +12,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { roundCurrency } from "@beautonomi/utils";
 
 export type ProductOrderTenderLegsInput = {
   productOrderId: string;
@@ -38,8 +39,8 @@ export function buildProductOrderTenderLegs(input: {
   giftCardAmount?: number | null;
 }): ProductOrderTenderLeg[] {
   const legs: ProductOrderTenderLeg[] = [];
-  const promo = Math.round(Math.max(0, Number(input.promotionDiscount ?? 0)) * 100) / 100;
-  const gift = Math.round(Math.max(0, Number(input.giftCardAmount ?? 0)) * 100) / 100;
+  const promo = roundCurrency(Math.max(0, Number(input.promotionDiscount ?? 0)));
+  const gift = roundCurrency(Math.max(0, Number(input.giftCardAmount ?? 0)));
   if (promo > 0) {
     legs.push({
       transaction_type: "promotion_discount",

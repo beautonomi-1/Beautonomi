@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { startOfWeek } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
@@ -356,7 +357,7 @@ async function sumBookedGmv(
   for (const row of bookingRows) {
     const status = String(row.status ?? "").toLowerCase();
     if (TERMINAL_STATUSES.has(status)) continue;
-    total += Number(row.total_amount ?? 0);
+    total = addMoney(total, Number(row.total_amount ?? 0));
   }
 
   const groupRows = await fetchAllPaged<{ total_price?: number; status?: string }>(async (from, to) => {
@@ -378,7 +379,7 @@ async function sumBookedGmv(
   for (const row of groupRows) {
     const status = String(row.status ?? "").toLowerCase();
     if (TERMINAL_STATUSES.has(status)) continue;
-    total += Number(row.total_price ?? 0);
+    total = addMoney(total, Number(row.total_price ?? 0));
   }
 
   return total;

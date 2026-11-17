@@ -29,7 +29,7 @@ type RequestItem = {
   budget_max?: number | null;
   location_type?: string;
   customer?: { id: string; full_name?: string | null; email?: string | null; avatar_url?: string | null };
-  offers?: Array<{ id: string; status: string; price: number; currency: string; created_at: string; change_request_note?: string | null }>;
+  offers?: Array<{ id: string; status: string; price: number; currency: string; created_at: string; expiration_at?: string | null; booking_id?: string | null; change_request_note?: string | null }>;
   attachments?: Array<{ id: string; url: string }>;
 };
 
@@ -321,7 +321,12 @@ export default function ProviderCustomRequestsPage() {
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    {["pending", "offered"].includes(r.status) && (
+                    {["pending", "offered"].includes(r.status) &&
+                      !r.offers?.some((o) =>
+                        ["payment_pending", "paid", "finalize_failed", "accepted"].includes(
+                          String(o.status || "").toLowerCase(),
+                        ),
+                      ) && (
                       <>
                         <Button variant="outline" onClick={() => openOffer(r)}>
                           {t("web.provider.pages.custom-requests.sendOffer")}
@@ -337,21 +342,44 @@ export default function ProviderCustomRequestsPage() {
                   <div className="mt-3 space-y-2">
                     {r.offers.map((o) => {
                       const st = String(o.status || "pending").toLowerCase();
-                      const isPaid = st === "paid";
+                      const pastExpiration = !!o.expiration_at && new Date(o.expiration_at).getTime() <= Date.now();
+                      const isPaid = st === "paid" || (st === "accepted" && !!o.booking_id);
                       const isWithdrawn = st === "withdrawn";
-                      const isExpired = st === "expired";
-                      const isChangesRequested = st === "changes_requested";
-                      const isInactive = isWithdrawn || isExpired;
+                      const isDeclined = st === "declined";
+                      const isFinalizeFailed = st === "finalize_failed";
+                      const isExpired =
+                        st === "expired" ||
+                        (pastExpiration && !isPaid && !isFinalizeFailed && !isWithdrawn && !isDeclined);
+                      const isPaymentPending = st === "payment_pending" && !isExpired;
+                      const isChangesRequested = st === "changes_requested" && !isExpired;
                       const badgeClass = isPaid
                         ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                        : isWithdrawn
-                          ? "bg-slate-100 text-slate-500 border border-slate-200"
-                          : isExpired
-                            ? "bg-amber-100 text-amber-700 border border-amber-200"
-                            : isChangesRequested
-                              ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
-                            : "bg-blue-50 text-blue-700 border border-blue-200";
-                      const badgeLabel = isPaid ? t("web.provider.pages.custom-requests.booked") : isWithdrawn ? t("web.provider.pages.custom-requests.withdrawn") : isExpired ? t("web.provider.pages.custom-requests.expired") : isChangesRequested ? t("web.provider.pages.custom-requests.changesRequested") : t("web.provider.common.status.pending");
+                        : isFinalizeFailed
+                          ? "bg-red-100 text-red-700 border border-red-200"
+                          : isWithdrawn || isDeclined
+                            ? "bg-slate-100 text-slate-500 border border-slate-200"
+                            : isExpired
+                              ? "bg-amber-100 text-amber-700 border border-amber-200"
+                              : isPaymentPending
+                                ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
+                                : isChangesRequested
+                                  ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
+                                  : "bg-blue-50 text-blue-700 border border-blue-200";
+                      const badgeLabel = isPaid
+                        ? t("web.provider.pages.custom-requests.booked")
+                        : isFinalizeFailed
+                          ? t("web.provider.pages.custom-requests.statusNeedsSupport")
+                          : isWithdrawn
+                            ? t("web.provider.pages.custom-requests.withdrawn")
+                            : isDeclined
+                              ? t("web.provider.pages.custom-requests.statusDeclined")
+                              : isExpired
+                                ? t("web.provider.pages.custom-requests.expired")
+                                : isPaymentPending
+                                  ? t("web.provider.pages.custom-requests.statusPaymentInProgress")
+                                  : isChangesRequested
+                                    ? t("web.provider.pages.custom-requests.changesRequested")
+                                    : t("web.provider.common.status.pending");
                       return (
                         <div
                           key={o.id}
@@ -552,12 +580,44 @@ export default function ProviderCustomRequestsPage() {
               const d = offerDetailData;
               const req = d.request ?? d;
               const rawStatus = String(d.status ?? "pending").toLowerCase();
-              const isPaid = rawStatus === "paid" || !!d.booking_id;
+              const pastExpiration = !!d.expiration_at && new Date(d.expiration_at).getTime() <= Date.now();
+              const isPaid = rawStatus === "paid" || (rawStatus === "accepted" && !!d.booking_id);
               const isWithdrawn = rawStatus === "withdrawn";
-              const isExpired = rawStatus === "expired";
-              const isChangesRequested = rawStatus === "changes_requested";
-              const statusLabel = isPaid ? t("web.provider.pages.custom-requests.booked") : isWithdrawn ? t("web.provider.pages.custom-requests.withdrawn") : isExpired ? t("web.provider.pages.custom-requests.expired") : isChangesRequested ? t("web.provider.pages.custom-requests.changesRequested") : t("web.provider.common.status.pending");
-              const statusClass = isPaid ? "bg-emerald-100 text-emerald-700" : isWithdrawn ? "bg-slate-100 text-slate-600" : isExpired ? "bg-amber-100 text-amber-700" : isChangesRequested ? "bg-indigo-100 text-indigo-700" : "bg-blue-50 text-blue-700";
+              const isDeclined = rawStatus === "declined";
+              const isFinalizeFailed = rawStatus === "finalize_failed" || (rawStatus === "accepted" && !d.booking_id);
+              const isExpired =
+                rawStatus === "expired" ||
+                (pastExpiration && !isPaid && !isFinalizeFailed && !isWithdrawn && !isDeclined);
+              const isPaymentPending = rawStatus === "payment_pending" && !isExpired;
+              const isChangesRequested = rawStatus === "changes_requested" && !isExpired;
+              const statusLabel = isPaid
+                ? t("web.provider.pages.custom-requests.booked")
+                : isFinalizeFailed
+                  ? t("web.provider.pages.custom-requests.statusNeedsSupport")
+                  : isWithdrawn
+                    ? t("web.provider.pages.custom-requests.withdrawn")
+                    : isDeclined
+                      ? t("web.provider.pages.custom-requests.statusDeclined")
+                      : isExpired
+                        ? t("web.provider.pages.custom-requests.expired")
+                        : isPaymentPending
+                          ? t("web.provider.pages.custom-requests.statusPaymentInProgress")
+                          : isChangesRequested
+                            ? t("web.provider.pages.custom-requests.changesRequested")
+                            : t("web.provider.common.status.pending");
+              const statusClass = isPaid
+                ? "bg-emerald-100 text-emerald-700"
+                : isFinalizeFailed
+                  ? "bg-red-100 text-red-700"
+                  : isWithdrawn || isDeclined
+                    ? "bg-slate-100 text-slate-600"
+                    : isExpired
+                      ? "bg-amber-100 text-amber-700"
+                      : isPaymentPending
+                        ? "bg-yellow-100 text-yellow-700"
+                        : isChangesRequested
+                          ? "bg-indigo-100 text-indigo-700"
+                          : "bg-blue-50 text-blue-700";
               return (
                 <div className="space-y-4 pb-2">
                   <div className="flex items-center gap-2">
@@ -622,7 +682,7 @@ export default function ProviderCustomRequestsPage() {
                     </div>
                   )}
                   <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
-                    {(rawStatus === "pending" || isChangesRequested) && d.id && (
+                    {((rawStatus === "pending" && !isExpired) || isChangesRequested) && d.id && (
                       <Button
                         className="w-full"
                         onClick={() => {
@@ -634,7 +694,7 @@ export default function ProviderCustomRequestsPage() {
                         {t("web.provider.pages.custom-requests.editOffer")}
                       </Button>
                     )}
-                    {!isPaid && !isWithdrawn && !isExpired && d.id && (
+                    {((rawStatus === "pending" && !isExpired) || isChangesRequested) && d.id && (
                       <Button
                         variant="outline"
                         className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"

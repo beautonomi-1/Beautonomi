@@ -23,6 +23,7 @@
  * total_refunded, payment_status) so if any of those change, the next request writes a new cache
  * entry and stale PDFs are orphaned (not served).
  */
+import { toMinorUnits } from "@beautonomi/utils";
 import crypto from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -58,11 +59,11 @@ export function buildReceiptCacheKey(input: ReceiptCacheKeyInput): string {
     .update(
       [
         input.bookingId,
-        Math.round((input.totalAmount || 0) * 100),
-        Math.round((input.totalPaid || 0) * 100),
-        Math.round((input.walletAmount || 0) * 100),
-        Math.round((input.giftCardAmount || 0) * 100),
-        Math.round((input.totalRefunded || 0) * 100),
+        toMinorUnits(input.totalAmount || 0),
+        toMinorUnits(input.totalPaid || 0),
+        toMinorUnits(input.walletAmount || 0),
+        toMinorUnits(input.giftCardAmount || 0),
+        toMinorUnits(input.totalRefunded || 0),
         (input.paymentStatus || "").toLowerCase(),
       ].join("|"),
     )

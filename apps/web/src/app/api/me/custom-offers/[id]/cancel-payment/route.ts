@@ -95,6 +95,10 @@ export async function POST(
       });
     } catch (walletErr) {
       console.error("[custom-offers/cancel-payment] wallet refund failed:", walletErr);
+      const { rememberCustomOfferWalletStillDue } = await import(
+        "@/lib/custom-offers/credit-wallet-for-offer-abandon"
+      );
+      await rememberCustomOfferWalletStillDue(admin, id);
     }
 
     await patchCustomOfferMessageAttachments(admin, id, { status: "pending" });

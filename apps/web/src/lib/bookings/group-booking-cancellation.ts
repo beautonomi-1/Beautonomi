@@ -17,6 +17,11 @@ import {
   settleBookingCancellation,
   settleBookingFinanceById,
 } from './settle-booking-cancellation';
+import {
+  lineUpBookingStockWithSavedStatus,
+  restoreBookingRetailStock,
+} from '@/lib/bookings/deduct-booking-retail-stock';
+import { returnPackageSessionAfterCancel } from '@/lib/bookings/return-package-session-after-cancel';
 
 function financeActorToCancelActor(actor: CancellationSettledBy): CancelActor {
   if (actor === 'portal') return 'portal';
@@ -35,7 +40,62 @@ export type GroupBookingChildSettlement = {
   bookingId: string;
   walletRefund: number;
   inPersonRefundDue: number;
+  currency: string;
+  /** Settlement threw or returned no result, so no wallet credit was confirmed. */
+  settlementFailed: boolean;
+  /** Wallet credit finished. False when it was still owed and the credit did not succeed. */
+  refundSucceeded: boolean;
+  giftCardRestored: boolean;
+  giftValueStillDue: boolean;
+  guestShareRefundFailed: boolean;
 };
+
+function childSettlementFromResult(
+  bookingId: string,
+  currency: string,
+  fallbackInPerson: number,
+  settleResult:
+    | {
+        walletRefundAmount?: number;
+        refundResult?: { success?: boolean };
+        giftCardVoidAttempted?: boolean;
+        giftValueStillDue?: boolean;
+        inPersonCashRefundDue?: number | null;
+        guestShareRefundFailed?: boolean;
+      }
+    | null
+    | undefined,
+  settlementFailed: boolean,
+): GroupBookingChildSettlement {
+  if (settlementFailed || !settleResult) {
+    return {
+      bookingId,
+      walletRefund: 0,
+      inPersonRefundDue: fallbackInPerson,
+      currency,
+      settlementFailed,
+      refundSucceeded: !settlementFailed,
+      giftCardRestored: false,
+      giftValueStillDue: false,
+      guestShareRefundFailed: false,
+    };
+  }
+  const reported = settleResult.refundResult;
+  return {
+    bookingId,
+    walletRefund: Number(settleResult.walletRefundAmount ?? 0),
+    inPersonRefundDue:
+      settleResult.inPersonCashRefundDue != null
+        ? Number(settleResult.inPersonCashRefundDue)
+        : fallbackInPerson,
+    currency,
+    settlementFailed: false,
+    refundSucceeded: reported ? reported.success === true : true,
+    giftCardRestored: settleResult.giftCardVoidAttempted === true,
+    giftValueStillDue: settleResult.giftValueStillDue === true,
+    guestShareRefundFailed: settleResult.guestShareRefundFailed === true,
+  };
+}
 
 const TERMINAL_CHILD_STATUSES = new Set(["completed", "cancelled", "no_show"]);
 
@@ -120,6 +180,7 @@ export async function cancelGroupBooking(
     const bookingsAdmin = getBookingsAdminClient();
     let claimedForSettlement = preCancelled;
     if (!preCancelled) {
+      const stockReturned = await restoreBookingRetailStock(bookingsAdmin, bookingId);
       const { data: claimed, error } = await bookingsAdmin
         .from('bookings')
         .update({
@@ -132,6 +193,9 @@ export async function cancelGroupBooking(
         .eq('id', bookingId)
         .not('status', 'in', '(completed,cancelled,no_show)')
         .select('id');
+      if (error || !Array.isArray(claimed) || claimed.length === 0) {
+        await lineUpBookingStockWithSavedStatus(bookingsAdmin, bookingId, [], stockReturned);
+      }
       if (error) {
         throw new Error(
           `Failed to cancel group booking child ${bookingId}: ${error.message}`,
@@ -139,12 +203,22 @@ export async function cancelGroupBooking(
       }
       // Zero rows: a concurrent cancel already claimed this child and owns its settlement.
       claimedForSettlement = Array.isArray(claimed) && claimed.length > 0;
+      if (claimedForSettlement) {
+        await returnPackageSessionAfterCancel(bookingsAdmin, bookingId);
+      }
     }
     if (claimedForSettlement) {
       cancelledBookingIds.push(bookingId);
-      let walletRefund = 0;
       // Cash / terminal / bank transfer money is never wallet-credited; the provider refunds it.
       const inPersonRefundDue = loadedOutcome?.inPersonRefundDue ?? 0;
+      const currency = String(booking.currency ?? "ZAR");
+      let childSettlement = childSettlementFromResult(
+        bookingId,
+        currency,
+        inPersonRefundDue,
+        null,
+        options?.settleFinance === true,
+      );
       if (options?.settleFinance) {
         try {
           if (loadedOutcome) {
@@ -157,14 +231,21 @@ export async function cancelGroupBooking(
               .maybeSingle();
             if (finRow) {
               const grossTotal = Number(finRow.total_amount ?? 0);
+              const rowCurrency = (finRow.currency as string) || currency;
               const settleResult = await settleBookingCancellation(
                 settleParamsFromCancellationOutcome(loadedOutcome, cancelActor, {
                   booking: { ...finRow, total_amount: grossTotal },
-                  currency: (finRow.currency as string) || String(booking.currency ?? "ZAR"),
+                  currency: rowCurrency,
                   refundBookingTotal: grossTotal,
                 }),
               );
-              walletRefund = settleResult.walletRefundAmount;
+              childSettlement = childSettlementFromResult(
+                bookingId,
+                rowCurrency,
+                inPersonRefundDue,
+                settleResult,
+                false,
+              );
               await bookingsAdmin
                 .from("bookings")
                 .update({ cancellation_fee: settleResult.cancellationFeeApplied })
@@ -175,15 +256,26 @@ export async function cancelGroupBooking(
               policy: options.financeContext?.policy,
               isLateCancellation: options.financeContext?.isLateCancellation,
             });
-            if (settleResult) {
-              walletRefund = settleResult.walletRefundAmount;
-            }
+            childSettlement = childSettlementFromResult(
+              bookingId,
+              currency,
+              inPersonRefundDue,
+              settleResult,
+              !settleResult,
+            );
           }
         } catch (settleErr) {
           console.error("[group cancel] finance settlement failed for", bookingId, settleErr);
+          childSettlement = childSettlementFromResult(
+            bookingId,
+            currency,
+            inPersonRefundDue,
+            null,
+            true,
+          );
         }
       }
-      childSettlements.push({ bookingId, walletRefund, inPersonRefundDue });
+      childSettlements.push(childSettlement);
     }
   }
 
@@ -265,6 +357,7 @@ export async function cancelGroupBookingParticipant(
   if (linkedBookingId) {
     const now = new Date().toISOString();
     const bookingsAdmin = getBookingsAdminClient();
+    let visitCancelled = Boolean(options?.bookingAlreadyCancelled);
     if (options?.bookingAlreadyCancelled) {
       await bookingsAdmin
         .from('bookings')
@@ -274,7 +367,8 @@ export async function cancelGroupBookingParticipant(
         })
         .eq('id', linkedBookingId);
     } else {
-      await bookingsAdmin
+      const stockReturned = await restoreBookingRetailStock(bookingsAdmin, linkedBookingId);
+      const { data: removed, error: removeError } = await bookingsAdmin
         .from('bookings')
         .update({
           status: 'cancelled',
@@ -285,21 +379,29 @@ export async function cancelGroupBookingParticipant(
           updated_at: now,
         })
         .eq('id', linkedBookingId)
-        .not('status', 'in', '(completed,no_show,cancelled)');
-
-      try {
-        const { settleBookingFinanceById } = await import("./settle-booking-cancellation");
-        await settleBookingFinanceById(bookingsAdmin, linkedBookingId, "provider");
-      } catch (settleErr) {
-        console.error("[group participant cancel] finance settlement failed:", settleErr);
+        .not('status', 'in', '(completed,no_show,cancelled)')
+        .select('id');
+      if (removeError || !Array.isArray(removed) || removed.length === 0) {
+        await lineUpBookingStockWithSavedStatus(bookingsAdmin, linkedBookingId, [], stockReturned);
+      } else {
+        visitCancelled = true;
+        await returnPackageSessionAfterCancel(bookingsAdmin, linkedBookingId);
+        try {
+          const { settleBookingFinanceById } = await import("./settle-booking-cancellation");
+          await settleBookingFinanceById(bookingsAdmin, linkedBookingId, "provider");
+        } catch (settleErr) {
+          console.error("[group participant cancel] finance settlement failed:", settleErr);
+        }
       }
     }
 
-    try {
-      const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
-      await matchWaitlistOnCancellation(supabase, linkedBookingId);
-    } catch (waitlistErr) {
-      console.error("[group participant cancel] waitlist matching failed:", waitlistErr);
+    if (visitCancelled) {
+      try {
+        const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+        await matchWaitlistOnCancellation(supabase, linkedBookingId);
+      } catch (waitlistErr) {
+        console.error("[group participant cancel] waitlist matching failed:", waitlistErr);
+      }
     }
   }
 }
@@ -314,6 +416,8 @@ export async function getGroupBookingParticipantsForCancellation(
   participant_name: string;
   participant_email: string | null;
   participant_phone: string | null;
+  booking_id: string | null;
+  is_primary_contact: boolean;
 }>> {
   const groupBooking = await getGroupBooking(supabase, groupBookingId);
   if (!groupBooking) {
@@ -324,5 +428,7 @@ export async function getGroupBookingParticipantsForCancellation(
     participant_name: p.participant_name,
     participant_email: p.participant_email,
     participant_phone: p.participant_phone,
+    booking_id: p.booking_id ?? null,
+    is_primary_contact: p.is_primary_contact === true,
   }));
 }

@@ -103,9 +103,6 @@ function TerminalPaymentReturnInner() {
 
     const run = async () => {
       try {
-        if (isHostedCheckoutFailureStatus(hostedStatus)) {
-          throw new Error(pr("confirmFailed"));
-        }
         if (!reference) {
           throw new Error(
             "MISSING_REFERENCE: " + pr("missingReference"),
@@ -115,10 +112,11 @@ function TerminalPaymentReturnInner() {
         const verifyResult = await verifyWithRetry<{ status?: string; message?: string }>(
           reference,
           {
-            maxAttempts: 5,
+            maxAttempts: isHostedCheckoutFailureStatus(hostedStatus) ? 1 : 5,
             delayMs: 1500,
             sessionId,
             transactionId: flutterwaveTransactionId,
+            redirectStatus: hostedStatus,
           },
         );
         if (verifyResult.status === "failed") {

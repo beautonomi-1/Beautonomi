@@ -20,6 +20,10 @@ import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-produ
 import { notifyReviewReminder } from "@/lib/notifications";
 import { insertNotification } from "@/lib/notifications/insert-notification";
 import { evaluateSingleBookingCompletion } from "@/lib/bookings/completion-guards";
+import {
+  deductBookingRetailStock,
+  lineUpBookingStockWithSavedStatus,
+} from "@/lib/bookings/deduct-booking-retail-stock";
 import { isProviderOwnerOrManager } from "@/lib/auth/permissions";
 
 /**
@@ -182,6 +186,17 @@ export async function POST(
       console.error("Error creating booking event:", eventError);
     }
 
+    let stockTaken: Awaited<ReturnType<typeof deductBookingRetailStock>> = [];
+    try {
+      stockTaken = await deductBookingRetailStock(admin, id);
+    } catch (stockErr) {
+      return errorResponse(
+        stockErr instanceof Error ? stockErr.message : "Product stock could not be deducted",
+        "STOCK_ERROR",
+        409,
+      );
+    }
+
     // Update booking with version bump
     const currentVersion = (bookingData as { version?: number }).version || 0;
     const bookingsAdmin = getBookingsAdminClient();
@@ -199,6 +214,18 @@ export async function POST(
       .eq("version", currentVersion)
       .select("id");
 
+    if (updateError || !updatedRows?.length) {
+      try {
+        await lineUpBookingStockWithSavedStatus(bookingsAdmin, id, stockTaken, []);
+      } catch (undoErr) {
+        console.error("[complete-service] stock could not be lined up:", undoErr);
+        return errorResponse(
+          "This booking changed, and the product stock could not be put back in line with it.",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+    }
     if (updateError) {
       throw updateError;
     }
@@ -228,59 +255,7 @@ export async function POST(
 
       // Customer loyalty earn is handled by DB trigger `award_loyalty_points_on_booking_completion`
       // (migration 585) on `bookings.status -> completed`.
-
-      // §Provider-audit 2026-04 (round 2): deduct retail stock for any
-      // products attached to this booking. Mirrors the logic in
-      // PATCH /api/provider/bookings/[id] so `complete-service` (called
-      // from the booking detail "Mark complete" button) and the generic
-      // PATCH status flow produce identical inventory effects. Idempotent
-      // via the `stock_deducted_at` timestamp (migration 519).
-      try {
-        const supabaseAdmin = getSupabaseAdmin();
-        const { data: pendingProducts } = await supabaseAdmin
-          .from("booking_products")
-          .select("id, product_id, product_variant_id, quantity, products:products!booking_products_product_id_fkey(track_stock_quantity)")
-          .eq("booking_id", id)
-          .is("stock_deducted_at", null);
-        if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
-          const deductTs = new Date().toISOString();
-          for (const row of pendingProducts as Array<{
-            id: string;
-            product_id: string | null;
-            product_variant_id?: string | null;
-            quantity: number | null;
-            products?: { track_stock_quantity?: boolean | null } | null;
-          }>) {
-            if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
-            if (row.products?.track_stock_quantity === false) continue;
-            const { error: decErr } = row.product_variant_id
-              ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
-                p_variant_id: row.product_variant_id,
-                p_quantity: row.quantity,
-              })
-              : await supabaseAdmin.rpc(
-                "decrement_product_stock",
-                {
-                  p_product_id: row.product_id,
-                  p_quantity: row.quantity,
-                },
-              );
-            if (decErr) {
-              console.error(
-                `[complete-service] decrement_product_stock failed for booking ${id}, row ${row.id}:`,
-                decErr,
-              );
-              throw new Error(decErr.message || "Product stock could not be deducted");
-            }
-            await supabaseAdmin
-              .from("booking_products")
-              .update({ stock_deducted_at: deductTs })
-              .eq("id", row.id);
-          }
-        }
-      } catch (stockErr) {
-        console.error("[complete-service] failed to deduct retail stock:", stockErr);
-      }
+      // Retail stock is taken before the visit is marked complete.
 
       try {
         await syncAppointmentProductOrder(getSupabaseAdmin() as never, id);

@@ -1,4 +1,11 @@
-import { computeCatalogPackageServiceDiscount, sumGroupParticipantServicesTotal } from "@beautonomi/utils";
+import {
+  addMoney,
+  computeCatalogPackageServiceDiscount,
+  multiplyMoney,
+  subtractMoney,
+  sumGroupParticipantServicesTotal,
+  sumMoney,
+} from "@beautonomi/utils";
 
 export type BookingTotalsLineItem = {
   servicesTotal: number;
@@ -57,9 +64,9 @@ export function computeBookingPayableTotal(params: {
     tipAmount = 0,
   } = params;
   if (taxIncluded) {
-    return subtotalAfterDiscounts + serviceFeeAmount + tipAmount;
+    return sumMoney(subtotalAfterDiscounts, serviceFeeAmount, tipAmount);
   }
-  return subtotalAfterDiscounts + taxAmount + serviceFeeAmount + tipAmount;
+  return sumMoney(subtotalAfterDiscounts, taxAmount, serviceFeeAmount, tipAmount);
 }
 
 export function computeBookingTotals(input: ComputeBookingTotalsInput): BookingTotalsLineItem {
@@ -93,7 +100,7 @@ export function computeBookingTotals(input: ComputeBookingTotalsInput): BookingT
       (serviceId) => selectedServices.find((s) => s.id === serviceId)?.price ?? 0,
     );
   } else {
-    servicesTotal = selectedServices.reduce((sum, s) => sum + s.price, 0);
+    servicesTotal = selectedServices.reduce((sum, s) => addMoney(sum, s.price), 0);
   }
 
   const packageDiscount = selectedPackage
@@ -106,17 +113,21 @@ export function computeBookingTotals(input: ComputeBookingTotalsInput): BookingT
       )
     : 0;
 
-  const addonsTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0);
+  const addonsTotal = selectedAddons.reduce((sum, a) => addMoney(sum, a.price), 0);
   const productsTotal = selectedProducts.reduce(
-    (sum, p) => sum + p.price * p.quantity,
+    (sum, p) => addMoney(sum, multiplyMoney(p.price, p.quantity)),
     0,
   );
 
-  const subtotalBeforeDiscounts =
-    Math.max(0, servicesTotal - packageDiscount) + addonsTotal + productsTotal + travelFee;
+  const subtotalBeforeDiscounts = sumMoney(
+    Math.max(0, subtractMoney(servicesTotal, packageDiscount)),
+    addonsTotal,
+    productsTotal,
+    travelFee,
+  );
 
-  const discounts = couponDiscount + membershipDiscount + loyaltyDiscount;
-  const subtotalAfterDiscounts = Math.max(0, subtotalBeforeDiscounts - discounts);
+  const discounts = sumMoney(couponDiscount, membershipDiscount, loyaltyDiscount);
+  const subtotalAfterDiscounts = Math.max(0, subtractMoney(subtotalBeforeDiscounts, discounts));
   const total = computeBookingPayableTotal({
     subtotalAfterDiscounts,
     taxAmount,

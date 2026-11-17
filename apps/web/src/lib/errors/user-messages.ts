@@ -83,7 +83,29 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Online verification is temporarily unavailable. Please try again later or contact support.",
   VALIDATION_ERROR:
     "Some of the information you provided is invalid. Please review and try again.",
+
+  // ── Money (same sentences as the provider and customer apps) ──────────────
+  INVALID_STATUS: "This request is not allowed in its current status.",
+  INVALID_AMOUNT: "Enter a valid amount and try again.",
+  INSUFFICIENT_BALANCE: "There is not enough balance for this request.",
+  PAYOUT_HELD: "Payouts are temporarily on hold. Contact support if you need help.",
+  OVER_REFUND: "Refund exceeds the amount collected.",
+  LEDGER_POSTING_FAILED: "The payment could not be recorded. Please retry.",
+  PERIOD_LOCKED: "This financial period is locked.",
+  IDEMPOTENCY_KEY_CONFLICT: "This request was already processed.",
 };
+
+/** When the API body is already a safe sentence, keep it. Raw SQL uses the map. */
+const PREFER_API_MESSAGE = new Set([
+  "INVALID_STATUS",
+  "INVALID_AMOUNT",
+  "INSUFFICIENT_BALANCE",
+  "PAYOUT_HELD",
+  "OVER_REFUND",
+  "LEDGER_POSTING_FAILED",
+  "PERIOD_LOCKED",
+  "IDEMPOTENCY_KEY_CONFLICT",
+]);
 
 // ─── Public helpers ────────────────────────────────────────────────────────────
 
@@ -100,13 +122,31 @@ export function getUserFacingMessage(
   fallback?: string | null,
   genericFallback = "Something went wrong. Please try again.",
 ): string {
+  const safeFallback =
+    fallback && fallback.trim() && !looksLikeTechnical(fallback) ? fallback.trim() : null;
   if (code === "VALIDATION_ERROR") {
-    if (fallback && fallback.trim() && !looksLikeTechnical(fallback)) return fallback.trim();
-    return ERROR_MESSAGES.VALIDATION_ERROR;
+    return safeFallback ?? ERROR_MESSAGES.VALIDATION_ERROR;
   }
-  if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
-  if (fallback && fallback.trim() && !looksLikeTechnical(fallback)) return fallback.trim();
+  if (code && ERROR_MESSAGES[code]) {
+    if (safeFallback && PREFER_API_MESSAGE.has(code)) return safeFallback;
+    return ERROR_MESSAGES[code];
+  }
+  if (safeFallback) return safeFallback;
   return genericFallback;
+}
+
+/**
+ * Keep a normal API sentence. Replace only database or internal text, using the
+ * code map when one exists.
+ */
+export function sanitizeStoredApiMessage(
+  code: string | null | undefined,
+  message: string | null | undefined,
+  fallback: string,
+): string {
+  const raw = message?.trim() ?? "";
+  if (raw && !looksLikeTechnical(raw)) return raw;
+  return getUserFacingMessage(code, raw || null, fallback);
 }
 
 /**
@@ -120,6 +160,11 @@ function looksLikeTechnical(message: string): boolean {
     lower.includes("column ") ||
     lower.includes("violates ") ||
     lower.includes("duplicate key") ||
+    lower.includes("refund amount validation failed") ||
+    lower.includes("finance ledger posting failed") ||
+    lower.includes("new_total_refunded") ||
+    lower.includes("sqlstate") ||
+    lower.includes("p0001") ||
     lower.includes("stack trace") ||
     lower.includes("exception") ||
     /error at line \d+/i.test(lower) ||

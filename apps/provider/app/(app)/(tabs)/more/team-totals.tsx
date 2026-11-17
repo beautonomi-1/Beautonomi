@@ -2,6 +2,7 @@
  * Native Team Totals – daily and weekly performance for staff.
  * Full parity with web: date/week navigation, staff filter, stats cards, table.
  */
+import { addMoney } from "@beautonomi/utils";
 import { useCallback, useEffect, useState, useMemo } from "react";
 import {
   View,
@@ -147,10 +148,10 @@ export function TeamTotalsContent({ embedded = false }: { embedded?: boolean } =
       totals.reduce(
         (acc, t) => ({
           appointments: acc.appointments + t.appointments_count,
-          revenue: acc.revenue + t.revenue,
-          tips: acc.tips + t.tips,
+          revenue: addMoney(acc.revenue, t.revenue),
+          tips: addMoney(acc.tips, t.tips),
           hours: acc.hours + t.hours_worked,
-          commission: acc.commission + t.commission,
+          commission: addMoney(acc.commission, t.commission),
         }),
         { appointments: 0, revenue: 0, tips: 0, hours: 0, commission: 0 }
       ),

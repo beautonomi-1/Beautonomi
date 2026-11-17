@@ -2105,11 +2105,18 @@ export default function ChatScreen() {
             ) : (() => {
               const d = offerDetailData;
               const req = d.request;
-              const isExpired = d.status === "expired";
+              const pastExpiration =
+                !!d.expiration_at && new Date(d.expiration_at).getTime() <= Date.now();
               const isWithdrawn = d.status === "withdrawn";
-              const isPaid = d.status === "paid";
-              const isPending = d.status === "pending";
-              const isPaymentPending = d.status === "payment_pending";
+              const isDeclined = d.status === "declined";
+              const isPaid = d.status === "paid" || (d.status === "accepted" && !!d.booking_id);
+              const isFinalizeFailed = d.status === "finalize_failed" || (d.status === "accepted" && !d.booking_id);
+              const isExpired =
+                d.status === "expired" ||
+                (pastExpiration && !isPaid && !isFinalizeFailed && !isWithdrawn && !isDeclined);
+              const isChangesRequested = d.status === "changes_requested" && !isExpired;
+              const isPaymentPending = d.status === "payment_pending" && !isExpired;
+              const isPending = d.status === "pending" && !isExpired;
 
               const formatDate = (iso: string | null | undefined) => {
                 if (!iso) return t("customer.chatScreen.emDash");
@@ -2124,9 +2131,15 @@ export default function ChatScreen() {
               };
 
               const statusBadge = isWithdrawn
-                ? { label: t("customer.chatScreen.customOfferWithdrawn").replace(".", ""), bg: "#FEF3C7", text: "#92400E" }
+                ? { label: t("customer.chatScreen.customOfferBadgeWithdrawn"), bg: "#FEF3C7", text: "#92400E" }
+                : isDeclined
+                ? { label: t("customer.chatScreen.customOfferBadgeDeclined"), bg: "#F3F4F6", text: "#6B7280" }
                 : isExpired
-                ? { label: t("customer.chatScreen.customOfferExpired").replace(".", ""), bg: "#F3F4F6", text: "#6B7280" }
+                ? { label: t("customer.chatScreen.customOfferBadgeExpired"), bg: "#F3F4F6", text: "#6B7280" }
+                : isFinalizeFailed
+                ? { label: t("customer.chatScreen.offerStatusNeedsSupport", "Needs support"), bg: "#FEE2E2", text: "#991B1B" }
+                : isChangesRequested
+                ? { label: t("customer.chatScreen.requestChangesTitle"), bg: "#DBEAFE", text: "#1D4ED8" }
                 : isPaid
                 ? { label: t("customer.chatScreen.customOfferPaid"), bg: "#DCFCE7", text: "#166534" }
                 : isPaymentPending
@@ -2232,6 +2245,26 @@ export default function ChatScreen() {
                       }}
                     >
                       <Text style={{ color: Colors.white, fontSize: 15, fontWeight: "700" }}>{t("customer.chatScreen.customOfferAcceptPay")}</Text>
+                    </TouchableOpacity>
+                  ) : isPaymentPending && d.id ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOfferDetailVisible(false);
+                        setTimeout(() => openAcceptOfferOptions(d.id), 300);
+                      }}
+                      style={{
+                        marginTop: 24,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: Colors.primary,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingVertical: 14,
+                      }}
+                    >
+                      <Text style={{ color: Colors.primary, fontSize: 15, fontWeight: "700" }}>
+                        {t("customer.chatScreen.customOfferResumePayment")}
+                      </Text>
                     </TouchableOpacity>
                   ) : isPaid && d.booking_id ? (
                     <TouchableOpacity

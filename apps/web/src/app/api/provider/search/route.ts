@@ -7,6 +7,11 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { hasPermission } from "@/lib/auth/permissions";
+import {
+  bookingCustomerLabel,
+  clientSearchSuggestion,
+} from "@/lib/provider/search-contact-visibility";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
@@ -89,9 +94,14 @@ export async function GET(request: NextRequest) {
 
     const tokens = expandSearchTokens(q);
     const suggestions: ProviderSearchSuggestion[] = [];
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     // 1. Search clients (all saved provider_clients + users)
-    const providerClientRows = await loadProviderClientIndexRows(supabaseAdmin, providerId);
+    const providerClientRows = canViewClients
+      ? await loadProviderClientIndexRows(supabaseAdmin, providerId)
+      : [];
     if (providerClientRows.length > 0) {
       const customerIds = providerClientRows.map((c) => c.customer_id);
       const clientMap = new Map(
@@ -113,14 +123,8 @@ export async function GET(request: NextRequest) {
       );
 
       for (const c of customers) {
-        const providerClientId = clientMap.get(c.id);
-        suggestions.push({
-          type: "client",
-          id: providerClientId || c.id,
-          title: c.full_name || c.email || "Unknown",
-          subtitle: c.email || c.phone || undefined,
-          url: `/provider/clients/${providerClientId || c.id}`,
-        });
+        const suggestion = clientSearchSuggestion(c, clientMap.get(c.id), canViewClients);
+        if (suggestion) suggestions.push(suggestion);
       }
     }
 
@@ -138,7 +142,7 @@ export async function GET(request: NextRequest) {
 
     const pushBookingSuggestion = (b: Record<string, unknown>) => {
       const customer = b.customers as { full_name?: string; email?: string } | null;
-      const customerName = customer?.full_name || customer?.email || "";
+      const customerName = bookingCustomerLabel(customer, canViewClients);
       const scheduledDate = b.scheduled_start_at
         ? new Date(b.scheduled_start_at as string).toLocaleDateString(intlLocale, {
             month: "short",
@@ -187,6 +191,7 @@ export async function GET(request: NextRequest) {
         bookingCustomerIds,
         q,
         tokens,
+        { nameOnly: !canViewClients },
       );
 
       if (customerIds.length > 0) {

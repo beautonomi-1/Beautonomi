@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 /**
  * GET /api/cron/recognize-period-revenue
  * Daily deferred-revenue recognition (Phase 11): subscription pro-rata and
@@ -77,7 +78,7 @@ async function runJob(request: NextRequest) {
   }
 
   const totalCount = results.reduce((s, r) => s + r.recognized_count, 0);
-  const totalAmount = results.reduce((s, r) => s + r.recognized_amount, 0);
+  const totalAmount = results.reduce((s, r) => addMoney(s, r.recognized_amount), 0);
 
   return NextResponse.json({
     ok: true,

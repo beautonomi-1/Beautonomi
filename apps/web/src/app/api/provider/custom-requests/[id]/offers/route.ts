@@ -183,6 +183,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const expIso = expDate.toISOString();
     const scheduledIso = body.scheduled_at ? new Date(body.scheduled_at).toISOString() : null;
 
+    const { data: blockingOffers } = await supabase
+      .from("custom_offers")
+      .select("id, status")
+      .eq("request_id", id)
+      .in("status", ["payment_pending", "paid", "finalize_failed", "accepted"])
+      .limit(1);
+    if (blockingOffers && blockingOffers.length > 0) {
+      return errorResponse(
+        "This request already has an offer that is paid or being paid. Wait for that payment to finish before sending another quote.",
+        "OFFER_ALREADY_IN_PROGRESS",
+        409,
+      );
+    }
+
     const travelFeeAmount = body.travel_fee != null && body.travel_fee >= 0 ? Number(body.travel_fee) : 0;
     const { data: offer, error } = await supabase
       .from("custom_offers")

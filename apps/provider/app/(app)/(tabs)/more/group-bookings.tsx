@@ -103,7 +103,7 @@ import {
   shouldRejectStaleListPaymentSync,
 } from "@/lib/group-booking-detail-helpers";
 import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
-import { countryFilterIso2FromStorage, manualCardCollectOptionLabel } from "@beautonomi/utils";
+import { subtractMoney, addMoney, countryFilterIso2FromStorage, manualCardCollectOptionLabel, multiplyMoney, sumMoney } from "@beautonomi/utils";
 import { normalizeProductsList } from "@/lib/unpack-provider-api";
 import {
   formatGroupPaymentStatusLabel,
@@ -258,7 +258,7 @@ function groupProductLineTotal(product: GroupProductLine): number {
     Number(
       product.total_price ??
         product.totalPrice ??
-        (Number(product.unit_price ?? product.unitPrice ?? product.price ?? 0) || 0) * qty
+        multiplyMoney(Number(product.unit_price ?? product.unitPrice ?? product.price ?? 0) || 0, qty)
     ) || 0
   );
 }
@@ -380,7 +380,7 @@ function canResendGuestPayLink(p: Participant): boolean {
   if (p.is_primary_contact || p.share_amount_due == null) return false;
   const status = String(p.share_status ?? "").toLowerCase();
   if (status === "paid" || status === "cancelled" || status === "waived") return false;
-  return Number(p.share_amount_due) - Number(p.share_amount_paid ?? 0) > 0.005;
+  return subtractMoney(Number(p.share_amount_due), Number(p.share_amount_paid ?? 0)) > 0.005;
 }
 
 const GROUP_PRE_START_STATUSES = ["confirmed", "booked", "waiting", "pending"];
@@ -409,6 +409,8 @@ type ServiceRow = {
   global_category?: { id?: string | null; name?: string | null; title?: string | null } | null;
   provider_categories?: { id?: string | null; name?: string | null; title?: string | null } | null;
   add_ons?: AddOnRow[];
+  /** Staff qualified for this service (empty = anyone). */
+  team_member_ids?: string[] | null;
   resource_requirements?: Array<{
     resource_id: string;
     name: string;
@@ -417,7 +419,25 @@ type ServiceRow = {
     location_id?: string | null;
   }>;
 };
-type TeamRow = { id: string; name?: string };
+type TeamRow = { id: string; name?: string; is_active?: boolean };
+
+/** Team members who can perform `serviceId`; variants inherit their parent's assignment. */
+function staffEligibleForService(
+  serviceId: string,
+  services: ServiceRow[],
+  team: TeamRow[],
+): TeamRow[] {
+  if (!serviceId) return team;
+  const svc = services.find((s) => s.id === serviceId);
+  let allowed = svc?.team_member_ids?.filter(Boolean) ?? [];
+  if (allowed.length === 0 && svc?.parent_service_id) {
+    const parent = services.find((s) => s.id === svc.parent_service_id);
+    allowed = parent?.team_member_ids?.filter(Boolean) ?? [];
+  }
+  if (allowed.length === 0) return team;
+  const eligible = team.filter((m) => allowed.includes(m.id));
+  return eligible.length > 0 ? eligible : team;
+}
 type AddOnRow = { id: string; name: string; price?: number; duration_minutes?: number };
 type ParticipantFormRow = {
   id: string;
@@ -680,6 +700,40 @@ function SelectChip({
   );
 }
 
+/** Inline placeholder for a catalog list that is still loading or failed (tap retries). */
+function CatalogLoadChip({
+  failed,
+  loadingLabel,
+  failedLabel,
+  onRetry,
+}: {
+  failed: boolean;
+  loadingLabel: string;
+  failedLabel: string;
+  onRetry: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={failed ? onRetry : undefined}
+      disabled={!failed}
+      style={twStyle(
+        "me-2 self-start flex-row items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-2",
+      )}
+      accessibilityRole="button"
+      accessibilityState={{ busy: !failed }}
+    >
+      {failed ? (
+        <Ionicons name="refresh" size={14} color="#92400e" style={{ marginEnd: 6 }} />
+      ) : (
+        <ActivityIndicator size="small" color="#92400e" style={{ marginEnd: 6 }} />
+      )}
+      <Text style={twStyle("text-xs font-medium text-amber-900")}>
+        {failed ? failedLabel : loadingLabel}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 function serviceLabel(service: ServiceRow, variantLabel: string): string {
   if (service.variant_name?.trim()) return `${service.title} · ${service.variant_name.trim()}`;
   if (service.service_type === "variant") return `${service.title} · ${variantLabel}`;
@@ -702,7 +756,7 @@ function getParticipantLine(
     .filter((ao): ao is AddOnRow => Boolean(ao));
   const basePrice = Number(service?.price ?? 0) || 0;
   const baseDuration = Number(service?.duration_minutes ?? 60) || 60;
-  const addOnPrice = addOns.reduce((sum, ao) => sum + (Number(ao.price ?? 0) || 0), 0);
+  const addOnPrice = addOns.reduce((sum, ao) => addMoney(sum, Number(ao.price ?? 0) || 0), 0);
   const addOnDuration = addOns.reduce(
     (sum, ao) => sum + (Number(ao.duration_minutes ?? 0) || 0),
     0
@@ -711,7 +765,7 @@ function getParticipantLine(
     serviceId,
     service,
     addOns,
-    price: basePrice + addOnPrice,
+    price: addMoney(basePrice, addOnPrice),
     durationMinutes: baseDuration + addOnDuration,
   };
 }
@@ -733,6 +787,9 @@ type CreateParticipantRowProps = {
   services: ServiceRow[];
   servicesForPicking: ServiceRow[];
   serviceChipLabels: Map<string, string>;
+  servicesUnresolved: boolean;
+  servicesLoadFailed: boolean;
+  onRetryServices: () => void;
   teamMembers: TeamRow[];
   teamRosterUnresolved: boolean;
   teamLoadFailed: boolean;
@@ -757,6 +814,9 @@ const CreateParticipantRow = memo(function CreateParticipantRow({
   services,
   servicesForPicking,
   serviceChipLabels,
+  servicesUnresolved,
+  servicesLoadFailed,
+  onRetryServices,
   teamMembers,
   teamRosterUnresolved,
   teamLoadFailed,
@@ -777,6 +837,17 @@ const CreateParticipantRow = memo(function CreateParticipantRow({
   const handlePhone = useCallback((phone: string) => onUpdate(id, { phone }), [id, onUpdate]);
   const line = getParticipantLine(participant, defaultServiceId, services);
   const addOns = line.service?.add_ons ?? [];
+  const serviceOptions = useMemo(() => {
+    if (!defaultServiceId) return servicesForPicking;
+    const defaultSvc = servicesForPicking.find((s) => s.id === defaultServiceId);
+    return defaultSvc
+      ? [defaultSvc, ...servicesForPicking.filter((s) => s.id !== defaultServiceId)]
+      : servicesForPicking;
+  }, [servicesForPicking, defaultServiceId]);
+  const staffOptions = useMemo(
+    () => staffEligibleForService(line.serviceId, services, teamMembers),
+    [line.serviceId, services, teamMembers],
+  );
 
   return (
     <View
@@ -900,17 +971,28 @@ const CreateParticipantRow = memo(function CreateParticipantRow({
         <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>
           {gb("whatParticipantWants")}
         </Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {servicesForPicking.map((svc) => (
-            <SelectChip
-              key={`${id}-${svc.id}`}
-              label={serviceChipLabels.get(svc.id) ?? sl(svc)}
-              selected={(participant.serviceId || defaultServiceId) === svc.id}
-              onPress={() => onUpdate(id, { serviceId: svc.id, addOnIds: [] })}
-            />
-          ))}
-        </ScrollView>
-        {!line.service ? (
+        {servicesUnresolved ? (
+          <CatalogLoadChip
+            failed={servicesLoadFailed}
+            loadingLabel={gb("loadingServices")}
+            failedLabel={gb("servicesRetryInline")}
+            onRetry={onRetryServices}
+          />
+        ) : serviceOptions.length === 0 ? (
+          <Text style={twStyle("text-[11px] text-amber-800")}>{gb("noServicesForGroup")}</Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {serviceOptions.map((svc) => (
+              <SelectChip
+                key={`${id}-${svc.id}`}
+                label={serviceChipLabels.get(svc.id) ?? sl(svc)}
+                selected={(participant.serviceId || defaultServiceId) === svc.id}
+                onPress={() => onUpdate(id, { serviceId: svc.id, addOnIds: [] })}
+              />
+            ))}
+          </ScrollView>
+        )}
+        {servicesUnresolved || serviceOptions.length === 0 ? null : !line.service ? (
           <Text style={twStyle("mt-1 text-[11px] text-red-600")}>
             {gb("selectServiceForParticipant")}
           </Text>
@@ -965,21 +1047,17 @@ const CreateParticipantRow = memo(function CreateParticipantRow({
           </View>
         )}
       </View>
-      {teamRosterUnresolved || teamMembers.length > 0 ? (
+      {teamRosterUnresolved || staffOptions.length > 0 ? (
         <View style={twStyle("mt-3")}>
           <Text style={twStyle("mb-1 text-xs font-medium text-gray-600")}>{gb("staffOptional")}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {teamRosterUnresolved ? (
-              <TouchableOpacity
-                onPress={() => {
-                  if (teamLoadFailed) onRetryTeam();
-                }}
-                style={twStyle("me-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2")}
-              >
-                <Text style={twStyle("text-xs font-medium text-amber-900")}>
-                  {teamLoadFailed ? gb("staffRetryInline") : gb("loadingTeam")}
-                </Text>
-              </TouchableOpacity>
+              <CatalogLoadChip
+                failed={teamLoadFailed}
+                loadingLabel={gb("loadingTeam")}
+                failedLabel={gb("staffRetryInline")}
+                onRetry={onRetryTeam}
+              />
             ) : (
               <>
                 <SelectChip
@@ -987,14 +1065,14 @@ const CreateParticipantRow = memo(function CreateParticipantRow({
                   selected={!participant.staffId}
                   onPress={() => onUpdate(id, { staffId: "" })}
                 />
-                {teamMembers.length >= 2 ? (
+                {staffOptions.length >= 2 ? (
                   <SelectChip
                     label={gb("anyAvailableStaff")}
                     selected={participant.staffId === ANY_STAFF_ID}
                     onPress={() => onUpdate(id, { staffId: ANY_STAFF_ID })}
                   />
                 ) : null}
-                {teamMembers.map((m) => (
+                {staffOptions.map((m) => (
                   <SelectChip
                     key={`${id}-staff-${m.id}`}
                     label={m.name ?? gb("staffFallback")}
@@ -1115,14 +1193,32 @@ export default function GroupBookingsScreen() {
     isOwner || permissionData?.permissions?.issue_refunds === true;
   const canCompleteWithUnpaid = isOwner || permissionData?.isManager === true;
 
-  const { data: servicesRaw, refresh: refreshServices } = useApi<ServiceRow[]>(
+  const {
+    data: servicesRaw,
+    loading: servicesLoading,
+    error: servicesError,
+    refresh: refreshServices,
+  } = useApi<ServiceRow[]>(
     "/api/provider/services?include_variants=true&include_offering_resources=true&include_addons=true"
   );
-  const { data: productsRaw, refresh: refreshProducts } = useApi<unknown>(
-    "/api/provider/products?limit=200"
-  );
-  const teamUrl = selectedLocationId
-    ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
+  /** In flight or failed with no list — must not read as "this business has no services". */
+  const servicesUnresolved = (servicesLoading && !servicesRaw) || (!!servicesError && !servicesRaw);
+  const servicesLoadFailed = !!servicesError && !servicesRaw;
+  const retryServices = useCallback(() => {
+    void refreshServices();
+  }, [refreshServices]);
+  // Products only feed the create sheet's picker; don't compete with the list on mount.
+  const [productsRequested, setProductsRequested] = useState(false);
+  const {
+    data: productsRaw,
+    loading: productsLoading,
+    error: productsError,
+    refresh: refreshProducts,
+  } = useApi<unknown>("/api/provider/products?limit=200", { enabled: productsRequested });
+  const [teamLocationOverride, setTeamLocationOverride] = useState<string | null>(null);
+  const teamLocationId = teamLocationOverride ?? selectedLocationId;
+  const teamUrl = teamLocationId
+    ? `/api/provider/team?location_id=${encodeURIComponent(teamLocationId)}`
     : "/api/provider/team";
   const {
     data: teamRaw,
@@ -1162,7 +1258,10 @@ export default function GroupBookingsScreen() {
     };
   }, [refreshProducts, refreshServices]);
 
-  const teamMembers = useMemo(() => (Array.isArray(teamRaw) ? teamRaw : []), [teamRaw]);
+  const teamMembers = useMemo(
+    () => (Array.isArray(teamRaw) ? teamRaw.filter((m) => m.is_active !== false) : []),
+    [teamRaw],
+  );
   const [selectedServiceCategory, setSelectedServiceCategory] = useState("all");
   const [showServiceCategorySheet, setShowServiceCategorySheet] = useState(false);
   const [selectedProductCategory, setSelectedProductCategory] = useState("all");
@@ -1317,6 +1416,46 @@ export default function GroupBookingsScreen() {
   });
   const createDefaultServiceIdRef = useRef(createForm.serviceId);
   createDefaultServiceIdRef.current = createForm.serviceId;
+
+  // Staff chips must reflect the salon picked in the sheet, not only the header location.
+  useEffect(() => {
+    const sheetLocation =
+      showCreate && createForm.locationType === "at_salon" && createForm.locationId
+        ? createForm.locationId
+        : null;
+    setTeamLocationOverride(
+      sheetLocation && sheetLocation !== selectedLocationId ? sheetLocation : null,
+    );
+  }, [showCreate, createForm.locationType, createForm.locationId, selectedLocationId]);
+
+  const createStaffOptions = useMemo(
+    () => staffEligibleForService(createForm.serviceId, services, teamMembers),
+    [createForm.serviceId, services, teamMembers],
+  );
+
+  // Drop staff picks that are not on the loaded roster (location / service changed) and
+  // auto-pick the only qualified person, matching the single-booking flow.
+  useEffect(() => {
+    if (!showCreate || teamRosterUnresolved) return;
+    setCreateForm((p) => {
+      if (isAnyStaffId(p.staffId)) {
+        return createStaffOptions.length >= 2 ? p : { ...p, staffId: createStaffOptions[0]?.id ?? "" };
+      }
+      if (p.staffId && createStaffOptions.some((m) => m.id === p.staffId)) return p;
+      const next = createStaffOptions.length === 1 ? createStaffOptions[0].id : "";
+      return p.staffId === next ? p : { ...p, staffId: next };
+    });
+    const rosterIds = new Set(teamMembers.map((m) => m.id));
+    setCreateParticipants((prev) =>
+      prev.some((p) => p.staffId && !isAnyStaffId(p.staffId) && !rosterIds.has(p.staffId))
+        ? prev.map((p) =>
+            p.staffId && !isAnyStaffId(p.staffId) && !rosterIds.has(p.staffId)
+              ? { ...p, staffId: "" }
+              : p,
+          )
+        : prev,
+    );
+  }, [showCreate, teamRosterUnresolved, createStaffOptions, teamMembers]);
   const createFormServiceResources = useMemo(() => {
     if (!createForm.serviceId) return [];
     const svc = services.find((s) => s.id === createForm.serviceId);
@@ -1361,6 +1500,9 @@ export default function GroupBookingsScreen() {
   const [createProducts, setCreateProducts] = useState<SelectedGroupProduct[]>([]);
   const [showPackagePicker, setShowPackagePicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
+  useEffect(() => {
+    if (showProductPicker) setProductsRequested(true);
+  }, [showProductPicker]);
   const finishProductPicker = useCallback(() => {
     setShowProductPicker(false);
     requestAnimationFrame(() => setShowCreate(true));
@@ -1588,7 +1730,7 @@ export default function GroupBookingsScreen() {
         duration: createForm.duration,
         serviceId: createForm.serviceId,
         staffId: createForm.staffId,
-        staffListLength: teamMembers.length,
+        staffListLength: createStaffOptions.length,
         staffRosterUnresolved: teamRosterUnresolved,
         locationType: createForm.locationType,
         addressLine1: createForm.addressLine1,
@@ -1611,7 +1753,7 @@ export default function GroupBookingsScreen() {
       createForm.duration,
       createForm.serviceId,
       createForm.staffId,
-      teamMembers.length,
+      createStaffOptions.length,
       teamRosterUnresolved,
       createForm.locationType,
       createForm.addressLine1,
@@ -1952,7 +2094,7 @@ export default function GroupBookingsScreen() {
       apiStats?.participant_booked_gross ??
       groups
         .filter((g) => g.status === "completed")
-        .reduce((s, g) => s + (Number(g.total_price) || 0), 0);
+        .reduce((s, g) => addMoney(s, Number(g.total_price) || 0), 0);
     const recognizedEarnings = apiStats?.recognized_earnings ?? 0;
     return {
       total: groupData?.total ?? groups.length,
@@ -2435,6 +2577,9 @@ export default function GroupBookingsScreen() {
     setValidatingCreateAddress(false);
     setParticipantSearchMap({});
     resetSections();
+    setProductsRequested(true);
+    if (servicesLoadFailed) void refreshServices();
+    if (teamError && !teamRaw) void refreshTeamList();
     setShowCreate(true);
   }
 
@@ -2468,7 +2613,7 @@ export default function GroupBookingsScreen() {
       duration: createForm.duration,
       serviceId: createForm.serviceId,
       staffId: createForm.staffId,
-      staffListLength: teamMembers.length,
+      staffListLength: createStaffOptions.length,
       staffRosterUnresolved: teamRosterUnresolved,
       locationType: createForm.locationType,
       addressLine1: createForm.addressLine1,
@@ -2737,14 +2882,15 @@ export default function GroupBookingsScreen() {
         productName: p.productName,
         quantity: p.quantity,
         unitPrice: p.unitPrice,
-        totalPrice: p.unitPrice * p.quantity,
+        totalPrice: multiplyMoney(p.unitPrice, p.quantity),
         productVariantId: p.productVariantId || null,
       })),
       subtotal: args.unitPrice,
-      total_amount:
-        args.unitPrice +
-        (args.locationType === "at_home" ? Number(args.address?.travel_fee || 0) : 0) +
-        (args.products ?? []).reduce((sum, p) => sum + p.unitPrice * p.quantity, 0),
+      total_amount: sumMoney(
+        args.unitPrice,
+        args.locationType === "at_home" ? Number(args.address?.travel_fee || 0) : 0,
+        (args.products ?? []).reduce((sum, p) => addMoney(sum, multiplyMoney(p.unitPrice, p.quantity)), 0),
+      ),
       booking_source: "provider",
       status: "confirmed",
       ...(args.paymentMethod ? { payment_method: args.paymentMethod } : {}),
@@ -2966,7 +3112,7 @@ export default function GroupBookingsScreen() {
       : undefined;
     const travelFee = Math.max(0, Number(createForm.travelFee || 0) || 0);
     const productsTotal = createProducts.reduce(
-      (sum, p) => sum + (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1),
+      (sum, p) => addMoney(sum, multiplyMoney(Number(p.unitPrice) || 0, Math.max(1, Number(p.quantity) || 1))),
       0
     );
     const participantLines = participantsToCreate.map((p) =>
@@ -2976,7 +3122,7 @@ export default function GroupBookingsScreen() {
         services
       )
     );
-    const participantTotal = participantLines.reduce((sum, line) => sum + line.price, 0);
+    const participantTotal = participantLines.reduce((sum, line) => addMoney(sum, line.price), 0);
     const totalDuration = Math.max(
       duration,
       ...participantLines.map((line) => line.durationMinutes)
@@ -2990,7 +3136,7 @@ export default function GroupBookingsScreen() {
       location_type: createForm.locationType,
       travel_fee: createForm.locationType === "at_home" ? travelFee : 0,
       total_price:
-        participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0),
+        sumMoney(participantTotal, productsTotal, createForm.locationType === "at_home" ? travelFee : 0),
       // §Group-booking-audit 2026-05 (notify primary): tell the API whether
       // to email/push the primary contact (default true from review sheet).
       send_notification: createSendNotification,
@@ -3001,7 +3147,7 @@ export default function GroupBookingsScreen() {
         product_variant_name: p.productVariantName,
         quantity: p.quantity,
         unit_price: p.unitPrice,
-        total_price: p.unitPrice * p.quantity,
+        total_price: multiplyMoney(p.unitPrice, p.quantity),
       })),
     };
     if (createForm.serviceId) {
@@ -3091,6 +3237,12 @@ export default function GroupBookingsScreen() {
         );
         return;
       }
+      if (createErrorCode === "TIMEOUT" || createErrorCode === "NETWORK_ERROR") {
+        // The server may still finish creating the group; retrying blindly would duplicate it.
+        void refresh();
+        Alert.alert(gb("createUncertainTitle"), gb("createUncertainBody"));
+        return;
+      }
       Alert.alert(gb("errorTitle"), error);
       return;
     }
@@ -3129,7 +3281,7 @@ export default function GroupBookingsScreen() {
         void refresh();
         // Determine total price from form state (mirroring the total_price in the payload above)
         const fallbackTotal =
-          participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+          sumMoney(participantTotal, productsTotal, createForm.locationType === "at_home" ? travelFee : 0);
         void resolveGroupBalanceDue(createdGroupId, fallbackTotal).then((totalAmt) => {
         setIsPreparingTerminal(true);
         // api.post<T>: T is the inner data object returned by successResponse
@@ -3166,7 +3318,7 @@ export default function GroupBookingsScreen() {
       setShowCreate(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const fallbackTotal =
-        participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+        sumMoney(participantTotal, productsTotal, createForm.locationType === "at_home" ? travelFee : 0);
       InteractionManager.runAfterInteractions(() => {
         void refresh();
         void resolveGroupBalanceDue(createdGroupId, fallbackTotal).then((totalAmt) => {
@@ -3189,7 +3341,7 @@ export default function GroupBookingsScreen() {
       setShowCreate(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const fallbackTotal =
-        participantTotal + productsTotal + (createForm.locationType === "at_home" ? travelFee : 0);
+        sumMoney(participantTotal, productsTotal, createForm.locationType === "at_home" ? travelFee : 0);
       InteractionManager.runAfterInteractions(() => {
         void refresh();
         void resolveGroupBalanceDue(createdGroupId, fallbackTotal).then((totalAmt) => {
@@ -4459,7 +4611,7 @@ export default function GroupBookingsScreen() {
                     }))
                     .filter((r) => r.amount > 0.01);
                   if (refundable.length === 0) return null;
-                  const total = refundable.reduce((s, r) => s + r.amount, 0);
+                  const total = refundable.reduce((s, r) => addMoney(s, r.amount), 0);
                   return (
                     <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-3")}>
                       <Text style={twStyle("text-sm font-medium text-gray-700")}>{gb("refundPreviewTitle")}</Text>
@@ -4611,7 +4763,7 @@ export default function GroupBookingsScreen() {
                             if (p.is_primary_contact || !share.share_status) return null;
                             const owed = Math.max(
                               0,
-                              Number(share.share_amount_due ?? 0) - Number(share.share_amount_paid ?? 0),
+                              subtractMoney(Number(share.share_amount_due ?? 0), Number(share.share_amount_paid ?? 0)),
                             );
                             return (
                               <View style={twStyle("mt-1 flex-row items-center flex-wrap")}>
@@ -5518,7 +5670,19 @@ export default function GroupBookingsScreen() {
             placeholderTextColor="#9ca3af"
             keyboardType="email-address"
           />
-          {servicesForPicking.length > 0 ? (
+          {servicesUnresolved ? (
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+                {gb("participantServiceRequired")}
+              </Text>
+              <CatalogLoadChip
+                failed={servicesLoadFailed}
+                loadingLabel={gb("loadingServices")}
+                failedLabel={gb("servicesRetryInline")}
+                onRetry={retryServices}
+              />
+            </View>
+          ) : servicesForPicking.length > 0 ? (
             <View style={twStyle("mb-3")}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                 {gb("participantServiceRequired")}
@@ -5972,7 +6136,6 @@ export default function GroupBookingsScreen() {
             </View>
           ) : null}
 
-          {services.length > 0 ? (
             <View
               style={twStyle("mb-3")}
               onLayout={(e) => registerSection("serviceId", e.nativeEvent.layout.y)}
@@ -5983,6 +6146,31 @@ export default function GroupBookingsScreen() {
               <Text style={twStyle("mb-2 text-xs text-gray-500")}>
                 {gb("defaultServiceHint")}
               </Text>
+              {servicesUnresolved ? (
+                <CatalogLoadChip
+                  failed={servicesLoadFailed}
+                  loadingLabel={gb("loadingServices")}
+                  failedLabel={gb("servicesRetryInline")}
+                  onRetry={() => void refreshServices()}
+                />
+              ) : servicesForPicking.length === 0 ? (
+                <View style={twStyle("rounded-xl border border-amber-200 bg-amber-50 px-3 py-3")}>
+                  <Text style={twStyle("text-xs text-amber-900")}>{gb("noServicesForGroup")}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowCreate(false);
+                      router.push("/(app)/(tabs)/more/service-form" as never);
+                    }}
+                    style={twStyle("mt-2 self-start rounded-full bg-white px-3 py-1.5")}
+                    accessibilityRole="button"
+                  >
+                    <Text style={twStyle("text-xs font-semibold text-indigo-700")}>
+                      {gb("addServiceCta")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+              <>
               {serviceCategoryOptions.length > 1 ? (
                 useServiceCategoryPickerSheet ? (
                   <TouchableOpacity
@@ -6034,7 +6222,7 @@ export default function GroupBookingsScreen() {
                   return serviceChoices.map((choice) => (
                     <SelectChip
                       key={choice.id}
-                      label={sl(choice)}
+                      label={serviceChipLabels.get(choice.id) ?? sl(choice)}
                       selected={createForm.serviceId === choice.id}
                       onPress={() => {
                         clearCreateFieldError("serviceId");
@@ -6057,6 +6245,8 @@ export default function GroupBookingsScreen() {
                   ));
                 })}
               </ScrollView>
+              </>
+              )}
               {createFieldError === "serviceId" ? (
                 <Text style={twStyle("mt-2 text-xs font-medium text-red-600")}>
                   {gb("selectDefaultService")}
@@ -6079,34 +6269,33 @@ export default function GroupBookingsScreen() {
                 </View>
               ) : null}
             </View>
-          ) : null}
 
-          {teamRosterUnresolved || teamMembers.length > 0 ? (
+          {teamRosterUnresolved || createStaffOptions.length > 0 ? (
             <View
               style={twStyle("mb-3")}
               onLayout={(e) => registerSection("staffId", e.nativeEvent.layout.y)}
             >
               <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-                {gb("staff")}{" "}
-                {teamMembers.length > 0 || teamRosterUnresolved ? (
-                  <Text style={twStyle("text-red-600")}>*</Text>
-                ) : null}
+                {gb("staff")} <Text style={twStyle("text-red-600")}>*</Text>
               </Text>
+              {!teamRosterUnresolved &&
+              createForm.serviceId &&
+              createStaffOptions.length < teamMembers.length ? (
+                <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+                  {gb("staffFilteredForService")}
+                </Text>
+              ) : null}
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {teamRosterUnresolved ? (
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (teamError && !teamRaw) void refreshTeamList();
-                    }}
-                    style={twStyle("me-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2")}
-                  >
-                    <Text style={twStyle("text-xs font-medium text-amber-900")}>
-                      {teamError && !teamRaw ? gb("staffRetryInline") : gb("loadingTeam")}
-                    </Text>
-                  </TouchableOpacity>
+                  <CatalogLoadChip
+                    failed={!!teamError && !teamRaw}
+                    loadingLabel={gb("loadingTeam")}
+                    failedLabel={gb("staffRetryInline")}
+                    onRetry={() => void refreshTeamList()}
+                  />
                 ) : (
                   <>
-                    {teamMembers.length >= 2 ? (
+                    {createStaffOptions.length >= 2 ? (
                       <SelectChip
                         label={gb("anyAvailableStaff")}
                         selected={createForm.staffId === ANY_STAFF_ID}
@@ -6116,7 +6305,7 @@ export default function GroupBookingsScreen() {
                         }}
                       />
                     ) : null}
-                    {teamMembers.map((m) => (
+                    {createStaffOptions.map((m) => (
                       <SelectChip
                         key={m.id}
                         label={m.name?.trim() || gb("teamMember")}
@@ -6402,6 +6591,9 @@ export default function GroupBookingsScreen() {
                   services={services}
                   servicesForPicking={servicesForPicking}
                   serviceChipLabels={serviceChipLabels}
+                  servicesUnresolved={servicesUnresolved}
+                  servicesLoadFailed={servicesLoadFailed}
+                  onRetryServices={retryServices}
                   teamMembers={teamMembers}
                   teamRosterUnresolved={teamRosterUnresolved}
                   teamLoadFailed={!!teamError && !teamRaw}
@@ -6443,7 +6635,7 @@ export default function GroupBookingsScreen() {
                 : null;
             const travelFee = Math.max(0, Number(createForm.travelFee || 0) || 0);
             const productsTotal = createProducts.reduce(
-              (sum, p) => sum + (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1),
+              (sum, p) => addMoney(sum, multiplyMoney(Number(p.unitPrice) || 0, Math.max(1, Number(p.quantity) || 1))),
               0
             );
             const participantsList = createParticipants.filter(
@@ -6456,11 +6648,12 @@ export default function GroupBookingsScreen() {
                 services
               )
             );
-            const participantTotal = participantLines.reduce((sum, line) => sum + line.price, 0);
-            const sessionTotal =
-              participantTotal +
-              productsTotal +
-              (createForm.locationType === "at_home" ? travelFee : 0);
+            const participantTotal = participantLines.reduce((sum, line) => addMoney(sum, line.price), 0);
+            const sessionTotal = sumMoney(
+              participantTotal,
+              productsTotal,
+              createForm.locationType === "at_home" ? travelFee : 0,
+            );
             return (
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
                 <Text
@@ -6574,7 +6767,7 @@ export default function GroupBookingsScreen() {
                         </Text>
                         <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                           {formatCurrency(
-                            (Number(p.unitPrice) || 0) * Math.max(1, Number(p.quantity) || 1)
+                            multiplyMoney(Number(p.unitPrice) || 0, Math.max(1, Number(p.quantity) || 1))
                           )}
                         </Text>
                       </View>
@@ -6759,7 +6952,13 @@ export default function GroupBookingsScreen() {
         title={gb("addProduct")}
       >
         {showProductPicker ? (
-        productsList.length === 0 ? (
+        productsList.length === 0 && productsLoading && !productsRaw ? (
+          <View style={twStyle("items-center py-8")}>
+            <ActivityIndicator color="#4f46e5" />
+          </View>
+        ) : productsList.length === 0 && productsError && !productsRaw ? (
+          <ErrorState message={productsError} onRetry={() => void refreshProducts()} />
+        ) : productsList.length === 0 ? (
           <EmptyState
             icon="bag-outline"
             title={gb("noProducts")}

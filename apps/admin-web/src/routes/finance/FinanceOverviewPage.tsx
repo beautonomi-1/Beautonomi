@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -88,7 +89,11 @@ type FinanceSummary = {
   wallet_topup_revenue: number;
   referral_payouts: number;
   total_platform_take_after_referrals: number;
-  gmv_growth: number;
+  gmv_growth: number | null;
+  gmv_growth_kind?: "up" | "down" | "flat" | "new";
+  refunds_store_credit?: number;
+  refunds_in_person?: number;
+  refunds_platform_cash_out?: number;
   period: FinancePeriod;
   currency?: string;
   reporting_currency_mixed?: boolean;
@@ -135,10 +140,11 @@ type FinanceSummary = {
     checks?: {
       ledger_vs_bookings_gmv?: {
         ledger_gmv?: number;
-        bookings_gmv?: number;
+        bookings_gmv?: number | null;
+        bookings_gmv_available?: boolean;
         gross_bookings_gmv?: number;
         walk_in_deduction?: number;
-        variance?: number;
+        variance?: number | null;
         variance_pct?: number | null;
         status?: string;
         basis_note?: string;
@@ -155,6 +161,9 @@ type FinanceSummary = {
         collected?: number;
         provider_payouts?: number;
         refunds_gross?: number;
+        refunds_store_credit?: number;
+        refunds_in_person?: number;
+        refunds_platform_cash_out?: number;
         gateway_fees?: number;
         payout_transfer_fees?: number;
         net_platform_cash?: number;
@@ -213,11 +222,13 @@ function SummaryMetricCard({
   label,
   value,
   trend,
+  trendKind,
   tooltip,
 }: {
   label: string;
   value: number;
-  trend?: number;
+  trend?: number | null;
+  trendKind?: "up" | "down" | "flat" | "new";
   /** Optional hover tooltip explaining the metric or an accounting note. */
   tooltip?: string;
 }) {
@@ -228,7 +239,11 @@ function SummaryMetricCard({
           {label}
           {tooltip ? <span className="ml-0.5 text-gray-400">ⓘ</span> : null}
         </span>
-        {trend !== undefined && Number.isFinite(trend) ? (
+        {trendKind === "new" ? (
+          <span className="inline-flex shrink-0 text-xs font-medium text-emerald-700" title="vs prior period (settled service GMV)">
+            New
+          </span>
+        ) : trend !== undefined && trend !== null && Number.isFinite(trend) ? (
           <span
             className={`inline-flex shrink-0 items-center gap-0.5 text-xs font-medium ${
               trend >= 0 ? "text-green-700" : "text-red-700"
@@ -339,7 +354,7 @@ export function FinanceOverviewPage() {
     if (!summary) return null;
     const cancellationFeesRetained = summary.cancellation_fees_retained ?? 0;
     const ledgerRefundAmountSum = summary.refunds_gross;
-    const bookingSideNet = cancellationFeesRetained + ledgerRefundAmountSum;
+    const bookingSideNet = addMoney(cancellationFeesRetained, ledgerRefundAmountSum);
     return {
       cancellationFeesRetained,
       ledgerRefundAmountSum,
@@ -668,6 +683,7 @@ export function FinanceOverviewPage() {
                 label="Settled service GMV"
                 value={summary.service_collected_gross}
                 trend={summary.gmv_growth}
+                trendKind={summary.gmv_growth_kind}
                 tooltip="Ledger-backed booking and order payment activity in the selected period."
               />
               <SummaryMetricCard
@@ -707,8 +723,8 @@ export function FinanceOverviewPage() {
               <li>
                 <strong>Wallet top-ups collected</strong> is deferred revenue — it is cash received but not yet earned.
                 Revenue is recognised when the wallet balance is spent on a booking. The{" "}
-                <strong>Total platform take (after referrals)</strong> figure includes top-ups for cash-flow context;
-                exclude them for recognised-revenue reporting.
+                <strong>Total platform take (after referrals)</strong> is recognized platform revenue minus referral
+                payouts; wallet top-ups stay out of that figure.
               </li>
               <li>
                 <strong>Cancellation fees retained</strong> sums provider-retained ledger activity for cancellations in
@@ -902,10 +918,26 @@ export function FinanceOverviewPage() {
                     </tr>
                     <tr>
                       <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
-                        Customer cash refunded (gross)
+                        Customer value returned (all tenders)
                       </th>
                       <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
                         {formatAdminCurrency(cancellationReconciliation.ledgerRefundAmountSum)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
+                        Refunded as store credit
+                      </th>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
+                        {formatAdminCurrency(summary.refunds_store_credit ?? 0)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
+                        Refunded to card / cash (platform-held)
+                      </th>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
+                        {formatAdminCurrency(summary.refunds_platform_cash_out ?? 0)}
                       </td>
                     </tr>
                     <tr>
@@ -977,12 +1009,17 @@ export function FinanceOverviewPage() {
                     <div>
                       <span className="text-xs text-gray-500">Bookings GMV (aligned)</span>
                       <p className="font-medium tabular-nums">
-                        {formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv?.bookings_gmv ?? 0)}
+                        {summary.reconciliation.checks.ledger_vs_bookings_gmv?.bookings_gmv_available === false
+                          ? "Unavailable"
+                          : formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv?.bookings_gmv ?? 0)}
                       </p>
                     </div>
                   </div>
                   <p className="mt-2 text-sm text-gray-700">
-                    Variance {formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance ?? 0)}
+                    Variance{" "}
+                    {summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance == null
+                      ? "n/a"
+                      : formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv.variance)}
                     {summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance_pct != null ? (
                       <>
                         {" "}
@@ -998,7 +1035,9 @@ export function FinanceOverviewPage() {
                             ? "bg-green-100 text-green-800"
                             : summary.reconciliation.checks.ledger_vs_bookings_gmv.status === "warning"
                               ? "bg-amber-100 text-amber-800"
-                              : "bg-red-100 text-red-800"
+                              : summary.reconciliation.checks.ledger_vs_bookings_gmv.status === "unavailable"
+                                ? "bg-gray-100 text-gray-800"
+                                : "bg-red-100 text-red-800"
                         }`}
                       >
                         {summary.reconciliation.checks.ledger_vs_bookings_gmv.status}
@@ -1066,7 +1105,7 @@ export function FinanceOverviewPage() {
                   <div className="rounded-lg border border-gray-200 p-3 sm:col-span-2">
                     <p className="text-xs uppercase tracking-wide text-gray-500">Platform cash position</p>
                     <p className="mt-1 text-xs text-gray-500">
-                      Estimated cash the platform should hold: collected inflows minus payouts, refunds, and gateway fees.
+                      Estimated platform-held card cash: collected inflows minus wallet/gift tender, payouts, card refunds, and gateway fees.
                     </p>
                     <div className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-2 lg:grid-cols-3">
                       <div>
@@ -1082,9 +1121,21 @@ export function FinanceOverviewPage() {
                         </p>
                       </div>
                       <div>
-                        <span className="text-xs text-gray-500">Refunds (gross)</span>
+                        <span className="text-xs text-gray-500">Card refunds (out)</span>
                         <p className="font-medium tabular-nums">
-                          {formatAdminCurrency(summary.reconciliation.checks.platform_cash_position.refunds_gross ?? 0)}
+                          {formatAdminCurrency(
+                            summary.reconciliation.checks.platform_cash_position.refunds_platform_cash_out ??
+                              summary.reconciliation.checks.platform_cash_position.refunds_gross ??
+                              0,
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Store credit refunds</span>
+                        <p className="font-medium tabular-nums">
+                          {formatAdminCurrency(
+                            summary.reconciliation.checks.platform_cash_position.refunds_store_credit ?? 0,
+                          )}
                         </p>
                       </div>
                       <div>

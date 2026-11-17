@@ -1,10 +1,15 @@
 import { FetchError } from "./fetcher";
+import { sanitizeStoredApiMessage } from "@/lib/errors/user-messages";
 import { isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
 
 /** User-facing message from fetch/API failures (works with FetchError from the shared fetcher). */
 export function formatApiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof FetchError) return error.message || fallback;
-  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  if (error instanceof FetchError) {
+    return sanitizeStoredApiMessage(error.code, error.message, fallback);
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return sanitizeStoredApiMessage(undefined, error.message, fallback);
+  }
   return fallback;
 }
 

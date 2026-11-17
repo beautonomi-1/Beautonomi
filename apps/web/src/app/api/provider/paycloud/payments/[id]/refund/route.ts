@@ -7,9 +7,10 @@ import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/payclo
 import { getPaycloudNotifyUrl } from "@/lib/payments/paycloud-credentials";
 import { initiatePaycloudRefund } from "@/lib/payments/initiate-paycloud-refund";
 import { z } from "zod";
+import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
 
 const refundBodySchema = z.object({
-  amount: z.number().positive(),
+  amount: clientMajorAmountSchema,
   terminal_id: z.string().uuid().optional(),
 });
 
@@ -18,7 +19,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const permissionCheck = await requirePermission("process_payments", request);
+    const permissionCheck = await requirePermission("issue_refunds", request);
     if (!permissionCheck.authorized) return permissionCheck.response!;
 
     const { id } = await params;

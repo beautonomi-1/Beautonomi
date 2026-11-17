@@ -12,6 +12,10 @@ describe("formatPaycloudIntentAmountCents", () => {
     expect(formatPaycloudIntentAmountCents(10)).toBe("000000001000");
     expect(formatPaycloudIntentAmountCents(150.5)).toBe("000000015050");
   });
+
+  it("converts majors with toMinorUnits (half away from zero)", () => {
+    expect(formatPaycloudIntentAmountCents(10.005)).toBe("000000001001");
+  });
 });
 
 describe("mapCloudScenarioToSameTerminal", () => {

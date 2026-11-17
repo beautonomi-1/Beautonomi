@@ -54,14 +54,30 @@ function makeVatServerClient(vatTxRows: unknown[]) {
         return chain;
       }
       if (table === "finance_transactions") {
+        // F2-24: honour the selected column list like PostgREST does, so a
+        // column the route filters on but forgot to select is actually absent.
+        let selectedColumns: string[] | null = null;
         const chain: Record<string, unknown> = {};
-        chain.select = vi.fn(() => chain);
+        chain.select = vi.fn((cols?: string) => {
+          selectedColumns =
+            typeof cols === "string" && cols.trim() !== "*"
+              ? cols.split(",").map((c) => c.trim()).filter(Boolean)
+              : null;
+          return chain;
+        });
         chain.eq = vi.fn(() => chain);
         chain.in = vi.fn(() => chain);
         chain.gte = vi.fn(() => chain);
         chain.lte = vi.fn(() => chain);
         chain.order = vi.fn(() => chain);
-        chain.range = vi.fn(() => Promise.resolve({ data: vatTxRows, error: null }));
+        chain.range = vi.fn(() => {
+          const projected = selectedColumns
+            ? (vatTxRows as Array<Record<string, unknown>>).map((row) =>
+                Object.fromEntries(selectedColumns!.map((c) => [c, row[c]])),
+              )
+            : vatTxRows;
+          return Promise.resolve({ data: projected, error: null });
+        });
         return chain;
       }
       if (table === "vat_remittance_reminders") {
@@ -135,6 +151,44 @@ describe("GET /api/provider/finance/vat-reports — tax refunds reduce VAT colle
 
     const txn = (janFeb.transactions ?? []).find((t: any) => t.id === "r1");
     expect(txn.amount).toBe(-5);
+  });
+
+  it("F2-24: tax rows produce a non-zero vat_collected (transaction_type must be selected)", async () => {
+    const vatTxRows = [
+      {
+        id: "t1",
+        transaction_type: "tax",
+        amount: 30,
+        net: 0,
+        created_at: "2026-03-05T12:00:00.000Z",
+        booking_id: null,
+        description: "Tax for booking",
+        metadata: { vat_source: "booking" },
+        refund_component: null,
+      },
+      {
+        id: "t2",
+        transaction_type: "tax",
+        amount: 12.5,
+        net: 0,
+        created_at: "2026-04-15T12:00:00.000Z",
+        booking_id: null,
+        description: "Tax for booking",
+        metadata: { vat_source: "booking" },
+        refund_component: null,
+      },
+    ];
+    mockGetSupabaseServer.mockResolvedValue(makeVatServerClient(vatTxRows));
+
+    const { GET } = await import("../finance/vat-reports/route");
+    const res = await GET(new NextRequest(`http://localhost/api/provider/finance/vat-reports?year=2026`));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    const marApr = body.data.reports.find((r: any) => r.period_start === "2026-03-01");
+    expect(marApr).toBeTruthy();
+    expect(marApr.vat_collected).toBe(42.5);
+    expect(marApr.transaction_count).toBe(2);
   });
 });
 

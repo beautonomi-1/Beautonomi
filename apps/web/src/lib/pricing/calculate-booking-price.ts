@@ -3,7 +3,7 @@
  * Handles all pricing components: services, products, add-ons, discounts, taxes, fees
  */
 
-import { percentOf, subtractMoney, sumMoney } from "@beautonomi/utils";
+import { addMoney, multiplyMoney, percentOf, subtractMoney, sumMoney } from "@beautonomi/utils";
 
 export interface PricingItem {
   price: number;
@@ -74,21 +74,21 @@ export interface PricingBreakdown {
 export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
   // Step 1: Calculate subtotals
   const servicesSubtotal = input.services.reduce(
-    (sum, item) => sum + item.price * (item.quantity || 1),
+    (sum, item) => addMoney(sum, multiplyMoney(item.price, item.quantity || 1)),
     0
   );
   
   const productsSubtotal = (input.products || []).reduce(
-    (sum, item) => sum + item.price * (item.quantity || 1),
+    (sum, item) => addMoney(sum, multiplyMoney(item.price, item.quantity || 1)),
     0
   );
   
   const addonsSubtotal = (input.addons || []).reduce(
-    (sum, item) => sum + item.price * (item.quantity || 1),
+    (sum, item) => addMoney(sum, multiplyMoney(item.price, item.quantity || 1)),
     0
   );
   
-  const subtotal = servicesSubtotal + productsSubtotal + addonsSubtotal;
+  const subtotal = sumMoney(servicesSubtotal, productsSubtotal, addonsSubtotal);
   
   // Step 2: Apply discounts
   let manualDiscount = input.discountAmount || 0;
@@ -97,7 +97,7 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
   }
   
   const promoDiscount = input.promoDiscount || 0;
-  const totalDiscount = manualDiscount + promoDiscount;
+  const totalDiscount = addMoney(manualDiscount, promoDiscount);
   
   // Cap discount at subtotal
   const cappedDiscount = Math.min(totalDiscount, subtotal);
@@ -106,7 +106,7 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
   // Step 3: Calculate tax (on discounted amount, only on taxable items)
   const taxableAmount = subtotalAfterDiscount; // Simplified: assume all items are taxable
   const taxRate = input.taxRate || 0;
-  const taxAmount = taxableAmount * taxRate;
+  const taxAmount = percentOf(taxableAmount, taxRate * 100);
   
   // Step 4: Add travel fee and tip
   const travelFee = input.travelFee || 0;
@@ -123,9 +123,12 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
   } else if (input.platformFeePercentage ?? input.serviceFeePercentage) {
     // Platform fee can be calculated on amount before or after tax
     const platformFeeBase = (input.platformFeeAppliesAfterTax ?? input.serviceFeeAppliesAfterTax)
-      ? (subtotalAfterDiscount + taxAmount)
+      ? addMoney(subtotalAfterDiscount, taxAmount)
       : subtotalAfterDiscount;
-    platformFeeAmount = platformFeeBase * (input.platformFeePercentage ?? input.serviceFeePercentage ?? 0);
+    platformFeeAmount = multiplyMoney(
+      platformFeeBase,
+      input.platformFeePercentage ?? input.serviceFeePercentage ?? 0,
+    );
   }
   
   // Step 7: Calculate final total

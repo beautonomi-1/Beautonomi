@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { View, Text, TouchableOpacity, Alert } from "react-native";
+import { View, Text, TouchableOpacity, Alert, AppState } from "react-native";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
@@ -73,7 +73,11 @@ export default function OnDemandIncomingScreen() {
 
   // Play ringtone when incoming request is shown (same as web overlay)
   useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next !== "active") ringtoneStopRef.current?.();
+    });
     return () => {
+      sub.remove();
       ringtoneStopRef.current?.();
     };
   }, []);

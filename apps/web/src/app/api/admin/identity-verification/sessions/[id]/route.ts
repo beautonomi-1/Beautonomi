@@ -10,11 +10,12 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await requireRoleInApi(["superadmin"], request);
     const supabase = getSupabaseAdmin();
+    const { id: sessionId } = await params;
 
     const { data: session, error } = await supabase
       .from("identity_verification_sessions")
@@ -22,7 +23,7 @@ export async function GET(
         *,
         events:identity_verification_events(*)
       `)
-      .eq("id", params.id)
+      .eq("id", sessionId)
       .maybeSingle();
 
     if (error) throw error;

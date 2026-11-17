@@ -8,7 +8,9 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
-import { getStaffPermissions, isProviderOwner } from "@/lib/auth/permissions";
+import { resolveStaffPermissionRow } from "@/lib/auth/permissions";
+import { canViewStaffPay } from "@/lib/auth/provider-team-roster-access";
+import { resolveStaffRates } from "@/lib/payroll/resolve-staff-rates";
 
 const tierSchema = z.object({
   id: z.string().uuid().optional(),
@@ -39,7 +41,7 @@ export async function GET(
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
@@ -49,7 +51,7 @@ export async function GET(
     const { data: staff, error: staffError } = await supabase
       .from("provider_staff")
       .select(
-        "id, commission_enabled, service_commission_rate, product_commission_rate, commission_rate, hourly_rate, salary, tips_enabled"
+        "id, user_id, commission_enabled, service_commission_rate, product_commission_rate, commission_rate, commission_percentage, hourly_rate, salary, tips_enabled"
       )
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -59,6 +61,20 @@ export async function GET(
       return notFoundResponse("Staff member not found");
     }
 
+    const seePay = staff.user_id === user.id || (await canViewStaffPay(user.id, request));
+    if (!seePay) {
+      const { data: callerStaff } = await supabase
+        .from("provider_staff")
+        .select("role, permissions, role_id, is_admin, user_id, provider_id")
+        .eq("user_id", user.id)
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (!callerStaff) return notFoundResponse("Staff member not found");
+      const perms = await resolveStaffPermissionRow(supabase, callerStaff, providerId);
+      if (!perms.manage_team) return notFoundResponse("Staff member not found");
+    }
+
     // Fetch commission tiers
     const { data: tiers } = await supabase
       .from("provider_staff_commission_tiers")
@@ -66,12 +82,13 @@ export async function GET(
       .eq("staff_id", id)
       .order("min_revenue", { ascending: false });
 
+    const rates = resolveStaffRates(staff);
     return successResponse({
       enabled: staff.commission_enabled ?? false,
-      serviceCommissionRate: staff.service_commission_rate ?? staff.commission_rate ?? 0,
-      productCommissionRate: staff.product_commission_rate ?? staff.commission_rate ?? 0,
-      hourlyRate: staff.hourly_rate ?? 0,
-      salary: staff.salary ?? 0,
+      serviceCommissionRate: rates.serviceRate,
+      productCommissionRate: rates.productRate,
+      hourlyRate: seePay ? (staff.hourly_rate ?? 0) : null,
+      salary: seePay ? (staff.salary ?? 0) : null,
       tipsEnabled: staff.tips_enabled ?? true,
       tiers: (tiers || []).map((t) => ({
         id: t.id,
@@ -97,7 +114,7 @@ export async function PATCH(
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    const providerId = await getProviderIdForUser(user.id, supabase, { request });
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
@@ -113,16 +130,12 @@ export async function PATCH(
       body.salary !== undefined ||
       body.tiers !== undefined;
     if (payFieldTouched) {
-      const owner = await isProviderOwner(user.id, request);
-      if (!owner) {
-        const perms = await getStaffPermissions(user.id, undefined, request);
-        if (!perms.manage_payroll) {
-          return handleApiError(
-            new Error("You do not have permission to manage payroll"),
-            "FORBIDDEN",
-            403,
-          );
-        }
+      if (!(await canViewStaffPay(user.id, request))) {
+        return handleApiError(
+          new Error("You do not have permission to manage payroll"),
+          "FORBIDDEN",
+          403,
+        );
       }
     }
 
@@ -184,7 +197,7 @@ export async function PATCH(
       .update(updateData)
       .eq("id", id)
       .select(
-        "commission_enabled, service_commission_rate, product_commission_rate, commission_rate, hourly_rate, salary, tips_enabled"
+        "commission_enabled, service_commission_rate, product_commission_rate, commission_rate, commission_percentage, hourly_rate, salary, tips_enabled"
       )
       .single();
 
@@ -199,10 +212,11 @@ export async function PATCH(
       .eq("staff_id", id)
       .order("min_revenue", { ascending: false });
 
+    const savedRates = resolveStaffRates(data ?? {});
     return successResponse({
       enabled: data?.commission_enabled ?? false,
-      serviceCommissionRate: data?.service_commission_rate ?? data?.commission_rate ?? 0,
-      productCommissionRate: data?.product_commission_rate ?? data?.commission_rate ?? 0,
+      serviceCommissionRate: savedRates.serviceRate,
+      productCommissionRate: savedRates.productRate,
       hourlyRate: data?.hourly_rate ?? 0,
       salary: data?.salary ?? 0,
       tipsEnabled: data?.tips_enabled ?? true,

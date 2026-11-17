@@ -7,8 +7,8 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
 import { lockBookingServices } from "./conflict-check";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { computeVat, percentOf, sumMoney } from "@beautonomi/utils";
-import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import { addMoney, computeVat, percentOf, sumMoney } from "@beautonomi/utils";
+import { providerVatSnapshotColumns, resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 
 export interface HoldConsumeInput {
   holdId: string;
@@ -64,7 +64,7 @@ export async function createBookingFromHold(
   }
 
   const currency = services[0]?.currency || LAST_RESORT_CURRENCY;
-  const subtotal = services.reduce((sum, s) => sum + Number(s.price || 0), 0);
+  const subtotal = services.reduce((sum, s) => addMoney(sum, Number(s.price || 0)), 0);
 
   // Load provider for tax/fee defaults
   const { data: provider, error: provErr } = await supabase
@@ -92,6 +92,8 @@ export async function createBookingFromHold(
   });
   const taxAmount = providerVat.registered ? vatSplit.taxAmount : 0;
   const taxRate = providerVat.registered ? providerVat.ratePercent : 0;
+  // F2-39: VAT treatment / number that applied at time of sale.
+  const vatSnapshot = providerVatSnapshotColumns(providerVat);
 
   let serviceFeeAmount = 0;
   let serviceFeePercentage = 0;
@@ -168,6 +170,7 @@ export async function createBookingFromHold(
     tip_amount: 0,
     tax_amount: taxAmount,
     tax_rate: taxRate,
+    ...vatSnapshot,
     discount_amount: 0,
     promotion_discount_amount: 0,
     membership_discount_amount: 0,
@@ -209,6 +212,15 @@ export async function createBookingFromHold(
     throw rpcError;
   }
   if (!bookingId) throw new Error("Failed to create booking");
+
+  // 10143 persists VAT on RPC insert; keep the patch so older DBs still snapshot.
+  const { error: vatSnapshotError } = await adminSupabase
+    .from("bookings")
+    .update(vatSnapshot)
+    .eq("id", bookingId);
+  if (vatSnapshotError) {
+    console.error("[create-booking-from-hold] failed to write VAT snapshot:", vatSnapshotError);
+  }
 
   const { data: booking } = await adminSupabase
     .from("bookings")

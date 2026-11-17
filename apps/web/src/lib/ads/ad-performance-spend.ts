@@ -3,6 +3,8 @@
  * CPC / impression packs debit `spent` via DB triggers; time-based is prepaid (budget) without per-impression debit.
  */
 
+import { multiplyMoney } from "@beautonomi/utils";
+
 export type AdsCampaignSpendRow = {
   billing_model?: string | null;
   status?: string | null;
@@ -55,5 +57,5 @@ export function timeBasedAttributedSpend(c: AdsCampaignSpendRow, range: { startM
   const ov = overlapMs(range.startMs, range.endMs, rawStart, rawEnd);
   if (ov <= 0) return 0;
   const span = rawEnd - rawStart;
-  return Math.min(prepaid, prepaid * (ov / span));
+  return Math.min(prepaid, multiplyMoney(prepaid, ov / span));
 }

@@ -6,6 +6,7 @@ const mockGetSupabaseServer = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
 const mockResolveAdminApiTenantId = vi.fn();
 const mockFetchFinanceLedgerRowsForTenant = vi.fn();
+const mockFetchAllPages = vi.fn();
 const mockAggregateFinanceLedgerRows = vi.fn();
 const mockGatewayFeesTotalFromAggregate = vi.fn();
 const mockGetNegativeBalanceProvidersForTenant = vi.fn();
@@ -37,6 +38,7 @@ vi.mock("@/lib/admin/finance-ledger-tenant", async (importOriginal) => {
   return {
     ...actual,
     fetchFinanceLedgerRowsForTenant: (...args: unknown[]) => mockFetchFinanceLedgerRowsForTenant(...args),
+    fetchAllPages: (...args: unknown[]) => mockFetchAllPages(...args),
   };
 });
 
@@ -68,10 +70,13 @@ function makeSupabaseAdminChain() {
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
+    is: () => chain,
     gt: () => chain,
     gte: () => chain,
     lte: () => chain,
     order: () => chain,
+    limit: () => chain,
+    maybeSingle: () => Promise.resolve({ data: null, error: null }),
     range: () => Promise.resolve({ data: [], error: null }),
     then: (resolve: (v: unknown) => void) => resolve({ data: [], error: null, count: 0 }),
   };
@@ -105,6 +110,11 @@ function baseAggregate() {
     membership_sales: 0,
     refunds_abs_gross: 0,
     refunds_gross: 0,
+    refunds_store_credit: 0,
+    refunds_in_person: 0,
+    refunds_platform_cash_out: 0,
+    wallet_collected: 0,
+    gift_card_collected: 0,
     provider_refund_net_impact: 0,
     cancellation_fees_retained: 5,
     promotion_discounts: 0,
@@ -141,6 +151,7 @@ describe("GET /api/admin/finance/summary", () => {
       from: () => makeSupabaseAdminChain(),
     });
     mockFetchFinanceLedgerRowsForTenant.mockResolvedValue([{ id: "tx-1", transaction_type: "payment", net: 1000 }]);
+    mockFetchAllPages.mockResolvedValue({ rows: [], truncated: false });
     mockAggregateFinanceLedgerRows.mockImplementation(() => baseAggregate());
     mockGatewayFeesTotalFromAggregate.mockReturnValue(53);
     mockGetNegativeBalanceProvidersForTenant.mockResolvedValue({ count: 0, providers: [] });
@@ -148,6 +159,7 @@ describe("GET /api/admin/finance/summary", () => {
       alignedBookingsGmv: 1000,
       grossBookingsGmv: 1000,
       walkInAddOnDeduction: 0,
+      available: true,
     });
     mockCountGatewayFeeCaptureAnomalies.mockResolvedValue({ row_count: 0, expected_fees_total: 0 });
   });
@@ -184,6 +196,22 @@ describe("GET /api/admin/finance/summary", () => {
       expect.objectContaining({ start: expect.any(String), end: expect.any(String) }),
       { restrictProviderIds: ["prov-99"] },
     );
+  });
+
+  it("reports gmv_growth_kind new when prior settled GMV is zero", async () => {
+    mockFetchFinanceLedgerRowsForTenant
+      .mockResolvedValueOnce([{ id: "tx-1", transaction_type: "payment", net: 1000 }])
+      .mockResolvedValueOnce([]);
+    mockAggregateFinanceLedgerRows
+      .mockReturnValueOnce(baseAggregate())
+      .mockReturnValueOnce({ ...baseAggregate(), service_collected_gross: 0 });
+
+    const { GET } = await import("../summary/route");
+    const res = await GET(new NextRequest("http://localhost/api/admin/finance/summary"));
+    const body = await res.json();
+
+    expect(body.data.gmv_growth_kind).toBe("new");
+    expect(body.data.gmv_growth).toBeNull();
   });
 
   it("computes gmv_growth using prior-period ledger fetch", async () => {

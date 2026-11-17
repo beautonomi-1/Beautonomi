@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isPayoutRefundComponent } from "@/lib/ledger/refund-components";
 import { chunkIds, fetchAllPaged, isPostgrestRangeUnsatisfiable } from "@/lib/provider-ops/postgrest-unbounded";
 import { MAX_FINANCE_TRANSACTIONS } from "@/lib/reports/constants";
+import { addMoney, roundCurrency, subtractMoney, sumMoney } from "@beautonomi/utils";
 
 const PAYOUT_IN_CHUNK = 150;
 
@@ -135,10 +136,12 @@ async function loadReversedPayoutIds(
   return reversed;
 }
 
-/** 2dp so finance UI, POST /api/provider/payouts, and the guarded RPC never disagree on cents. */
-export function roundMoney2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}
+/**
+ * 2dp so finance UI, POST /api/provider/payouts, and the guarded RPC never disagree on cents.
+ * Alias of the canonical `roundCurrency` (kept for existing importers).
+ */
+export { roundCurrency as roundMoney2 };
+
 export async function getAvailablePayoutBalance(
   supabase: SupabaseClient,
   providerId: string,
@@ -384,13 +387,13 @@ export async function getAvailablePayoutBalance(
       // today. Prefer `net` (falling back to amount) for consistency with every
       // other branch and to stay correct if a payout ledger row ever carries fees
       // (net < amount) — we must subtract the net amount actually paid out.
-      completedPayouts += Number(row.net ?? row.amount ?? 0);
+      completedPayouts = addMoney(completedPayouts, Number(row.net ?? row.amount ?? 0));
       continue;
     }
     if (row.transaction_type === "refund") {
       const vatHeldRefund = metadataNumber(row.metadata, "vat_held_for_provider_amount");
       if (vatHeldRefund > 0) {
-        vatHeldForProvider -= vatHeldRefund;
+        vatHeldForProvider = subtractMoney(vatHeldForProvider, vatHeldRefund);
       }
       // The refund trigger splits a refund into per-component rows. Only the
       // provider-payoutable components (provider_earnings/tip/travel/cancellation,
@@ -399,7 +402,7 @@ export async function getAvailablePayoutBalance(
       // collected (walk-in) add-ons were never platform-held provider money.
       if (!isPayoutRefundComponent(row.refund_component)) continue;
       if (shouldExcludeProviderCollectedRow(row)) continue;
-      onlineEarnings += Number(row.net ?? row.amount ?? 0);
+      onlineEarnings = addMoney(onlineEarnings, Number(row.net ?? row.amount ?? 0));
       continue;
     }
     if (row.transaction_type === "tax") {
@@ -416,7 +419,7 @@ export async function getAvailablePayoutBalance(
       ) {
         continue;
       }
-      vatHeldForProvider += vatAmount;
+      vatHeldForProvider = addMoney(vatHeldForProvider, vatAmount);
       continue;
     }
     if (row.transaction_type === "cancellation_fee") {
@@ -426,10 +429,10 @@ export async function getAvailablePayoutBalance(
       // as for earnings/tips/travel (a chargeback on the cancelled booking claws them back).
       const fee = Number(row.net ?? row.amount ?? 0);
       if (holdDays > 0 && row.created_at && row.created_at > availableFrom) {
-        onHoldAmount += fee;
+        onHoldAmount = addMoney(onHoldAmount, fee);
         continue;
       }
-      onlineEarnings += fee;
+      onlineEarnings = addMoney(onlineEarnings, fee);
       continue;
     }
     if (row.transaction_type === "service_fee") {
@@ -441,7 +444,7 @@ export async function getAvailablePayoutBalance(
     if (row.transaction_type === "tip" || row.transaction_type === "travel_fee") {
       const value = Number(row.net ?? row.amount ?? 0);
       if (shouldExcludeProviderCollectedRow(row)) {
-        excludedProviderCollectedAmount += value;
+        excludedProviderCollectedAmount = addMoney(excludedProviderCollectedAmount, value);
         continue;
       }
       if (
@@ -451,10 +454,10 @@ export async function getAvailablePayoutBalance(
           meta: row.booking_id ? bookingMap[row.booking_id as string] : undefined,
         })
       ) {
-        onHoldAmount += value;
+        onHoldAmount = addMoney(onHoldAmount, value);
         continue;
       }
-      onlineEarnings += value;
+      onlineEarnings = addMoney(onlineEarnings, value);
       continue;
     }
     if (
@@ -465,7 +468,7 @@ export async function getAvailablePayoutBalance(
     }
     const earnings = Number(row.net ?? row.amount ?? 0);
     if (shouldExcludeProviderCollectedRow(row)) {
-      excludedProviderCollectedAmount += earnings;
+      excludedProviderCollectedAmount = addMoney(excludedProviderCollectedAmount, earnings);
       continue;
     }
     if (
@@ -475,10 +478,10 @@ export async function getAvailablePayoutBalance(
         meta: row.booking_id ? bookingMap[row.booking_id as string] : undefined,
       })
     ) {
-      onHoldAmount += earnings;
+      onHoldAmount = addMoney(onHoldAmount, earnings);
       continue;
     }
-    onlineEarnings += earnings;
+    onlineEarnings = addMoney(onlineEarnings, earnings);
   }
 
   const { data: pendingRows, error: pendingError } = await supabase
@@ -513,12 +516,12 @@ export async function getAvailablePayoutBalance(
   const pendingPayoutsSum = (pendingRows ?? []).reduce((s, p) => {
     const id = String((p as { id: string }).id);
     if (ledgerCovered.has(id)) return s;
-    return s + Number(p.net_amount ?? p.amount ?? 0);
+    return addMoney(s, Number(p.net_amount ?? p.amount ?? 0));
   }, 0);
   // insert_payout_request_guarded subtracts every pending/processing payout,
   // so callers add this full sum back when building its ceiling.
   const guardReservedPayoutsSum = (pendingRows ?? []).reduce(
-    (s, p) => s + Number(p.net_amount ?? p.amount ?? 0),
+    (s, p) => addMoney(s, Number(p.net_amount ?? p.amount ?? 0)),
     0,
   );
 
@@ -531,7 +534,7 @@ export async function getAvailablePayoutBalance(
       .in("status", ["open", "awaiting_bank"]);
     if (disputeErr) throw disputeErr;
     openDisputeReserve = (disputeRows ?? []).reduce(
-      (s, row) => s + Number((row as { amount?: number }).amount ?? 0),
+      (s, row) => addMoney(s, Number((row as { amount?: number }).amount ?? 0)),
       0,
     );
   } catch (err) {
@@ -539,30 +542,31 @@ export async function getAvailablePayoutBalance(
     throw err;
   }
 
-  const rawAvailable =
-    onlineEarnings + vatHeldForProvider - completedPayouts - pendingPayoutsSum - openDisputeReserve;
-  const rawBalance = roundMoney2(rawAvailable);
+  const rawBalance = subtractMoney(
+    addMoney(onlineEarnings, vatHeldForProvider),
+    sumMoney(completedPayouts, pendingPayoutsSum, openDisputeReserve),
+  );
   const availableBalance = Math.max(0, rawBalance);
   const hasNegativeBalance = rawBalance < -0.01;
-  const roundedPending = roundMoney2(pendingPayoutsSum);
+  const roundedPending = roundCurrency(pendingPayoutsSum);
 
   const breakdown: PayoutBalanceBreakdown = {
-    recognizedPayoutableEarnings: roundMoney2(onlineEarnings + onHoldAmount),
-    onHold: roundMoney2(onHoldAmount),
-    excludedProviderCollected: roundMoney2(excludedProviderCollectedAmount),
-    completedPayouts: roundMoney2(completedPayouts),
+    recognizedPayoutableEarnings: addMoney(onlineEarnings, onHoldAmount),
+    onHold: roundCurrency(onHoldAmount),
+    excludedProviderCollected: roundCurrency(excludedProviderCollectedAmount),
+    completedPayouts: roundCurrency(completedPayouts),
     pendingPayouts: roundedPending,
     availableBalance,
-    vatHeldForProvider: roundMoney2(vatHeldForProvider),
+    vatHeldForProvider: roundCurrency(vatHeldForProvider),
   };
 
   return {
     availableBalance,
     pendingPayoutsSum: roundedPending,
-    guardReservedPayoutsSum: roundMoney2(guardReservedPayoutsSum),
+    guardReservedPayoutsSum: roundCurrency(guardReservedPayoutsSum),
     rawBalance,
     hasNegativeBalance,
-    openDisputeReserve: roundMoney2(openDisputeReserve),
+    openDisputeReserve: roundCurrency(openDisputeReserve),
     breakdown,
   };
 }

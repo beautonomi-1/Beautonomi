@@ -5,7 +5,7 @@ import {
   type CommissionMode,
 } from "./record-booking-online-charge-ledger";
 import { resolveFlutterwaveGatewayFees } from "@/lib/payments/resolve-gateway-fees";
-import { toMinorUnits } from "@beautonomi/utils";
+import { toMinorUnits, roundCurrency } from "@beautonomi/utils";
 
 export type RecordFlutterwaveBookingSettlementInput = {
   bookingId: string;
@@ -102,7 +102,7 @@ export async function recordFlutterwaveBookingSettlement(
       : Number(input.feesSmallestOrMajor ?? 0);
     const resolved = resolveFlutterwaveGatewayFees({ feeMinor, currency });
     const feesMajor = input.feesAlreadyMajor
-      ? Math.round(Number(input.feesSmallestOrMajor ?? 0) * 100) / 100
+      ? roundCurrency(Number(input.feesSmallestOrMajor ?? 0))
       : resolved.feesMajor;
     const feeSource = input.feeSource ?? resolved.feeSource;
 

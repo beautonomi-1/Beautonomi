@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getBookingsAdminClient } from "@/lib/bookings/bookings-admin-write";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { generateOTP, getOTPExpiry } from "@/lib/otp/generator";
 import { notifyProviderArrived } from "@/lib/notifications/notification-service";
@@ -111,6 +113,9 @@ export async function POST(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -185,7 +190,7 @@ export async function POST(
         : null;
       const storedQrValid = qrExpiresAtMs == null || qrExpiresAtMs > Date.now();
       return successResponse({
-        booking: bookingData as Booking,
+        booking: redactBookingCustomerContact(bookingData, canViewClients) as Booking,
         already_arrived: true,
         otp: null,
         qr_code: storedQrValid ? (bookingData.qr_code_data ?? null) : null,

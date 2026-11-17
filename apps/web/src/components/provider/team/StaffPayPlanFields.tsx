@@ -10,7 +10,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { PayModelValue, PayPlanFormState } from "@/lib/payroll/pay-plan-form-state";
+import {
+  payModelUsesCommission,
+  type PayModelValue,
+  type PayPlanFormState,
+} from "@/lib/payroll/pay-plan-form-state";
 
 export type { PayModelValue, PayPlanFormState };
 
@@ -39,13 +43,7 @@ export function StaffPayPlanFields({ value, onChange, disabled }: Props) {
   const set = (patch: Partial<PayPlanFormState>) =>
     onChange({ ...value, ...patch });
 
-  const usesCommission = [
-    "commission_only",
-    "base_plus_commission",
-    "base_or_commission_higher",
-    "commission_above_threshold",
-    "hourly_plus_commission",
-  ].includes(value.pay_model);
+  const usesCommission = payModelUsesCommission(value.pay_model);
   const usesBase = ["salary", "base_plus_commission", "base_or_commission_higher"].includes(
     value.pay_model,
   );
@@ -72,6 +70,23 @@ export function StaffPayPlanFields({ value, onChange, disabled }: Props) {
             ))}
           </SelectContent>
         </Select>
+        <p className="text-xs text-gray-500 mt-1">
+          {value.pay_model === "commission_only"
+            ? t("web.provider.settings.pages.team/commissions.modelCommissionOnly")
+            : value.pay_model === "base_plus_commission"
+              ? t("web.provider.settings.pages.team/commissions.modelBasePlus")
+              : value.pay_model === "base_or_commission_higher"
+                ? t("web.provider.settings.pages.team/commissions.modelBaseOr")
+                : value.pay_model === "commission_above_threshold"
+                  ? t("web.provider.settings.pages.team/commissions.modelThreshold")
+                  : value.pay_model === "hourly"
+                    ? t("web.provider.settings.pages.team/commissions.modelHourly")
+                    : value.pay_model === "hourly_plus_commission"
+                      ? t("web.provider.settings.pages.team/commissions.modelHourlyPlus")
+                      : value.pay_model === "salary"
+                        ? t("web.provider.settings.pages.team/commissions.modelSalary")
+                        : t("web.provider.settings.pages.team/commissions.boothRenterPayRun")}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -79,9 +94,14 @@ export function StaffPayPlanFields({ value, onChange, disabled }: Props) {
           <Label>{tp("employmentType")}</Label>
           <Select
             value={value.employment_type}
-            onValueChange={(v) =>
-              set({ employment_type: v as PayPlanFormState["employment_type"] })
-            }
+            onValueChange={(v) => {
+              const employment_type = v as PayPlanFormState["employment_type"];
+              set(
+                employment_type === "contractor"
+                  ? { employment_type, statutory_mode: "none" }
+                  : { employment_type },
+              );
+            }}
             disabled={disabled}
           >
             <SelectTrigger className="mt-1.5 min-h-[44px]">
@@ -93,6 +113,11 @@ export function StaffPayPlanFields({ value, onChange, disabled }: Props) {
               <SelectItem value="apprentice">{tp("employmentApprentice")}</SelectItem>
             </SelectContent>
           </Select>
+          <p className="text-xs text-gray-500 mt-1">
+            {value.employment_type === "contractor"
+              ? t("web.provider.settings.pages.team/commissions.contractorTax")
+              : t("web.provider.settings.pages.team/commissions.employeeTax")}
+          </p>
         </div>
         <div>
           <Label>{tp("effectiveFrom")}</Label>
@@ -106,22 +131,62 @@ export function StaffPayPlanFields({ value, onChange, disabled }: Props) {
         </div>
       </div>
 
+      {value.pay_model !== "booth_renter" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <Label>
+              {t("web.provider.settings.pages.team/commissions.employmentStart")}
+            </Label>
+            <Input
+              type="date"
+              className="mt-1.5 min-h-[44px]"
+              value={value.employment_start_date}
+              onChange={(e) => set({ employment_start_date: e.target.value })}
+              disabled={disabled}
+            />
+          </div>
+          <div>
+            <Label>
+              {t("web.provider.settings.pages.team/commissions.employmentEnd")}
+            </Label>
+            <Input
+              type="date"
+              className="mt-1.5 min-h-[44px]"
+              value={value.employment_end_date}
+              onChange={(e) => set({ employment_end_date: e.target.value })}
+              disabled={disabled}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              {value.employment_type === "contractor"
+                ? t("web.provider.settings.pages.team/commissions.contractorDates")
+                : t("web.provider.settings.pages.team/commissions.employeeDates")}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div>
         <Label>{tp("statutoryMode")}</Label>
         <Select
-          value={value.statutory_mode}
+          value={value.employment_type === "contractor" ? "none" : value.statutory_mode}
           onValueChange={(v) =>
             set({ statutory_mode: v as PayPlanFormState["statutory_mode"] })
           }
-          disabled={disabled}
+          disabled={disabled || value.employment_type === "contractor"}
         >
           <SelectTrigger className="mt-1.5 min-h-[44px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="auto">{tp("statutoryAuto")}</SelectItem>
-            <SelectItem value="manual">{tp("statutoryManual")}</SelectItem>
-            <SelectItem value="none">{tp("statutoryNone")}</SelectItem>
+            <SelectItem value="auto">
+              {t("web.provider.settings.pages.team/commissions.taxCalculate")}
+            </SelectItem>
+            <SelectItem value="manual">
+              {t("web.provider.settings.pages.team/commissions.taxEnter")}
+            </SelectItem>
+            <SelectItem value="none">
+              {t("web.provider.settings.pages.team/commissions.taxSkip")}
+            </SelectItem>
           </SelectContent>
         </Select>
         <p className="text-xs text-gray-500 mt-1">{tp("statutoryModeHint")}</p>
@@ -129,7 +194,9 @@ export function StaffPayPlanFields({ value, onChange, disabled }: Props) {
 
       {usesBase && (
         <div>
-          <Label>{tp("monthlySalary")}</Label>
+          <Label>
+            {t("web.provider.settings.pages.team/commissions.monthlySalary")}
+          </Label>
           <Input
             type="number"
             min={0}

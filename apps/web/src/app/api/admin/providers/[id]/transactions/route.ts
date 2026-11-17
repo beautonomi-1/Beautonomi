@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError, getPaginationParams } from "@/lib/supabase/api-helpers";
@@ -115,14 +116,14 @@ export async function GET(
         txType === "charge" || txType === "additional_charge_payment" || txType === "provider_earnings" ||
         txType === "tip" || txType === "travel_fee" || txType === "cancellation_fee"
       ) {
-        gross += amount;
-        fees += Number((row as Record<string, unknown>).fees ?? 0);
-        commission += Number((row as Record<string, unknown>).commission ?? 0);
-        net += rowNet;
+        gross = addMoney(gross, amount);
+        fees = addMoney(fees, Number((row as Record<string, unknown>).fees ?? 0));
+        commission = addMoney(commission, Number((row as Record<string, unknown>).commission ?? 0));
+        net = addMoney(net, rowNet);
       } else if (txType === "refund") {
-        refunds += Math.abs(rowNet);
+        refunds = addMoney(refunds, Math.abs(rowNet));
       } else if (txType === "payout") {
-        payouts += Math.abs(rowNet);
+        payouts = addMoney(payouts, Math.abs(rowNet));
       }
     }
 

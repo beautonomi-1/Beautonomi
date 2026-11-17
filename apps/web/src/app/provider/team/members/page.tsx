@@ -412,7 +412,7 @@ export default function ProviderTeamMembers() {
             <div className="min-w-0 flex-1">
               <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.teamMembers.serviceProviders")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
-                {members.filter(m => m.role === "employee" || m.role === "manager").length}
+                {members.filter(m => m.is_service_provider !== false).length}
               </div>
             </div>
           </div>
@@ -425,7 +425,7 @@ export default function ProviderTeamMembers() {
             <div className="min-w-0 flex-1">
               <div className="text-xs sm:text-sm text-gray-600">{t("web.provider.teamMembers.onShift")}</div>
               <div className="text-base sm:text-lg font-semibold truncate">
-                {members.filter(m => m.is_active).length}
+                {members.filter(m => m.clocked_in === true).length}
               </div>
             </div>
           </div>

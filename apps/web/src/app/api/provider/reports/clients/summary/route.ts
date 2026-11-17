@@ -14,6 +14,7 @@ import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 import { sumLedgerEarningsByCustomer } from "@/lib/reports/client-ledger-metrics";
 import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { addMoney, LAST_RESORT_CURRENCY, multiplyMoney, roundCurrency } from "@beautonomi/utils";
 
 const REVIEW_IN_CHUNK = 500;
 
@@ -164,7 +165,7 @@ export async function GET(request: NextRequest) {
       };
 
       existing.totalBookings += 1;
-      existing.totalSpent += Number(booking.total_amount || 0);
+      existing.totalSpent = addMoney(existing.totalSpent, Number(booking.total_amount || 0));
       existing.bookings.push(booking);
 
       if (booking.scheduled_at > existing.lastVisit) {
@@ -206,12 +207,12 @@ export async function GET(request: NextRequest) {
       windowBookingRows,
     );
 
-    const totalBookedGross = clients.reduce((sum, c) => sum + c.totalSpent, 0);
-    const totalLedgerEarnings = [...ledgerByCustomer.values()].reduce((s, v) => s + v, 0);
+    const totalBookedGross = clients.reduce((sum, c) => addMoney(sum, c.totalSpent), 0);
+    const totalLedgerEarnings = [...ledgerByCustomer.values()].reduce((s, v) => addMoney(s, v), 0);
     const averageBookedGross =
-      totalClients > 0 ? Math.round((totalBookedGross / totalClients) * 100) / 100 : 0;
+      totalClients > 0 ? multiplyMoney(totalBookedGross, 1 / totalClients, LAST_RESORT_CURRENCY) : 0;
     const averageLedgerEarnings =
-      totalClients > 0 ? Math.round((totalLedgerEarnings / totalClients) * 100) / 100 : 0;
+      totalClients > 0 ? multiplyMoney(totalLedgerEarnings, 1 / totalClients, LAST_RESORT_CURRENCY) : 0;
     /** @deprecated Misleading name — equals averageBookedGross (in-window booked gross, not lifetime value). */
     const averageLifetimeValue = averageBookedGross;
 
@@ -262,7 +263,7 @@ export async function GET(request: NextRequest) {
           clientName: client.clientName,
           totalBookings: client.totalBookings,
           totalSpent: client.totalSpent,
-          ledgerEarnings: Math.round((ledgerByCustomer.get(client.clientId) || 0) * 100) / 100,
+          ledgerEarnings: roundCurrency(ledgerByCustomer.get(client.clientId) || 0, LAST_RESORT_CURRENCY),
           lastVisit: client.lastVisit,
           averageRating,
         };

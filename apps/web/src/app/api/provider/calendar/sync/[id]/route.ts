@@ -69,7 +69,7 @@ export async function PATCH(
       })
       .eq("id", id)
       .eq("provider_id", providerId)
-      .select()
+      .select("id, provider_id, provider, calendar_id, calendar_name, ical_url, sync_direction, is_active, last_sync_at, sync_error, metadata, created_at, updated_at")
       .single();
 
     if (error) {

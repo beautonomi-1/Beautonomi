@@ -4,6 +4,7 @@ import { successResponse, badRequestResponse, handleApiError } from "@/lib/supab
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { validatePromoCode } from "@/lib/promotions/validate";
 import { resolveCheckoutPromotionDiscount } from "@/lib/pricing/checkout-promotion-discount";
+import { subtractMoney } from "@beautonomi/utils";
 import { z } from "zod";
 
 const validateBodySchema = z.object({
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
         discount: {
           amount,
           original_amount: booking_amount,
-          final_amount: Math.max(0, booking_amount - amount),
+          final_amount: Math.max(0, subtractMoney(booking_amount, amount)),
           percentage: null,
         },
       });

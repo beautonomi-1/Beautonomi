@@ -13,6 +13,7 @@
  * the response under `skipped` with a reason.
  */
 
+import { multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -178,7 +179,7 @@ export async function POST(request: NextRequest) {
         if (debitsCredits) {
           const category = channel === "whatsapp" ? "marketing" : "default";
           const unitCost = await priceFor(supabaseAdmin, channel, category);
-          const estimated = customers.length * unitCost;
+          const estimated = multiplyMoney(unitCost, customers.length);
           const balance = await getMarketingBalance(supabaseAdmin, automation.provider_id);
           if (balance.total_zar < estimated) {
             errors.push({

@@ -3,6 +3,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { fromMinorUnits } from "@beautonomi/utils";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -319,7 +320,7 @@ export default function YocoReconciliationReport() {
                         </td>
                         <td className="py-2.5 pe-4 font-mono text-xs text-gray-800">{p.yoco_payment_id}</td>
                         <td className="py-2.5 pe-4 text-end tabular-nums text-gray-900">
-                          {fmt(Number(p.amount ?? 0) / 100)}
+                          {fmt(fromMinorUnits(Number(p.amount ?? 0), exportCurrency))}
                         </td>
                         <td className="py-2.5 pe-4 capitalize text-gray-700">{p.status}</td>
                         <td className="py-2.5 pe-4 text-gray-700">{linkLabel(p.link_kind)}</td>

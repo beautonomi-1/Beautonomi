@@ -29,7 +29,7 @@ import {
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 import type { Booking } from "@/types/beautonomi";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
-import { getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveBookingLifecycleStatus, buildWebRebookHref, slaSettingsFromHours } from "@beautonomi/utils";
+import { subtractMoney, getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveBookingLifecycleStatus, buildWebRebookHref, slaSettingsFromHours } from "@beautonomi/utils";
 import { pendingConfirmationSlaDisplay } from "@/lib/bookings/pending-confirmation-sla-copy";
 import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { useTranslation } from "@beautonomi/i18n";
@@ -1145,7 +1145,7 @@ export default function BookingDetailPage() {
             const walletPaid = Number(booking.wallet_amount || 0);
             const giftPaid = Number(booking.gift_card_amount || 0);
             const totalPaid = Number(booking.total_paid || 0);
-            const otherPaid = Math.max(0, totalPaid - walletPaid - giftPaid);
+            const otherPaid = Math.max(0, subtractMoney(subtractMoney(totalPaid, walletPaid), giftPaid));
             if (totalPaid <= 0 && walletPaid <= 0 && giftPaid <= 0) return null;
             return (
               <div className="pt-2">

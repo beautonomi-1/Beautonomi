@@ -2,11 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockCheckAutomationFeatureAccess = vi.fn();
 const mockCheckMarketingFeatureAccess = vi.fn();
 const mockCanUseMarketingChannel = vi.fn();
+
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
+}));
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -114,6 +119,7 @@ describe("POST /api/provider/automations — plan channel gate", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mockRequirePermission.mockResolvedValue({ authorized: true, user: { id: "u1" } });
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "u1" } });
     mockGetProviderIdForUser.mockResolvedValue("p1");
     mockGetSupabaseServer.mockResolvedValue(makeSupabase());
@@ -195,6 +201,7 @@ describe("PATCH /api/provider/automations/[id] — plan channel gate", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mockRequirePermission.mockResolvedValue({ authorized: true, user: { id: "u1" } });
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "u1" } });
     mockGetProviderIdForUser.mockResolvedValue("p1");
   });

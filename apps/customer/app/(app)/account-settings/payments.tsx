@@ -252,6 +252,9 @@ export default function PaymentsScreen() {
         return;
       }
       if (pr.outcome === "cancel") {
+        if (reference) {
+          void verifyPaystackWithRetry(reference, { redirectStatus: "cancelled", maxAttempts: 1 });
+        }
         return;
       }
       let checkoutSessionId: string | null = null;
@@ -259,6 +262,15 @@ export default function PaymentsScreen() {
       if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
         const parsed = parseOnlineCheckoutReturnUrl(pr.url);
         if (parsed.status === "failed" || parsed.status === "cancelled") {
+          const failRef = parsed.reference || reference;
+          if (failRef) {
+            void verifyPaystackWithRetry(failRef, {
+              redirectStatus: parsed.status,
+              sessionId: parsed.sessionId,
+              transactionId: parsed.transactionId,
+              maxAttempts: 1,
+            });
+          }
           return;
         }
         if (parsed.reference) reference = parsed.reference;

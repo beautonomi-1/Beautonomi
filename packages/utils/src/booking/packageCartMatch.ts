@@ -3,7 +3,7 @@
  * (offerings + optional retail products). Used by API validation and customer UIs.
  */
 
-import { percentOf } from "../money";
+import { percentOf, subtractMoney } from "../money";
 
 export type PackageItemRow = {
   offering_id?: string | null;
@@ -35,7 +35,7 @@ export function computeCatalogPackageServiceDiscount(
   servicesSubtotal: number
 ): number {
   if (pkg.price != null && pkg.price !== undefined && Number(pkg.price) > 0) {
-    return Math.max(0, servicesSubtotal - Number(pkg.price));
+    return Math.max(0, subtractMoney(servicesSubtotal, Number(pkg.price)));
   }
   if (pkg.discount_percentage != null && Number(pkg.discount_percentage) > 0) {
     return Math.max(0, percentOf(servicesSubtotal, Number(pkg.discount_percentage)));

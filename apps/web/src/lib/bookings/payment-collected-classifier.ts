@@ -1,3 +1,4 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import type { BookingPaymentForRefundCap } from "@/lib/bookings/booking-refund-limits";
 
 const PLATFORM_PROVIDERS = new Set(["paystack", "flutterwave", "stripe"]);
@@ -54,16 +55,16 @@ export function splitCollectedByRail(
   for (const p of payments) {
     const amt = Number(p.amount ?? 0);
     if (amt <= 0) continue;
-    if (isPlatformCollected(p)) platform += amt;
+    if (isPlatformCollected(p)) platform = addMoney(platform, amt);
     else if (
       (p.status === "completed" || p.status === "partially_refunded") &&
       isInPersonCollected(p)
     ) {
-      inPerson += amt;
+      inPerson = addMoney(inPerson, amt);
     }
   }
   return {
-    platformCollected: Math.max(0, platform - platformRefunded),
-    inPersonCollected: Math.max(0, inPerson - inPersonRefunded),
+    platformCollected: Math.max(0, subtractMoney(platform, platformRefunded)),
+    inPersonCollected: Math.max(0, subtractMoney(inPerson, inPersonRefunded)),
   };
 }

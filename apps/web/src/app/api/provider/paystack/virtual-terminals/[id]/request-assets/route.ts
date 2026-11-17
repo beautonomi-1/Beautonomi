@@ -5,19 +5,23 @@ import {
   errorResponse,
   getProviderIdForUser,
   handleApiError,
-  requireRoleInApi,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { slackNotifyPaystackTerminalAssetRequested } from "@/lib/integrations/slack/ops-triggers";
 
 const REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 async function resolveProvider(request: NextRequest) {
-  const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+  const permissionCheck = await requirePermission("process_payments", request);
+  if (!permissionCheck.authorized) {
+    return { denied: permissionCheck.response! };
+  }
+  const { user } = permissionCheck;
   const supabase = await getSupabaseServer(request);
   const providerId = await getProviderIdForUser(user.id, supabase, { request });
-  return { supabase, user, providerId };
+  return { denied: undefined, supabase, user, providerId };
 }
 
 export async function POST(
@@ -26,7 +30,9 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { supabase, user, providerId } = await resolveProvider(request);
+    const resolved = await resolveProvider(request);
+    if (resolved.denied) return resolved.denied;
+    const { supabase, user, providerId } = resolved;
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
     const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
@@ -85,7 +91,7 @@ export async function POST(
       terminalName: updated.display_name ?? updated.name,
       providerName: updated.provider?.business_name ?? null,
       paymentLink: updated.payment_link ?? updated.terminal_url ?? null,
-      requestedBy: user.email ?? user.id,
+      requestedBy: (user as { email?: string | null }).email ?? user.id,
     });
 
     return successResponse({

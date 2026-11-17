@@ -35,7 +35,7 @@ import {
   allowsInPersonProductRefund,
   productOrderInPersonDue,
 } from "@/lib/product-order-in-person";
-import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { subtractMoney, isUnpaidOnlinePaystackHold, roundCurrency } from "@beautonomi/utils";
 
 type TranslateFn = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -92,9 +92,13 @@ function canAdvanceLineFulfilment(from: string, to: string): boolean {
 }
 
 /** Immediate next status plus cancel — keeps Android Alert at 3 buttons. */
-function nextLineFulfilmentOptions(from: string): string[] {
-  const order = ["pending", "packed", "shipped", "delivered"] as const;
-  const idx = order.indexOf(from as (typeof order)[number]);
+function nextLineFulfilmentOptions(from: string, fulfillmentType?: string | null): string[] {
+  const ft = (fulfillmentType ?? "").toLowerCase();
+  const collection = ft === "collection" || ft === "pickup";
+  const order: readonly string[] = collection
+    ? ["pending", "packed", "delivered"]
+    : ["pending", "packed", "shipped", "delivered"];
+  const idx = order.indexOf(from);
   const next: string[] = idx >= 0 && idx < order.length - 1 ? [order[idx + 1]] : [];
   if (from !== "cancelled" && from !== "delivered") next.push("cancelled");
   return next.filter(
@@ -333,8 +337,8 @@ function isRefundablePaymentStatus(paymentStatus?: string | null): boolean {
 }
 
 function remainingRefundable(order: Pick<Order, "total_amount" | "refunded_amount">): number {
-  const remaining = numOrZero(order.total_amount) - Math.max(0, numOrZero(order.refunded_amount));
-  return Math.max(0, Math.round(remaining * 100) / 100);
+  const remaining = subtractMoney(numOrZero(order.total_amount), Math.max(0, numOrZero(order.refunded_amount)));
+  return Math.max(0, roundCurrency(remaining));
 }
 
 function formatOrderDateLabel(value: unknown): string | null {
@@ -472,7 +476,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   });
   useOrdersReturnsListRefresh(silentRefresh, PRODUCT_ORDERS_REALTIME_TABLES);
   const { execute: patchOrder, loading: patching } = useApiMutation<{ order: Order }>("patch");
-  const { execute: patchLine, loading: patchingLine } = useApiMutation<{ item: { id: string; fulfilment_status: string } }>("patch");
+  const { execute: patchLine, loading: patchingLine } = useApiMutation<{
+    item: { id: string; fulfilment_status: string };
+    order_status?: string;
+    order?: { status?: string };
+  }>("patch");
   const { execute: postOrderMutation, loading: postingOrderMutation } = useApiMutation<{ order: Order }>("post");
 
   const onRefresh = useCallback(async () => {
@@ -676,7 +684,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
     (refundMethod: "cash" | "store_credit") => {
       if (!refundSheetOrder) return;
       const remaining = remainingRefundable(refundSheetOrder);
-      const amount = Math.round(parseFloat(refundAmountInput.replace(",", ".")) * 100) / 100;
+      const amount = roundCurrency(parseFloat(refundAmountInput.replace(",", ".")));
       if (!Number.isFinite(amount) || amount <= 0 || amount > remaining + 0.01) {
         Alert.alert(po("refundOrderTitle"), po("refundAmountInvalid", { max: remaining.toFixed(2) }));
         return;
@@ -952,7 +960,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                       {order.customer_name?.trim() ||
                         order.customer?.full_name ||
                         (order.order_source === "walk_in" ? po("walkIn") : po("customerFallback"))}{" "}
-                      · {formatCurrency(Number(order.total_amount), currency)}
+                      · {formatCurrency(remainingRefundable(order), currency)}
                     </Text>
                     <Text style={twStyle("text-xs text-gray-400")}>
                       {new Date(order.created_at).toLocaleString()}
@@ -1312,8 +1320,8 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 </View>
               ) : null}
 
-              {/* Tracking info */}
-              {(activeOrder.tracking_number || activeOrder.tracking_url) && (
+              {activeOrder.fulfillment_type === "delivery" &&
+              (activeOrder.tracking_number || activeOrder.tracking_url) ? (
                 <View style={twStyle("mb-3 rounded-xl bg-blue-50 px-4 py-3")}>
                   <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-blue-400 mb-1")}>
                     {po("tracking")}
@@ -1338,7 +1346,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     </TouchableOpacity>
                   ) : null}
                 </View>
-              )}
+              ) : null}
 
               {/* Line items */}
               <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400")}>
@@ -1380,7 +1388,10 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     <TouchableOpacity
                       disabled={lineLocked}
                       onPress={() => {
-                        const nextStatuses = nextLineFulfilmentOptions(currentFulfilment);
+                        const nextStatuses = nextLineFulfilmentOptions(
+                          currentFulfilment,
+                          activeOrder.fulfillment_type,
+                        );
                         if (nextStatuses.length === 0) return;
                         Alert.alert(
                           po("lineFulfilmentTitle"),
@@ -1390,7 +1401,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                             ...nextStatuses.map((status) => ({
                               text: statusLabel(status),
                               onPress: async () => {
-                                const { error } = await patchLine(
+                                const { data: lineResult, error } = await patchLine(
                                   `/api/provider/product-orders/${activeOrder.id}/items/${item.id}`,
                                   { fulfilment_status: status },
                                 );
@@ -1398,10 +1409,12 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                                   Alert.alert(po("errorTitle"), error);
                                   return;
                                 }
+                                const nextOrderStatus = lineResult?.order_status ?? lineResult?.order?.status;
                                 const apply = (prev: Order | null) =>
                                   prev
                                     ? {
                                         ...prev,
+                                        status: nextOrderStatus || prev.status,
                                         items: (prev.items ?? []).map((row) =>
                                           row.id === item.id ? { ...row, fulfilment_status: status } : row,
                                         ),
@@ -1409,6 +1422,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                                     : prev;
                                 setOrderDetail((prev) => apply(prev));
                                 setViewOrder((prev) => apply(prev));
+                                void silentRefresh();
                               },
                             })),
                           ],
@@ -1433,7 +1447,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                 const platformFee = numOrZero(activeOrder.platform_fee);
                 const providerEarnings = activeOrder.provider_earnings != null
                   ? numOrZero(activeOrder.provider_earnings)
-                  : Math.max(0, Number(activeOrder.total_amount) - platformFee);
+                  : Math.max(0, subtractMoney(remainingRefundable(activeOrder), platformFee));
                 const showLines =
                   activeOrder.subtotal != null ||
                   tax > 0 ||
@@ -1444,7 +1458,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                   return (
                     <View style={twStyle("mb-4 flex-row justify-end")}>
                       <Text style={twStyle("text-base font-bold text-gray-900")}>
-                        {po("totalWithAmount", { amount: formatCurrency(Number(activeOrder.total_amount), cur) })}
+                        {po("totalWithAmount", { amount: formatCurrency(remainingRefundable(activeOrder), cur) })}
                       </Text>
                     </View>
                   );
@@ -1476,10 +1490,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
                     ) : null}
                     {platformFee > 0 ? row(po("platformFee"), -platformFee, true) : null}
                     {platformFee > 0 ? row(po("providerEarnings"), providerEarnings) : null}
+                    {numOrZero(activeOrder.refunded_amount) > 0 ? row(po("refunded"), -numOrZero(activeOrder.refunded_amount), true) : null}
                     <View style={twStyle("mt-2 flex-row justify-between border-t border-gray-200 pt-2")}>
                       <Text style={twStyle("text-base font-bold text-gray-900")}>{po("total")}</Text>
                       <Text style={twStyle("text-base font-bold text-gray-900")}>
-                        {formatCurrency(Number(activeOrder.total_amount), cur)}
+                        {formatCurrency(remainingRefundable(activeOrder), cur)}
                       </Text>
                     </View>
                   </View>
@@ -2021,6 +2036,10 @@ export default function ProductOrdersScreen() {
     </ScreenContainer>
   );
 }
+
+
+
+
 
 
 

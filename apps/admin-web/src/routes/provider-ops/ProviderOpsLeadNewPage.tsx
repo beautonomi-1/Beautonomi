@@ -141,14 +141,20 @@ export function ProviderOpsLeadNewPage() {
     if (!locationText.trim()) return;
     try {
       setGeocoding(true);
-      const res = await fetch("/api/mapbox/geocode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: locationText.trim() }), credentials: "include" });
-      if (!res.ok) { setLocationConfidence("none"); return; }
-      const json = await res.json();
-      const features = json.data || [];
-      if (features.length > 0) {
-        const best = features[0];
-        setResolvedLocation({ place_name: best.place_name, latitude: best.center?.[1], longitude: best.center?.[0], confidence: best.relevance });
-        setLocationConfidence(best.relevance >= 0.7 ? "high" : best.relevance >= 0.4 ? "medium" : "low");
+      const features = await adminApi.postJson<
+        Array<{
+          place_name?: string;
+          center?: number[];
+          relevance?: number;
+          context?: { id: string; text: string }[];
+        }>
+      >("/api/mapbox/geocode", { query: locationText.trim() });
+      const list = Array.isArray(features) ? features : [];
+      if (list.length > 0) {
+        const best = list[0];
+        const relevance = typeof best.relevance === "number" ? best.relevance : 0;
+        setResolvedLocation({ place_name: best.place_name, latitude: best.center?.[1], longitude: best.center?.[0], confidence: relevance });
+        setLocationConfidence(relevance >= 0.7 ? "high" : relevance >= 0.4 ? "medium" : "low");
         const cc = best.context?.find((c: { id: string; text: string }) => c.id.startsWith("country"));
         if (cc) setCountry(cc.text);
       } else { setResolvedLocation(null); setLocationConfidence("none"); }

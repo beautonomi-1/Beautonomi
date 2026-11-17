@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 
 /**
  * GET /api/provider/reviews
@@ -15,6 +17,10 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
+
     
     // Use service role client for better performance
     const supabaseAdmin = createClient(
@@ -89,7 +95,7 @@ export async function GET(request: NextRequest) {
     const formattedReviews = reviews || [];
 
     return successResponse({
-      reviews: formattedReviews,
+      reviews: redactBookingCustomerContacts(formattedReviews, canViewClients),
       pagination: {
         page,
         limit,

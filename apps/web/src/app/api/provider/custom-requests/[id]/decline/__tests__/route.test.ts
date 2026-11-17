@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
+const mockRequirePermission = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseAdmin = vi.fn();
@@ -9,6 +10,10 @@ const mockPatchCustomOfferMessageAttachments = vi.fn();
 const mockGetNotificationTemplate = vi.fn();
 const mockSendTemplateNotification = vi.fn();
 const mockSendToUser = vi.fn();
+
+vi.mock("@/lib/auth/requirePermission", () => ({
+  requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
+}));
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
@@ -117,6 +122,7 @@ describe("POST /api/provider/custom-requests/[id]/decline", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    mockRequirePermission.mockResolvedValue({ authorized: true, user: { id: "user-1" } });
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
     mockGetNotificationTemplate.mockResolvedValue(null);

@@ -1,14 +1,15 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isProviderPubliclyVisible } from "@/lib/providers/public-provider-visibility";
-import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, errorResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { checkMapboxRateLimit } from "@/lib/rate-limit/mapbox";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { computeTravelFee } from "@/lib/travel/travelFeeEngine";
 import { buildAtHomeTravelFeeRules } from "@/lib/travel/buildAtHomeTravelFeeRules";
 import { matchPlatformZoneForHouseCall } from "@/lib/travel/matchPlatformZoneForHouseCall";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import { z } from "zod";
-import { roundCurrency } from "@beautonomi/utils";
+import { roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 const validateSchema = z.object({
   address: z.string().min(1, "Address is required"),
@@ -33,6 +34,14 @@ const validateSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    // F3-11: Mapbox is paid — require a signed-in user, then rate-limit.
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
+    const rateLimitResponse = await checkMapboxRateLimit(request, user.id);
+    if (rateLimitResponse) return rateLimitResponse;
+
     const body = validateSchema.parse(await request.json());
     // Public booking (guests included) must use the admin client — anon/session
     // RLS hides many active providers the same way `/api/public/providers/[slug]`
@@ -428,7 +437,7 @@ export async function POST(request: NextRequest) {
         { label: `${matchedZone.name} zone fee`, amount: finalTravelFee }
       ] : (travelFeeResult.breakdown || [
         { label: "Base travel fee", amount: travelFeeRules.minimumFee ?? 0 },
-        ...(distanceKm > 0 ? [{ label: `Distance fee (${distanceKm.toFixed(1)}km)`, amount: finalTravelFee - (travelFeeRules.minimumFee ?? 0) }] : [])
+        ...(distanceKm > 0 ? [{ label: `Distance fee (${distanceKm.toFixed(1)}km)`, amount: subtractMoney(finalTravelFee, travelFeeRules.minimumFee ?? 0) }] : [])
       ])),
     });
   } catch (error) {

@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
@@ -93,7 +94,7 @@ export async function GET(request: NextRequest) {
       if (!bookingsByProvider[id]) bookingsByProvider[id] = { count: 0, revenue: 0 };
       bookingsByProvider[id].count += 1;
       if (b.status === 'completed' && b.total_amount) {
-        bookingsByProvider[id].revenue += Number(b.total_amount);
+        bookingsByProvider[id].revenue = addMoney(bookingsByProvider[id].revenue, Number(b.total_amount));
       }
     });
 
@@ -112,7 +113,7 @@ export async function GET(request: NextRequest) {
       const id = resolveFinanceLedgerRowProviderId(row);
       if (!id || !idSet.has(id)) continue;
       if (!revenueByProvider[id]) revenueByProvider[id] = 0;
-      revenueByProvider[id] += Number(row.net ?? row.amount ?? 0);
+      revenueByProvider[id] = addMoney(revenueByProvider[id], Number(row.net ?? row.amount ?? 0));
     }
 
     type ProviderReportRow = {

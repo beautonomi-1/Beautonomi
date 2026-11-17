@@ -142,4 +142,17 @@ describe("sumPendingBookingLevelCatchUpNet", () => {
     });
     expect(base).toBe(69);
   });
+
+  it("scales the first payment in minor units (F2-05)", () => {
+    const base = resolveCommissionBaseForBookingPayment({
+      paymentAmount: 50,
+      bookingTotal: 100,
+      platformFee: 33.33,
+      tip: 0,
+      tax: 0,
+      travel: 0,
+      bookingLevelItemsAlreadyPosted: false,
+    });
+    expect(base).toBe(33.34);
+  });
 });

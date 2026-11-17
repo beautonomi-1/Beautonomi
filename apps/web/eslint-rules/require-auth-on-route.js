@@ -39,6 +39,7 @@
  *
  * Accepted guard references (case sensitive):
  *   requireRoleInApi, requireAuthInApi, optionalAuthInApi, requireRole, requireAdminSection,
+ *   requirePaystackPayoutAdmin,
  *   requireAdminSectionAny, requireSuperadmin, requireSuperadminPlatform,
  *   requirePermission, requireProviderReportsAccess, requirePublicTenant, validatePortalToken, usePortalToken,
  *   checkPortalRateLimit, verifyEmbedRefreshToken, parseRetentionToken,
@@ -64,6 +65,7 @@ const GUARD_IDENTIFIERS = new Set([
   "optionalAuthInApi",
   "requireRole",
   "requireAdminSection",
+  "requirePaystackPayoutAdmin",
   "requireAdminSectionAny",
   "requireSuperadmin",
   "requireSuperadminPlatform",

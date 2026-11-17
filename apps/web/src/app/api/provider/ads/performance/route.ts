@@ -3,8 +3,10 @@
  * Query: start_date, end_date, campaign_id (optional)
  */
 
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, errorResponse, getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   effectiveLifetimeSpendRow,
@@ -40,7 +42,9 @@ function reachKeyForEvent(event: { id?: string; idempotency_key?: string | null;
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const providerId = await getProviderId(user.id, request);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
@@ -79,7 +83,7 @@ export async function GET(request: NextRequest) {
         "id, status, budget, spent, bid_cpc, billing_model, pack_impressions, duration_days, start_at, end_at, created_at",
       )
       .eq("provider_id", providerId);
-    const lifetimeSpent = (campaigns ?? []).reduce((s: number, c: any) => s + effectiveLifetimeSpendRow(c), 0);
+    const lifetimeSpent = (campaigns ?? []).reduce((s: number, c: any) => addMoney(s, effectiveLifetimeSpendRow(c)), 0);
 
     /**
      * §Release-audit 2026-04: previously computed period spend as
@@ -118,10 +122,10 @@ export async function GET(request: NextRequest) {
       const pack = Number(c.pack_impressions ?? 0);
       if (pack > 0) {
         const budget = Number(c.budget ?? 0);
-        return budget > 0 ? budget / pack : 0;
+        return budget > 0 ? multiplyMoney(budget, 1 / pack) : 0;
       }
       const bid = Number(c.bid_cpc ?? 0);
-      return bid * cpcCostRatio;
+      return multiplyMoney(bid, cpcCostRatio);
     };
 
     const hasDateFilter = !!(startDate || endDate);
@@ -142,8 +146,8 @@ export async function GET(request: NextRequest) {
           reachByCampaign.get(cid)!.add(reachKey);
         }
         const inc = costForImpression(cid);
-        byCampaign[cid].spent += inc;
-        periodSpent += inc;
+        byCampaign[cid].spent = addMoney(byCampaign[cid].spent, inc);
+        periodSpent = addMoney(periodSpent, inc);
       }
       if (e.event_type === "click") byCampaign[cid].clicks += 1;
       if (e.event_type === "book") byCampaign[cid].books += 1;
@@ -157,7 +161,7 @@ export async function GET(request: NextRequest) {
         const attributed = timeBasedAttributedSpend(c as any, filterRange);
         if (attributed <= 0) continue;
         if (!byCampaign[cid]) byCampaign[cid] = { impressions: 0, reach: 0, clicks: 0, books: 0, spent: 0 };
-        byCampaign[cid].spent += attributed;
+        byCampaign[cid].spent = addMoney(byCampaign[cid].spent, attributed);
       }
     }
 
@@ -175,7 +179,7 @@ export async function GET(request: NextRequest) {
     if (!hasDateFilter) {
       periodSpent = lifetimeSpent;
     } else {
-      periodSpent = Object.values(byCampaign).reduce((s, x) => s + x.spent, 0);
+      periodSpent = Object.values(byCampaign).reduce((s, x) => addMoney(s, x.spent), 0);
     }
 
     return successResponse({

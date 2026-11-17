@@ -9,10 +9,16 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import {
   applyProviderProductOrderQueueFilter,
   type ProviderProductOrderQueue,
 } from "@/lib/orders/provider-product-order-queue-filter";
+import {
+  mergeProductOrderContact,
+  PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT,
+} from "@/lib/orders/product-order-columns";
 
 const PRODUCT_ORDER_STATUSES = [
   "pending",
@@ -36,6 +42,9 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -56,7 +65,7 @@ export async function GET(request: NextRequest) {
     let query = (supabase.from("product_orders") as any)
       .select(
         `
-        *,
+        ${PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT},
         items:product_order_items (
           id, product_id, product_variant_id, product_name, product_image_url, quantity, unit_price, total_price,
           fulfilment_status, fulfilled_qty,
@@ -139,9 +148,10 @@ export async function GET(request: NextRequest) {
       statusCountResults[PRODUCT_ORDER_STATUSES.length + 1]?.count ?? 0;
 
     const ordersWithDue = await withProductOrderAmountStillDue(getSupabaseAdmin(), orders ?? []);
+    const ordersWithContact = await mergeProductOrderContact(ordersWithDue, canViewClients);
 
     return successResponse({
-      orders: ordersWithDue,
+      orders: redactBookingCustomerContacts(ordersWithContact, canViewClients),
       status_counts: statusCounts,
       pagination: {
         page,

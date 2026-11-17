@@ -229,6 +229,7 @@ function billingActionLabel(sub: Subscription | null, subFn: (key: string, opts?
     return subFn("ctaReactivateFree");
   }
   if (isFreeTierSubscription(sub)) return null;
+  if (sub.billing_issue?.action === "charge_pending") return null;
   if (sub.status === "past_due") return subFn("billingActionPayNowUpdateCard");
   if (sub.paystack_sync_pending) return subFn("billingActionCompleteBilling");
   if (sub.cancelled_at) return subFn("billingActionResumeBilling");
@@ -401,6 +402,9 @@ export default function SubscriptionScreen() {
       }
 
       if (result?.outcome === "cancel") {
+        if (opts?.reference) {
+          void verifyPaystackWithRetry(opts.reference, { redirectStatus: "cancelled", maxAttempts: 1 });
+        }
         trackProviderCheckoutFunnelClient("provider_checkout_abandoned", {
           source: "subscription_settings",
           platform: "mobile",
@@ -423,6 +427,10 @@ export default function SubscriptionScreen() {
         let checkoutSessionId: string | null = null;
         if (result.outcome === "success" && result.url) {
           if (matchesSubscriptionPaystackReturnUrl(result.url, { cancelled: true })) {
+            const cancelRef = parseOnlineCheckoutReturnUrl(result.url).reference || opts?.reference;
+            if (cancelRef) {
+              void verifyPaystackWithRetry(cancelRef, { redirectStatus: "cancelled", maxAttempts: 1 });
+            }
             const failed = subscriptionFailedCopy(sub("paymentNotCompleted"));
             setPaymentOutcome({ phase: "failed", ...failed });
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -431,6 +439,15 @@ export default function SubscriptionScreen() {
           }
           const parsed = parseOnlineCheckoutReturnUrl(result.url);
           if (parsed.status === "failed" || parsed.status === "cancelled") {
+            const failRef = parsed.reference || opts?.reference;
+            if (failRef) {
+              void verifyPaystackWithRetry(failRef, {
+                redirectStatus: parsed.status,
+                sessionId: parsed.sessionId,
+                transactionId: parsed.transactionId,
+                maxAttempts: 1,
+              });
+            }
             const failed = subscriptionFailedCopy(sub("paymentNotCompleted"));
             setPaymentOutcome({ phase: "failed", ...failed });
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -711,7 +728,13 @@ export default function SubscriptionScreen() {
       }
     }
 
-    if (subscription?.billing_issue?.action === "update_payment" || subscription?.status === "past_due") {
+    if (subscription?.billing_issue?.action === "charge_pending") return;
+    const flutterwaveBilled =
+      String(subscription?.billing_provider ?? "").toLowerCase() === "flutterwave";
+    if (
+      !flutterwaveBilled &&
+      (subscription?.billing_issue?.action === "update_payment" || subscription?.status === "past_due")
+    ) {
       if (isAppleBillingActive(subscription.billing_provider, subscription.status)) {
         openAppleSubscriptionManagement();
         return;
@@ -812,6 +835,10 @@ export default function SubscriptionScreen() {
   }
 
   async function handleUpgrade(planId: string) {
+    if (subscription?.billing_issue?.action === "charge_pending") {
+      Alert.alert(sub("statusPastDue"), subscription.billing_issue.message);
+      return;
+    }
     const selectedPlan = plans?.find((p) => p.id === planId);
     if (!selectedPlan) return;
     const billingPeriod = selectedPlan.billing_period || "monthly";
@@ -1206,7 +1233,7 @@ export default function SubscriptionScreen() {
               ) : (
                 <>
                   <Text style={twStyle("mt-2 text-sm text-gray-600")}>
-                    {subscription.expires_at
+                    {subscription.expires_at && subscription.status !== "past_due"
                       ? subscription.auto_renew
                         ? sub("autoRenewsOn", { date: formatDate(subscription.expires_at) })
                         : sub("paidUntil", { date: formatDate(subscription.expires_at) })
@@ -1247,7 +1274,9 @@ export default function SubscriptionScreen() {
           {subscription.billing_issue ? (
             <View style={twStyle("mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4")}>
               <Text style={twStyle("text-sm font-semibold text-amber-900")}>
-                {subscription.billing_issue.type === "payment_failed"
+                {subscription.billing_issue.action === "charge_pending"
+                  ? sub("statusPastDue")
+                  : subscription.billing_issue.type === "payment_failed"
                   ? sub("billingIssuePaymentNotCompleted")
                   : subscription.billing_issue.type === "past_due"
                     ? sub("billingIssuePaymentActionNeeded")
@@ -1302,7 +1331,7 @@ export default function SubscriptionScreen() {
             </TouchableOpacity>
           ) : null}
 
-          {paidSubscriber && !billingCta && subscription.billing_provider !== "apple" ? (
+          {paidSubscriber && !billingCta && subscription.billing_provider !== "apple" && subscription.billing_issue?.action !== "charge_pending" ? (
             <TouchableOpacity
               style={twStyle("mt-3 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3")}
               onPress={handleManageCard}
@@ -1511,7 +1540,13 @@ function PlanCard({
         </View>
       ) : null}
 
-      {(!isCurrent || needsReactivate) && cta ? (
+      {subscription?.billing_issue?.action === "charge_pending" ? (
+        isCurrent ? (
+          <View style={twStyle("mt-5 rounded-full bg-gray-100 py-3")}>
+            <Text style={twStyle("text-center text-sm font-semibold text-gray-600")}>{sub("thisIsYourCurrentPlan")}</Text>
+          </View>
+        ) : null
+      ) : (!isCurrent || needsReactivate) && cta ? (
         <TouchableOpacity
           style={[
             twStyle("mt-5 flex-row items-center justify-center rounded-full py-4"),

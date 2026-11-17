@@ -1,5 +1,7 @@
 "use client";
 
+import { addMoney, subtractMoney } from "@beautonomi/utils";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, CalendarClock, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -126,13 +128,10 @@ export function AppointmentEditSheet({
     setTaxRate(rawTaxRate > 1 ? rawTaxRate / 100 : rawTaxRate);
     setTaxInclusive(raw.tax_inclusive !== false);
 
-    const preserved =
-      Number(raw.loyalty_discount_amount ?? 0) +
-      Number(raw.promotion_discount_amount ?? 0) +
-      Number(raw.membership_discount_amount ?? 0);
+    const preserved = addMoney(addMoney(Number(raw.loyalty_discount_amount ?? 0), Number(raw.promotion_discount_amount ?? 0)), Number(raw.membership_discount_amount ?? 0));
     const discountAmount = Number(raw.discount_amount ?? appt.discount_amount ?? 0);
     setPreservedDiscountTotal(preserved);
-    setManualDiscount(Math.max(0, discountAmount - preserved));
+    setManualDiscount(Math.max(0, subtractMoney(discountAmount, preserved)));
 
     const mapped = mapBookingDetailToEditLines({
       services: (raw.services as Parameters<typeof mapBookingDetailToEditLines>[0]["services"]) ?? [

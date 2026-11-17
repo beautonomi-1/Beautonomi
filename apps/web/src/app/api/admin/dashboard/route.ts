@@ -397,7 +397,7 @@ export async function GET(request: NextRequest) {
         provider_earnings: total.provider_earnings_net,
         cancellation_fees: total.cancellation_fees_retained,
         tips: total.tips_gross,
-        this_month: thisMonth.provider_earnings_net + thisMonth.tips_gross + thisMonth.cancellation_fees_retained,
+        this_month: addMoney(addMoney(thisMonth.provider_earnings_net, thisMonth.tips_gross), thisMonth.cancellation_fees_retained),
       },
 
       revenue_streams: {

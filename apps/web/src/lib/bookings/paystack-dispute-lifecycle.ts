@@ -46,7 +46,12 @@ export function classifyPaystackDisputePhase(
   return "ignored";
 }
 
-function disputeAmountMajor(
+/**
+ * Paystack dispute payloads (`refund_amount`, `amount`, `transaction.amount`)
+ * are ALWAYS in the currency's smallest unit (kobo / cents), per the Paystack
+ * webhook docs. Convert unconditionally — never guess from magnitude.
+ */
+export function paystackDisputeAmountMajor(
   disputeData: Record<string, unknown>,
   disputeTx: Record<string, unknown> | null,
 ): number {
@@ -55,13 +60,117 @@ function disputeAmountMajor(
     disputeTx?.amount) as number | undefined;
   if (raw == null || !Number.isFinite(Number(raw))) return 0;
   const n = Number(raw);
-  // Paystack dispute amounts are usually kobo; booking chargebacks accept smallest when needed.
-  return n >= 1000
-    ? convertFromSmallestUnit(
-        n,
-        String(disputeData.currency ?? disputeTx?.currency ?? "ZAR").toUpperCase(),
-      )
-    : n;
+  if (n <= 0) return 0;
+  return convertFromSmallestUnit(
+    n,
+    String(disputeData.currency ?? disputeTx?.currency ?? "ZAR").toUpperCase(),
+  );
+}
+
+const disputeAmountMajor = paystackDisputeAmountMajor;
+
+/**
+ * Resolve booking / provider / tenant for a disputed charge from the
+ * `payment_transactions` → `bookings` chain. Shared by every gateway's
+ * dispute handler so `payment_disputes.provider_id` is always populated
+ * (the payout reserve is keyed on it).
+ */
+export async function resolveDisputeBookingSubjects(
+  supabase: SupabaseClient,
+  params: { reference: string; paymentProvider: "paystack" | "stripe" | "flutterwave" },
+): Promise<{
+  bookingId: string | null;
+  providerId: string | null;
+  tenantId: string | null;
+  bookingNumber: string | null;
+}> {
+  const { data: txn } = await supabase
+    .from("payment_transactions")
+    .select("booking_id")
+    .eq("reference", params.reference)
+    .eq("provider", params.paymentProvider)
+    .in("status", ["success", "partially_refunded", "refunded"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const bookingId = (txn as { booking_id?: string | null } | null)?.booking_id ?? null;
+  if (!bookingId) return { bookingId: null, providerId: null, tenantId: null, bookingNumber: null };
+  const { data: booking } = await supabase
+    .from("bookings")
+    .select("provider_id, tenant_id, booking_number")
+    .eq("id", bookingId)
+    .maybeSingle();
+  const b = booking as
+    | { provider_id?: string | null; tenant_id?: string | null; booking_number?: string | null }
+    | null;
+  return {
+    bookingId,
+    providerId: b?.provider_id ?? null,
+    tenantId: b?.tenant_id ?? null,
+    bookingNumber: b?.booking_number ?? null,
+  };
+}
+
+/**
+ * F2-28: tell the provider a dispute was opened against one of their bookings
+ * (same push + in-app pattern as payout notifications). Never throws.
+ */
+async function notifyProviderDisputeOpened(
+  supabase: SupabaseClient,
+  params: {
+    providerId: string;
+    bookingId: string | null;
+    disputeId: string;
+    amountMajor: number;
+    currency: string;
+    paymentProvider: string;
+  },
+): Promise<void> {
+  try {
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("user_id")
+      .eq("id", params.providerId)
+      .maybeSingle();
+    const providerUserId = (provider as { user_id?: string | null } | null)?.user_id;
+    if (!providerUserId) return;
+
+    const amountLabel = `${params.currency.toUpperCase()} ${params.amountMajor.toFixed(2)}`;
+    const title = "Payment dispute opened";
+    const message = `A customer disputed a ${amountLabel} payment${
+      params.bookingId ? " on one of your bookings" : ""
+    }. The disputed amount is on hold until the dispute is resolved.`;
+    const actionUrl = params.bookingId
+      ? `/provider/bookings/${params.bookingId}`
+      : "/provider/finance";
+    const data = {
+      type: "dispute_opened",
+      dispute_id: params.disputeId,
+      booking_id: params.bookingId,
+      payment_provider: params.paymentProvider,
+      amount: params.amountMajor,
+      currency: params.currency.toUpperCase(),
+    };
+
+    const { sendToUser } = await import("@/lib/notifications/onesignal");
+    await sendToUser(
+      providerUserId,
+      { title, message, type: "dispute_opened", data },
+      ["push"],
+      { appType: "provider" },
+    );
+    const { insertNotification } = await import("@/lib/notifications/insert-notification");
+    await insertNotification({
+      user_id: providerUserId,
+      type: "dispute_opened",
+      title,
+      message,
+      data,
+      action_url: actionUrl,
+    });
+  } catch (err) {
+    console.error("[payment-dispute] provider dispute notification failed:", err);
+  }
 }
 
 export async function upsertOpenPaymentDispute(params: {
@@ -79,6 +188,38 @@ export async function upsertOpenPaymentDispute(params: {
   tenantId?: string | null;
 }): Promise<void> {
   const now = new Date().toISOString();
+
+  // F2-27: never persist a dispute without its booking subjects when they can
+  // be resolved. Callers that already know them pass them through; otherwise
+  // (Flutterwave, Stripe closed / funds_withdrawn) resolve from the charge,
+  // and never clobber values already stored on the row with nulls.
+  const { data: existing } = await params.supabase
+    .from("payment_disputes")
+    .select("id, booking_id, provider_id, tenant_id, status")
+    .eq("payment_provider", params.paymentProvider)
+    .eq("dispute_id", params.disputeId)
+    .maybeSingle();
+  const existingRow = existing as
+    | { id?: string; booking_id?: string | null; provider_id?: string | null; tenant_id?: string | null }
+    | null;
+
+  let bookingId = params.bookingId ?? existingRow?.booking_id ?? null;
+  let providerId = params.providerId ?? existingRow?.provider_id ?? null;
+  let tenantId = params.tenantId ?? existingRow?.tenant_id ?? null;
+  if (!providerId || !bookingId || !tenantId) {
+    try {
+      const resolved = await resolveDisputeBookingSubjects(params.supabase, {
+        reference: params.reference,
+        paymentProvider: params.paymentProvider,
+      });
+      bookingId = bookingId ?? resolved.bookingId;
+      providerId = providerId ?? resolved.providerId;
+      tenantId = tenantId ?? resolved.tenantId;
+    } catch (resolveErr) {
+      console.error("[payment-dispute] booking subject resolution failed:", resolveErr);
+    }
+  }
+
   const row = {
     payment_provider: params.paymentProvider,
     dispute_id: params.disputeId,
@@ -88,9 +229,9 @@ export async function upsertOpenPaymentDispute(params: {
     status: params.status,
     resolution: params.resolution ?? null,
     raw_payload: params.rawPayload,
-    booking_id: params.bookingId ?? null,
-    provider_id: params.providerId ?? null,
-    tenant_id: params.tenantId ?? null,
+    booking_id: bookingId,
+    provider_id: providerId,
+    tenant_id: tenantId,
     updated_at: now,
     ...(params.status === "merchant_won" || params.status === "customer_won"
       ? { resolved_at: now }
@@ -102,6 +243,18 @@ export async function upsertOpenPaymentDispute(params: {
   });
   if (error) {
     throw error;
+  }
+
+  // F2-28: notify the provider the first time a dispute is recorded as open.
+  if (params.status === "open" && !existingRow && providerId) {
+    await notifyProviderDisputeOpened(params.supabase, {
+      providerId,
+      bookingId,
+      disputeId: params.disputeId,
+      amountMajor: Math.max(0, params.amountMajor),
+      currency: params.currency,
+      paymentProvider: params.paymentProvider,
+    });
   }
 }
 

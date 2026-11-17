@@ -25,6 +25,7 @@ import {
 import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
 import { fetchScopedSingle } from '@/lib/tenant/scoped-overrides';
 import { GrcHttpError } from '@/lib/grc/errors';
+import { mapMoneySqlError } from "@/lib/finance/map-money-sql-error";
 
 export interface ApiError {
   message: string;
@@ -176,6 +177,19 @@ export function handleApiError(
   }
 
   if (error instanceof Error) {
+    const moneyMappedFromError = mapMoneySqlError(error);
+    if (moneyMappedFromError) {
+      if (moneyMappedFromError.code === "LEDGER_POSTING_FAILED") {
+        Sentry.captureException(error, {
+          extra: { code: moneyMappedFromError.code, status: moneyMappedFromError.status },
+        });
+      }
+      return errorResponse(
+        moneyMappedFromError.message,
+        moneyMappedFromError.code,
+        moneyMappedFromError.status,
+      );
+    }
     // Supabase Auth (and similar) attach `status` (4xx) for user-facing validation — don't map to 500.
     const maybeStatus = (error as { status?: unknown }).status;
     if (typeof maybeStatus === "number" && maybeStatus >= 400 && maybeStatus < 500) {
@@ -252,6 +266,16 @@ export function handleApiError(
       status,
       process.env.NODE_ENV === "development" ? error.stack : undefined
     );
+  }
+
+  const moneyMapped = mapMoneySqlError(error);
+  if (moneyMapped) {
+    if (moneyMapped.status >= 500 || moneyMapped.code === "LEDGER_POSTING_FAILED") {
+      Sentry.captureException(error instanceof Error ? error : new Error(moneyMapped.message), {
+        extra: { code: moneyMapped.code, status: moneyMapped.status },
+      });
+    }
+    return errorResponse(moneyMapped.message, moneyMapped.code, moneyMapped.status);
   }
 
   const postgrestLike =

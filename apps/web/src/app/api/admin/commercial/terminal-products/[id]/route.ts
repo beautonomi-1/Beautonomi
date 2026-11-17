@@ -53,17 +53,18 @@ const updateProductSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user: adminUser } = await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
     const tenantId = await resolveAdminApiTenantId(request);
     const supabase = getSupabaseAdmin();
+    const { id: productId } = await params;
 
     const { data: existing, error: loadErr } = await supabase
       .from("terminal_products")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", productId)
       .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .maybeSingle();
 
@@ -83,7 +84,7 @@ export async function PATCH(
     const { data, error } = await supabase
       .from("terminal_products")
       .update(validation.data)
-      .eq("id", params.id)
+      .eq("id", productId)
       .select()
       .single();
 
@@ -97,7 +98,7 @@ export async function PATCH(
       actor_role: adminUser.role ?? "superadmin",
       action: "admin.terminal_product.updated",
       entity_type: "terminal_products",
-      entity_id: params.id,
+      entity_id: productId,
       module: "terminal_commerce",
       before_json: existing,
       after_json: data,

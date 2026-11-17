@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -62,7 +63,7 @@ export async function DELETE(
       .eq("group_booking_id", groupId)
       .eq("provider_id", providerId);
     const groupHasNetPayments = (paidChildren ?? []).some(
-      (b) => Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0) > 0.01,
+      (b) => subtractMoney(Number(b.total_paid ?? 0), Number(b.total_refunded ?? 0)) > 0.01,
     );
     if (groupHasNetPayments) {
       const refundCheck = await requirePermission("issue_refunds", request);

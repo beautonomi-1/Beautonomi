@@ -5,9 +5,9 @@ import {
   errorResponse,
   getProviderIdForUser,
   handleApiError,
-  requireRoleInApi,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { checkRateLimit } from "@/lib/rate-limit/store";
 import {
@@ -25,7 +25,9 @@ import {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("process_payments", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase, { request });
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);

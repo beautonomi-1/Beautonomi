@@ -5,7 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { manualCardReportLabel } from "@beautonomi/utils";
+import { subtractMoney, addMoney, manualCardReportLabel, sumMoney, multiplyMoney } from "@beautonomi/utils";
 import { normalizeRecordedPaymentMethod } from "@/lib/reports/recorded-takings";
 import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
@@ -226,11 +226,11 @@ export async function buildProviderPaymentMethodsReport(
       const net =
         Math.max(
           0,
-          Number(pt.amount ?? 0) - Number((pt as { refund_amount?: number | null }).refund_amount ?? 0),
+          subtractMoney(Number(pt.amount ?? 0), Number((pt as { refund_amount?: number | null }).refund_amount ?? 0)),
         );
       if (net <= 0) continue;
       b.ptCount += 1;
-      b.ptAmount += net;
+      b.ptAmount = addMoney(b.ptAmount, net);
     }
   }
 
@@ -291,7 +291,7 @@ export async function buildProviderPaymentMethodsReport(
     }
     const b = getBucket(methodKey);
     b.bpCount += 1;
-    b.bpAmount += Number(row.amount ?? 0);
+    b.bpAmount = addMoney(b.bpAmount, Number(row.amount ?? 0));
   }
 
   /** ---------- Wallet booking adjustments (same rules as payment summary) ---------- */
@@ -341,7 +341,7 @@ export async function buildProviderPaymentMethodsReport(
     if (Number(b.total_paid ?? 0) === 0) {
       walletBucket.walletAdjCount += 1;
     }
-    walletBucket.walletAdjAmount += Number(b.wallet_amount ?? 0);
+    walletBucket.walletAdjAmount = addMoney(walletBucket.walletAdjAmount, Number(b.wallet_amount ?? 0));
   }
 
   /** ---------- Failed capture attempts (same settlement window; attributed when booking is in scope) ---------- */
@@ -368,13 +368,13 @@ export async function buildProviderPaymentMethodsReport(
 
   /** ---------- Final rows ---------- */
   const grandTotal = [...bucketMap.values()].reduce(
-    (s, m) => s + m.ptAmount + m.bpAmount + m.walletAdjAmount,
+    (s, m) => addMoney(s, sumMoney(m.ptAmount, m.bpAmount, m.walletAdjAmount)),
     0,
   );
 
   const methods: PaymentMethodsMethodRow[] = [...bucketMap.entries()]
     .map(([methodKey, m]) => {
-      const totalAmount = m.ptAmount + m.bpAmount + m.walletAdjAmount;
+      const totalAmount = sumMoney(m.ptAmount, m.bpAmount, m.walletAdjAmount);
       const totalCount = m.ptCount + m.bpCount + m.walletAdjCount;
       return {
         method: methodKey,
@@ -387,7 +387,7 @@ export async function buildProviderPaymentMethodsReport(
         bookingPaymentAmount: m.bpAmount,
         walletBookingAdjustmentCount: m.walletAdjCount,
         walletBookingAdjustmentAmount: m.walletAdjAmount,
-        averageAmount: totalCount > 0 ? totalAmount / totalCount : 0,
+        averageAmount: totalCount > 0 ? multiplyMoney(totalAmount, 1 / totalCount) : 0,
         percentage: grandTotal > 0 ? (totalAmount / grandTotal) * 100 : 0,
       };
     })

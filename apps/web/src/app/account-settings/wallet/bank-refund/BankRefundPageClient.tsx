@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
-import { FetchError, deleteFetcherGetCacheEntriesMatching, fetcher } from "@/lib/http/fetcher";
+import { deleteFetcherGetCacheEntriesMatching, fetcher } from "@/lib/http/fetcher";
+import { formatApiErrorMessage } from "@/lib/http/api-error";
 import {
   bankRefundFee,
   parseRefundAmount,
@@ -161,7 +162,7 @@ export default function BankRefundPageClient() {
       invalidate();
       setStep("submitted");
     } catch (error) {
-      toast.error(error instanceof FetchError && error.message ? error.message : wb("failed"));
+      toast.error(formatApiErrorMessage(error, wb("failed")));
     } finally {
       setBusy(false);
     }
@@ -177,7 +178,7 @@ export default function BankRefundPageClient() {
       toast.success(sf("bankRefundCancelled"));
       await load();
     } catch (error) {
-      toast.error(error instanceof FetchError && error.message ? error.message : wb("failed"));
+      toast.error(formatApiErrorMessage(error, wb("failed")));
     } finally {
       setBusy(false);
     }

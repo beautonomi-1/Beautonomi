@@ -21,6 +21,7 @@ import {
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { subtractMoney, fromMinorUnits } from "@beautonomi/utils";
 import { requireYocoPlatformEnabledForProvider } from "@/lib/payments/yoco-feature-gate";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -86,14 +87,26 @@ export async function POST(request: Request) {
       );
     }
 
-    // Resolve amount (Rands) and appointment_id for provider app compatibility
+    // Resolve amount (major units) and appointment_id for provider app compatibility.
+    // F2-36: amount_cents is integer minor units — never hard-code /100.
+    const amountCurrency = validationResult.data.currency ?? LAST_RESORT_CURRENCY;
     const amountInRands =
       validationResult.data.amount ??
       (validationResult.data.amount_cents != null
-        ? validationResult.data.amount_cents / 100
+        ? fromMinorUnits(validationResult.data.amount_cents, amountCurrency)
         : undefined);
+    // F2-35: a bare `entity_type` / `entity_id` pair is normalised onto the
+    // specific id field so it passes through the same ownership and
+    // outstanding-amount guards as `booking_id` / `sale_id` / etc. below.
+    const bareEntityType = validationResult.data.entity_type ?? null;
+    const bareEntityId = validationResult.data.entity_id ?? null;
+    const bareEntity = (type: typeof bareEntityType): string | null =>
+      bareEntityType === type && bareEntityId ? bareEntityId : null;
+
     const appointmentId =
-      validationResult.data.appointment_id ?? validationResult.data.booking_id ?? null;
+      validationResult.data.appointment_id ??
+      validationResult.data.booking_id ??
+      bareEntity("booking");
 
     // Resolve active provider context (owner/staff, multi-provider safe).
     const providerId = await getProviderIdForUser(auth.user.id, supabase, { request });
@@ -178,7 +191,7 @@ export async function POST(request: Request) {
     };
 
     const { data: legacyTerminal } = !device
-      ? await supabase
+      ? await getSupabaseAdmin()
           .from("provider_yoco_terminals")
           .select("id, device_id, device_name, active, secret_key, api_key")
           .eq("id", validationResult.data.device_id)
@@ -391,13 +404,14 @@ export async function POST(request: Request) {
     const amountInCents = convertToCents(amountInRands);
     const currency = validationResult.data.currency || lastResortCurrency;
 
-    const saleId = validationResult.data.sale_id ?? null;
+    const saleId = validationResult.data.sale_id ?? bareEntity("sale");
 
     // Yoco expects amount as Money object and metadata values as strings (API reference)
     const tipAmount = Math.max(0, Number(validationResult.data.tip_amount ?? 0));
-    const groupBookingId = validationResult.data.group_booking_id ?? null;
-    const productOrderId = validationResult.data.product_order_id ?? null;
-    const additionalChargeId = validationResult.data.additional_charge_id ?? null;
+    const groupBookingId = validationResult.data.group_booking_id ?? bareEntity("group_booking");
+    const productOrderId = validationResult.data.product_order_id ?? bareEntity("product_order");
+    const additionalChargeId =
+      validationResult.data.additional_charge_id ?? bareEntity("additional_charge");
     if (additionalChargeId) {
       const { computeExpectedAmountForEntity } = await import(
         "@/lib/payments/paycloud-amount-guards"
@@ -409,7 +423,7 @@ export async function POST(request: Request) {
         additionalChargeId,
       );
       const expectedDue = expectedCharge?.amount ?? 0;
-      const yocoBase = Math.max(0, amountInRands - tipAmount);
+      const yocoBase = Math.max(0, subtractMoney(amountInRands, tipAmount));
       if (!expectedCharge || expectedDue <= 0.009 || Math.abs(yocoBase - expectedDue) > 0.02) {
         return NextResponse.json(
           {
@@ -489,7 +503,7 @@ export async function POST(request: Request) {
     if (saleId && !appointmentId && !groupBookingId && !productOrderId && !additionalChargeId) {
       const { saleCardAmountStillDueForSale } = await import("@/lib/gift-cards/sale-gift-card");
       const due = await saleCardAmountStillDueForSale(getSupabaseAdmin(), providerId, saleId);
-      const yocoBase = Math.max(0, amountInRands - tipAmount);
+      const yocoBase = Math.max(0, subtractMoney(amountInRands, tipAmount));
       if (due == null || Math.abs(yocoBase - due) > 0.02) {
         return NextResponse.json(
           {
@@ -510,29 +524,41 @@ export async function POST(request: Request) {
       productOrderId ||
       additionalChargeId ||
       groupBookingId ||
-      (validationResult.data.sale_id ?? null) ||
+      saleId ||
       crypto.randomUUID();
-    const resolvedEntityType =
-      validationResult.data.entity_type ??
-      (groupBookingId
-        ? "group_booking"
+    // F2-35: the entity we link the payment to is always the one that passed
+    // the guards above — never a bare `entity_id` that differs from it.
+    const guardedLinkedEntity: { type: NonNullable<typeof bareEntityType>; id: string } | null =
+      groupBookingId
+        ? { type: "group_booking", id: groupBookingId }
         : productOrderId
-          ? "product_order"
+          ? { type: "product_order", id: productOrderId }
           : additionalChargeId
-            ? "additional_charge"
+            ? { type: "additional_charge", id: additionalChargeId }
             : appointmentId
-              ? "booking"
-              : validationResult.data.sale_id
-                ? "sale"
-                : undefined);
-    let resolvedEntityId =
-      validationResult.data.entity_id ??
-      groupBookingId ??
-      productOrderId ??
-      additionalChargeId ??
-      appointmentId ??
-      validationResult.data.sale_id ??
-      null;
+              ? { type: "booking", id: appointmentId }
+              : saleId
+                ? { type: "sale", id: saleId }
+                : null;
+    if (
+      guardedLinkedEntity &&
+      bareEntityId &&
+      (bareEntityId !== guardedLinkedEntity.id ||
+        (bareEntityType && bareEntityType !== guardedLinkedEntity.type))
+    ) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "entity_type/entity_id does not match the entity being paid.",
+            code: "ENTITY_MISMATCH",
+          },
+        },
+        { status: 400 },
+      );
+    }
+    const resolvedEntityType = guardedLinkedEntity?.type ?? bareEntityType ?? undefined;
+    let resolvedEntityId = guardedLinkedEntity?.id ?? null;
     let resolvedEntityTypeFinal = resolvedEntityType;
     if (resolvedEntityTypeFinal === "sale" && resolvedEntityId) {
       const { resolveSaleEntityTarget } = await import(
@@ -671,7 +697,7 @@ export async function POST(request: Request) {
       device_id: validationResult.data.device_id,
       processed_by: auth.user.id,
       ...(appointmentId ? { appointment_id: appointmentId } : {}),
-      ...(validationResult.data.sale_id ? { sale_id: validationResult.data.sale_id } : {}),
+      ...(saleId ? { sale_id: saleId } : {}),
       ...(tipAmount > 0 ? { tip_amount: String(tipAmount) } : {}),
       ...(resolvedEntityTypeFinal ? { entity_type: resolvedEntityTypeFinal } : {}),
       ...(resolvedEntityId ? { entity_id: resolvedEntityId } : {}),
@@ -857,7 +883,7 @@ export async function POST(request: Request) {
         currency,
         status: initialStatus,
         appointment_id: appointmentId,
-        sale_id: validationResult.data.sale_id,
+        sale_id: saleId,
         tip_amount: tipAmount,
         entity_type: resolvedEntityTypeFinal ?? null,
         entity_id: resolvedEntityId,
@@ -970,7 +996,7 @@ export async function POST(request: Request) {
         status: initialStatus,
         payment_date: new Date().toISOString(),
         appointment_id: appointmentId,
-        sale_id: validationResult.data.sale_id,
+        sale_id: saleId,
         metadata: validationResult.data.metadata,
         credential_mode: deviceCredentialMode,
         receipt_url: receiptUrl ?? undefined,

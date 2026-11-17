@@ -14,7 +14,7 @@ import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/a
 import { assertTransactionalMarketAllowed } from "@/lib/tenant/market-availability";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
-import { createBookingRecord } from "./_helpers/create-booking-record";
+import { createBookingRecord, releasedBookingIdFromResponse } from "./_helpers/create-booking-record";
 import { ensureUserProfileForAuthUser } from "./_helpers/ensure-user-profile";
 import { postBookingEffects } from "./_helpers/post-booking";
 import { processPayment } from "./_helpers/process-payment";
@@ -23,6 +23,7 @@ import {
   borrowPackageSessionForReschedule,
   loadRescheduleCarryOver,
   returnBorrowedPackageSession,
+  returnBorrowedSessionIfReleased,
   type RescheduleCarryOver,
 } from "@/lib/bookings/reschedule-carry-over";
 import { validateBooking } from "./_helpers/validate-booking";
@@ -96,15 +97,6 @@ export async function POST(request: NextRequest) {
         // 24h instead of double-creating a booking + charging the customer
         // twice. Silent no-op when the caller omits the key.
         const idempotencyKey = extractIdempotencyKey(request, body);
-        if (idempotencyKey) {
-          const cached = await lookupIdempotentResponse(
-            PUBLIC_BOOKINGS_ENDPOINT,
-            idempotencyKey,
-          );
-          if (cached) {
-            return cached.toResponse();
-          }
-        }
 
         // Wave 1.5 (audit 2026-04 final 100/100): CAPTCHA guard for the
         // public POST surface. Previously the helper auto-bypassed the
@@ -120,6 +112,62 @@ export async function POST(request: NextRequest) {
           captchaSkipUserId = pre?.user?.id ?? null;
         } catch {
           captchaSkipUserId = null;
+        }
+        if (idempotencyKey) {
+          const cached = await lookupIdempotentResponse(
+            PUBLIC_BOOKINGS_ENDPOINT,
+            idempotencyKey,
+            { userId: captchaSkipUserId },
+          );
+          if (cached) {
+            if (cached.status === 200 && captchaSkipUserId) {
+              const body = cached.body as {
+                data?: {
+                  booking_id?: string;
+                  payment_url?: string | null;
+                  payment_reference?: string | null;
+                  [key: string]: unknown;
+                };
+                error?: unknown;
+              } | null;
+              const bookingId = body?.data?.booking_id;
+              if (bookingId) {
+                const { resolveCachedBookingCheckout } = await import(
+                  "./_helpers/resolve-cached-booking-checkout"
+                );
+                const resolved = await resolveCachedBookingCheckout(
+                  getSupabaseAdmin(),
+                  bookingId,
+                  captchaSkipUserId,
+                  body?.data?.payment_url ?? null,
+                );
+                if (resolved.kind === "dead") {
+                  return errorResponse(
+                    "This checkout is no longer available. Please start a new booking.",
+                    "CHECKOUT_NO_LONGER_PAYABLE",
+                    409,
+                    { booking_id: resolved.bookingId ?? bookingId },
+                  );
+                }
+                if (resolved.kind === "already_paid") {
+                  return successResponse({
+                    ...(body?.data ?? {}),
+                    booking_id: resolved.bookingId,
+                    payment_url: null,
+                    payment_reference: resolved.paymentReference,
+                    already_paid: true,
+                  });
+                }
+                return successResponse({
+                  ...(body?.data ?? {}),
+                  booking_id: resolved.bookingId,
+                  payment_url: resolved.paymentUrl,
+                  payment_reference: resolved.paymentReference,
+                });
+              }
+            }
+            return cached.toResponse();
+          }
         }
         const captchaResult = await verifyPublicBookingCaptcha(request, body, {
           skipForUserId: captchaSkipUserId,
@@ -301,47 +349,30 @@ export async function POST(request: NextRequest) {
         }
 
         stage = "stale_pending_cancel";
-        // 2.7. Cancel any stale unpaid online bookings by this user for the same
-        //      provider and nearby time window before conflict checks run.
-        //      Auto-confirmed Paystack bookings can have status='confirmed' while
-        //      payment_status='pending', so status-only cleanup leaves the
-        //      customer's own abandoned payment attempt blocking the retry.
+        // 2.7. Gateway-checked release of this customer's own unpaid online
+        //      checkouts for the same provider/window (all gateways). Settles
+        //      if the charge already succeeded; blocks with PAYMENT_IN_PROGRESS
+        //      while the gateway is still processing.
         {
           const selectedDt = new Date(draft.selected_datetime);
           const windowStart = new Date(selectedDt.getTime() - 4 * 60 * 60 * 1000); // -4 h
-          const windowEnd   = new Date(selectedDt.getTime() + 4 * 60 * 60 * 1000); // +4 h
-          // §Stale-cancel (audit 2026-06): a bulk UPDATE here cancelled abandoned
-          // bookings but left their RESERVED gift card balance locked and any
-          // upfront WALLET debit un-reversed. Select the matching ids and route
-          // each through releaseBookingSlotAfterPaymentFailure, which voids the
-          // gift card reservation, credits back the wallet amount, and clears the
-          // coverage fields before cancelling.
-          const { data: staleBookings } = await supabaseAdmin
-            .from("bookings")
-            .select("id")
-            .eq("customer_id", user.id)
-            .eq("provider_id", draft.provider_id)
-            .eq("booking_source", "online")
-            .eq("payment_status", "pending")
-            .or("payment_provider.eq.paystack,payment_provider.is.null")
-            .in("status", ["pending", "pending_payment", "confirmed"])
-            .gte("scheduled_at", windowStart.toISOString())
-            .lte("scheduled_at", windowEnd.toISOString());
-
-          const staleIds = ((staleBookings as Array<{ id: string }> | null) ?? []).map((b) => b.id);
-          if (staleIds.length > 0) {
-            await Promise.all(
-              staleIds.map((staleId) =>
-                releaseBookingSlotAfterPaymentFailure(supabaseAdmin, staleId, user.id).catch(
-                  (releaseErr) => {
-                    console.error(
-                      "[stale_pending_cancel] failed to release stale booking",
-                      staleId,
-                      releaseErr,
-                    );
-                  },
-                ),
-              ),
+          const windowEnd = new Date(selectedDt.getTime() + 4 * 60 * 60 * 1000); // +4 h
+          const { releaseOwnOpenCheckouts } = await import(
+            "./_helpers/release-own-open-checkouts"
+          );
+          const own = await releaseOwnOpenCheckouts(supabaseAdmin, {
+            customerId: user.id,
+            providerId: draft.provider_id,
+            windowStart: windowStart.toISOString(),
+            windowEnd: windowEnd.toISOString(),
+            borrowedEntitlementId,
+          });
+          if (own.paymentInProgressBookingId) {
+            return errorResponse(
+              "A payment for your previous checkout is still confirming. Open that booking or wait a moment.",
+              "PAYMENT_IN_PROGRESS",
+              409,
+              { booking_id: own.paymentInProgressBookingId },
             );
           }
         }
@@ -412,7 +443,28 @@ export async function POST(request: NextRequest) {
 
         if (createResult instanceof Response) {
           if (borrowedEntitlementId) {
-            await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+            try {
+              const releasedId = releasedBookingIdFromResponse(createResult);
+              if (releasedId) {
+                await returnBorrowedSessionIfReleased(
+                  supabaseAdmin,
+                  {
+                    id: releasedId,
+                    customer_id: user.id,
+                    customer_package_entitlement_id: borrowedEntitlementId,
+                    rescheduled_from_booking_id: rescheduleBookingId ?? null,
+                  },
+                  borrowedEntitlementId,
+                );
+              } else {
+                await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+              }
+            } catch (sessionErr) {
+              console.error(
+                "[public bookings] could not keep the borrowed package session",
+                sessionErr,
+              );
+            }
           }
           return createResult;
         }
@@ -512,9 +564,29 @@ export async function POST(request: NextRequest) {
           });
 
           if (paymentResult instanceof Response) {
-            await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, booking.id, user.id);
-            if (borrowedEntitlementId) {
-              await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+            try {
+              await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, booking.id, user.id);
+            } finally {
+              if (borrowedEntitlementId) {
+                try {
+                  await returnBorrowedSessionIfReleased(
+                    supabaseAdmin,
+                    {
+                      id: booking.id,
+                      customer_id: user.id,
+                      customer_package_entitlement_id: borrowedEntitlementId,
+                      rescheduled_from_booking_id: rescheduleBookingId ?? null,
+                    },
+                    borrowedEntitlementId,
+                  );
+                } catch (sessionErr) {
+                  console.error(
+                    "[public bookings] could not keep the borrowed package session",
+                    booking.id,
+                    sessionErr,
+                  );
+                }
+              }
             }
             bookingIdPendingRelease = "";
             return paymentResult;
@@ -618,9 +690,31 @@ export async function POST(request: NextRequest) {
           return successResponse(responseData);
         } catch (paymentOrPostError) {
           if (bookingIdPendingRelease) {
-            await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, bookingIdPendingRelease, user.id);
-            if (borrowedEntitlementId) {
-              await returnBorrowedPackageSession(supabaseAdmin, borrowedEntitlementId, user.id);
+            const releasedId = bookingIdPendingRelease;
+            bookingIdPendingRelease = "";
+            try {
+              await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, releasedId, user.id);
+            } finally {
+              if (borrowedEntitlementId) {
+                try {
+                  await returnBorrowedSessionIfReleased(
+                    supabaseAdmin,
+                    {
+                      id: releasedId,
+                      customer_id: user.id,
+                      customer_package_entitlement_id: borrowedEntitlementId,
+                      rescheduled_from_booking_id: rescheduleBookingId ?? null,
+                    },
+                    borrowedEntitlementId,
+                  );
+                } catch (sessionErr) {
+                  console.error(
+                    "[public bookings] could not keep the borrowed package session",
+                    releasedId,
+                    sessionErr,
+                  );
+                }
+              }
             }
           }
           throw paymentOrPostError;

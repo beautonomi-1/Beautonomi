@@ -42,6 +42,7 @@ import {
   BookingSummaryRow,
 } from "../ui";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { subtractMoney, percentOf, multiplyMoney } from "@beautonomi/utils";
 import { AppointmentReviewStep } from "./AppointmentReviewStep";
 import { AppointmentKindSelector, type AppointmentKindValue } from "./AppointmentKindSelector";
 import {
@@ -203,7 +204,7 @@ export function AppointmentCreateFlow({
   const [taxInclusive, setTaxInclusive] = useState(true);
 
   useProviderPortal();
-  const { format: formatMoney } = useProviderMoneyFormat();
+  const { format: formatMoney, currency } = useProviderMoneyFormat();
   const { hasPermission, isOwner, isLoading: permissionsLoading } = usePermissions();
   const [showCustomOfferModal, setShowCustomOfferModal] = useState(false);
   const { t } = useTranslation();
@@ -422,10 +423,10 @@ export function AppointmentCreateFlow({
   const manualDiscountEffective = useMemo(() => {
     if (manualDiscountAmount <= 0) return 0;
     if (manualDiscountType === "percentage") {
-      return (subtotalBeforeDiscount * manualDiscountAmount) / 100;
+      return percentOf(subtotalBeforeDiscount, manualDiscountAmount, currency);
     }
     return manualDiscountAmount;
-  }, [manualDiscountAmount, manualDiscountType, subtotalBeforeDiscount]);
+  }, [manualDiscountAmount, manualDiscountType, subtotalBeforeDiscount, currency]);
 
   const effectiveDiscountAmount = Math.max(manualDiscountEffective, discountAmount);
   const discountFromManual = manualDiscountEffective >= discountAmount && manualDiscountEffective > 0;
@@ -1079,8 +1080,8 @@ export function AppointmentCreateFlow({
               <BookingSectionLabel className="mb-2">{t(`${ac}.tip`)}</BookingSectionLabel>
               <div className="flex flex-wrap gap-2">
                 {[0, 0.05, 0.1, 0.2].map((pct) => {
-                  const tipBase = Math.max(0, totals.subtotal - effectiveDiscountAmount);
-                  const tipValue = pct === 0 ? 0 : tipBase * pct;
+                  const tipBase = Math.max(0, subtractMoney(totals.subtotal, effectiveDiscountAmount));
+                  const tipValue = pct === 0 ? 0 : multiplyMoney(tipBase, pct);
                   const active = Math.abs(tipAmount - tipValue) < 0.01;
                   return (
                     <button

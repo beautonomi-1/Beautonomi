@@ -15,21 +15,43 @@
  * charge-success.ts (handleChargeFailed → subscription renewal branch), not here, to avoid
  * double-processing with invoice.* events.
  */
+import { subtractMoney } from "@beautonomi/utils";
+
 import { NextResponse } from "next/server";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import type { PaystackEvent, SupabaseClient } from "./shared";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { recordProviderSubscriptionPayment } from "@/lib/subscriptions/provider-subscription-payment";
 import {
+  recordProviderSubscriptionPayment,
+  rememberReturnedProviderSubscriptionCharge,
+  returnRecordedPaystackSubscriptionCharge,
+} from "@/lib/subscriptions/provider-subscription-payment";
+import {
+  capturedRenewalAccess,
+  capturedRenewalPeriodEnd,
   computePaidPeriodExpiresAt,
+  renewalPeriodStartIso,
+  subscriptionCreateAccessUpdate,
+  subscriptionCreatePlanPatch,
+  subscriptionDisableApplies,
+  subscriptionEnableUpdate,
+  nextChargeDateUpdate,
+  subscriptionNotRenewUpdate,
   loadProviderSubscriptionByPaystackCode,
   loadProviderSubscriptionByProviderId,
+  loadProviderSubscriptionForPaystackCustomer,
+  paystackCustomerEmailPattern,
   paystackActivationFields,
+  paystackChargeAlreadyReturned,
+  renewalChargeAlreadySettled,
+  returnPaystackChargeForOtherMerchant,
   shouldIgnorePaystackEventForRow,
+  trackInboundPaystackSubscription,
 } from "@/lib/subscriptions/provider-billing-merchant";
-import { disableSubscriptionByCode } from "@/lib/payments/paystack-complete";
+import { isPastDueWithinGrace, subscriptionPaymentFailedAccessNote } from "@/lib/iap/apple/billing-active";
+import { SUBSCRIPTION_PAST_DUE_GRACE_DAYS } from "@/lib/subscriptions/feature-access";
 
 /** Map Paystack subscription status to provider_subscriptions status (active | cancelled | expired | past_due). */
 function mapPaystackStatusToDb(status: string): "active" | "past_due" {
@@ -91,11 +113,10 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
   // provider up directly by the Paystack customer code already stored on a row.
   let provider: { id: string; tenant_id?: string | null } | null = null;
 
-  const { data: customer } = await supabase
-    .from("users")
-    .select("id, email")
-    .eq("email", payload.customer?.email || "")
-    .maybeSingle();
+  const customerEmail = paystackCustomerEmailPattern(String(payload.customer?.email || ""));
+  const { data: customer } = customerEmail
+    ? await supabase.from("users").select("id, email").ilike("email", customerEmail).maybeSingle()
+    : { data: null };
 
   if (customer) {
     const { data: providerByUser } = await supabase
@@ -155,18 +176,38 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
   const dbStatus = mapPaystackStatusToDb(status || "active");
 
   const merchantRow = await loadProviderSubscriptionByProviderId(supabase, provider.id);
-  if (shouldIgnorePaystackEventForRow(merchantRow)) {
-    try {
-      await disableSubscriptionByCode(subscriptionCode, { tenantId: subscriptionTenantId });
-    } catch (e) {
-      console.warn("[subscription.create] disable inbound Paystack sub while Apple MoR:", e);
-    }
+  if (shouldIgnorePaystackEventForRow(merchantRow) && merchantRow) {
+    await trackInboundPaystackSubscription({
+      supabase,
+      row: merchantRow,
+      subscriptionCode,
+      tenantId: subscriptionTenantId,
+      providerId: provider.id,
+    });
     return;
   }
 
-  const startedAt = payload.createdAt
-    ? new Date(payload.createdAt).toISOString()
-    : new Date().toISOString();
+  const { data: currentRow } = await supabase
+    .from("provider_subscriptions")
+    .select("expires_at, started_at, status")
+    .eq("provider_id", provider.id)
+    .maybeSingle();
+  const current = currentRow as {
+    expires_at?: string | null;
+    started_at?: string | null;
+    status?: string | null;
+  } | null;
+  const access = subscriptionCreateAccessUpdate({
+    billingPeriod,
+    nextPaymentDate,
+    createdAt: payload.createdAt,
+    currentExpiresAt: current?.expires_at,
+    currentStartedAt: current?.started_at,
+    currentStatus: current?.status,
+    eventStatus: dbStatus,
+  });
+  const activation = paystackActivationFields();
+  if (!access.updated_at) delete activation.updated_at;
 
   const { CLEAR_PENDING_UPGRADE_FIELDS } = await import(
     "@/lib/subscriptions/pending-upgrade-fields"
@@ -175,20 +216,23 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
     {
       provider_id: provider.id,
       tenant_id: subscriptionTenantId,
-      plan_id: plan.id,
-      status: dbStatus,
       paystack_subscription_code: subscriptionCode,
       paystack_customer_code: customerCode,
-      paystack_authorization_code: payload.authorization?.authorization_code,
-      billing_period: billingPeriod,
-      auto_renew: true,
-      expires_at: computePaidPeriodExpiresAt(billingPeriod),
-      next_payment_date: nextPaymentDate
-        ? new Date(nextPaymentDate).toISOString()
-        : null,
-      started_at: startedAt,
-      ...paystackActivationFields(),
-      ...CLEAR_PENDING_UPGRADE_FIELDS,
+      ...subscriptionCreatePlanPatch({
+        applyPlan: access.applyPlan,
+        planId: plan.id,
+        billingPeriod,
+        nextPaymentDate: access.expires_at ?? nextPaymentDate,
+        authorizationCode: payload.authorization?.authorization_code,
+      }),
+      ...(access.status ? { status: access.status } : {}),
+      ...(access.past_due_since !== undefined ? { past_due_since: access.past_due_since } : {}),
+      ...(access.expires_at
+        ? { expires_at: access.expires_at, billing_period_end: access.expires_at }
+        : {}),
+      ...(access.started_at ? { started_at: access.started_at } : {}),
+      ...activation,
+      ...(access.clearPendingUpgrade ? CLEAR_PENDING_UPGRADE_FIELDS : {}),
     },
     { onConflict: "provider_id" },
   );
@@ -220,7 +264,7 @@ async function handleSubscriptionDisable(payload: any, supabase: SupabaseClient)
   const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
   if (shouldIgnorePaystackEventForRow(merchantRow)) {
     console.log(
-      `[subscription] subscription.disable ignored — Apple is merchant for ${subscriptionCode}`,
+      `[subscription] subscription.disable ignored — ${merchantRow?.billing_provider ?? "apple"} is merchant for ${subscriptionCode}`,
     );
     return;
   }
@@ -243,6 +287,17 @@ async function handleSubscriptionDisable(payload: any, supabase: SupabaseClient)
   if (isScheduledDowngradePending(row)) {
     console.log(
       `[subscription] Paystack disable ignored — scheduled downgrade pending for ${subscriptionCode}; cron applies it`,
+    );
+    return;
+  }
+  if (
+    !subscriptionDisableApplies({
+      nextPaymentDate: payload.next_payment_date,
+      currentNextPaymentDate: (row as { next_payment_date?: string | null }).next_payment_date,
+    })
+  ) {
+    console.log(
+      `[subscription] Paystack disable ignored — a later charge date is already stored for ${subscriptionCode}`,
     );
     return;
   }
@@ -274,6 +329,7 @@ async function handleSubscriptionDisable(payload: any, supabase: SupabaseClient)
 
   await supabase.from("provider_subscriptions").update({
     status: "cancelled",
+    past_due_since: null,
     auto_renew: false,
     cancelled_at: (row as { cancelled_at?: string | null }).cancelled_at ?? now.toISOString(),
     updated_at: now.toISOString(),
@@ -292,15 +348,27 @@ async function handleSubscriptionEnable(payload: any, supabase: SupabaseClient) 
   const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
   if (shouldIgnorePaystackEventForRow(merchantRow)) return;
 
-  await supabase.from("provider_subscriptions")
+  const { data: currentRow } = await supabase
+    .from("provider_subscriptions")
+    .select("status, next_payment_date")
+    .eq("paystack_subscription_code", subscriptionCode)
+    .maybeSingle();
+  const current = currentRow as { status?: string | null; next_payment_date?: string | null } | null;
+  const patch = subscriptionEnableUpdate({
+    nextPaymentDate,
+    currentNextPaymentDate: current?.next_payment_date,
+    currentStatus: current?.status,
+  });
+  if (Object.keys(patch).length === 0) return;
+
+  const activation = paystackActivationFields();
+  if (!patch.updated_at) delete activation.updated_at;
+  delete patch.updated_at;
+  await supabase
+    .from("provider_subscriptions")
     .update({
-      status: "active",
-      auto_renew: true,
-      next_payment_date: nextPaymentDate
-        ? new Date(nextPaymentDate).toISOString()
-        : null,
-      cancelled_at: null,
-      ...paystackActivationFields(),
+      ...patch,
+      ...activation,
     })
     .eq("paystack_subscription_code", subscriptionCode);
 }
@@ -322,11 +390,20 @@ async function handleSubscriptionNotRenew(payload: any, supabase: SupabaseClient
     return;
   }
 
+  const notRenewUpdate = subscriptionNotRenewUpdate({
+    nextPaymentDate: payload.next_payment_date,
+    currentNextPaymentDate: (merchantRow as { next_payment_date?: string | null } | null)
+      ?.next_payment_date,
+    currentStatus: merchantRow?.status,
+  });
+  if (Object.keys(notRenewUpdate).length === 0) {
+    console.log(
+      `[subscription] subscription.not_renew ignored — a later charge date is already stored for ${subscriptionCode}`,
+    );
+    return;
+  }
   await supabase.from("provider_subscriptions")
-    .update({
-      auto_renew: false,
-      updated_at: new Date().toISOString(),
-    })
+    .update(notRenewUpdate)
     .eq("paystack_subscription_code", subscriptionCode);
 
   console.log(`Subscription ${subscriptionCode} marked as non-renewing`);
@@ -353,8 +430,21 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
 
   const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
   if (shouldIgnorePaystackEventForRow(merchantRow)) {
+    const chargeRef =
+      typeof (payload as { transaction?: { reference?: string } }).transaction?.reference === "string"
+        ? (payload as { transaction: { reference: string } }).transaction.reference.trim()
+        : "";
+    if (chargeRef) {
+      await returnPaystackChargeForOtherMerchant(supabase, {
+        reference: chargeRef,
+        tenantId: (merchantRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+        providerId,
+        amountMajor: convertFromSmallestUnit(Number(amount || 0), String(payload.currency || "ZAR")),
+        invoiceCode: invoiceCode ?? null,
+      });
+    }
     console.log(
-      `[subscription] renewal invoice ignored — Apple is merchant for ${subscriptionCode}`,
+      `[subscription] renewal invoice returned — ${merchantRow?.billing_provider} is merchant for ${subscriptionCode}`,
     );
     return;
   }
@@ -390,20 +480,25 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
       .from("payment_transactions")
       .delete()
       .eq("id", (existingTx as { id: string }).id);
-  } else if (existingTx) {
-    // success or unknown status — already recorded; do not double-post.
-    console.log(`[subscription] renewal already recorded for ref ${txnReference}`);
+  }
+
+  const paymentAlreadySaved = Boolean(existingTx) && existingStatus !== "failed";
+  if (existingStatus === "refunded" || existingStatus === "partially_refunded") {
+    console.log(`[subscription] renewal charge already returned for ref ${txnReference}`);
     return;
+  }
+  if (paymentAlreadySaved) {
+    console.log(`[subscription] renewal already recorded for ref ${txnReference}`);
   }
 
   const payloadCurrency = String(payload.currency || "ZAR");
   const amountInCurrency = convertFromSmallestUnit(Number(amount || 0), payloadCurrency);
   const feesInCurrency = convertFromSmallestUnit(Number(fees || 0), payloadCurrency);
-  const netAmount = amountInCurrency - feesInCurrency;
+  const netAmount = subtractMoney(amountInCurrency, feesInCurrency);
 
   const { data: subscriptionDetails } = await supabase
     .from("provider_subscriptions")
-    .select("billing_period, plan_id, provider_id, tenant_id")
+    .select("billing_period, plan_id, provider_id, tenant_id, expires_at")
     .eq("paystack_subscription_code", subscriptionCode)
     .single();
 
@@ -413,57 +508,287 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
     plan_id?: string;
     provider_id?: string;
     tenant_id?: string | null;
+    expires_at?: string | null;
   };
-  const billingPeriodForExpiry = (subscriptionDetails as SubDetailsRow | null)?.billing_period ?? "monthly";
+  const details = subscriptionDetails as SubDetailsRow | null;
+  const billingPeriodForExpiry = details?.billing_period === "yearly" ? "yearly" : "monthly";
 
-  // Anchor access to the actual billing period end. Paystack's
-  // `next_payment_date` is the authoritative period boundary; only when it is
-  // absent do we fall back to computing now + one billing cycle.
+  // Paystack's next_payment_date is the period boundary. Without it, the
+  // charge time owns the period, and a replay does not move that end date.
   const rawNextPaymentDate = (payload as { next_payment_date?: string }).next_payment_date;
-  const computedPeriodEnd = new Date(now);
-  if (billingPeriodForExpiry === "yearly") {
-    computedPeriodEnd.setFullYear(computedPeriodEnd.getFullYear() + 1);
-  } else {
-    computedPeriodEnd.setMonth(computedPeriodEnd.getMonth() + 1);
-  }
-  const expiresAt = rawNextPaymentDate ? new Date(rawNextPaymentDate) : computedPeriodEnd;
+  const paidAtDate = new Date(paidAt);
+  const chargedAt = Number.isFinite(paidAtDate.getTime()) ? paidAtDate : now;
+  const computedPeriodEnd = computePaidPeriodExpiresAt(billingPeriodForExpiry, chargedAt);
+  const owedPeriodEnd = rawNextPaymentDate
+    ? null
+    : capturedRenewalPeriodEnd(billingPeriodForExpiry, chargedAt.toISOString(), details?.expires_at);
+  const openUntilMs = details?.expires_at ? Date.parse(details.expires_at) : Number.NaN;
+  const stackedFromOpenTerm =
+    !rawNextPaymentDate && Number.isFinite(openUntilMs) && openUntilMs > chargedAt.getTime()
+      ? capturedRenewalAccess({
+          billingPeriod: billingPeriodForExpiry,
+          chargedAt: chargedAt.toISOString(),
+          currentExpiresAt: details?.expires_at,
+          currentPlanId: details?.plan_id,
+          currentBillingPeriod: details?.billing_period,
+          now,
+        })
+      : null;
+  const authoritativeMs = rawNextPaymentDate ? new Date(rawNextPaymentDate).getTime() : NaN;
+  const currentExpiresMs = details?.expires_at ? new Date(details.expires_at).getTime() : NaN;
+  const periodAlreadyApplied =
+    (Number.isFinite(authoritativeMs) &&
+      Number.isFinite(currentExpiresMs) &&
+      currentExpiresMs >= authoritativeMs) ||
+    (!rawNextPaymentDate && !owedPeriodEnd && Boolean(details?.expires_at));
+  const stackedEndMs = stackedFromOpenTerm ? Date.parse(stackedFromOpenTerm.expiresAt) : Number.NaN;
+  const expiresAt = rawNextPaymentDate
+    ? new Date(rawNextPaymentDate)
+    : Number.isFinite(stackedEndMs) && stackedEndMs > now.getTime()
+      ? new Date(stackedEndMs)
+      : new Date(owedPeriodEnd ?? details?.expires_at ?? computedPeriodEnd);
   const nextPaymentDate = rawNextPaymentDate || expiresAt;
 
-  await supabase
-    .from("provider_subscriptions")
-    .update({
-      status: "active",
-      last_payment_date: new Date(paidAt).toISOString(),
-      expires_at: expiresAt.toISOString(),
-      next_payment_date: nextPaymentDate ? new Date(nextPaymentDate as string | Date).toISOString() : null,
-      ...paystackActivationFields(),
-    })
-    .eq("paystack_subscription_code", subscriptionCode);
-
-  // Recognize the renewal payment through the unified idempotent helper so the
-  // money is posted exactly once (charge.success / invoice.update overlap and
-  // duplicate webhooks all dedupe on txnReference).
-  const renewalBillingPeriod =
-    (subscriptionDetails as SubDetailsRow | null)?.billing_period === "yearly"
-      ? "yearly"
-      : "monthly";
-  await recordProviderSubscriptionPayment({
+  const renewalBillingPeriod = details?.billing_period === "yearly" ? "yearly" : "monthly";
+  const accessEndMs =
+    periodAlreadyApplied && details?.expires_at
+      ? Date.parse(details.expires_at)
+      : expiresAt.getTime();
+  const accessEnd =
+    Number.isFinite(accessEndMs) && (accessEndMs > Date.now() || periodAlreadyApplied)
+      ? new Date(accessEndMs).toISOString()
+      : null;
+  const { data: bookedPayment } = await supabase
+    .from("finance_transactions")
+    .select("id")
+    .eq("provider_id", providerId)
+    .eq("transaction_type", "provider_subscription_payment")
+    .maybeSingle();
+  const periodAlreadyBooked = Boolean((bookedPayment as { id?: string } | null)?.id);
+  const duplicateChargeRef =
+    periodAlreadyApplied && !paymentAlreadySaved && periodAlreadyBooked
+      ? typeof (payload as { transaction?: { reference?: string } }).transaction?.reference === "string"
+        ? (payload as { transaction: { reference: string } }).transaction.reference.trim()
+        : ""
+      : "";
+  if (duplicateChargeRef) {
+    const rememberReturnedRenewalCharge = async () => {
+      const reason = "This period was already paid. The extra renewal charge was returned.";
+      const refundedAt = new Date().toISOString();
+      const { data: existingCharge } = await supabase
+        .from("payment_transactions")
+        .select("status")
+        .eq("provider", "paystack")
+        .eq("reference", txnReference)
+        .maybeSingle();
+      const existingChargeStatus = String(
+        (existingCharge as { status?: string } | null)?.status ?? "",
+      ).toLowerCase();
+      if (existingChargeStatus === "refunded" || existingChargeStatus === "partially_refunded") {
+        return;
+      }
+      if (existingChargeStatus === "success") {
+        await rememberReturnedProviderSubscriptionCharge({
+          supabase,
+          providerId,
+          reference: txnReference,
+          tenantId: details?.tenant_id ?? null,
+          reason,
+        });
+      }
+      if (existingChargeStatus) {
+        const { error: markError } = await supabase
+          .from("payment_transactions")
+          .update({
+            status: "refunded",
+            refund_amount: amountInCurrency,
+            refund_reason: reason,
+            refunded_at: refundedAt,
+          })
+          .eq("provider", "paystack")
+          .eq("reference", txnReference)
+          .neq("status", "refunded");
+        if (markError) throw markError;
+        return;
+      }
+      const { error } = await supabase.from("payment_transactions").insert({
+        booking_id: null,
+        reference: txnReference,
+        amount: amountInCurrency,
+        fees: feesInCurrency,
+        net_amount: netAmount,
+        status: "refunded",
+        provider: "paystack",
+        transaction_type: "provider_subscription_payment",
+        refund_amount: amountInCurrency,
+        refund_reason: reason,
+        refunded_at: refundedAt,
+        metadata: {
+          kind: "subscription_renewal_returned",
+          provider_id: providerId,
+          subscription_code: subscriptionCode,
+          invoice_code: invoiceCode ?? null,
+        },
+        created_at: refundedAt,
+      });
+      if (error && (error as { code?: string }).code !== "23505") {
+        throw new Error(`could not remember returned renewal ${txnReference}`);
+      }
+      if ((error as { code?: string } | null)?.code === "23505") {
+        const { data: racedCharge } = await supabase
+          .from("payment_transactions")
+          .select("status")
+          .eq("provider", "paystack")
+          .eq("reference", txnReference)
+          .maybeSingle();
+        const racedStatus = String(
+          (racedCharge as { status?: string } | null)?.status ?? "",
+        ).toLowerCase();
+        if (racedStatus === "success") {
+          await rememberReturnedProviderSubscriptionCharge({
+            supabase,
+            providerId,
+            reference: txnReference,
+            tenantId: details?.tenant_id ?? null,
+            reason,
+          });
+        }
+        if (racedStatus && racedStatus !== "refunded" && racedStatus !== "partially_refunded") {
+          const { error: markError } = await supabase
+            .from("payment_transactions")
+            .update({
+              status: "refunded",
+              refund_amount: amountInCurrency,
+              refund_reason: reason,
+              refunded_at: refundedAt,
+            })
+            .eq("provider", "paystack")
+            .eq("reference", txnReference)
+            .neq("status", "refunded");
+          if (markError) throw markError;
+        }
+      }
+    };
+    try {
+      const { createRefund } = await import("@/lib/payments/paystack-complete");
+      await createRefund(
+        {
+          transaction: duplicateChargeRef,
+          merchant_note: "This period was already paid. The extra renewal charge was returned.",
+        },
+        { tenantId: details?.tenant_id ?? null },
+      );
+      console.log(
+        `[subscription] refunded duplicate renewal ${duplicateChargeRef} for ${subscriptionCode}`,
+      );
+      await rememberReturnedRenewalCharge();
+      return;
+    } catch (refundError) {
+      if (paystackChargeAlreadyReturned(refundError)) {
+        console.log(
+          `[subscription] duplicate renewal ${duplicateChargeRef} was already returned`,
+        );
+        await rememberReturnedRenewalCharge();
+        return;
+      }
+      console.warn(
+        `[subscription] duplicate renewal refund failed for ${duplicateChargeRef}:`,
+        refundError,
+      );
+    }
+  }
+  let notifyRenewal = !paymentAlreadySaved;
+  const payment = await recordProviderSubscriptionPayment({
     supabase,
     reference: txnReference,
     providerId,
     amountMajor: amountInCurrency,
     feesMajor: feesInCurrency,
-    planId: (subscriptionDetails as SubDetailsRow | null)?.plan_id ?? null,
+    planId: details?.plan_id ?? null,
     subscriptionCode,
     invoiceCode: invoiceCode ?? null,
     paymentTransactionType: "provider_subscription_payment",
     kind: "subscription_renewal",
     description: "Provider subscription renewal payment",
-    tenantIdHint: (subscriptionDetails as SubDetailsRow | null)?.tenant_id ?? null,
+    tenantIdHint: details?.tenant_id ?? null,
     billingPeriod: renewalBillingPeriod,
+    termEndsAt: accessEnd,
+    updateBillingPeriod: false,
   });
+  if (!payment.recorded && !payment.alreadyRecorded) {
+    throw new Error("subscription payment was not recorded");
+  }
+  if (payment.chargeReturned) return;
+  const latestMerchant = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
+  if (shouldIgnorePaystackEventForRow(latestMerchant)) {
+    if (!(paymentAlreadySaved && periodAlreadyApplied)) {
+      await returnRecordedPaystackSubscriptionCharge({
+        supabase,
+        reference: txnReference,
+        providerId,
+        tenantId: details?.tenant_id ?? null,
+        amountMajor: amountInCurrency,
+        financeTransactionId: payment.financeTransactionId,
+      });
+    }
+    return;
+  }
+  const { data: latestPayment } = await supabase
+    .from("payment_transactions")
+    .select("status")
+    .eq("provider", "paystack")
+    .eq("reference", txnReference)
+    .maybeSingle();
+  const latestPaymentStatus = String(
+    (latestPayment as { status?: string } | null)?.status ?? "",
+  ).toLowerCase();
+  if (latestPaymentStatus === "refunded" || latestPaymentStatus === "partially_refunded") return;
+  notifyRenewal = payment.recorded;
 
-  if (subscriptionDetails) {
+  const storeEndMs = expiresAt.getTime();
+  const recognizedEndMs = payment.termEnd ? Date.parse(payment.termEnd) : Number.NaN;
+  const grantedEnd =
+    Number.isFinite(storeEndMs) && storeEndMs > Date.now()
+      ? expiresAt.toISOString()
+      : Number.isFinite(recognizedEndMs) && recognizedEndMs > Date.now()
+        ? new Date(recognizedEndMs).toISOString()
+        : computePaidPeriodExpiresAt(renewalBillingPeriod, new Date());
+
+  if (!periodAlreadyApplied) {
+    const { data: opened, error: openError } = await supabase
+      .from("provider_subscriptions")
+      .update({
+        status: "active",
+        past_due_since: null,
+        last_payment_date: new Date(paidAt).toISOString(),
+        expires_at: grantedEnd,
+        billing_period_start: renewalPeriodStartIso(
+          details?.expires_at,
+          new Date(paidAt).toISOString(),
+          grantedEnd,
+        ),
+        billing_period_end: grantedEnd,
+        next_payment_date: grantedEnd,
+        ...paystackActivationFields(),
+      })
+      .eq("paystack_subscription_code", subscriptionCode)
+      .in("billing_provider", ["paystack", "manual"])
+      .select("id");
+    if (openError) throw openError;
+    if (!opened?.length) {
+      await returnRecordedPaystackSubscriptionCharge({
+        supabase,
+        reference: txnReference,
+        providerId,
+        tenantId: details?.tenant_id ?? null,
+        amountMajor: amountInCurrency,
+        financeTransactionId: payment.financeTransactionId,
+      });
+      return;
+    }
+  }
+
+  if (notifyRenewal && subscriptionDetails) {
     try {
       const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
       const subDetails = subscriptionDetails as SubDetailsRow;
@@ -500,7 +825,7 @@ export async function recordSuccessfulProviderSubscriptionRenewalFromInvoice(
             plan_name: plan.name || "Current Plan",
             amount: `${currency} ${planAmount.toLocaleString()}`,
             billing_period: billingPeriod,
-            next_payment_date: new Date(nextPaymentDate as string | Date).toLocaleDateString(),
+            next_payment_date: new Date(grantedEnd).toLocaleDateString(),
             app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
             year: new Date().getFullYear().toString(),
           },
@@ -574,29 +899,103 @@ async function handleSubscriptionInvoice(
 
   const { data: subscription } = await supabase
     .from("provider_subscriptions")
-    .select("provider_id, plan_id")
+    .select("provider_id, plan_id, status, billing_provider, past_due_since, updated_at, next_payment_date")
     .eq("paystack_subscription_code", subscriptionCode)
     .single();
 
   if (!subscription) {
+    const byCustomer = await loadProviderSubscriptionForPaystackCustomer(supabase, {
+      email: payload.customer?.email,
+      customerCode: payload.customer?.customer_code || payload.customer_code,
+    });
+    if (shouldIgnorePaystackEventForRow(byCustomer) && byCustomer?.provider_id) {
+      const chargeRef =
+        eventType === "invoice.update" && payload.status === "success" && payload.paid_at
+          ? typeof (payload as { transaction?: { reference?: string } }).transaction?.reference ===
+            "string"
+            ? (payload as { transaction: { reference: string } }).transaction.reference.trim()
+            : ""
+          : "";
+      if (chargeRef) {
+        await returnPaystackChargeForOtherMerchant(supabase, {
+          reference: chargeRef,
+          tenantId: (byCustomer as { tenant_id?: string | null }).tenant_id ?? null,
+          providerId: byCustomer.provider_id,
+          amountMajor: convertFromSmallestUnit(Number(amount || 0), String(payload.currency || "ZAR")),
+          invoiceCode: invoiceCode ? String(invoiceCode) : null,
+        });
+      }
+      await trackInboundPaystackSubscription({
+        supabase,
+        row: byCustomer,
+        subscriptionCode,
+        tenantId: (byCustomer as { tenant_id?: string | null }).tenant_id ?? null,
+        providerId: byCustomer.provider_id,
+      });
+      console.log(
+        `[subscription] returned unmatched Paystack invoice for ${subscriptionCode} — ${byCustomer.billing_provider} is merchant`,
+      );
+      return;
+    }
     console.error("Subscription not found:", subscriptionCode);
     return;
   }
 
-  type SubRow = { provider_id: string; plan_id?: string };
+  type SubRow = {
+    provider_id: string;
+    plan_id?: string;
+    status?: string | null;
+    next_payment_date?: string | null;
+  };
   const providerId = (subscription as SubRow).provider_id;
+  const previousStatus = (subscription as SubRow).status;
 
   const merchantRow = await loadProviderSubscriptionByPaystackCode(supabase, subscriptionCode);
-  if (shouldIgnorePaystackEventForRow(merchantRow)) return;
+  if (shouldIgnorePaystackEventForRow(merchantRow)) {
+    const chargeRef =
+      eventType === "invoice.update" && payload.status === "success" && payload.paid_at
+        ? typeof (payload as { transaction?: { reference?: string } }).transaction?.reference ===
+          "string"
+          ? (payload as { transaction: { reference: string } }).transaction.reference.trim()
+          : ""
+        : "";
+    if (chargeRef) {
+      await returnPaystackChargeForOtherMerchant(supabase, {
+        reference: chargeRef,
+        tenantId: (merchantRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+        providerId,
+        amountMajor: convertFromSmallestUnit(Number(amount || 0), String(payload.currency || "ZAR")),
+        invoiceCode: invoiceCode ? String(invoiceCode) : null,
+      });
+      console.log(
+        `[subscription] returned Paystack invoice ${chargeRef} — ${merchantRow?.billing_provider} is merchant for ${subscriptionCode}`,
+      );
+    }
+    if (merchantRow?.provider_id) {
+      await trackInboundPaystackSubscription({
+        supabase,
+        row: merchantRow,
+        subscriptionCode,
+        tenantId: (merchantRow as { tenant_id?: string | null }).tenant_id ?? null,
+        providerId: merchantRow.provider_id,
+      });
+    }
+    return;
+  }
 
   if (eventType === "invoice.create") {
     const dueDate = payload.due_date || payload.period_end;
-    await supabase.from("provider_subscriptions")
-      .update({
-        next_payment_date: dueDate ? new Date(dueDate).toISOString() : null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("paystack_subscription_code", subscriptionCode);
+    const nextCharge = nextChargeDateUpdate(dueDate, (subscription as SubRow).next_payment_date);
+    const createUpdate: Record<string, unknown> = {};
+    if (nextCharge) createUpdate.next_payment_date = nextCharge;
+    if (previousStatus !== "past_due") {
+      createUpdate.updated_at = new Date().toISOString();
+    }
+    if (Object.keys(createUpdate).length > 0) {
+      await supabase.from("provider_subscriptions")
+        .update(createUpdate)
+        .eq("paystack_subscription_code", subscriptionCode);
+    }
   } else if (eventType === "invoice.update") {
     const dueDate = payload.due_date || payload.period_end || payload.next_payment_date;
     const invoiceStatus = payload.status;
@@ -615,10 +1014,10 @@ async function handleSubscriptionInvoice(
       return;
     }
 
-    const updatePayload: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
-    if (dueDate) updatePayload.next_payment_date = new Date(dueDate).toISOString();
+    const updatePayload: Record<string, unknown> = {};
+    const touchedAt = new Date().toISOString();
+    const nextCharge = nextChargeDateUpdate(dueDate, (subscription as SubRow).next_payment_date);
+    if (nextCharge) updatePayload.next_payment_date = nextCharge;
     if (invoiceStatus === "failed" || invoiceStatus === "attention") {
       // Do not flip past_due when this invoice (or its charge) already succeeded —
       // Paystack can deliver a stale failed invoice.update after a successful renew.
@@ -632,14 +1031,7 @@ async function handleSubscriptionInvoice(
       ) as string[];
       let alreadySucceeded = false;
       for (const ref of refsToCheck) {
-        const { data: successTx } = await supabase
-          .from("payment_transactions")
-          .select("id")
-          .eq("provider", "paystack")
-          .eq("reference", ref)
-          .eq("status", "success")
-          .maybeSingle();
-        if (successTx) {
+        if (await renewalChargeAlreadySettled(supabase, ref)) {
           alreadySucceeded = true;
           break;
         }
@@ -648,13 +1040,25 @@ async function handleSubscriptionInvoice(
         console.log(
           `[subscription] skip past_due on invoice.update — renewal already succeeded for ${subscriptionCode}`,
         );
-      } else {
+      } else if (previousStatus !== "past_due") {
         updatePayload.status = "past_due";
+        updatePayload.last_dunning_retry_at = touchedAt;
+        updatePayload.past_due_since = touchedAt;
+        updatePayload.updated_at = touchedAt;
       }
+    } else if (previousStatus !== "past_due") {
+      updatePayload.updated_at = touchedAt;
     }
-    await supabase.from("provider_subscriptions")
-      .update(updatePayload)
-      .eq("paystack_subscription_code", subscriptionCode);
+    if (Object.keys(updatePayload).length > 0) {
+      let update = supabase
+        .from("provider_subscriptions")
+        .update(updatePayload)
+        .eq("paystack_subscription_code", subscriptionCode);
+      if (updatePayload.status === "past_due") {
+        update = update.eq("status", "active");
+      }
+      await update;
+    }
   } else if (eventType === "invoice.payment_failed") {
     // Idempotency: a failed-renewal webhook can arrive more than once. Dedupe on
     // the failed payment_transactions reference so we don't pile up rows / notify
@@ -674,16 +1078,9 @@ async function handleSubscriptionInvoice(
       Boolean,
     ) as string[];
     for (const ref of successRefs) {
-      const { data: successTx } = await supabase
-        .from("payment_transactions")
-        .select("id")
-        .eq("provider", "paystack")
-        .eq("reference", ref)
-        .eq("status", "success")
-        .maybeSingle();
-      if (successTx) {
+      if (await renewalChargeAlreadySettled(supabase, ref)) {
         console.log(
-          `[subscription] skip invoice.payment_failed — renewal already succeeded for ref ${ref}`,
+          `[subscription] skip invoice.payment_failed — renewal already settled for ref ${ref}`,
         );
         return;
       }
@@ -702,13 +1099,18 @@ async function handleSubscriptionInvoice(
       return;
     }
 
-    await supabase.from("provider_subscriptions")
-      .update({
-        status: "past_due",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("paystack_subscription_code", subscriptionCode)
-      .in("status", ["active", "past_due"]);
+    if (previousStatus !== "past_due") {
+      const failedAt = new Date().toISOString();
+      await supabase.from("provider_subscriptions")
+        .update({
+          status: "past_due",
+          last_dunning_retry_at: failedAt,
+          past_due_since: failedAt,
+          updated_at: failedAt,
+        })
+        .eq("paystack_subscription_code", subscriptionCode)
+        .eq("status", "active");
+    }
 
     await supabase.from("payment_transactions").insert({
       booking_id: null,
@@ -751,6 +1153,19 @@ async function handleSubscriptionInvoice(
               plan_name: subData.subscription_plans?.name || "subscription",
               amount: `${convertFromSmallestUnit(amount, payload.currency || "ZAR")}`,
               app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
+              grace_days: "3",
+              access_note: subscriptionPaymentFailedAccessNote(
+                previousStatus !== "past_due" ||
+                  isPastDueWithinGrace({
+                    billingProvider: (subscription as { billing_provider?: string | null }).billing_provider,
+                    pastDueSince: (subscription as { past_due_since?: string | null }).past_due_since,
+                    updatedAt: (subscription as { updated_at?: string | null }).updated_at,
+                    nowIso: new Date().toISOString(),
+                    graceCutoffIso: new Date(
+                      Date.now() - SUBSCRIPTION_PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000,
+                    ).toISOString(),
+                  }),
+              ),
             },
             ["push"],
             { appType: "provider" }

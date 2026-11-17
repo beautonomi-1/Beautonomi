@@ -13929,7 +13929,8 @@
       "requestChangesTitle": "versoek veranders",
       "requestChangesBody": "Vertel die verskaffer wat jy wil hê moet aangepas word.",
       "requestChangesEmpty": "Describe the veranders you want asseblief.",
-      "requestChangesFailed": "Kon nie versoek veranders nie"
+      "requestChangesFailed": "Kon nie versoek veranders nie",
+      "offerStatusNeedsSupport": "Needs ondersteuning"
     },
     "walletScreen": {
       "balanceLabel": "beursie saldo",
@@ -15616,7 +15617,7 @@
           "refundAmountLabel": "terugbetaling bedrag:",
           "requestedOn": "Versoek op {{date}}",
           "items": "Items",
-          "itemQtyPrice": "{{count}} x {{price}}",
+          "itemQtyPrice": "{{count}} × {{price}}",
           "yourDetails": "Jou besonderhede",
           "nameLabel": "Naam",
           "emailLabel": "e-pos",
@@ -15663,7 +15664,11 @@
           "accessLabel": "Toegang",
           "parkingLabel": "Parkering",
           "landmarksLabel": "Landmerke",
-          "partiallyRefundedContactProvider": "Hierdie bestelling is gedeeltelik terugbetaal. Kontak die verskaffer om die oorblywende balans terug te betaal."
+          "partiallyRefundedContactProvider": "Hierdie bestelling is gedeeltelik terugbetaal. Kontak die verskaffer om die oorblywende balans terug te betaal.",
+          "refunded": "Terugbetaal",
+          "messageProvider": "Stuur boodskap aan diensverskaffer",
+          "messageFailedTitle": "boodskap",
+          "messageFailedBody": "Kon nie 'n klets met hierdie verskaffer begin nie."
         },
         "customRequestsList": {
           "startPaymentFailed": "Kon nie begin betaling nie",
@@ -18433,14 +18438,14 @@
     "memberDiscountFallback": "Member afslag",
     "saveCardInfoA11y": "Info Meer oor stoor tans Kaart",
     "customTipA11y": "Pasgemaak fooitjie bedrag",
-    "bookingSuccessTitleConfirmed": "bespreking bevestiged!",
-    "bookingSuccessTitlePending": "bespreking received!",
-    "bookingSuccessTitlePendingPayment": "betaling verwerk tans...",
+    "bookingSuccessTitleConfirmed": "Bespreking bevestig!",
+    "bookingSuccessTitlePending": "Bespreking ontvang!",
+    "bookingSuccessTitlePendingPayment": "Betaling word verwerk…",
     "bookingSuccessPendingPaymentBody": "Jou betaling word bevestig. Jy sal binnekort 'n kennisgewing ontvang.",
-    "bookingSuccessPendingBody": "Wag op verskafferbevestiging - gewoonlik binne 8 uur",
-    "bookingSuccessFooter": "Taking you to your bespreking…",
+    "bookingSuccessPendingBody": "Wag op verskafferbevestiging — ons laat weet jou sodra hulle reageer",
+    "bookingSuccessFooter": "Ons maak jou bespreking oop…",
     "totalPaidPrefix": "Totaal betaal",
-    "platformFeeInclusive": " (insl. platformfooi {{amount}})",
+    "platformFeeInclusive": " (insl. besprekingsbeskerming {{amount}})",
     "securePaymentTitle": "Secure betaling",
     "paymentCancelledTitle": "betaling gekanselleer",
     "paymentCancelledBody": "Jy het die betaling gekanselleer. Jou bespreking is nie bevestig nie.",
@@ -20938,7 +20943,8 @@
         "createOfferFailedShort": "Kon nie skep offer nie",
         "changeClient": "Verander",
         "searchClientPlaceholder": "Soek volgens naam, e-pos of foon (bv. 082…)",
-        "searchClientHint": "Tik minstens 2 karakters"
+        "searchClientHint": "Tik minstens 2 karakters",
+        "continuePayment": "gaan voort betaling"
       },
       "privacyAndSharing": {
         "tabAccount": "Rekening",
@@ -35565,7 +35571,9 @@
         "editOffer": "Wysig offer",
         "withdrawOfferConfirm": "Is jy seker jy wil hierdie aanbod terugtrek?",
         "withdrawOffer": "Onttrekkingsaanbod",
-        "couldNotLoadOfferDetails": "Kon nie laai offer besonderhede nie."
+        "couldNotLoadOfferDetails": "Kon nie laai offer besonderhede nie.",
+        "statusNeedsSupport": "Needs ondersteuning",
+        "resumePayment": "hervat betaling"
       },
       "customOfferModal": {
         "loadOfferFailed": "Kon nie laai offer nie",
@@ -36508,7 +36516,13 @@
         "waitingBody": "Ons bevestig jou betaling. Verfris jou persoonlike versoeke in 'n oomblik.",
         "backToRequests": "terug to Pasgemaak versoeke",
         "changesRequestedTitle": "Aanbod word hersien",
-        "changesRequestedBody": "Jou verskaffer is besig om hierdie aanbod op te dateer ná jou veranderingsversoek."
+        "changesRequestedBody": "Jou verskaffer is besig om hierdie aanbod op te dateer ná jou veranderingsversoek.",
+        "viewBooking": "Sien bespreking",
+        "needsSupportTitle": "betaling needs ondersteuning",
+        "resumePayment": "hervat betaling",
+        "needsSupportBody": "Ons het die betaling ontvang, maar kon nie die bespreking skep nie. Kontak ondersteuning met jou betalingsverwysing.",
+        "unavailableBody": "Vra die verskaffer vir 'n nuwe kwotasie as jy hierdie diens steeds wil hê.",
+        "unavailableTitle": "Hierdie aanbod kan nie meer betaal word nie"
       }
     },
     "groupInvite": {

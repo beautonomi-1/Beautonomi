@@ -110,6 +110,47 @@ describe("applyYocoSuccessfulSettlement", () => {
     );
   });
 
+  it("does not reopen a refunded till sale or take stock again", async () => {
+    const updates: unknown[] = [];
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "sales") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: { id: "sale-1", payment_status: "refunded", notes: null },
+                  error: null,
+                }),
+              }),
+            }),
+            update: (payload: unknown) => {
+              updates.push(payload);
+              return {};
+            },
+          };
+        }
+        return chain({ data: [], error: null });
+      }),
+    };
+    await applyYocoSuccessfulSettlement(supabase as never, {
+      yocoPaymentId: "yoco-pay-refunded",
+      existingPayment: {
+        id: "row-refunded",
+        provider_id: "prov-1",
+        sale_id: "sale-1",
+        entity_type: "sale",
+        entity_id: "sale-1",
+        amount: 10000,
+      },
+      metadata: { provider_id: "prov-1", sale_id: "sale-1" },
+      amountCents: 10000,
+      currency: "ZAR",
+    });
+    expect(updates).toEqual([]);
+    expect(applyPosProductStockDecrements).not.toHaveBeenCalled();
+  });
+
   it("marks a till sale paid when the card charge covers the sale", async () => {
     const updates: unknown[] = [];
     const supabase = {
@@ -126,7 +167,13 @@ describe("applyYocoSuccessfulSettlement", () => {
             }),
             update: (payload: unknown) => {
               updates.push(payload);
-              return { eq: () => ({ neq: async () => ({ error: null }) }) };
+              const api: Record<string, unknown> = {};
+              const self = () => api;
+              api.eq = vi.fn(self);
+              api.neq = vi.fn(self);
+              api.select = vi.fn(self);
+              api.maybeSingle = vi.fn(async () => ({ data: { id: "sale-1" }, error: null }));
+              return api;
             },
           };
         }
@@ -202,7 +249,13 @@ describe("applyYocoSuccessfulSettlement", () => {
             }),
             update: (payload: unknown) => {
               updates.push(payload);
-              return { eq: () => ({ neq: async () => ({ error: null }) }) };
+              const api: Record<string, unknown> = {};
+              const self = () => api;
+              api.eq = vi.fn(self);
+              api.neq = vi.fn(self);
+              api.select = vi.fn(self);
+              api.maybeSingle = vi.fn(async () => ({ data: { id: "sale-1" }, error: null }));
+              return api;
             },
           };
         }

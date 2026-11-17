@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -8,7 +9,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 
 /** Shape returned to app (Suppliers screen) and compatible with product form (.name). */
 export interface SupplierResponse {
@@ -38,7 +39,9 @@ const LEGACY_PREFIX = "legacy:";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireAnyPermission(["view_products", "edit_products"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -46,7 +49,8 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: rows, error: rowsError } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: rows, error: rowsError } = await admin
       .from("product_suppliers")
       .select("id, name, contact_name, email, phone, address, website, notes, category, status, created_at")
       .eq("provider_id", providerId)
@@ -163,7 +167,8 @@ export async function POST(request: NextRequest) {
       : "general";
     const statusVal = status === "inactive" ? "inactive" : "active";
 
-    const { data: inserted, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: inserted, error } = await admin
       .from("product_suppliers")
       .insert({
         provider_id: providerId,

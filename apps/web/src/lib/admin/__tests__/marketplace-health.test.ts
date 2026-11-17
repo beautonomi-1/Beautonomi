@@ -4,9 +4,14 @@ import {
   computeMrrBridge,
   computeRepeatRate,
   computeTakeRate,
+  computeContributionMargin,
   type CompletedBookingLite,
 } from "../marketplace-health";
-import { aggregateFinanceLedgerRows } from "../aggregate-finance-ledger-rows";
+import {
+  aggregateFinanceLedgerRows,
+  gatewayFeesTotalFromAggregate,
+  platformRevenueNetFromAggregate,
+} from "../aggregate-finance-ledger-rows";
 import type { FinanceLedgerRow } from "../finance-ledger-tenant";
 
 const mk = (
@@ -63,6 +68,20 @@ describe("marketplace-health", () => {
     agg.service_collected_gross = 100;
     const rate = computeTakeRate(agg);
     expect(rate).toBeGreaterThan(0);
+  });
+
+  it("contribution margin does not double-count booking gateway fees", () => {
+    const rows: FinanceLedgerRow[] = [
+      { transaction_type: "payment", amount: 100, fees: 17.7, net: 0, commission: 0 },
+      { transaction_type: "platform_fee", amount: 5, net: 5 },
+      { transaction_type: "provider_subscription_payment", amount: 50, fees: 3, net: 47 },
+    ];
+    const agg = aggregateFinanceLedgerRows(rows);
+    const platformNet = platformRevenueNetFromAggregate(agg);
+    const margin = computeContributionMargin(agg);
+    const gatewayNonBooking =
+      gatewayFeesTotalFromAggregate(agg) - agg.gateway_fees_services;
+    expect(margin).toBeCloseTo(platformNet - gatewayNonBooking, 2);
   });
 
   it("MRR bridge identity", () => {

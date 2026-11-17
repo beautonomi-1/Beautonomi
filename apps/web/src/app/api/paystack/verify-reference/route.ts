@@ -1,4 +1,5 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { addMoney } from "@beautonomi/utils";
 
 import { NextRequest } from "next/server";
 import {
@@ -14,7 +15,19 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
+import { processFailedPayment, processSuccessfulPayment } from "@/app/api/payments/webhook/_handlers/charge-success";
+import {
+  bookingPaymentAfterCharge,
+  clientStatusForBookingPayment,
+  isGuestSharePayment,
+  bookingIdForClientStatus,
+  recordedChargeClientStatus,
+  resolveSettledChargeClientStatus,
+} from "@/lib/payments/booking-payment-client-status";
+import {
+  mergeStoredCheckoutMetadata,
+  normalizePaystackMetadata,
+} from "@/lib/payments/normalize-paystack-metadata";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
@@ -84,54 +97,77 @@ export async function GET(request: NextRequest) {
       searchParams.get("tx_ref")?.trim();
     const bookingIdParam = searchParams.get("booking_id")?.trim();
     const transactionId = searchParams.get("transaction_id");
-    const redirectStatus = (searchParams.get("status") ?? "").toLowerCase();
-
     if (!reference) {
       return errorResponse("reference is required", "VALIDATION_ERROR", 400);
     }
 
-    if (redirectStatus === "failed" || redirectStatus === "cancelled") {
-      return successResponse({
-        verified: false,
-        paystackStatus: "failed",
-        message: "Payment was not completed",
-      });
-    }
-
-    const sessionId = searchParams.get("session_id");
+    const adminEarly = getSupabaseAdmin();
     const { getOnlinePaymentCheckoutByReference } = await import(
       "@/lib/payments/online-payment-checkouts"
     );
     const checkoutRow = await getOnlinePaymentCheckoutByReference(reference);
+
+    const sessionId = searchParams.get("session_id");
     const { shouldUseStripeOnlineVerify, verifyAndSettleOnlinePayment } = await import(
       "@/lib/payments/resolve-online-verify"
     );
 
     if (checkoutRow?.provider === "flutterwave") {
-      const admin = getSupabaseAdmin();
       const flwResult = await verifyAndSettleOnlinePayment(
         { reference, tenantId, sessionId, transactionId },
-        admin,
+        adminEarly,
       );
+      const capture = await bookingPaymentAfterCharge(adminEarly, reference, checkoutRow.metadata);
+      const status = await resolveSettledChargeClientStatus({
+        admin: adminEarly,
+        reference,
+        gatewayPaid: flwResult.paid,
+        bookingId: capture.bookingId,
+        paymentStatus: capture.payment_status,
+        metadata: checkoutRow.metadata,
+      });
       return successResponse({
-        verified: flwResult.paid,
+        verified: status === "success",
+        status,
         provider: "flutterwave",
-        paystackStatus: flwResult.paid ? "success" : "pending",
-        message: flwResult.paid ? "Payment verified" : "Payment not complete yet",
+        bookingId: bookingIdForClientStatus(
+          checkoutRow.metadata as Record<string, unknown> | null,
+          status,
+          capture.bookingId,
+        ),
+        payment_status: capture.payment_status,
+        paystackStatus: status === "success" ? "success" : "pending",
+        message: status === "success" ? "Payment verified" : "Payment not complete yet",
       });
     }
 
     if (shouldUseStripeOnlineVerify(checkoutRow?.provider, sessionId)) {
-      const admin = getSupabaseAdmin();
       const stripeResult = await verifyAndSettleOnlinePayment(
         { reference, tenantId, sessionId },
-        admin,
+        adminEarly,
       );
+      const capture = await bookingPaymentAfterCharge(adminEarly, reference, checkoutRow?.metadata);
+      const status = await resolveSettledChargeClientStatus({
+        admin: adminEarly,
+        reference,
+        gatewayPaid: stripeResult.paid,
+        bookingId: capture.bookingId,
+        paymentStatus: capture.payment_status,
+        metadata: checkoutRow?.metadata,
+        unpaidStatus: stripeResult.provider === "stripe" ? "pending" : "error",
+      });
       return successResponse({
-        verified: stripeResult.paid,
+        verified: status === "success",
+        status,
         provider: stripeResult.provider ?? "stripe",
-        paystackStatus: stripeResult.paid ? "success" : "pending",
-        message: stripeResult.paid ? "Payment verified" : "Payment not complete yet",
+        bookingId: bookingIdForClientStatus(
+          (checkoutRow?.metadata ?? null) as Record<string, unknown> | null,
+          status,
+          capture.bookingId,
+        ),
+        payment_status: capture.payment_status,
+        paystackStatus: status === "success" ? "success" : "pending",
+        message: status === "success" ? "Payment verified" : "Payment not complete yet",
       });
     }
 
@@ -158,17 +194,42 @@ export async function GET(request: NextRequest) {
     const amountKobo = Number(d.amount ?? 0);
     const paystackCurrency = d.currency || lastResortCurrency;
     const amountInCurrency = convertFromSmallestUnit(amountKobo, paystackCurrency);
-    const metadata = (d.metadata || {}) as Record<string, unknown>;
+    const metadata = mergeStoredCheckoutMetadata(
+      normalizePaystackMetadata(d.metadata),
+      checkoutRow?.metadata,
+    );
     const admin = getSupabaseAdmin();
 
     if (txStatus !== "success") {
+      const gatewayStatus = txStatus.toLowerCase();
+      if (
+        gatewayStatus === "failed" ||
+        gatewayStatus === "abandoned" ||
+        gatewayStatus === "reversed"
+      ) {
+        const failMeta = mergeStoredCheckoutMetadata(
+          normalizePaystackMetadata(d.metadata),
+          checkoutRow?.metadata,
+        );
+        await processFailedPayment(
+          { ...d, reference, metadata: failMeta, gateway_response: gatewayStatus },
+          adminEarly,
+        );
+        const capture = await bookingPaymentAfterCharge(adminEarly, reference, failMeta);
+        return successResponse({
+          verified: false,
+          status: "failed",
+          paystackStatus: txStatus,
+          bookingId: capture.bookingId,
+          payment_status: capture.payment_status,
+          message: "Payment was not completed",
+        });
+      }
       return successResponse({
         verified: false,
+        status: "pending",
         paystackStatus: txStatus,
-        message:
-          txStatus === "failed"
-            ? "Payment was not successful"
-            : "Payment is not complete yet",
+        message: "Payment is not complete yet",
       });
     }
 
@@ -413,8 +474,17 @@ export async function GET(request: NextRequest) {
         transitionedToPaid: payRecord.transitionedToPaid,
       });
 
+      const { data: afterTerminal } = await (admin.from("terminal_orders") as any)
+        .select("invoice_status")
+        .eq("id", terminalOrderId)
+        .maybeSingle();
+      const terminalPaid =
+        String((afterTerminal as { invoice_status?: string } | null)?.invoice_status ?? "").toLowerCase() ===
+        "paid";
+
       return successResponse({
-        verified: true,
+        verified: terminalPaid,
+        status: terminalPaid ? "success" : "pending",
         paystackStatus: txStatus,
         amount: amountInCurrency,
         currency: d.currency ?? lastResortCurrency,
@@ -426,8 +496,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (!bookingIdParam) {
+      await processSuccessfulPayment(
+        {
+          reference: d.reference ?? reference,
+          metadata,
+          amount: d.amount,
+          fees: d.fees,
+          customer: d.customer,
+        },
+        admin,
+      );
+      const recorded = await recordedChargeClientStatus(admin, metadata, String(d.reference ?? reference));
+      const confirmed = recorded !== "pending";
       return successResponse({
-        verified: true,
+        verified: confirmed,
+        status: confirmed ? "success" : "pending",
         paystackStatus: txStatus,
         amount: amountInCurrency,
         currency: d.currency ?? lastResortCurrency,
@@ -479,7 +562,7 @@ export async function GET(request: NextRequest) {
       const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
         ? (booking as any).additional_charges
             .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-            .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+            .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
         : 0;
       const pendingWalletGift = await sumPendingWalletGiftBookingPayments(admin, bookingIdParam);
       const remaining = computeBookingOutstandingDisplay({
@@ -541,9 +624,27 @@ export async function GET(request: NextRequest) {
       admin,
     );
 
+    const { data: afterPay } = await admin
+      .from("bookings")
+      .select("payment_status")
+      .eq("id", bookingIdParam)
+      .maybeSingle();
+    const paymentStatus = String(
+      (afterPay as { payment_status?: string | null } | null)?.payment_status ?? "pending",
+    );
+    const recorded = clientStatusForBookingPayment(paymentStatus) === "success";
+    const guestShare = isGuestSharePayment({ payment_type: paymentType });
+    const guestRecorded = guestShare
+      ? await recordedChargeClientStatus(admin, metadata, String(d.reference ?? reference))
+      : null;
+    const confirmed = guestShare ? guestRecorded === "success" : recorded;
+
     return successResponse({
-      verified: true,
+      verified: confirmed,
+      status: confirmed ? "success" : "pending",
       paystackStatus: txStatus,
+      payment_status: paymentStatus,
+      bookingId: bookingIdParam,
       amount: amountInCurrency,
       currency: d.currency ?? lastResortCurrency,
       reference: d.reference ?? reference,

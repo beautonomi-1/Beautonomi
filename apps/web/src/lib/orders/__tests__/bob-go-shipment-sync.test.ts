@@ -16,6 +16,7 @@ function mockAdmin(order: Record<string, unknown>) {
   const updateChain = {
     eq: () => updateChain,
     neq: async () => ({}),
+    in: async () => ({}),
   };
   const chain = {
     select: () => chain,
@@ -108,6 +109,7 @@ describe("applyBobGoShipmentSnapshotToOrder", () => {
       tenant_id: null,
       order_number: "100",
       status: "processing",
+      fulfillment_type: "delivery",
       tracking_number: "BG1",
       tracking_url: "https://track.example/bg1",
       carrier: "bob-go",
@@ -129,5 +131,35 @@ describe("applyBobGoShipmentSnapshotToOrder", () => {
     expect(dispatchProductOrderStatusNotification).toHaveBeenCalledWith(
       expect.objectContaining({ status: "shipped" }),
     );
+  });
+
+  it("does not move a collection order when a courier snapshot arrives", async () => {
+    const { admin, updates } = mockAdmin({
+      id: "ord-1",
+      provider_id: "p1",
+      customer_id: "c1",
+      tenant_id: null,
+      order_number: "100",
+      status: "processing",
+      fulfillment_type: "collection",
+      tracking_number: null,
+      tracking_url: null,
+      carrier: null,
+      shipping_booking_status: null,
+    });
+
+    await applyBobGoShipmentSnapshotToOrder(admin, "ord-1", {
+      id: 1,
+      trackingReference: "BG1",
+      submissionStatus: "success",
+      status: "collected",
+      failedReason: null,
+      chargedAmount: null,
+      chargedWeightKg: null,
+      trackingUrl: "https://track.example/bg1",
+    });
+
+    expect(updates.some((u) => u.status === "shipped")).toBe(false);
+    expect(dispatchProductOrderStatusNotification).not.toHaveBeenCalled();
   });
 });

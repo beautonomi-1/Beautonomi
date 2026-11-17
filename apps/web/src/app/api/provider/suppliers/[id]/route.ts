@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -8,7 +9,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
 import type { SupplierResponse } from "../route";
 
 const LEGACY_PREFIX = "legacy:";
@@ -26,7 +27,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireAnyPermission(["view_products", "edit_products"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
@@ -39,7 +42,8 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    const { data: row, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: row, error } = await admin
       .from("product_suppliers")
       .select("id, name, contact_name, email, phone, address, website, notes, category, status, created_at")
       .eq("id", id)
@@ -125,7 +129,8 @@ export async function PATCH(
       return errorResponse("No valid fields to update", "VALIDATION_ERROR", 400);
     }
 
-    const { data: updated, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: updated, error } = await admin
       .from("product_suppliers")
       .update(updateData)
       .eq("id", id)

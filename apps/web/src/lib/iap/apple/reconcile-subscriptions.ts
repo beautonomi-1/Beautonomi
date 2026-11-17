@@ -79,7 +79,8 @@ export async function reconcileStaleAppleSubscriptions(params: {
         await params.supabase
           .from("provider_subscriptions")
           .update({ updated_at: new Date().toISOString() })
-          .eq("provider_id", row.provider_id);
+          .eq("provider_id", row.provider_id)
+          .eq("billing_provider", "apple");
         continue;
       }
       try {
@@ -115,7 +116,8 @@ export async function reconcileStaleAppleSubscriptions(params: {
           await params.supabase
             .from("provider_subscriptions")
             .update({ updated_at: new Date().toISOString() })
-            .eq("provider_id", row.provider_id);
+            .eq("provider_id", row.provider_id)
+            .eq("billing_provider", "apple");
           continue;
         }
 
@@ -136,7 +138,8 @@ export async function reconcileStaleAppleSubscriptions(params: {
         await params.supabase
           .from("provider_subscriptions")
           .update({ updated_at: new Date().toISOString() })
-          .eq("provider_id", row.provider_id);
+          .eq("provider_id", row.provider_id)
+          .eq("billing_provider", "apple");
       }
     }
 

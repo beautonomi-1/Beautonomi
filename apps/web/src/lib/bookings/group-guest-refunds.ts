@@ -5,6 +5,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { roundCurrency2 } from "@/lib/bookings/refund-processing";
 
 export const GROUP_GUEST_PAYMENT_SOURCE = "group_participant_paystack";
@@ -58,7 +59,7 @@ export async function listGroupGuestSharePayments(
   for (const r of (refunds ?? []) as Array<{ payment_id: string; amount: number | string }>) {
     refundedByPayment.set(
       r.payment_id,
-      roundCurrency2((refundedByPayment.get(r.payment_id) ?? 0) + Number(r.amount ?? 0)),
+      addMoney(refundedByPayment.get(r.payment_id) ?? 0, Number(r.amount ?? 0)),
     );
   }
 
@@ -76,7 +77,7 @@ export async function listGroupGuestSharePayments(
         reference: String(p.payment_provider_id ?? ""),
         amount,
         refunded,
-        net: roundCurrency2(Math.max(0, amount - refunded)),
+        net: Math.max(0, subtractMoney(amount, refunded)),
       };
     })
     .filter((p) => !participantId || p.participantId === participantId);
@@ -107,7 +108,7 @@ export async function refundGroupGuestSharePayments(
   },
 ): Promise<GuestShareRefundOutcome> {
   const payments = await listGroupGuestSharePayments(admin, input.bookingId, input.participantId);
-  const guestPaidNet = roundCurrency2(payments.reduce((s, p) => s + p.net, 0));
+  const guestPaidNet = payments.reduce((s, p) => addMoney(s, p.net), 0);
   let budget =
     typeof input.maxAmount === "number" && Number.isFinite(input.maxAmount)
       ? roundCurrency2(Math.max(0, input.maxAmount))
@@ -118,7 +119,7 @@ export async function refundGroupGuestSharePayments(
   for (const payment of payments) {
     const amount = roundCurrency2(Math.min(payment.net, budget));
     if (amount <= 0.009 || !payment.reference) continue;
-    budget = roundCurrency2(budget - amount);
+    budget = subtractMoney(budget, amount);
     const ok = await refundOneGuestPayment(admin, {
       bookingId: input.bookingId,
       payment,
@@ -127,8 +128,8 @@ export async function refundGroupGuestSharePayments(
       tenantId: input.tenantId ?? null,
       reason: input.reason,
     });
-    if (ok) refunded = roundCurrency2(refunded + amount);
-    else failed = roundCurrency2(failed + amount);
+    if (ok) refunded = addMoney(refunded, amount);
+    else failed = addMoney(failed, amount);
   }
 
   return { guestPaidNet, refunded, failed };

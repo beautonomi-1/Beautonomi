@@ -5,7 +5,7 @@
 
 import { Platform } from "react-native";
 import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
-import type { OnDemandModuleConfig } from "@/lib/config-bundle";
+import { getActiveConfigEnvironment, type OnDemandModuleConfig } from "@/lib/config-bundle";
 
 export interface RingtoneController {
   stop: () => void;
@@ -30,7 +30,7 @@ function getBackendBaseUrl(): string {
 }
 
 async function fetchSignedRingtoneUrl(scope: RingtoneUrlScope): Promise<string | null> {
-  const env = __DEV__ ? "development" : "production";
+  const env = getActiveConfigEnvironment();
   const base = getBackendBaseUrl().replace(/\/$/, "");
   try {
     const res = await fetch(
@@ -45,15 +45,17 @@ async function fetchSignedRingtoneUrl(scope: RingtoneUrlScope): Promise<string |
   }
 }
 
-async function playUrlWithExpoAudio(
-  url: string,
+function startPlayback(
+  resolveUrl: () => Promise<string | null>,
   ringDurationSeconds: number,
   ringRepeat: boolean,
-): Promise<RingtoneController> {
+): RingtoneController {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let player: ReturnType<typeof import("expo-audio").createAudioPlayer> | null = null;
+  let stopped = false;
 
   const stop = () => {
+    stopped = true;
     if (timeoutId != null) {
       clearTimeout(timeoutId);
       timeoutId = null;
@@ -69,67 +71,73 @@ async function playUrlWithExpoAudio(
     }
   };
 
-  try {
-    const { createAudioPlayer, setAudioModeAsync } = await import("expo-audio");
-    await setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: false,
-      interruptionMode: "duckOthers",
-    });
-    player = createAudioPlayer({ uri: url });
-    player.loop = ringRepeat;
-    player.play();
-  } catch {
-    stop();
-    return { stop: () => {} };
-  }
-
-  const durationMs = Math.max(1000, ringDurationSeconds * 1000);
-  timeoutId = setTimeout(() => {
-    stop();
-  }, durationMs);
+  void (async () => {
+    if (stopped) return;
+    const url = await resolveUrl();
+    if (!url || stopped) return;
+    try {
+      const { createAudioPlayer, setAudioModeAsync } = await import("expo-audio");
+      if (stopped) return;
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+        interruptionMode: "duckOthers",
+      });
+      if (stopped) return;
+      player = createAudioPlayer({ uri: url });
+      player.loop = ringRepeat;
+      player.play();
+      if (stopped) {
+        stop();
+        return;
+      }
+      timeoutId = setTimeout(() => {
+        stop();
+      }, Math.max(1000, ringDurationSeconds * 1000));
+    } catch {
+      stop();
+    }
+  })();
 
   return { stop };
 }
 
-export async function playRingtone(
+export function playRingtone(
   config: OnDemandModuleConfig,
   signedUrl?: string,
 ): Promise<RingtoneController> {
   if (!config.enabled || !config.ringtone_asset_path) {
-    return { stop: () => {} };
+    return Promise.resolve({ stop: () => {} });
   }
 
-  let url = signedUrl;
-  if (!url) {
-    url = (await fetchSignedRingtoneUrl("on_demand")) ?? undefined;
-  }
-  if (!url) return { stop: () => {} };
-
-  return playUrlWithExpoAudio(url, config.ring_duration_seconds ?? 20, config.ring_repeat ?? true);
+  return Promise.resolve(
+    startPlayback(async () => {
+      if (signedUrl?.trim()) return signedUrl.trim();
+      return fetchSignedRingtoneUrl("on_demand");
+    }, config.ring_duration_seconds ?? 20, config.ring_repeat ?? true),
+  );
 }
 
 /**
  * Standard booking Realtime alert — does not require on_demand.enabled.
  * Uses control-plane `normal_booking_ringtone_asset_path` when set.
  */
-export async function playNormalBookingRingtone(
+export function playNormalBookingRingtone(
   config: OnDemandModuleConfig,
   signedUrl?: string,
 ): Promise<RingtoneController> {
   if (!config.normal_booking_ringtone_asset_path?.trim()) {
-    return { stop: () => {} };
+    return Promise.resolve({ stop: () => {} });
   }
 
-  let url = signedUrl;
-  if (!url) {
-    url = (await fetchSignedRingtoneUrl("normal_booking")) ?? undefined;
-  }
-  if (!url) return { stop: () => {} };
-
-  return playUrlWithExpoAudio(
-    url,
-    config.normal_booking_ring_duration_seconds ?? 20,
-    config.normal_booking_ring_repeat ?? true,
+  return Promise.resolve(
+    startPlayback(
+      async () => {
+        if (signedUrl?.trim()) return signedUrl.trim();
+        return fetchSignedRingtoneUrl("normal_booking");
+      },
+      config.normal_booking_ring_duration_seconds ?? 20,
+      config.normal_booking_ring_repeat ?? true,
+    ),
   );
 }

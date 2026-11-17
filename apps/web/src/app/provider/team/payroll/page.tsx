@@ -23,6 +23,7 @@ import { boundsForPayPeriodPreset, type PayPeriodTypePreset } from "@/lib/payrol
 import { toast } from "sonner";
 import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 
 interface PayRun {
   id: string;
@@ -35,8 +36,11 @@ interface PayRun {
 
 export default function PayrollPage() {
   const { t } = useTranslation();
+  const { provider, isLoading: portalLoading } = useProviderPortal();
+  const isFreelancer = provider?.business_type === "freelancer";
   const { hasPermission } = usePermissions();
   const canManagePayroll = useMemo(() => hasPermission("manage_payroll"), [hasPermission]);
+  const canViewOwnEarnings = useMemo(() => hasPermission("view_own_earnings"), [hasPermission]);
   const [payRuns, setPayRuns] = useState<PayRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -48,8 +52,13 @@ export default function PayrollPage() {
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
-    loadPayRuns();
-  }, []);
+    if (portalLoading) return;
+    if (isFreelancer) {
+      setIsLoading(false);
+      return;
+    }
+    void loadPayRuns();
+  }, [portalLoading, isFreelancer]);
 
   useEffect(() => {
     if (!canManagePayroll && isCreateOpen) setIsCreateOpen(false);
@@ -109,7 +118,7 @@ export default function PayrollPage() {
         title={t("web.provider.sidebar.items.payroll")}
         subtitle={t("web.provider.pages.team/payroll.subtitle")}
         primaryAction={
-          canManagePayroll
+          canManagePayroll && !isFreelancer
             ? {
                 label: t("web.provider.pages.team/payroll.newPayRun"),
                 onClick: () => setIsCreateOpen(true),
@@ -119,7 +128,48 @@ export default function PayrollPage() {
         }
       />
 
-      {isLoading ? (
+      {!isFreelancer && canManagePayroll ? (
+        <SectionCard className="p-4">
+          <p className="text-sm text-gray-700">
+            {t("web.provider.pages.team/payroll.howItWorks")}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+            <Link href="/provider/settings/team/commissions" className="text-sm font-medium text-primary hover:underline">
+              {t("web.provider.pages.team/payroll.howPeopleArePaid")}
+            </Link>
+            {canViewOwnEarnings ? (
+              <Link href="/provider/team/my-earnings" className="text-sm font-medium text-primary hover:underline">
+                {t("web.provider.pages.team/payroll.myPayslips")}
+              </Link>
+            ) : null}
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {!isFreelancer && !canManagePayroll && canViewOwnEarnings ? (
+        <SectionCard className="p-4">
+          <p className="text-sm text-gray-700">
+            {t("web.provider.pages.team/payroll.staffHowItWorks")}
+          </p>
+          <Link href="/provider/team/my-earnings" className="mt-3 inline-block text-sm font-medium text-primary hover:underline">
+            {t("web.provider.pages.team/payroll.myPayslips")}
+          </Link>
+        </SectionCard>
+      ) : null}
+
+      {isFreelancer ? (
+        <SectionCard className="p-8">
+          <h3 className="font-medium text-gray-900 mb-2">
+            {t("web.provider.pages.team/payroll.freelancerTitle")}
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            {t("web.provider.pages.team/payroll.freelancerBody")}
+          </p>
+          <Link href="/provider/settings/upgrade-to-salon" className="text-sm font-medium text-primary hover:underline">
+            {t("web.provider.teamMembers.upgradeToSalonLink")}
+          </Link>
+        </SectionCard>
+      ) : isLoading ? (
         <SectionCard>
           <Skeleton className="h-48 w-full" />
         </SectionCard>

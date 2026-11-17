@@ -1,3 +1,5 @@
+import { addMoney } from "../money";
+
 export type CheckoutGroupParticipant = {
   name: string;
   service_ids: string[];
@@ -14,7 +16,7 @@ export function groupGuestsServiceSubtotal(
 ): number {
   return participants.reduce((sum, p) => {
     const ids = p.service_ids.length > 0 ? p.service_ids : snapshotOfferingIds;
-    return sum + ids.reduce((s, id) => s + (priceByOfferingId.get(id) ?? 0), 0);
+    return addMoney(sum, ids.reduce((s, id) => addMoney(s, priceByOfferingId.get(id) ?? 0), 0));
   }, 0);
 }
 
@@ -33,6 +35,6 @@ export function sumGroupParticipantServicesTotal(
     .filter((p) => p.name.trim())
     .reduce((sum, p) => {
       const ids = p.serviceIds.length > 0 ? p.serviceIds : bookerServiceIds;
-      return sum + ids.reduce((s, id) => s + priceForServiceId(id), 0);
+      return addMoney(sum, ids.reduce((s, id) => addMoney(s, priceForServiceId(id)), 0));
     }, 0);
 }

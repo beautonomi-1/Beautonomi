@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -138,7 +139,7 @@ export async function GET(request: NextRequest) {
       const bookingRev = useNetSemantics
         ? netAfterRefundsByBooking.get(bookingId) || 0
         : revenueByBooking.get(bookingId) || 0;
-      revenueByStatus.set(statusKey, (revenueByStatus.get(statusKey) || 0) + bookingRev);
+      revenueByStatus.set(statusKey, addMoney(revenueByStatus.get(statusKey) || 0, bookingRev));
     }
 
     const sampleSize = bookings?.length ?? 0;

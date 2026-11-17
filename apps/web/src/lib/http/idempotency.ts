@@ -50,20 +50,62 @@ export interface CachedIdempotentResponse {
   toResponse: () => Response;
 }
 
+/**
+ * F2-70: a cached response stored under another user must not replay.
+ * Anonymous rows (user_id null) may replay — the key is an unguessable UUID.
+ * A signed-in caller's key must match the stored user_id when it is set.
+ */
+export function idempotencyBelongsToCaller(
+  rowUserId: string | null | undefined,
+  callerUserId: string | null | undefined,
+): boolean {
+  if (rowUserId) {
+    return Boolean(callerUserId) && rowUserId === callerUserId;
+  }
+  return true;
+}
+
+/** F2-70: unique is (endpoint, key) — a mismatch must 409, not miss-and-recharge. */
+export function idempotencyConflictCachedResponse(): CachedIdempotentResponse {
+  const body = {
+    success: false,
+    error: {
+      code: "IDEMPOTENCY_KEY_CONFLICT",
+      message: "Idempotency key already used",
+    },
+  };
+  return {
+    status: 409,
+    body,
+    toResponse: () =>
+      NextResponse.json(body, {
+        status: 409,
+        headers: { "Idempotent-Replay": "conflict" },
+      }),
+  };
+}
+
 export async function lookupIdempotentResponse(
   endpoint: string,
   key: string,
+  opts?: { userId?: string | null },
 ): Promise<CachedIdempotentResponse | null> {
   try {
     const admin = getSupabaseAdmin();
     const { data } = await admin
       .from("request_idempotency_keys")
-      .select("response_status, response_body, expires_at")
+      .select("response_status, response_body, expires_at, user_id")
       .eq("endpoint", endpoint)
       .eq("idempotency_key", key)
       .maybeSingle();
 
     if (!data) return null;
+    if (!idempotencyBelongsToCaller(
+      (data as { user_id?: string | null }).user_id,
+      opts?.userId,
+    )) {
+      return idempotencyConflictCachedResponse();
+    }
 
     // Treat an expired row as "not found" even if prune hasn't run yet.
     const expires = data.expires_at ? new Date(data.expires_at).getTime() : 0;

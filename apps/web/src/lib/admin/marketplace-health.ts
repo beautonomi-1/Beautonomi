@@ -1,3 +1,4 @@
+import { addMoney, subtractMoney, multiplyMoney } from "@beautonomi/utils";
 import type { FinanceLedgerAggregate } from "@/lib/admin/aggregate-finance-ledger-rows";
 import {
   gatewayFeesTotalFromAggregate,
@@ -29,15 +30,19 @@ export type MarketplaceHealthContracts = {
 export function computeTakeRate(agg: FinanceLedgerAggregate): number {
   const gmv = agg.service_collected_gross;
   if (gmv <= 0) return 0;
-  const take = agg.platform_take_net + agg.service_fee_revenue;
+  const take = addMoney(agg.platform_take_net, agg.service_fee_revenue);
   return take / gmv;
 }
 
 export function computeContributionMargin(agg: FinanceLedgerAggregate): number {
   const platformNet = platformRevenueNetFromAggregate(agg);
-  const gateway = gatewayFeesTotalFromAggregate(agg);
-  const refundImpact = agg.platform_refund_impact ?? agg.platform_refund_contra ?? 0;
-  return platformNet - gateway - Math.abs(refundImpact);
+  // platform_take_net already embeds booking gateway fees; only subtract non-booking
+  // gateway costs so subscription/ads terminal fees are not double-counted.
+  const gatewayNonBooking = subtractMoney(
+    gatewayFeesTotalFromAggregate(agg),
+    agg.gateway_fees_services,
+  );
+  return subtractMoney(platformNet, gatewayNonBooking);
 }
 
 /**
@@ -229,7 +234,10 @@ export function computeMrrBridge(params: {
   churnedMrr: number;
 }): MrrBridge {
   const { startingMrr, newMrr, expansionMrr, contractionMrr, churnedMrr } = params;
-  const endingMrr = startingMrr + newMrr + expansionMrr - contractionMrr - churnedMrr;
+  const endingMrr = subtractMoney(
+    addMoney(addMoney(startingMrr, newMrr), expansionMrr),
+    addMoney(contractionMrr, churnedMrr),
+  );
   const denom = startingMrr > 0 ? startingMrr : 0;
   const grr =
     denom > 0
@@ -262,7 +270,7 @@ export function subscriptionMrrForPlan(
   const isMonthly = billingPeriod === "monthly";
   const price = isMonthly ? priceMonthly : priceYearly;
   if (!price || Number(price) <= 0) return 0;
-  return isMonthly ? Number(price) : Number(price) / 12;
+  return isMonthly ? Number(price) : multiplyMoney(Number(price), 1 / 12);
 }
 
 export function daysSince(iso: string | null | undefined, now = new Date()): number | null {

@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
   successResponse,
   errorResponse,
   handleApiError,
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { verifyAccount } from "@/lib/payments/paystack-complete";
 import { resolveFlutterwaveBankAccount } from "@/lib/payments/flutterwave-banks";
 import { resolvePayoutRailForTenant } from "@/lib/payments/payout-rail";
@@ -29,7 +29,9 @@ const verifySchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const tenantId = await resolveTenantIdWithZaFallback(request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);

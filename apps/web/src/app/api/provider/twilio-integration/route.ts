@@ -1,9 +1,16 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { checkMarketingFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
+import {
+  encryptIntegrationSecret,
+  isEncryptedIntegrationSecret,
+  revealIntegrationSecret,
+} from "@/lib/security/integration-secrets";
 
 const putSchema = z.object({
   account_sid: z.string().min(1, "Account SID is required"),
@@ -20,7 +27,9 @@ const putSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requireAnyPermission(["manage_marketing", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
     // For superadmin, allow viewing any provider's integration
@@ -40,7 +49,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: integration, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: integration, error } = await admin
       .from("provider_twilio_integrations")
       .select("*")
       .eq("provider_id", providerId)
@@ -137,7 +147,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Check if integration exists
-    const { data: existing } = await supabase
+    const { data: existing } = await getSupabaseAdmin()
       .from("provider_twilio_integrations")
       .select("id, account_sid, auth_token, connected_date")
       .eq("provider_id", providerId)
@@ -160,10 +170,11 @@ export async function PUT(request: NextRequest) {
     }
 
     if (auth_token && auth_token !== "••••••••") {
-      integrationData.auth_token = auth_token;
+      integrationData.auth_token = encryptIntegrationSecret(auth_token);
     } else if (existing?.auth_token) {
-      // Keep existing if masked value provided
-      integrationData.auth_token = existing.auth_token;
+      integrationData.auth_token = isEncryptedIntegrationSecret(existing.auth_token)
+        ? existing.auth_token
+        : encryptIntegrationSecret(revealIntegrationSecret(existing.auth_token));
     } else {
       return errorResponse("Auth token is required", "VALIDATION_ERROR", 400);
     }
@@ -187,7 +198,8 @@ export async function PUT(request: NextRequest) {
     let result;
     if (existing) {
       // Update existing
-      const { data, error } = await supabase
+      const admin = getSupabaseAdmin();
+      const { data, error } = await admin
         .from("provider_twilio_integrations")
         .update(integrationData)
         .eq("id", existing.id)
@@ -198,7 +210,8 @@ export async function PUT(request: NextRequest) {
       result = data;
     } else {
       // Create new
-      const { data, error } = await supabase
+      const admin = getSupabaseAdmin();
+      const { data, error } = await admin
         .from("provider_twilio_integrations")
         .insert(integrationData)
         .select()

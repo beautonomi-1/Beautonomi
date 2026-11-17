@@ -13,13 +13,17 @@ vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
   resolveTenantIdWithZaFallback: (...args: unknown[]) => mockResolveTenantIdWithZaFallback(...args),
 }));
 
-vi.mock("@/lib/age-assurance", () => ({
-  resolveAgeAssurancePolicy: (...args: unknown[]) => mockResolveAgeAssurancePolicy(...args),
-  resolveAgeBand: (...args: unknown[]) => mockResolveAgeBand(...args),
-  readSafetySettingsStored: (...args: unknown[]) => mockReadSafetySettingsStored(...args),
-  effectiveSafetySettings: (...args: unknown[]) => mockEffectiveSafetySettings(...args),
-  capabilityBlocked: (...args: unknown[]) => mockCapabilityBlocked(...args),
-}));
+vi.mock("@/lib/age-assurance", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/age-assurance")>();
+  return {
+    ...actual,
+    resolveAgeAssurancePolicy: (...args: unknown[]) => mockResolveAgeAssurancePolicy(...args),
+    resolveAgeBand: (...args: unknown[]) => mockResolveAgeBand(...args),
+    readSafetySettingsStored: (...args: unknown[]) => mockReadSafetySettingsStored(...args),
+    effectiveSafetySettings: (...args: unknown[]) => mockEffectiveSafetySettings(...args),
+    capabilityBlocked: (...args: unknown[]) => mockCapabilityBlocked(...args),
+  };
+});
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
@@ -43,7 +47,7 @@ describe("requireSocialAccess", () => {
     vi.clearAllMocks();
     mockResolveTenantIdWithZaFallback.mockResolvedValue(null);
     mockGetSupabaseServer.mockResolvedValue({});
-    mockResolveAgeBand.mockResolvedValue({ band: "18_plus", source: "declared_dob" });
+    mockResolveAgeBand.mockResolvedValue({ band: "18_plus", source: "verified_dob" });
     mockReadSafetySettingsStored.mockResolvedValue({});
     mockEffectiveSafetySettings.mockResolvedValue(unrestrictedEffective);
     mockCapabilityBlocked.mockReturnValue(false);
@@ -150,5 +154,26 @@ describe("requireSocialAccess", () => {
       "[safety] unknown age band social access",
       expect.objectContaining({ userId: "user-1", capability: "review" }),
     );
+  });
+
+  it("does not let a self-declared adult DOB unlock comments (F3-25)", async () => {
+    mockResolveAgeBand.mockResolvedValue({ band: "18_plus", source: "declared_dob" });
+    mockCapabilityBlocked.mockReturnValue(false);
+
+    const { requireSocialAccess } = await import("../require-social-access");
+    await expect(requireSocialAccess("user-1", "comment", makeRequest())).rejects.toMatchObject({
+      status: 403,
+      code: "SOCIAL_RESTRICTED",
+    });
+  });
+
+  it("allows comments after verified KYC 18_plus", async () => {
+    mockResolveAgeBand.mockResolvedValue({ band: "18_plus", source: "verified_dob" });
+    mockCapabilityBlocked.mockReturnValue(false);
+
+    const { requireSocialAccess } = await import("../require-social-access");
+    await expect(
+      requireSocialAccess("user-1", "comment", makeRequest()),
+    ).resolves.toBeUndefined();
   });
 });

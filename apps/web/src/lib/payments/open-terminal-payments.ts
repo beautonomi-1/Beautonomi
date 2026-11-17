@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { closePaycloudOrder } from "@/lib/payments/paycloud-client";
 import { resolvePaycloudContextForProvider } from "@/lib/payments/paycloud-credentials";
 import { syncYocoPaymentStatusFromGateway } from "@/lib/payments/yoco-sync-status";
+import { yocoStoredAmountToMajor } from "@/lib/payments/assert-yoco-mark-paid-reference";
 
 export type OpenTerminalPayment = {
   id: string;
@@ -103,7 +104,7 @@ export async function findOpenTerminalPayments(
     out.push({
       id: String(row.id),
       provider: "yoco",
-      amount: Math.round(Number(row.amount ?? 0)) / 100,
+      amount: yocoStoredAmountToMajor(Number(row.amount ?? 0), String(row.currency || "ZAR")),
       currency: row.currency,
       status: String(row.status),
       entity_type: String(row.entity_type ?? "booking"),

@@ -138,6 +138,35 @@ describe("POST /api/me/on-demand/requests", () => {
     expect(inserted.current?.idempotency_key).not.toContain("2026-");
   });
 
+  it("stores the service address and name without the customer's email or phone", async () => {
+    const inserted: { current?: Record<string, unknown> } = {};
+    mockGetSupabaseServer.mockResolvedValue(makeUserClient(inserted));
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("https://app.example.com/api/me/on-demand/requests", {
+      method: "POST",
+      body: JSON.stringify({
+        provider_id: "00000000-0000-4000-8000-000000000001",
+        request_payload: {
+          address_line1: "12 Main",
+          client_info: { firstName: "Ada", email: "ada@example.com", phone: "0820000000" },
+        },
+      }),
+    });
+
+    const res = await POST(req);
+    const stored = inserted.current?.request_payload as {
+      address_line1: string;
+      client_info: { firstName: string; email: string | null; phone: string | null };
+    };
+
+    expect(res.status).toBe(200);
+    expect(stored.address_line1).toBe("12 Main");
+    expect(stored.client_info.firstName).toBe("Ada");
+    expect(stored.client_info.email).toBeNull();
+    expect(stored.client_info.phone).toBeNull();
+  });
+
   it("rejects requests when admin disables Request Now globally", async () => {
     const inserted: { current?: Record<string, unknown> } = {};
     mockGetSupabaseServer.mockResolvedValue(makeUserClient(inserted));

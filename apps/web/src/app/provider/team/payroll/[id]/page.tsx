@@ -4,6 +4,7 @@ import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { usePermissions } from "@/hooks/usePermissions";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -18,6 +19,9 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { addMoney, roundCurrency } from "@beautonomi/utils";
+import { computeNetPay, type NetPayResult } from "@/lib/payroll/net-pay";
+import { downloadPayRunEmp201, openPayRunPayslip } from "@/lib/payroll/open-payslip";
 
 interface PayRunItem {
   id: string;
@@ -53,7 +57,7 @@ interface PayRunDetail {
   items: PayRunItem[];
 }
 
-/** Tax/UIF auto-calculation may be added later; owners enter values manually today. */
+/** Payroll can calculate PAYE and UIF. A draft still lets the owner override those amounts. */
 function ManualEntryHint() {
   const { t } = useTranslation();
   return (
@@ -65,15 +69,34 @@ function ManualEntryHint() {
 
 function parseMoney(s: string): number {
   const n = parseFloat(String(s).replace(",", ".").trim());
-  return Number.isFinite(n) ? Math.max(0, n) : 0;
+  return Number.isFinite(n) ? Math.max(0, roundCurrency(n)) : 0;
 }
 
-function computeNetPreview(item: PayRunItem, manualInput: string | undefined): number {
-  const gross = Number(item.gross_pay || 0);
-  const manual = parseMoney(manualInput ?? String(item.manual_deductions ?? 0));
-  const tax = Number(item.tax_deduction || 0);
-  const uif = Number(item.uif_contribution || 0);
-  return Math.max(0, gross - manual - tax - uif);
+type LineEdit = {
+  manual_deductions: string;
+  tax_deduction: string;
+  uif_contribution: string;
+  notes: string;
+};
+
+function withLinePatch(current: LineEdit | undefined, item: PayRunItem, patch: Partial<LineEdit>): LineEdit {
+  return {
+    manual_deductions: patch.manual_deductions ?? current?.manual_deductions ?? String(Number(item.manual_deductions ?? 0)),
+    tax_deduction: patch.tax_deduction ?? current?.tax_deduction ?? String(Number(item.tax_deduction ?? 0)),
+    uif_contribution: patch.uif_contribution ?? current?.uif_contribution ?? String(Number(item.uif_contribution ?? 0)),
+    notes: patch.notes ?? current?.notes ?? item.notes ?? "",
+  };
+}
+
+function previewPay(item: PayRunItem, edit?: Partial<LineEdit>): NetPayResult {
+  const carryIn = Number(item.carry_forward_in ?? 0);
+  return computeNetPay({
+    grossPay: Number(item.gross_pay || 0),
+    manualDeductions: parseMoney(edit?.manual_deductions ?? String(item.manual_deductions ?? 0)),
+    taxDeduction: parseMoney(edit?.tax_deduction ?? String(item.tax_deduction ?? 0)),
+    uifContribution: parseMoney(edit?.uif_contribution ?? String(item.uif_contribution ?? 0)),
+    carryForwardBalance: carryIn > 0 ? -carryIn : undefined,
+  });
 }
 
 export default function PayrollDetailPage() {
@@ -89,7 +112,7 @@ export default function PayrollDetailPage() {
   const [isApproving, setIsApproving] = useState(false);
   const [isMarkingPaid, setIsMarkingPaid] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
-  const [lineEdits, setLineEdits] = useState<Record<string, { manual_deductions: string; notes: string }>>({});
+  const [lineEdits, setLineEdits] = useState<Record<string, LineEdit>>({});
   const [complianceWarnings, setComplianceWarnings] = useState<ComplianceWarningRow[]>([]);
 
   const loadPayRun = useCallback(async () => {
@@ -139,12 +162,9 @@ export default function PayrollDetailPage() {
       setLineEdits({});
       return;
     }
-    const next: Record<string, { manual_deductions: string; notes: string }> = {};
+    const next: Record<string, LineEdit> = {};
     for (const i of payRun.items) {
-      next[i.id] = {
-        manual_deductions: String(Number(i.manual_deductions ?? 0)),
-        notes: i.notes ?? "",
-      };
+      next[i.id] = withLinePatch(undefined, i, {});
     }
     setLineEdits(next);
   }, [payRun]);
@@ -184,6 +204,8 @@ export default function PayrollDetailPage() {
       const items = payRun.items.map((i) => ({
         item_id: i.id,
         manual_deductions: parseMoney(lineEdits[i.id]?.manual_deductions ?? "0"),
+        tax_deduction: parseMoney(lineEdits[i.id]?.tax_deduction ?? String(i.tax_deduction ?? 0)),
+        uif_contribution: parseMoney(lineEdits[i.id]?.uif_contribution ?? String(i.uif_contribution ?? 0)),
         notes: lineEdits[i.id]?.notes ?? "",
       }));
       await fetcher.patch(`/api/provider/pay-runs/${id}`, { items });
@@ -203,14 +225,14 @@ export default function PayrollDetailPage() {
     return "bg-gray-100 text-gray-800";
   };
 
-  const totalGross = payRun?.items?.reduce((s, i) => s + Number(i.gross_pay || 0), 0) ?? 0;
+  const totalGross = payRun?.items?.reduce((s, i) => addMoney(s, Number(i.gross_pay || 0)), 0) ?? 0;
 
   const totalNet = useMemo(() => {
     if (!payRun?.items?.length) return 0;
     if (canEditDraft) {
-      return payRun.items.reduce((s, i) => s + computeNetPreview(i, lineEdits[i.id]?.manual_deductions), 0);
+      return payRun.items.reduce((s, i) => addMoney(s, previewPay(i, lineEdits[i.id]).netPay), 0);
     }
-    return payRun.items.reduce((s, i) => s + Number(i.net_pay || 0), 0);
+    return payRun.items.reduce((s, i) => addMoney(s, Number(i.net_pay || 0)), 0);
   }, [payRun, canEditDraft, lineEdits]);
 
   const handleExportCSV = () => {
@@ -231,22 +253,31 @@ export default function PayrollDetailPage() {
       t("web.provider.pages.team/payroll/[id].csvNetPay"),
       t("web.provider.pages.team/payroll/[id].csvNotes"),
     ];
-    const rows = (payRun.items || []).map((i) => [
-      i.staff_name,
-      Number(i.gross_pay || 0).toFixed(2),
-      Number(i.commission_amount || 0).toFixed(2),
-      Number(i.hourly_amount || 0).toFixed(2),
-      Number(i.salary_amount || 0).toFixed(2),
-      Number(i.tips_amount || 0).toFixed(2),
-      Number(i.commission_clawback || 0).toFixed(2),
-      Number(i.carry_forward_in || 0).toFixed(2),
-      Number(i.carry_forward_out || 0).toFixed(2),
-      Number(i.manual_deductions || 0).toFixed(2),
-      Number(i.tax_deduction || 0).toFixed(2),
-      Number(i.uif_contribution || 0).toFixed(2),
-      Number(i.net_pay || 0).toFixed(2),
-      (i.notes || "").replace(/"/g, '""'),
-    ]);
+    const rows = (payRun.items || []).map((i) => {
+      const edit = canEditDraft ? lineEdits[i.id] : undefined;
+      const preview = canEditDraft ? previewPay(i, edit) : null;
+      const carryOut = preview
+        ? preview.nextCarryForward !== 0
+          ? Math.abs(preview.nextCarryForward)
+          : 0
+        : Math.abs(Number(i.carry_forward_out || 0));
+      return [
+        i.staff_name,
+        Number(i.gross_pay || 0).toFixed(2),
+        Number(i.commission_amount || 0).toFixed(2),
+        Number(i.hourly_amount || 0).toFixed(2),
+        Number(i.salary_amount || 0).toFixed(2),
+        Number(i.tips_amount || 0).toFixed(2),
+        Number(i.commission_clawback || 0).toFixed(2),
+        Number(i.carry_forward_in || 0).toFixed(2),
+        carryOut.toFixed(2),
+        parseMoney(edit?.manual_deductions ?? String(i.manual_deductions ?? 0)).toFixed(2),
+        parseMoney(edit?.tax_deduction ?? String(i.tax_deduction ?? 0)).toFixed(2),
+        parseMoney(edit?.uif_contribution ?? String(i.uif_contribution ?? 0)).toFixed(2),
+        (preview ? preview.netPay : Number(i.net_pay || 0)).toFixed(2),
+        (edit?.notes ?? i.notes ?? "").replace(/"/g, '""'),
+      ];
+    });
     const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c}"`).join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -312,7 +343,45 @@ export default function PayrollDetailPage() {
           <Download className="w-4 h-4 me-2" />
           {t("web.provider.common.exportCsv")}
         </Button>
+        {payRun.status !== "draft" && canManagePayroll ? (
+          <Button
+            variant="outline"
+            onClick={() => {
+              void downloadPayRunEmp201(
+                payRun.id,
+                `${payRun.pay_period_start}-${payRun.pay_period_end}`,
+              ).catch(() => {
+                toast.error(
+                  t("web.provider.pages.team/payroll/[id].emp201Unavailable"),
+                );
+              });
+            }}
+          >
+            {t("web.provider.pages.team/payroll/[id].emp201")}
+          </Button>
+        ) : null}
       </div>
+      <p className="text-sm text-gray-600">
+        {canManagePayroll ? (
+          <>
+            {payRun.status === "draft"
+              ? t("web.provider.pages.team/payroll/[id].draftNext")
+              : payRun.status === "approved"
+                ? t("web.provider.pages.team/payroll/[id].approvedNext")
+                : t("web.provider.pages.team/payroll/[id].paidNext")}{" "}
+            <Link href="/provider/settings/team/commissions" className="font-medium text-primary hover:underline">
+              {t("web.provider.pages.team/payroll.howPeopleArePaid")}
+            </Link>
+          </>
+        ) : (
+          <>
+            {t("web.provider.pages.team/payroll/[id].ownLineOnly")}{" "}
+            <Link href="/provider/team/my-earnings" className="font-medium text-primary hover:underline">
+              {t("web.provider.pages.team/payroll.myPayslips")}
+            </Link>
+          </>
+        )}
+      </p>
 
       {payRun.status === "draft" && canManagePayroll && complianceWarnings.length > 0 ? (
         <SectionCard className="border-amber-200 bg-amber-50/60">
@@ -348,14 +417,47 @@ export default function PayrollDetailPage() {
         {/* Mobile */}
         <div className="md:hidden space-y-3">
           {(payRun.items || []).map((item) => {
-            const manualStr = lineEdits[item.id]?.manual_deductions ?? String(item.manual_deductions ?? 0);
-            const previewNet = computeNetPreview(item, manualStr);
-            const tax = Number(item.tax_deduction || 0);
-            const uif = Number(item.uif_contribution || 0);
-            const deductionsTotal = parseMoney(manualStr) + tax + uif;
+            const edit = lineEdits[item.id];
+            const manualStr = edit?.manual_deductions ?? String(item.manual_deductions ?? 0);
+            const taxStr = edit?.tax_deduction ?? String(item.tax_deduction ?? 0);
+            const uifStr = edit?.uif_contribution ?? String(item.uif_contribution ?? 0);
+            const preview = previewPay(item, edit);
+            const carryIn = Math.max(0, Number(item.carry_forward_in ?? 0));
+            const carryOut = canEditDraft
+              ? preview.nextCarryForward !== 0
+                ? Math.abs(preview.nextCarryForward)
+                : 0
+              : Math.abs(Number(item.carry_forward_out ?? 0));
+            const deductionsTotal = [parseMoney(manualStr), parseMoney(taxStr), parseMoney(uifStr), carryIn].reduce(
+              (sum, amount) => addMoney(sum, amount),
+              0,
+            );
+            const setField = (patch: Partial<LineEdit>) =>
+              setLineEdits((prev) => ({
+                ...prev,
+                [item.id]: withLinePatch(prev[item.id], item, patch),
+              }));
             return (
               <div key={item.id} className="rounded-lg border bg-white p-4 space-y-3">
-                <p className="font-semibold text-gray-900">{item.staff_name}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold text-gray-900">{item.staff_name}</p>
+                  {payRun.status !== "draft" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void openPayRunPayslip(item.id).catch(() => {
+                          toast.error(
+                            t("web.provider.pages.team/payroll/[id].payslipUnavailable"),
+                          );
+                        });
+                      }}
+                    >
+                      {t("web.provider.pages.team/payroll/[id].payslip")}
+                    </Button>
+                  ) : null}
+                </div>
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
@@ -385,9 +487,9 @@ export default function PayrollDetailPage() {
                     {t("web.provider.pages.team/payroll/[id].carryForwardIn")}: {fmt(Number(item.carry_forward_in))}
                   </p>
                 ) : null}
-                {Number(item.carry_forward_out) !== 0 ? (
+                {carryOut !== 0 ? (
                   <p className="text-sm text-gray-700">
-                    {t("web.provider.pages.team/payroll/[id].carryForwardOut")}: {fmt(Number(item.carry_forward_out))}
+                    {t("web.provider.pages.team/payroll/[id].carryForwardOut")}: {fmt(carryOut)}
                   </p>
                 ) : null}
 
@@ -399,15 +501,7 @@ export default function PayrollDetailPage() {
                         inputMode="decimal"
                         className="h-9 w-28 text-end"
                         value={manualStr}
-                        onChange={(e) =>
-                          setLineEdits((prev) => ({
-                            ...prev,
-                            [item.id]: {
-                              manual_deductions: e.target.value,
-                              notes: prev[item.id]?.notes ?? item.notes ?? "",
-                            },
-                          }))
-                        }
+                        onChange={(e) => setField({ manual_deductions: e.target.value })}
                       />
                     ) : (
                       <span className="text-gray-900">{fmt(parseMoney(manualStr))}</span>
@@ -419,14 +513,32 @@ export default function PayrollDetailPage() {
                         {t("web.provider.pages.team/payroll/[id].taxVatPaye")}
                         <ManualEntryHint />
                       </span>
-                      <p className="text-gray-700">{fmt(tax)}</p>
+                      {canEditDraft ? (
+                        <Input
+                          inputMode="decimal"
+                          className="h-9 w-28 text-end"
+                          value={taxStr}
+                          onChange={(e) => setField({ tax_deduction: e.target.value })}
+                        />
+                      ) : (
+                        <p className="text-gray-700">{fmt(parseMoney(taxStr))}</p>
+                      )}
                     </div>
                     <div>
                       <span className="text-xs text-gray-500">
                         {t("web.provider.pages.team/payroll/[id].uif")}
                         <ManualEntryHint />
                       </span>
-                      <p className="text-gray-700">{fmt(uif)}</p>
+                      {canEditDraft ? (
+                        <Input
+                          inputMode="decimal"
+                          className="h-9 w-28 text-end"
+                          value={uifStr}
+                          onChange={(e) => setField({ uif_contribution: e.target.value })}
+                        />
+                      ) : (
+                        <p className="text-gray-700">{fmt(parseMoney(uifStr))}</p>
+                      )}
                     </div>
                   </div>
                   {canEditDraft && (
@@ -435,16 +547,8 @@ export default function PayrollDetailPage() {
                       <Textarea
                         rows={2}
                         className="text-sm"
-                        value={lineEdits[item.id]?.notes ?? ""}
-                        onChange={(e) =>
-                          setLineEdits((prev) => ({
-                            ...prev,
-                            [item.id]: {
-                              manual_deductions: prev[item.id]?.manual_deductions ?? String(item.manual_deductions ?? 0),
-                              notes: e.target.value,
-                            },
-                          }))
-                        }
+                        value={edit?.notes ?? ""}
+                        onChange={(e) => setField({ notes: e.target.value })}
                       />
                     </div>
                   )}
@@ -463,7 +567,7 @@ export default function PayrollDetailPage() {
                   </div>
                   <div className="text-end">
                     <span className="text-xs text-gray-500">{t("web.provider.pages.team/payroll/[id].netPay")}</span>
-                    <p className="font-semibold text-gray-900">{fmt(canEditDraft ? previewNet : Number(item.net_pay || 0))}</p>
+                    <p className="font-semibold text-gray-900">{fmt(canEditDraft ? preview.netPay : Number(item.net_pay || 0))}</p>
                   </div>
                 </div>
               </div>
@@ -496,12 +600,43 @@ export default function PayrollDetailPage() {
             </TableHeader>
             <TableBody>
               {(payRun.items || []).map((item) => {
-                const manualStr = lineEdits[item.id]?.manual_deductions ?? String(item.manual_deductions ?? 0);
-                const previewNet = computeNetPreview(item, manualStr);
+                const edit = lineEdits[item.id];
+                const manualStr = edit?.manual_deductions ?? String(item.manual_deductions ?? 0);
+                const taxStr = edit?.tax_deduction ?? String(item.tax_deduction ?? 0);
+                const uifStr = edit?.uif_contribution ?? String(item.uif_contribution ?? 0);
+                const preview = previewPay(item, edit);
+                const carryOut = canEditDraft
+                  ? preview.nextCarryForward !== 0
+                    ? Math.abs(preview.nextCarryForward)
+                    : 0
+                  : Math.abs(Number(item.carry_forward_out ?? 0));
+                const setField = (patch: Partial<LineEdit>) =>
+                  setLineEdits((prev) => ({
+                    ...prev,
+                    [item.id]: withLinePatch(prev[item.id], item, patch),
+                  }));
                 return (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">
-                      <div>{item.staff_name}</div>
+                      <div className="flex items-center gap-2">
+                        <span>{item.staff_name}</span>
+                        {payRun.status !== "draft" ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              void openPayRunPayslip(item.id).catch(() => {
+                                toast.error(
+                                  t("web.provider.pages.team/payroll/[id].payslipUnavailable"),
+                                );
+                              });
+                            }}
+                          >
+                            {t("web.provider.pages.team/payroll/[id].payslip")}
+                          </Button>
+                        ) : null}
+                      </div>
                       {Number(item.commission_clawback) !== 0 ? (
                         <p className="text-xs text-red-600 font-normal">
                           {t("web.provider.pages.team/payroll/[id].clawback")}: {fmt(Number(item.commission_clawback))}
@@ -512,9 +647,9 @@ export default function PayrollDetailPage() {
                           {t("web.provider.pages.team/payroll/[id].carryForwardIn")}: {fmt(Number(item.carry_forward_in))}
                         </p>
                       ) : null}
-                      {Number(item.carry_forward_out) !== 0 ? (
+                      {carryOut !== 0 ? (
                         <p className="text-xs text-gray-600 font-normal">
-                          {t("web.provider.pages.team/payroll/[id].carryForwardOut")}: {fmt(Number(item.carry_forward_out))}
+                          {t("web.provider.pages.team/payroll/[id].carryForwardOut")}: {fmt(carryOut)}
                         </p>
                       ) : null}
                     </TableCell>
@@ -528,44 +663,50 @@ export default function PayrollDetailPage() {
                           inputMode="decimal"
                           className="h-8 w-24 ms-auto text-end"
                           value={manualStr}
-                          onChange={(e) =>
-                            setLineEdits((prev) => ({
-                              ...prev,
-                              [item.id]: {
-                                manual_deductions: e.target.value,
-                                notes: prev[item.id]?.notes ?? item.notes ?? "",
-                              },
-                            }))
-                          }
+                          onChange={(e) => setField({ manual_deductions: e.target.value })}
                         />
                       ) : (
                         fmt(parseMoney(manualStr))
                       )}
                     </TableCell>
-                    <TableCell className="text-end text-gray-700">{fmt(Number(item.tax_deduction || 0))}</TableCell>
-                    <TableCell className="text-end text-gray-700">{fmt(Number(item.uif_contribution || 0))}</TableCell>
+                    <TableCell className="text-end text-gray-700">
+                      {canEditDraft ? (
+                        <Input
+                          inputMode="decimal"
+                          className="h-8 w-24 ms-auto text-end"
+                          value={taxStr}
+                          onChange={(e) => setField({ tax_deduction: e.target.value })}
+                        />
+                      ) : (
+                        fmt(parseMoney(taxStr))
+                      )}
+                    </TableCell>
+                    <TableCell className="text-end text-gray-700">
+                      {canEditDraft ? (
+                        <Input
+                          inputMode="decimal"
+                          className="h-8 w-24 ms-auto text-end"
+                          value={uifStr}
+                          onChange={(e) => setField({ uif_contribution: e.target.value })}
+                        />
+                      ) : (
+                        fmt(parseMoney(uifStr))
+                      )}
+                    </TableCell>
                     <TableCell className="min-w-[140px] max-w-[220px]">
                       {canEditDraft ? (
                         <Textarea
                           rows={2}
                           className="text-sm min-h-[52px]"
-                          value={lineEdits[item.id]?.notes ?? ""}
-                          onChange={(e) =>
-                            setLineEdits((prev) => ({
-                              ...prev,
-                              [item.id]: {
-                                manual_deductions: prev[item.id]?.manual_deductions ?? String(item.manual_deductions ?? 0),
-                                notes: e.target.value,
-                              },
-                            }))
-                          }
+                          value={edit?.notes ?? ""}
+                          onChange={(e) => setField({ notes: e.target.value })}
                         />
                       ) : (
                         <span className="text-sm text-gray-800">{item.notes || t("web.provider.common.emDash")}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-end font-semibold">
-                      {fmt(canEditDraft ? previewNet : Number(item.net_pay || 0))}
+                      {fmt(canEditDraft ? preview.netPay : Number(item.net_pay || 0))}
                     </TableCell>
                   </TableRow>
                 );
@@ -575,7 +716,7 @@ export default function PayrollDetailPage() {
         </div>
         <div className="mt-4 pt-4 border-t flex justify-end">
           <div className="text-end">
-<p className="text-sm text-gray-600">{t("web.provider.pages.team/payroll/[id].totalGross", { amount: fmt(totalGross) })}</p>
+            <p className="text-sm text-gray-600">{t("web.provider.pages.team/payroll/[id].totalGross", { amount: fmt(totalGross) })}</p>
             <p className="font-semibold">{t("web.provider.pages.team/payroll/[id].totalNet", { amount: fmt(totalNet) })}</p>
           </div>
         </div>

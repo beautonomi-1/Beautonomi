@@ -6,6 +6,7 @@
 import type { Booking } from "@/types/beautonomi";
 import type { OperationalBadge } from "./types";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { addMoney } from "@beautonomi/utils";
 
 const LATE_THRESHOLD_MINUTES = 10;
 const ARRIVING_WINDOW_MINUTES = 30;
@@ -32,7 +33,7 @@ export function getOperationalBadge(booking: Booking): OperationalBadge {
   const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
     ? (booking as any).additional_charges
         .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-        .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+        .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
     : 0;
   const outstanding = computeBookingOutstandingDisplay({
     totalAmount: Number(totalAmount || 0),

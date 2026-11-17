@@ -1,12 +1,13 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   getProviderIdForUser,
   badRequestResponse,
 } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import {
   getMapboxService,
   type Coordinates,
@@ -155,7 +156,9 @@ function bookingMatchesZone(
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -271,11 +274,11 @@ export async function GET(request: NextRequest) {
         const totalBookings = matchingBookings.length;
         const completedBookings = matchingBookings.filter((b) => b.status === "completed").length;
         const totalRevenue = matchingBookings.reduce(
-          (sum, b) => sum + parseFloat(String(b.total_amount || "0")),
+          (sum, b) => addMoney(sum, Number(b.total_amount || 0)),
           0,
         );
         const totalTravelFees = matchingBookings.reduce(
-          (sum, b) => sum + parseFloat(String(b.travel_fee || "0")),
+          (sum, b) => addMoney(sum, Number(b.travel_fee || 0)),
           0,
         );
 
@@ -290,16 +293,16 @@ export async function GET(request: NextRequest) {
           cancelled_bookings: matchingBookings.filter((b) => b.status === "cancelled").length,
           total_revenue: totalRevenue,
           total_travel_fees: totalTravelFees,
-          average_booking_value: totalBookings > 0 ? totalRevenue / totalBookings : 0,
+          average_booking_value: totalBookings > 0 ? multiplyMoney(totalRevenue, 1 / totalBookings) : 0,
           completion_rate: totalBookings > 0 ? (completedBookings / totalBookings) * 100 : 0,
         };
       }) || [];
 
     const totalAtHomeBookings = bookings?.length || 0;
     const totalRevenue =
-      bookings?.reduce((sum, b) => sum + parseFloat(String(b.total_amount || "0")), 0) || 0;
+      bookings?.reduce((sum, b) => addMoney(sum, Number(b.total_amount || 0)), 0) || 0;
     const totalTravelFees =
-      bookings?.reduce((sum, b) => sum + parseFloat(String(b.travel_fee || "0")), 0) || 0;
+      bookings?.reduce((sum, b) => addMoney(sum, Number(b.travel_fee || 0)), 0) || 0;
 
     return successResponse({
       zones: zoneStats,
@@ -309,7 +312,7 @@ export async function GET(request: NextRequest) {
         total_at_home_bookings: totalAtHomeBookings,
         total_revenue: totalRevenue,
         total_travel_fees: totalTravelFees,
-        average_booking_value: totalAtHomeBookings > 0 ? totalRevenue / totalAtHomeBookings : 0,
+        average_booking_value: totalAtHomeBookings > 0 ? multiplyMoney(totalRevenue, 1 / totalAtHomeBookings) : 0,
       },
       period: {
         start_date: startDate || null,

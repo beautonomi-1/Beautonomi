@@ -1,6 +1,7 @@
 /**
  * Canonical receipt math for product order JSON/PDF surfaces.
  */
+import { subtractMoney, addMoney, multiplyMoney, roundCurrency } from "@beautonomi/utils";
 
 export type OrderItemLike = {
   product_name?: string | null;
@@ -31,6 +32,7 @@ export interface ComputedOrderReceiptFinancials {
   giftPaid: number;
   cardPaid: number;
   totalFromRow: number;
+  refundedAmount: number;
   amountPaid: number;
   balanceDue: number;
   items: OrderReceiptItem[];
@@ -49,7 +51,7 @@ export function mapOrderReceiptItems(items: OrderItemLike[] | null | undefined):
         ov && typeof ov === "object" ? Object.values(ov).join(" / ") : "";
       const qty = num(it.quantity, 1);
       const unit = num(it.unit_price);
-      const lineTotal = num(it.total_price, unit * qty);
+      const lineTotal = num(it.total_price, multiplyMoney(unit, qty));
       const name = String(it.product_name || "Product");
       return {
         name,
@@ -84,35 +86,34 @@ export function computeOrderReceiptFinancials(input: {
   const totalFromRow =
     order.total_amount != null && !Number.isNaN(Number(order.total_amount))
       ? num(order.total_amount)
-      : subtotal + tax + deliveryFee + platformFee - discount;
+      : subtractMoney(addMoney(addMoney(addMoney(subtotal, tax), deliveryFee), platformFee), discount);
 
   const paymentStatus = String(order.payment_status ?? "").toLowerCase();
-  const refunded = num(order.refunded_amount);
+  const recordedRefund = Math.max(0, num(order.refunded_amount));
+  const settled =
+    paymentStatus === "paid" ||
+    paymentStatus === "completed" ||
+    paymentStatus === "partially_refunded" ||
+    paymentStatus === "refunded";
+  // A refunded order with no stored amount gave the whole bill back. A till
+  // sale already reads that way. A recorded refund on a settled order is the
+  // amount that came back, capped at the bill.
+  const refundedAmount =
+    paymentStatus === "refunded" && recordedRefund <= 0
+      ? totalFromRow
+      : settled
+        ? Math.min(totalFromRow, recordedRefund)
+        : 0;
 
   let amountPaid = 0;
   let balanceDue = totalFromRow;
 
-  switch (paymentStatus) {
-    case "paid":
-    case "completed":
-      amountPaid = totalFromRow;
-      balanceDue = 0;
-      break;
-    case "partially_refunded":
-      // Net collected after partial refund; order itself is still settled.
-      amountPaid = Math.max(0, totalFromRow - refunded);
-      balanceDue = 0;
-      break;
-    case "refunded":
-      amountPaid = Math.max(0, totalFromRow - refunded);
-      balanceDue = 0;
-      break;
-    case "pending":
-    case "failed":
-    default:
-      amountPaid = Math.min(totalFromRow, walletPaid + giftPaid + cardPaid);
-      balanceDue = Math.max(0, totalFromRow - amountPaid);
-      break;
+  if (settled) {
+    amountPaid = Math.max(0, subtractMoney(totalFromRow, refundedAmount));
+    balanceDue = 0;
+  } else {
+    amountPaid = Math.min(totalFromRow, addMoney(addMoney(walletPaid, giftPaid), cardPaid));
+    balanceDue = Math.max(0, subtractMoney(totalFromRow, amountPaid));
   }
 
   return {
@@ -125,6 +126,7 @@ export function computeOrderReceiptFinancials(input: {
     giftPaid,
     cardPaid,
     totalFromRow,
+    refundedAmount,
     amountPaid,
     balanceDue,
     items: mapOrderReceiptItems(input.items),
@@ -171,9 +173,9 @@ export async function loadProductOrderReceiptCardPaid(
   const total = (data ?? []).reduce((sum: number, row: { amount?: number | string | null; provider?: string | null }) => {
     const provider = String(row.provider ?? "").trim().toLowerCase();
     if (RECEIPT_CARD_EXCLUDED_PROVIDERS.has(provider)) return sum;
-    return sum + num(row.amount);
+    return addMoney(sum, num(row.amount));
   }, 0);
-  return Math.round(total * 100) / 100;
+  return roundCurrency(total);
 }
 
 export function buildOrderReceiptCore(input: {
@@ -217,7 +219,7 @@ export function buildOrderReceiptCore(input: {
     customer_name: extras.customer_name ?? order.customer_name ?? null,
     customer_phone: extras.customer_phone ?? order.customer_phone ?? null,
     refund_method: extras.refund_method ?? order.refund_method ?? null,
-    refunded_amount: num(extras.refunded_amount ?? order.refunded_amount),
+    refunded_amount: finances.refundedAmount,
     refunded_at: extras.refunded_at ?? order.refunded_at ?? null,
     refund_reason: extras.refund_reason ?? order.refund_reason ?? null,
   };

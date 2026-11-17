@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   NON_PAYABLE_INVOICE_TYPES,
@@ -62,9 +63,9 @@ export function computeInvoiceSummary(
       const effective = effectiveInvoiceStatus(row, today);
       const due = invoiceAmountDue(row);
       const paid = Number(row.amount_paid ?? 0);
-      acc.paid_amount += paid;
+      acc.paid_amount = addMoney(acc.paid_amount, paid);
       if (isOpenInvoiceStatus(effective) && due > 0) {
-        acc.outstanding_amount += due;
+        acc.outstanding_amount = addMoney(acc.outstanding_amount, due);
       }
       if (effective === "overdue") {
         acc.overdue_count += 1;

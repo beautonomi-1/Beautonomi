@@ -19,7 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, Phone, Copy, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { addMoney, getDefaultMoneyLocale } from "@beautonomi/utils";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import type { FrontDeskBooking } from "@/lib/front-desk/types";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
@@ -97,9 +97,9 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
   const unpaidAdditionalCharges = Array.isArray((booking as any).additional_charges)
     ? (booking as any).additional_charges
         .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-        .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+        .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
     : 0;
-  const folioTotal = Number(booking.total_amount || 0) + unpaidAdditionalCharges;
+  const folioTotal = addMoney(Number(booking.total_amount || 0), unpaidAdditionalCharges);
   const outstandingBalance = computeBookingOutstandingDisplay({
     totalAmount: Number(booking.total_amount || 0),
     totalPaid: Number((booking as any).total_paid || 0),

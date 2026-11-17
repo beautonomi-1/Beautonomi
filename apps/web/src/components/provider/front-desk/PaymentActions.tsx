@@ -20,6 +20,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
 import { useTranslation } from "@beautonomi/i18n";
+import { roundCurrency } from "@beautonomi/utils";
 
 const CardMachineCollectDialog = dynamic(
   () =>
@@ -102,7 +103,7 @@ export function PaymentActions({
   }, []);
 
   const isPaid = remaining <= 0;
-  const chargeAmount = Number(remaining.toFixed(2));
+  const chargeAmount = roundCurrency(remaining, currency);
 
   const handleSendPaystack = async () => {
     const ok = await sendPaystackLink(bookingId, "both");

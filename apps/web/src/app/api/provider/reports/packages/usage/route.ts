@@ -7,6 +7,8 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
@@ -29,6 +31,9 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
@@ -293,7 +298,7 @@ export async function GET(request: NextRequest) {
       totalPackagesUsed,
       totalUniqueClients,
       packageUsage,
-      topClients,
+      topClients: redactBookingCustomerContacts(topClients, canViewClients),
       report_basis: reportBasis,
     });
   } catch (error) {

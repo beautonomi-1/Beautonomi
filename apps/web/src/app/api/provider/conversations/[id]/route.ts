@@ -3,6 +3,8 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { signMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 import { enrichMessagesWithReplyTo, mapMessageWithReplyFields } from "@/lib/messaging/message-replies";
 import { assertNotBlocked, UserBlockedError } from "@/lib/safety/user-blocks";
@@ -26,6 +28,9 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const { id: conversationId } = await params;
     if (!conversationId) {
       return notFoundResponse("Conversation ID is required");
@@ -59,7 +64,7 @@ export async function GET(
     let customerName = "Customer";
     if (customer?.full_name?.trim()) {
       customerName = customer.full_name.trim();
-    } else if (customer?.email) {
+    } else if (canViewClients && customer?.email) {
       customerName = customer.email;
     }
 
@@ -113,7 +118,7 @@ export async function GET(
       ),
     );
 
-    return successResponse({
+    return successResponse(redactBookingCustomerContact({
       id: conversation.id,
       customer_id: conversation.customer_id,
       customer_name: customerName,
@@ -123,7 +128,7 @@ export async function GET(
       customer_identity_verified: Boolean((customer as any)?.identity_verified),
       is_pinned: Boolean((conversation as { is_starred_provider?: boolean }).is_starred_provider),
       messages: transformedMessages,
-    });
+    }, canViewClients));
   } catch (error) {
     if (error instanceof UserBlockedError || (error as { code?: string })?.code === "USER_BLOCKED") {
       return handleApiError(

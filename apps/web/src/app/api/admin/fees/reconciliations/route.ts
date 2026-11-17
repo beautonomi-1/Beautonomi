@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, requireRoleInApi } from "@/lib/supabase/api-helpers";
@@ -159,7 +160,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const variance = actual_fees - expected_fees;
+    const variance = subtractMoney(Number(actual_fees), Number(expected_fees));
     const recorded =
       recorded_fees !== undefined && recorded_fees !== null
         ? Number(recorded_fees)

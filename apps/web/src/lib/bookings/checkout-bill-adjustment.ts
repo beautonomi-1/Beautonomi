@@ -1,7 +1,4 @@
-function roundMoney2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
+import { addMoney, multiplyMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 /**
  * A booking can hold one gift-card redemption. A null remaining balance means the
  * reserve call did not take new money. Credit only a new hold, or the same hold
@@ -38,11 +35,11 @@ export function allocateCheckoutGift(input: {
   const owed = Math.max(0, Number(input.owedBase) || 0);
   const tip = Math.max(0, Number(input.checkoutTip) || 0);
   const requested = Math.max(0, Number(input.giftRequested) || 0);
-  const giftApply = Math.min(requested, Math.round((owed + tip) * 100) / 100);
+  const giftApply = Math.min(requested, addMoney(owed, tip));
   const giftBase = Math.min(giftApply, owed);
   return {
-    giftBase: Math.round(giftBase * 100) / 100,
-    giftTip: Math.round((giftApply - giftBase) * 100) / 100,
+    giftBase: roundCurrency(giftBase),
+    giftTip: subtractMoney(giftApply, giftBase),
   };
 }
 
@@ -56,11 +53,11 @@ export function applyCheckoutBillAdjustment(input: {
   revert?: boolean;
 }): { totalAmount: number; tipAmount: number; discountAmount: number } {
   const sign = input.revert ? -1 : 1;
-  const tip = Math.max(0, Number(input.checkoutTip) || 0) * sign;
-  const discount = Math.max(0, Number(input.checkoutDiscount) || 0) * sign;
+  const tip = multiplyMoney(Math.max(0, Number(input.checkoutTip) || 0), sign);
+  const discount = multiplyMoney(Math.max(0, Number(input.checkoutDiscount) || 0), sign);
   return {
-    totalAmount: roundMoney2(Math.max(0, Number(input.totalAmount) + tip - discount)),
-    tipAmount: roundMoney2(Math.max(0, Number(input.tipAmount) + tip)),
-    discountAmount: roundMoney2(Math.max(0, Number(input.discountAmount) + discount)),
+    totalAmount: Math.max(0, subtractMoney(addMoney(Number(input.totalAmount), tip), discount)),
+    tipAmount: Math.max(0, addMoney(Number(input.tipAmount), tip)),
+    discountAmount: Math.max(0, addMoney(Number(input.discountAmount), discount)),
   };
 }

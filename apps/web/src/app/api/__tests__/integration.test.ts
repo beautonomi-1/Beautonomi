@@ -153,24 +153,39 @@ function createWebhookSupabase() {
         return chain;
       },
       in: () => chain,
+      or: () => chain,
+      is: () => chain,
+      contains: () => chain,
+      gte: () => chain,
+      lte: () => chain,
+      neq: () => chain,
+      not: () => chain,
+      filter: () => chain,
       lt: () => chain,
       gt: () => chain,
       order: () => chain,
-      limit: async () => ({
-        data:
-          table === "payments"
-            ? [
-                {
-                  amount: 100,
-                  currency: "ZAR",
-                  metadata: {},
-                  payment_provider_transaction_id: "booking-ref-1",
-                  status: "pending",
-                },
-              ]
-            : [],
-        error: null,
-      }),
+      delete: () => chain,
+      limit: () => {
+        const result = {
+          data:
+            table === "payments"
+              ? [
+                  {
+                    amount: 100,
+                    currency: "ZAR",
+                    metadata: {},
+                    payment_provider_transaction_id: "booking-ref-1",
+                    status: "pending",
+                  },
+                ]
+              : [],
+          error: null as null,
+        };
+        return {
+          maybeSingle: async () => ({ data: null, error: null }),
+          then: (resolve: (value: typeof result) => void) => resolve(result),
+        };
+      },
       maybeSingle: async () => ({ data: rowForMaybeSingle(table, filters), error: null }),
       single: async () => ({ data: rowForSingle(table), error: null }),
       update: (value: unknown) => {

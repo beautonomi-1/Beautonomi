@@ -1,12 +1,13 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { fetchDefaultAddressesForUsers } from "@/lib/provider-portal/user-default-address";
 import {
   attachSalonMembership,
@@ -20,7 +21,9 @@ import { contactMatchesSearchQuery } from "@/lib/provider/client-contact-search"
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("view_clients", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");
@@ -72,7 +75,7 @@ export async function GET(request: NextRequest) {
       }
 
       customerStats[booking.customer_id].total_bookings += 1;
-      customerStats[booking.customer_id].total_spent += Number(booking.total_amount || 0);
+      customerStats[booking.customer_id].total_spent = addMoney(customerStats[booking.customer_id].total_spent, Number(booking.total_amount || 0));
 
       if (
         new Date(serviceDate) >

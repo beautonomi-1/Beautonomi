@@ -337,19 +337,22 @@ const PrivacyPage = ({
     try {
       setIsDeletingAccount(true);
       const response = await fetcher.post<{
-        scheduled?: boolean;
-        message?: string;
-        grace_days?: number;
+        data?: {
+          scheduled?: boolean;
+          message?: string;
+          grace_days?: number;
+        } | null;
       }>("/api/me/delete-account", {
         password: deleteHasPassword ? deletePassword.trim() : undefined,
         verificationNonce: deleteHasPassword ? undefined : deleteVerificationNonce.trim(),
         reason: deleteReason || null,
       });
-      const scheduled = response?.scheduled === true;
+      const payload = response?.data ?? null;
+      const scheduled = payload?.scheduled === true;
       toast.success(
-        response?.message ??
+        payload?.message ??
           (scheduled
-            ? t("web.accountSettings.privacyAndSharing.deletedScheduled", { days: response?.grace_days ?? 30 })
+            ? t("web.accountSettings.privacyAndSharing.deletedScheduled", { days: payload?.grace_days ?? 30 })
             : t("web.accountSettings.privacyAndSharing.deletedImmediate")),
       );
       setShowDeleteDialog(false);

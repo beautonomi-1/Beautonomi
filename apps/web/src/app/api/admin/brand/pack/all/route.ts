@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse, requireAdminSection } from "@/lib/supabase/api-helpers";
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
         .eq("status", "completed")
         .gte("scheduled_at", period.start.toISOString())
         .lte("scheduled_at", period.end.toISOString());
-      const bookingValue = (bookings ?? []).reduce((s, b) => s + Number(b.total_amount ?? 0), 0);
+      const bookingValue = (bookings ?? []).reduce((s, b) => addMoney(s, Number(b.total_amount ?? 0)), 0);
 
       const fxSpend = await convertAmount(supabase, spend.known, t.default_currency ?? "ZAR", reporting, asOf);
       const fxBooking = await convertAmount(supabase, bookingValue, t.default_currency ?? "ZAR", reporting, asOf);

@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -5,8 +6,8 @@ import {
   successResponse,
   handleApiError,
   getProviderIdForUser,
-  requireRoleInApi,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { fetchDefaultAddressesForUsers } from "@/lib/provider-portal/user-default-address";
 import { getBlockedUserIds } from "@/lib/safety/user-blocks";
 import {
@@ -21,7 +22,9 @@ import { contactMatchesSearchQuery } from "@/lib/provider/client-contact-search"
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requirePermission("view_clients", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin(); // Use admin client to bypass RLS
     const { searchParams } = new URL(request.url);
@@ -144,7 +147,7 @@ export async function GET(request: NextRequest) {
         };
       }
       bookingStats[booking.customer_id].total_bookings += 1;
-      bookingStats[booking.customer_id].total_spent += Number(booking.total_amount || 0);
+      bookingStats[booking.customer_id].total_spent = addMoney(bookingStats[booking.customer_id].total_spent, Number(booking.total_amount || 0));
       if (booking.completed_at) {
         const completedDate = booking.completed_at;
         if (!bookingStats[booking.customer_id].last_service_date || 

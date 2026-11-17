@@ -23,6 +23,7 @@ import { loadAgentDefinition, loadAgentModuleConfig, loadAgentOperationalState }
 import { assertAgentReadAllowed } from "../safety-gate";
 import { proposeAgentAction } from "../actions/action-service";
 import { hashPayload } from "@beautonomi/agent-policy";
+import { addMoney, roundCurrency } from "@beautonomi/utils";
 
 const PER_KIND_LIMIT = 10;
 
@@ -372,7 +373,7 @@ export async function runProviderDigestSweepForTenant(params: {
 
       const completed = bookings.filter((b) => b.status === "completed");
       const cancelled = bookings.filter((b) => b.status === "cancelled");
-      const revenue = completed.reduce((sum, b) => sum + Number(b.total_amount ?? 0), 0);
+      const revenue = completed.reduce((sum, b) => addMoney(sum, Number(b.total_amount ?? 0)), 0);
       const { count: newReviews } = await supabase
         .from("reviews")
         .select("id", { count: "exact", head: true })
@@ -394,7 +395,7 @@ export async function runProviderDigestSweepForTenant(params: {
           bookings: bookings.length,
           completed: completed.length,
           cancelled: cancelled.length,
-          revenue: Math.round(revenue * 100) / 100,
+          revenue: roundCurrency(revenue),
           currency: p.currency ?? "ZAR",
           newReviews: newReviews ?? 0,
           rating: Number(p.rating_average ?? 0),

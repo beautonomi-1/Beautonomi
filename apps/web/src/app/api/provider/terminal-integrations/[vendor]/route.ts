@@ -21,6 +21,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { requireVendorIntegrationEnabled } from "@/lib/payments/terminal-integration-feature-gate";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
@@ -39,13 +40,16 @@ const connectSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { vendor: string } },
+  { params }: { params: Promise<{ vendor: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requireAnyPermission(["process_payments", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
-    const vendor = params.vendor.toLowerCase();
+    const { vendor: vendorParam } = await params;
+    const vendor = vendorParam.toLowerCase();
 
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
@@ -100,13 +104,14 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { vendor: string } },
+  { params }: { params: Promise<{ vendor: string }> },
 ) {
   try {
     const { user } = await requireRoleInApi(["provider_owner"], request);
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
-    const vendor = params.vendor.toLowerCase();
+    const { vendor: vendorParam } = await params;
+    const vendor = vendorParam.toLowerCase();
 
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
@@ -237,13 +242,14 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { vendor: string } },
+  { params }: { params: Promise<{ vendor: string }> },
 ) {
   try {
     const { user } = await requireRoleInApi(["provider_owner"], request);
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
-    const vendor = params.vendor.toLowerCase();
+    const { vendor: vendorParam } = await params;
+    const vendor = vendorParam.toLowerCase();
 
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);

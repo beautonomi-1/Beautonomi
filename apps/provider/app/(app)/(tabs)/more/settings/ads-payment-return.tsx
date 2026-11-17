@@ -96,16 +96,15 @@ export default function AdsPaymentReturnScreen() {
   useEffect(() => {
     let aborted = false;
 
-    if (cancelFlag === "1") {
-      const t = setTimeout(() => {
-        if (!aborted) navigateBack("payment_failed");
-      }, 700);
-      return () => {
-        aborted = true;
-        clearTimeout(t);
-      };
-    }
-    if (isHostedCheckoutFailureStatus(hosted.status)) {
+    if (cancelFlag === "1" || isHostedCheckoutFailureStatus(hosted.status)) {
+      if (reference) {
+        void verifyPaystackWithRetry(reference, {
+          redirectStatus: isHostedCheckoutFailureStatus(hosted.status) ? hosted.status : "cancelled",
+          sessionId,
+          transactionId,
+          maxAttempts: 1,
+        });
+      }
       const t = setTimeout(() => {
         if (!aborted) navigateBack("payment_failed");
       }, 700);

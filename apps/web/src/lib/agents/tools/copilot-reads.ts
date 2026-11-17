@@ -1,3 +1,4 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { AgentPrincipal } from "@beautonomi/agent-policy";
 import { runAdminGlobalSearch, type AdminSearchKind } from "@/lib/admin/global-search";
@@ -125,7 +126,7 @@ export async function readUserProfileSummary(principal: AgentPrincipal, userId: 
       .eq("customer_id", userId)
       .in("status", ["completed", "confirmed"]);
 
-    const totalSpent = (bookings ?? []).reduce((sum, b) => sum + Number((b as { total_amount?: number }).total_amount ?? 0), 0);
+    const totalSpent = (bookings ?? []).reduce((sum, b) => addMoney(sum, Number((b as { total_amount?: number }).total_amount ?? 0)), 0);
 
     const { data: lastBooking } = await admin
       .from("bookings")
@@ -256,12 +257,12 @@ export async function readFinanceProviderSummary(
       txType === "tip" ||
       txType === "charge"
     ) {
-      gross += amount;
-      fees += Number(r.fees ?? 0);
-      commission += Number(r.commission ?? 0);
-      net += rowNet;
-    } else if (txType === "refund") refunds += Math.abs(rowNet);
-    else if (txType === "payout") payouts += Math.abs(rowNet);
+      gross = addMoney(gross, amount);
+      fees = addMoney(fees, Number(r.fees ?? 0));
+      commission = addMoney(commission, Number(r.commission ?? 0));
+      net = addMoney(net, rowNet);
+    } else if (txType === "refund") refunds = addMoney(refunds, Math.abs(rowNet));
+    else if (txType === "payout") payouts = addMoney(payouts, Math.abs(rowNet));
   }
 
   const hold = await getActiveProviderPayoutHold(admin, input.providerId);
@@ -295,7 +296,7 @@ export async function readFinanceProviderSummary(
     period: { start: rangeStart, end: rangeEnd },
     currency: agg.currency,
     provider_earnings: agg.provider_earnings_net,
-    provider_net_activity: agg.provider_earnings_net - agg.refunds_abs_gross,
+    provider_net_activity: subtractMoney(agg.provider_earnings_net, agg.refunds_abs_gross),
     payouts_paid_total: agg.payouts_paid_total,
     refunds_gross: agg.refunds_gross,
     ledger_totals: { gross, fees, commission, net, refunds, payouts },

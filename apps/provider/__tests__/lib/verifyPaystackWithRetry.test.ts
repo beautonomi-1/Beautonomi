@@ -20,8 +20,8 @@ const apiGetMock = api.get as jest.MockedFunction<typeof api.get>;
 function ok<T>(data: T): ApiResponse<T> {
   return { data, error: null };
 }
-function fail(message = "boom"): ApiResponse<unknown> {
-  return { data: null, error: { message } };
+function fail(message = "boom", code?: string, status = 409): ApiResponse<unknown> {
+  return { data: null, error: { message, ...(code ? { code } : {}), status } };
 }
 
 describe("verifyPaystackWithRetry (provider)", () => {
@@ -80,6 +80,25 @@ describe("verifyPaystackWithRetry (provider)", () => {
     expect(apiGetMock).not.toHaveBeenCalled();
   });
 
+  it("keeps polling when the bank is still processing", async () => {
+    apiGetMock.mockResolvedValue(ok({ verified: false, status: "pending", paystackStatus: "ongoing" }));
+    const res = await verifyPaystackWithRetry("ref-pending", { maxAttempts: 2, delayMs: 0 });
+    expect(res.status).toBe("pending");
+    expect(res.attempts).toBe(2);
+  });
+
+  it("sends a cancelled redirect status to verify", async () => {
+    apiGetMock.mockResolvedValueOnce(ok({ status: "failed" }));
+    await verifyPaystackWithRetry("ref-cancel", {
+      maxAttempts: 1,
+      delayMs: 0,
+      redirectStatus: "cancelled",
+    });
+    const call = apiGetMock.mock.calls[0]?.[0] ?? "";
+    expect(call).toContain("reference=ref-cancel");
+    expect(call).toContain("status=cancelled");
+  });
+
   it("appends session_id when provided (Stripe Checkout)", async () => {
     apiGetMock.mockResolvedValueOnce(ok({ verified: true }));
     await verifyPaystackWithRetry("ref-stripe", {
@@ -90,5 +109,27 @@ describe("verifyPaystackWithRetry (provider)", () => {
     const call = apiGetMock.mock.calls[0]?.[0] ?? "";
     expect(call).toContain("reference=ref-stripe");
     expect(call).toContain("session_id=cs_live_xyz");
+  });
+
+  it.each(["BOOKING_CANCELLED", "CHECKOUT_NO_LONGER_PAYABLE"] as const)(
+    "returns failed immediately on terminal verify code %s",
+    async (code) => {
+      apiGetMock.mockResolvedValue(
+        fail("This offer is no longer payable.", code),
+      );
+      const res = await verifyPaystackWithRetry("ref-dead", { maxAttempts: 5, delayMs: 0 });
+      expect(res.status).toBe("failed");
+      expect(res.attempts).toBe(1);
+      expect(res.errorMessage).toBe("This offer is no longer payable.");
+      expect(apiGetMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("retries non-terminal 409 API errors", async () => {
+    apiGetMock.mockResolvedValue(fail("Still processing", "VERIFY_NOT_READY"));
+    const res = await verifyPaystackWithRetry("ref-race", { maxAttempts: 2, delayMs: 0 });
+    expect(res.status).toBe("unknown");
+    expect(res.attempts).toBe(2);
+    expect(apiGetMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,6 +1,11 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError, requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  productCatalogAmountError,
+  productTaxRateError,
+  variantCatalogPricesError,
+} from "@/lib/products/price-bounds";
 
 /**
  * GET /api/provider/products
@@ -148,6 +153,27 @@ export async function POST(request: Request) {
       return handleApiError(new Error("retail_price is required for products without variants"), "Validation failed", "VALIDATION_ERROR", 400);
     }
 
+    const retail = withVariants ? 0 : parseFloat(String(retail_price));
+    const supply = withVariants ? 0 : Number(supply_price ?? 0);
+    const tax = Number(tax_rate ?? 0);
+    const markupN = markup == null || markup === "" ? null : Number(markup);
+    const priceErr =
+      (!withVariants ? productCatalogAmountError("retail_price", retail) : null) ||
+      productCatalogAmountError("supply_price", supply) ||
+      productTaxRateError(tax);
+    if (priceErr) {
+      return handleApiError(new Error(priceErr), "Validation failed", "VALIDATION_ERROR", 400);
+    }
+    if (markupN != null && (!Number.isFinite(markupN) || markupN < 0)) {
+      return handleApiError(new Error("markup must be 0 or greater"), "Validation failed", "VALIDATION_ERROR", 400);
+    }
+    if (withVariants && Array.isArray(variantsPayload) && variantsPayload.length > 0) {
+      const variantErr = variantCatalogPricesError(variantsPayload);
+      if (variantErr) {
+        return handleApiError(new Error(variantErr), "Validation failed", "VALIDATION_ERROR", 400);
+      }
+    }
+
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
@@ -191,11 +217,11 @@ export async function POST(request: Request) {
         quantity: withVariants ? 0 : (quantity ?? 0),
         low_stock_level: withVariants ? 5 : (low_stock_level ?? 5),
         reorder_quantity: reorder_quantity ?? 0,
-        supply_price: withVariants ? 0 : (supply_price ?? 0),
-        retail_price: withVariants ? 0 : parseFloat(String(retail_price)),
+        supply_price: supply,
+        retail_price: retail,
         retail_sales_enabled: retail_sales_enabled ?? true,
-        markup: withVariants ? null : (markup ?? null),
-        tax_rate: tax_rate ?? 0,
+        markup: withVariants ? null : markupN,
+        tax_rate: tax,
         team_member_commission_enabled: team_member_commission_enabled ?? false,
         track_stock_quantity: track_stock_quantity ?? true,
         receive_low_stock_notifications: receive_low_stock_notifications ?? false,

@@ -19,6 +19,7 @@ import {
 } from "@/lib/admin/refund-tender-labels";
 import type { RefundListRow } from "@/lib/admin/refund-list-normalize";
 import { enrichRefundListRow, type EnrichedRefundListRow } from "@/lib/admin/refund-list-normalize";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 export type RefundQueueCapture = {
   id: string;
@@ -71,7 +72,7 @@ function bookingIdFromRow(row: RefundListRow): string | null {
 }
 
 function bookingCollectedFromPayments(payments: BookingPaymentTender[]): number {
-  return payments.reduce((sum, p) => sum + parseRefundAmount(p.amount), 0);
+  return payments.reduce((sum, p) => addMoney(sum, parseRefundAmount(p.amount)), 0);
 }
 
 function bookingRefundedTotal(booking: unknown): number {
@@ -88,7 +89,7 @@ function bookingCollectedTotal(booking: unknown, payments: BookingPaymentTender[
   };
   const fromBooking = Math.max(
     parseRefundAmount(b.total_paid),
-    parseRefundAmount(b.wallet_amount) + parseRefundAmount(b.gift_card_amount),
+    addMoney(parseRefundAmount(b.wallet_amount), parseRefundAmount(b.gift_card_amount)),
   );
   return Math.max(fromBooking, bookingCollectedFromPayments(payments));
 }
@@ -142,19 +143,24 @@ export function buildRefundQueueRows(
     });
 
     const collectedFromCaptures = captures.reduce(
-      (sum, c) => sum + parseRefundAmount(c.amount),
+      (sum, c) => addMoney(sum, parseRefundAmount(c.amount)),
       0,
     );
     const refundedFromCaptures = captures.reduce(
       (sum, c) =>
-        sum +
-        Math.max(parseRefundAmount(c.refund_amount), parseRefundAmount(c.amount) - c.remaining_refundable),
+        addMoney(
+          sum,
+          Math.max(
+            parseRefundAmount(c.refund_amount),
+            subtractMoney(parseRefundAmount(c.amount), c.remaining_refundable),
+          ),
+        ),
       0,
     );
 
     let collected = collectedFromCaptures;
     let refunded = Math.max(bookingRefundedTotal(sample.booking), refundedFromCaptures);
-    let remaining = captures.reduce((sum, c) => sum + c.remaining_refundable, 0);
+    let remaining = captures.reduce((sum, c) => addMoney(sum, c.remaining_refundable), 0);
     let source: RefundQueueRow["source"] = "gateway_capture";
     let primaryTxnId = captures.find((c) => c.remaining_refundable > 0)?.id ?? captures[0]?.id ?? null;
 
@@ -162,7 +168,7 @@ export function buildRefundQueueRows(
       source = "booking_tender";
       collected = bookingCollectedTotal(sample.booking, payments);
       refunded = bookingRefundedTotal(sample.booking);
-      remaining = Math.max(0, Math.round((collected - refunded) * 100) / 100);
+      remaining = Math.max(0, subtractMoney(collected, refunded));
       primaryTxnId = null;
     } else if (payments.length > 0) {
       const tenderCollected = bookingCollectedTotal(sample.booking, payments);
@@ -170,7 +176,7 @@ export function buildRefundQueueRows(
         collected = tenderCollected;
         remaining = Math.max(
           0,
-          Math.round((collected - refunded) * 100) / 100,
+          subtractMoney(collected, refunded),
         );
       }
     }
@@ -178,7 +184,7 @@ export function buildRefundQueueRows(
     const retainedFee = coverage?.retainedFeeTotal ?? 0;
     const giftVoid = coverage?.giftCardVoidedTotal ?? 0;
     const reserved = coverage?.reservedPendingTotal ?? 0;
-    const captureRemainingTotal = captures.reduce((sum, c) => sum + c.remaining_refundable, 0);
+    const captureRemainingTotal = captures.reduce((sum, c) => addMoney(sum, c.remaining_refundable), 0);
     const pendingCashTotal = sumPendingCashRefundAmount(sample.booking_refunds);
     const walletRemainingRefundable = computeWalletRefundableRemaining({
       hasGatewayCapture: hasGatewayCapture && captureRemainingTotal > 0,

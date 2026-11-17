@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -5,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getProviderNetAfterRefundsDetailed } from "@/lib/reports/revenue-helpers";
 import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
 import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { bookingLineShares, averageOfLedgerNets } from "@/lib/reports/staff-ledger-revenue";
 import { getProviderReportContext, reportDateKey, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 
 export async function GET(request: NextRequest) {
@@ -102,9 +104,8 @@ export async function GET(request: NextRequest) {
     const sampleBookings = bookings?.length || 0;
     const totalBookings = exactBookingCount ?? sampleBookings;
     const bookingsSampleTruncated = totalBookings > sampleBookings;
-    const bookingsWithLedgerRevenue = [...revenueByBooking.values()].filter((v) => v > 0).length;
-    const averageBookingValue =
-      bookingsWithLedgerRevenue > 0 ? totalRevenue / bookingsWithLedgerRevenue : 0;
+    const bookingsWithLedgerRevenue = revenueByBooking.size;
+    const averageBookingValue = averageOfLedgerNets(revenueByBooking.values());
 
     // Group by status
     const statusCounts: Record<string, number> = {};
@@ -115,11 +116,11 @@ export async function GET(request: NextRequest) {
       const status = booking.status || "unknown";
       statusCounts[status] = (statusCounts[status] || 0) + 1;
       const bookingRevenue = revenueByBooking.get(booking.id) || 0;
-      statusRevenue[status] = (statusRevenue[status] || 0) + bookingRevenue;
+      statusRevenue[status] = addMoney(statusRevenue[status] || 0, bookingRevenue);
 
       const source = normalizeBookingChannel((booking as { booking_source?: string | null }).booking_source);
       sourceCounts[source] = (sourceCounts[source] || 0) + 1;
-      sourceRevenue[source] = (sourceRevenue[source] || 0) + bookingRevenue;
+      sourceRevenue[source] = addMoney(sourceRevenue[source] || 0, bookingRevenue);
     });
 
     // Group by day (use finance_transactions revenue)
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
     // Add revenue from finance_transactions
     revenueByDate.forEach((revenue, date) => {
       const existing = bookingsByDay.get(date) || { count: 0, revenue: 0 };
-      existing.revenue += revenue;
+      existing.revenue = addMoney(existing.revenue, revenue);
       bookingsByDay.set(date, existing);
     });
 
@@ -146,13 +147,9 @@ export async function GET(request: NextRequest) {
     (bookings || []).forEach((booking) => {
       const bookingRevenue = revenueByBooking.get(booking.id) || 0;
       if (!booking.booking_services || !Array.isArray(booking.booking_services)) return;
-      type ServicePriceRow = { price?: number };
+      const shares = bookingLineShares(bookingRevenue, booking.booking_services);
       type BookingServiceRow = { price?: number; offerings?: { title?: string } | Array<{ title?: string }> };
-      const totalServicePrice = booking.booking_services.reduce(
-        (sum: number, s: ServicePriceRow) => sum + Number(s.price ?? 0),
-        0
-      );
-      booking.booking_services.forEach((bs: BookingServiceRow) => {
+      booking.booking_services.forEach((bs: BookingServiceRow, index: number) => {
         const off = bs.offerings != null ? (Array.isArray(bs.offerings) ? bs.offerings[0] : bs.offerings) : undefined;
         const serviceName = off?.title ?? "Unknown";
         const existing = serviceMap.get(serviceName) || {
@@ -161,10 +158,7 @@ export async function GET(request: NextRequest) {
           revenue: 0,
         };
         existing.bookingIds.add(booking.id);
-        const serviceProportion = totalServicePrice > 0
-          ? Number(bs.price || 0) / totalServicePrice
-          : 1 / booking.booking_services.length;
-        existing.revenue += bookingRevenue * serviceProportion;
+        existing.revenue = addMoney(existing.revenue, shares[index] ?? 0);
         serviceMap.set(serviceName, existing);
       });
     });

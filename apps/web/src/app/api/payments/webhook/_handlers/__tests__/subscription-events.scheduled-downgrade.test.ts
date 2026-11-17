@@ -116,4 +116,48 @@ describe("Paystack subscription events during a scheduled downgrade", () => {
     );
     expect(updates[0]).toMatchObject({ status: "cancelled" });
   });
+
+  it("subscription.not_renew leaves a later charge date renewing", async () => {
+    mockLoadByCode.mockResolvedValue({
+      id: "row-1",
+      provider_id: "prov-1",
+      billing_provider: "paystack",
+      status: "active",
+      next_payment_date: "2026-12-01T00:00:00.000Z",
+      scheduled_plan_id: null,
+    });
+    const { handleSubscriptionEvent } = await import("../subscription-events");
+    const { client, updates } = supabaseSpy();
+    await handleSubscriptionEvent(
+      {
+        event: "subscription.not_renew",
+        data: { subscription_code: "SUB_old", next_payment_date: "2026-11-01T00:00:00.000Z" },
+      } as never,
+      client as never,
+    );
+    expect(updates).toHaveLength(0);
+  });
+
+  it("subscription.disable leaves a later charge date active", async () => {
+    mockLoadByCode.mockResolvedValue({
+      id: "row-1",
+      provider_id: "prov-1",
+      billing_provider: "paystack",
+      status: "active",
+      cancelled_at: null,
+      expires_at: future(),
+      next_payment_date: "2026-12-01T00:00:00.000Z",
+      scheduled_plan_id: null,
+    });
+    const { handleSubscriptionEvent } = await import("../subscription-events");
+    const { client, updates } = supabaseSpy();
+    await handleSubscriptionEvent(
+      {
+        event: "subscription.disable",
+        data: { subscription_code: "SUB_old", next_payment_date: "2026-11-01T00:00:00.000Z" },
+      } as never,
+      client as never,
+    );
+    expect(updates).toHaveLength(0);
+  });
 });

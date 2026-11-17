@@ -50,7 +50,7 @@ export async function PATCH(
     return errorResponse(
       "Time-off types are labels on staff time-off records and cannot be edited as a catalog.",
       "NOT_SUPPORTED",
-      409,
+      501,
     );
   } catch (error) {
     return handleApiError(error, "Failed to update time off type");
@@ -78,7 +78,7 @@ export async function DELETE(
     return errorResponse(
       "Time-off types are labels on staff time-off records and cannot be deleted as a catalog.",
       "NOT_SUPPORTED",
-      409,
+      501,
     );
   } catch (error) {
     return handleApiError(error, "Failed to delete time off type");

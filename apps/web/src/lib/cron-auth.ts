@@ -1,4 +1,12 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
+
+/** F3-26: compare Bearer tokens without a length-leaking `!==`. */
+export function timingSafeEqualUtf8(left: string, right: string): boolean {
+  const a = createHash("sha256").update(left, "utf8").digest();
+  const b = createHash("sha256").update(right, "utf8").digest();
+  return timingSafeEqual(a, b);
+}
 
 const _VERCEL_CRON_USER_AGENT = "vercel-cron/1.0";
 
@@ -20,7 +28,7 @@ export function verifyCronRequest(request: NextRequest): { valid: boolean; error
     return { valid: false, error: "Server configuration error" };
   }
   
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  if (!timingSafeEqualUtf8(authHeader ?? "", `Bearer ${cronSecret}`)) {
     return { valid: false, error: "Invalid authorization" };
   }
   

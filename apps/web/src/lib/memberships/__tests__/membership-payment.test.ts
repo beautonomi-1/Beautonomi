@@ -8,11 +8,14 @@ import { recordMembershipPayment } from "../membership-payment";
 function makeSupabase(overrides?: {
   existingTx?: unknown;
   ptInsertError?: { code?: string; message?: string } | null;
+  financeLegs?: string[];
 }) {
   const existingTx = overrides?.existingTx ?? null;
   const ptInsertError = overrides?.ptInsertError ?? null;
+  const financeLegs = overrides?.financeLegs ?? [];
 
   const insertMock = vi.fn().mockResolvedValue({ error: ptInsertError });
+  const financeInserts: Array<Record<string, unknown>> = [];
 
   return {
     from: vi.fn((table: string) => {
@@ -26,14 +29,30 @@ function makeSupabase(overrides?: {
             }),
           }),
           insert: insertMock,
+          delete: () => ({
+            eq: async () => ({ error: null }),
+          }),
         };
       }
-      // finance_transactions: always succeed
       return {
-        insert: vi.fn().mockResolvedValue({ error: null }),
+        select: () => ({
+          eq: () => ({
+            contains: () => ({
+              in: async () => ({
+                data: financeLegs.map((transaction_type) => ({ transaction_type })),
+                error: null,
+              }),
+            }),
+          }),
+        }),
+        insert: (row: Record<string, unknown>) => {
+          financeInserts.push(row);
+          return Promise.resolve({ error: null });
+        },
       };
     }),
     _insertMock: insertMock,
+    financeInserts,
   };
 }
 
@@ -64,6 +83,33 @@ describe("recordMembershipPayment", () => {
     expect(result.alreadyRecorded).toBe(false);
     expect(result.netAmount).toBe(194.5);
     expect(supabase._insertMock).toHaveBeenCalledTimes(1);
+    expect(supabase.financeInserts.map((row) => row.transaction_type)).toEqual([
+      "membership_sale",
+      "membership_provider_earnings",
+    ]);
+  });
+
+  it("posts the missing sale and provider earnings when the payment was already saved", async () => {
+    const supabase = makeSupabase({ existingTx: { id: "existing", status: "success" } });
+    const result = await recordMembershipPayment({ supabase: supabase as any, ...baseParams });
+    expect(result.recorded).toBe(false);
+    expect(result.alreadyRecorded).toBe(true);
+    expect(supabase._insertMock).not.toHaveBeenCalled();
+    expect(supabase.financeInserts.map((row) => row.transaction_type)).toEqual([
+      "membership_sale",
+      "membership_provider_earnings",
+    ]);
+  });
+
+  it("does not post the sale again when both finance rows are already saved", async () => {
+    const supabase = makeSupabase({
+      existingTx: { id: "existing", status: "success" },
+      financeLegs: ["membership_sale", "membership_provider_earnings"],
+    });
+    const result = await recordMembershipPayment({ supabase: supabase as any, ...baseParams });
+    expect(result.alreadyRecorded).toBe(true);
+    expect(supabase.financeInserts).toHaveLength(0);
+    expect(supabase._insertMock).not.toHaveBeenCalled();
   });
 
   it("returns alreadyRecorded=true when payment_transactions row already exists", async () => {

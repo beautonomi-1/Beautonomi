@@ -16,7 +16,8 @@ export async function chargeFlutterwaveTokenized(params: {
   metadata?: Record<string, unknown>;
 }): Promise<
   | { ok: true; transactionId: string; status: string; raw: unknown }
-  | { ok: false; message: string; raw?: unknown }
+  | { ok: false; pending: true; transactionId: string; status: string; message: string; raw?: unknown }
+  | { ok: false; pending?: false; message: string; raw?: unknown }
 > {
   const token = params.token.trim();
   if (!token) return { ok: false, message: "Missing Flutterwave card token" };
@@ -49,14 +50,25 @@ export async function chargeFlutterwaveTokenized(params: {
     if (!transactionId) {
       return { ok: false, message: res.message || "Flutterwave did not return a transaction id", raw: data };
     }
-    if (status !== "successful") {
+    if (status === "successful" || status === "success") {
+      return { ok: true, transactionId, status, raw: data };
+    }
+    const failed = status === "failed" || status === "failure" || status === "cancelled" || status === "canceled";
+    if (failed) {
       return {
         ok: false,
-        message: `Flutterwave charge status: ${status || "unknown"}`,
+        message: `Flutterwave charge status: ${status}`,
         raw: data,
       };
     }
-    return { ok: true, transactionId, status, raw: data };
+    return {
+      ok: false,
+      pending: true,
+      transactionId,
+      status: status || "pending",
+      message: res.message || "Flutterwave charge is still pending",
+      raw: data,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Flutterwave token charge failed";
     return { ok: false, message };
@@ -75,9 +87,13 @@ export async function chargeAndSettleFlutterwaveOffSession(
     reference: string;
     metadata?: Record<string, unknown>;
   },
-): Promise<{ ok: true; appFeeMajor: number } | { ok: false; message: string }> {
+): Promise<{ ok: true; appFeeMajor: number } | { ok: false; pending?: boolean; message: string }> {
   const charged = await chargeFlutterwaveTokenized(params);
-  if (charged.ok === false) return { ok: false, message: charged.message };
+  if (charged.ok === false) {
+    return charged.pending
+      ? { ok: false, pending: true, message: charged.message }
+      : { ok: false, message: charged.message };
+  }
 
   const verified = await verifyFlutterwaveTransactionById(charged.transactionId, {
     tenantId: params.tenantId ?? null,

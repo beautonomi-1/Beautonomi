@@ -143,6 +143,10 @@ describe("completeWalletGiftSyntheticPayments", () => {
         filters.push([col, val]);
         return chain;
       },
+      or(filter: string) {
+        filters.push(["or", filter]);
+        return chain;
+      },
       in(col: string, val: unknown) {
         filters.push([col, val]);
         return chain;
@@ -162,6 +166,10 @@ describe("completeWalletGiftSyntheticPayments", () => {
     expect(filters).toContainEqual([
       "payment_provider_id",
       ["wallet_booking:b-1:additional:charge-1", "gift_card_booking:b-1:additional:charge-1"],
+    ]);
+    expect(filters).toContainEqual([
+      "or",
+      'notes.is.null,notes.neq."Collectible return still due"',
     ]);
   });
 });

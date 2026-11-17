@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
       .eq("status", "completed")
       .gte("scheduled_at", period.start.toISOString())
       .lte("scheduled_at", period.end.toISOString());
-    bookingValue = (bookings ?? []).reduce((s, b) => s + Number(b.total_amount ?? 0), 0);
+    bookingValue = (bookings ?? []).reduce((s, b) => addMoney(s, Number(b.total_amount ?? 0)), 0);
 
     const periodEfficiency =
       spend.known > 0

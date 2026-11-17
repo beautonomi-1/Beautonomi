@@ -25,7 +25,7 @@ import {
   markReadyToPay,
 } from "@/lib/front-desk/actions";
 import { useTranslation } from "@beautonomi/i18n";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { getDefaultMoneyLocale, addMoney, subtractMoney } from "@beautonomi/utils";
 
 /** Desaturated status pills - matches reference (lavender for in_service, etc.) */
 const BADGE_STYLES: Record<string, string> = {
@@ -105,7 +105,10 @@ export function BookingTile({
   const bkTotalRefunded = (booking as any).total_refunded || 0;
   const bkWallet = Number((booking as any).wallet_amount || 0);
   const bkGift = Number((booking as any).gift_card_amount || 0);
-  const bkEffectivePaid = Math.max(0, bkTotalPaid - bkTotalRefunded) + bkWallet + bkGift;
+  const bkEffectivePaid = addMoney(
+    addMoney(Math.max(0, subtractMoney(bkTotalPaid, bkTotalRefunded)), bkWallet),
+    bkGift,
+  );
   const paid =
     (booking as any).payment_status === "paid" ||
     bkEffectivePaid >= (booking.total_amount || 0);

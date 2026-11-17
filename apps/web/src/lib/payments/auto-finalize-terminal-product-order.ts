@@ -1,9 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import {
-  applyPosProductStockDecrements,
+  applyPosProductStockDecrementsReversible,
+  restorePosProductStock,
   validatePosProductStock,
 } from "@/lib/provider-sales/pos-product-stock";
+import { syncProductOrderLinesToOrderStatus } from "@/lib/ecommerce/product-order-line-fulfilment";
+import { preservedWalkInPaidAt } from "@/lib/provider-sales/fulfill-walk-in-product-order-delivery";
 
 type SupabaseLike = SupabaseClient;
 
@@ -40,7 +43,7 @@ export async function autoFinalizeTerminalWalkInProductOrder(
   const { supabase, providerId, productOrderId } = input;
 
   const { data: order } = await (supabase.from("product_orders") as any)
-    .select("id, provider_id, order_source, payment_status, payment_reference, status, total_amount")
+    .select("id, provider_id, order_source, payment_status, payment_reference, status, total_amount, paid_at")
     .eq("id", productOrderId)
     .eq("provider_id", providerId)
     .maybeSingle();
@@ -60,10 +63,12 @@ export async function autoFinalizeTerminalWalkInProductOrder(
   }
 
   const { data: lineItems } = await (supabase.from("product_order_items") as any)
-    .select("product_id, product_variant_id, quantity")
+    .select("product_id, product_variant_id, quantity, fulfilment_status")
     .eq("order_id", productOrderId);
 
-  const posItems = (lineItems ?? []).map((item: any) => ({
+  const posItems = (lineItems ?? [])
+    .filter((item: { fulfilment_status?: string | null }) => String(item.fulfilment_status ?? "") !== "cancelled")
+    .map((item: any) => ({
     type: "product" as const,
     item_id: item.product_id,
     product_variant_id: item.product_variant_id ?? null,
@@ -103,17 +108,45 @@ export async function autoFinalizeTerminalWalkInProductOrder(
 
   const { data: existingStock } = await (supabase.from("stock_movements") as any)
     .select("id")
+    .eq("reference_type", "product_order")
     .eq("reference_id", productOrderId)
     .limit(1);
+  let takenThisAttempt: Awaited<ReturnType<typeof applyPosProductStockDecrementsReversible>> = [];
   if (!existingStock?.length && String(order.status ?? "") !== "delivered") {
-    await applyPosProductStockDecrements(supabase as any, posItems);
+    takenThisAttempt = await applyPosProductStockDecrementsReversible(supabase as any, posItems);
+  }
+
+  const deliveredAt = new Date().toISOString();
+  let statusUpdate = (supabase.from("product_orders") as any)
+    .update({
+      status: "delivered",
+      delivered_at: deliveredAt,
+      paid_at: preservedWalkInPaidAt((order as { paid_at?: string | null }).paid_at, deliveredAt),
+      updated_at: deliveredAt,
+    })
+    .eq("id", productOrderId)
+    .eq("provider_id", providerId);
+  statusUpdate = order.status
+    ? statusUpdate.eq("status", order.status)
+    : statusUpdate.is("status", null);
+  const { data: claimed, error: statusError } = await statusUpdate.select("id").maybeSingle();
+  if (statusError || !claimed) {
+    if (takenThisAttempt.length > 0) {
+      await restorePosProductStock(supabase as any, takenThisAttempt);
+    }
+    return { finalized: false, reason: statusError?.message || "delivery_not_saved" };
+  }
+
+  if (takenThisAttempt.length > 0) {
     try {
       const { logSaleStockMovements } = await import("@/lib/products/stock-movements");
       await logSaleStockMovements(supabase as any, {
         providerId,
         referenceId: productOrderId,
         actorUserId: input.allocatedByUserId ?? undefined,
-        lines: (lineItems ?? []).map((i: any) => ({
+        lines: (lineItems ?? [])
+          .filter((i: { fulfilment_status?: string | null }) => String(i.fulfilment_status ?? "") !== "cancelled")
+          .map((i: any) => ({
           productId: i.product_id,
           productVariantId: i.product_variant_id ?? null,
           quantity: i.quantity,
@@ -124,15 +157,7 @@ export async function autoFinalizeTerminalWalkInProductOrder(
     }
   }
 
-  await (supabase.from("product_orders") as any)
-    .update({
-      status: "delivered",
-      delivered_at: new Date().toISOString(),
-      paid_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", productOrderId)
-    .eq("provider_id", providerId);
+  await syncProductOrderLinesToOrderStatus(supabase, productOrderId, "delivered");
 
   try {
     const { notifyProductOrderPaidIfTransitioned } = await import(

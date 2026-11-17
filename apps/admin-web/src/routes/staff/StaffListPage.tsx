@@ -53,6 +53,8 @@ type StaffMember = {
   bio: string | null;
   is_active: boolean;
   commission_percentage: number;
+  serviceCommissionRate?: number;
+  productCommissionRate?: number;
   public_title?: string | null;
   is_service_provider?: boolean | null;
   enable_in_online_booking?: boolean | null;
@@ -133,7 +135,8 @@ export function StaffListPage() {
     email: "",
     phone: "",
     role: "employee",
-    commission_percentage: 0,
+    serviceRate: 0,
+    productRate: 0,
     bio: "",
     public_title: "",
     is_service_provider: true,
@@ -172,7 +175,8 @@ export function StaffListPage() {
       email: m.email ?? "",
       phone: m.phone ?? "",
       role: m.role ?? "employee",
-      commission_percentage: m.commission_percentage ?? 0,
+      serviceRate: m.serviceCommissionRate ?? 0,
+      productRate: m.productCommissionRate ?? 0,
       bio: m.bio ?? "",
       public_title: m.public_title ?? "",
       is_service_provider: m.is_service_provider !== false,
@@ -412,7 +416,8 @@ export function StaffListPage() {
                       email: editForm.email.trim() || null,
                       phone: editForm.phone.trim() || null,
                       role: editForm.role,
-                      commission_percentage: editForm.commission_percentage,
+                      service_commission_rate: editForm.serviceRate,
+                      product_commission_rate: editForm.productRate,
                       bio: editForm.bio.trim() || null,
                       public_title: editForm.public_title.trim() || null,
                       is_service_provider: editForm.is_service_provider,
@@ -463,17 +468,56 @@ export function StaffListPage() {
                 <option value="employee">employee</option>
               </select>
             </label>
-            <label className="block">
-              <span className="text-gray-600">Commission %</span>
-              <input
-                type="number"
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                value={editForm.commission_percentage}
-                onChange={(e) =>
-                  setEditForm((f) => ({ ...f, commission_percentage: Number(e.target.value) || 0 }))
-                }
-              />
-            </label>
+            {editForm.serviceRate === editForm.productRate ? (
+              <label className="block">
+                <span className="text-gray-600">Commission %</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={editForm.serviceRate}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const rate = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+                    setEditForm((f) => ({ ...f, serviceRate: rate, productRate: rate }));
+                  }}
+                />
+              </label>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-gray-600">Service %</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={editForm.serviceRate}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const rate = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+                      setEditForm((f) => ({ ...f, serviceRate: rate }));
+                    }}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-gray-600">Product %</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={editForm.productRate}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const rate = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+                      setEditForm((f) => ({ ...f, productRate: rate }));
+                    }}
+                  />
+                </label>
+              </div>
+            )}
             <label className="block">
               <span className="text-gray-600">Public title</span>
               <input

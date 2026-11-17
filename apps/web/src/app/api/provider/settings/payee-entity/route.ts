@@ -7,7 +7,6 @@
 
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
   successResponse,
   handleApiError,
   errorResponse,
@@ -23,7 +22,9 @@ function inferDefaultPayeeKind(businessType: string | null | undefined): "indivi
 
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {

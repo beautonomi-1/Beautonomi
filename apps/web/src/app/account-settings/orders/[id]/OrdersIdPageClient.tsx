@@ -16,7 +16,7 @@ import {
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
-import { getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold, supportTicketQuery } from "@beautonomi/utils";
+import { getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold, subtractMoney, supportTicketQuery, toMinorUnits } from "@beautonomi/utils";
 import { displayedProductOrderAmountStillDue } from "@/lib/orders/product-order-tender";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import { PickupStoreCard } from "@/components/shop/PickupStoreCard";
@@ -39,6 +39,7 @@ interface ProductOrder {
   amount_still_due?: number | null;
   promotion_code?: string | null;
   total_amount: number;
+  refunded_amount?: number | null;
   payment_status?: string | null;
   payment_method?: string | null;
   tracking_number: string | null;
@@ -145,13 +146,19 @@ function formatEstimatedDeliveryDate(date: string | null | undefined, locale: st
   return parsed.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
 }
 
-const TIMELINE = [
-  { key: "pending", labelKey: "timelineOrderPlaced" },
-  { key: "confirmed", labelKey: "timelineConfirmed" },
-  { key: "processing", labelKey: "timelineProcessing" },
-  { key: "shipped", labelKey: "timelineShippedReady" },
-  { key: "delivered", labelKey: "timelineDeliveredCollected" },
-] as const;
+function orderTimeline(fulfillmentType: string | null | undefined) {
+  const isCollection = fulfillmentType === "collection" || fulfillmentType === "pickup";
+  return [
+    { key: "pending", labelKey: "timelineOrderPlaced" },
+    { key: "confirmed", labelKey: "timelineConfirmed" },
+    { key: "processing", labelKey: "timelineProcessing" },
+    {
+      key: isCollection ? "ready_for_collection" : "shipped",
+      labelKey: isCollection ? "timelineReadyForCollection" : "timelineShipped",
+    },
+    { key: "delivered", labelKey: isCollection ? "timelineCollected" : "timelineDelivered" },
+  ] as const;
+}
 
 function returnTitle(status: string, t: TFunction): string {
   if (status === "refunded") return t("web.accountSettings.orderDetail.refundProcessed");
@@ -224,10 +231,10 @@ function AutoStartProductOrderPay({
   return null;
 }
 
-function timelineIndex(status: string) {
+function timelineIndex(status: string, fulfillmentType?: string | null) {
   if (status === "cancelled" || status === "refunded") return -1;
   if (status === "ready_for_collection") return 3;
-  return TIMELINE.findIndex((s) => s.key === status);
+  return orderTimeline(fulfillmentType).findIndex((s) => s.key === status);
 }
 
 export default function OrderDetailPage() {
@@ -361,7 +368,9 @@ export default function OrderDetailPage() {
     );
   }
 
-  const idx = timelineIndex(order.status);
+  const timeline = orderTimeline(order.fulfillment_type);
+  const idx = timelineIndex(order.status, order.fulfillment_type);
+  const isDelivery = order.fulfillment_type === "delivery";
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
   const orderSupport = getProductOrderSupportPrompt({
     status: order.status,
@@ -460,7 +469,7 @@ export default function OrderDetailPage() {
         data: { authorization_url: string; reference: string } | null;
       }>("/api/paystack/initialize", {
         email,
-        amount: Math.round(onlineAmountDue * 100),
+        amount: toMinorUnits(onlineAmountDue, sym),
         metadata: {
           product_order_id: order.id,
           order_number: order.order_number,
@@ -628,7 +637,7 @@ export default function OrderDetailPage() {
             </div>
           ) : (
             <div className="space-y-0">
-              {TIMELINE.map((step, i) => {
+              {timeline.map((step, i) => {
                 const done = i <= idx;
                 const active = i === idx;
                 return (
@@ -641,19 +650,19 @@ export default function OrderDetailPage() {
                           </svg>
                         )}
                       </div>
-                      {i < TIMELINE.length - 1 && (
+                      {i < timeline.length - 1 && (
                         <div className={`h-8 w-0.5 ${done && i < idx ? "bg-pink-600" : "bg-gray-200"}`} />
                       )}
                     </div>
                     <p className={`pb-6 text-sm ${active ? "font-bold text-gray-900" : done ? "text-gray-700" : "text-gray-400"}`}>
-                      {t(`web.accountSettings.orderDetail.${step.labelKey}`)}
+                      {t(`customer.mobile.screens.productOrderDetail.${step.labelKey}`)}
                     </p>
                   </div>
                 );
               })}
             </div>
           )}
-          {trackingEvents.length > 0 ? (
+          {isDelivery && trackingEvents.length > 0 ? (
             <div className="mt-4 space-y-1 border-t border-gray-100 pt-4">
               {trackingEvents.slice(0, 5).map((event, index) => (
                 <p key={`${event.occurredAt}-${index}`} className="text-xs text-gray-600">
@@ -662,7 +671,7 @@ export default function OrderDetailPage() {
               ))}
             </div>
           ) : null}
-          {(order.tracking_number || order.tracking_url) && (
+          {isDelivery && (order.tracking_number || order.tracking_url) && (
             <div className="mt-4 rounded-lg bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600">
               {order.tracking_url ? (
                 <a
@@ -943,9 +952,12 @@ export default function OrderDetailPage() {
                 </span>
               </div>
             )}
+            {Number(order.refunded_amount ?? 0) > 0 && (
+              <div className="flex justify-between"><span className="text-gray-500">{t("web.accountSettings.orderDetail.refunded")}</span><span>{sym} {Number(order.refunded_amount).toFixed(2)}</span></div>
+            )}
             <div className="flex justify-between border-t border-gray-100 pt-3 text-lg font-bold">
               <span>{t("web.accountSettings.orderDetail.total")}</span>
-              <span className="text-pink-600">{sym} {Number(order.total_amount).toFixed(2)}</span>
+              <span className="text-pink-600">{sym} {Math.max(0, subtractMoney(Number(order.total_amount ?? 0), Math.max(0, Number(order.refunded_amount ?? 0)))).toFixed(2)}</span>
             </div>
           </div>
           {canPayOnline && (

@@ -16,13 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { Camera, Mail, Phone, Shield, Clock, DollarSign, Bell, Send, MapPin, Scissors } from "lucide-react";
+import { Camera, Mail, Phone, Shield, Clock, Bell, Send, MapPin, Scissors } from "lucide-react";
 import type { TeamMember } from "@/lib/provider-portal/types";
+import { resolveStaffRates } from "@/lib/payroll/resolve-staff-rates";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
 import { FetchError } from "@/lib/http/fetcher";
@@ -33,6 +33,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { StaffPayPlanFields } from "@/components/provider/team/StaffPayPlanFields";
 import {
   defaultPayPlanFormState,
+  payPlanDateError,
   payPlanFromApiRow,
   payPlanToPostBody,
 } from "@/lib/payroll/pay-plan-form-state";
@@ -64,9 +65,6 @@ export function TeamMemberCreateEditDialog({
   const [locationIds, setLocationIds] = useState<string[]>([]);
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [payPlan, setPayPlan] = useState(defaultPayPlanFormState);
-  const [splitCommissionRatesEqual, setSplitCommissionRatesEqual] = useState(true);
-  const [serviceCommissionRate, setServiceCommissionRate] = useState<number | null>(null);
-  const [productCommissionRate, setProductCommissionRate] = useState<number | null>(null);
   const [offerings, setOfferings] = useState<Array<{ id: string; title: string }>>([]);
   const initialRoleRef = useRef<string | null>(null);
   const [deactivateReassignOpen, setDeactivateReassignOpen] = useState(false);
@@ -150,10 +148,18 @@ export function TeamMemberCreateEditDialog({
             const settings = settingsResponse.data;
             const notif = notifResponse?.data;
             const commission = commissionResponse?.data;
+            const savedRates = resolveStaffRates({
+              service_commission_rate: settings?.service_commission_rate,
+              product_commission_rate: settings?.product_commission_rate,
+              commission_rate: settings?.commission_rate,
+              commission_percentage: settings?.commission_percentage,
+            });
+            const serviceRate = commission?.serviceCommissionRate ?? savedRates.serviceRate;
+            const productRate = commission?.productCommissionRate ?? savedRates.productRate;
             setPayPlan(
               payPlanFromApiRow(payPlansResponse?.data?.[0], {
-                service_rate: commission?.serviceCommissionRate ?? settings?.commission_rate ?? 0,
-                product_rate: commission?.productCommissionRate ?? 0,
+                service_rate: serviceRate,
+                product_rate: productRate,
                 hourly_rate: commission?.hourlyRate ?? settings?.hourly_rate ?? 0,
                 base_amount: commission?.salary ?? settings?.salary ?? 0,
               }),
@@ -161,17 +167,7 @@ export function TeamMemberCreateEditDialog({
 
             const loadedRole = member.role || "employee";
             initialRoleRef.current = loadedRole;
-            const svcRate = settings?.service_commission_rate ?? null;
-            const prodRate = settings?.product_commission_rate ?? null;
-            setSplitCommissionRatesEqual(svcRate === prodRate);
-            setServiceCommissionRate(svcRate);
-            setProductCommissionRate(prodRate);
-            const commissionThumb =
-              svcRate != null
-                ? svcRate
-                : settings?.commission_rate != null
-                  ? settings.commission_rate
-                  : 0;
+            const commissionThumb = serviceRate;
             setFormData({
               name: member.name || "",
               email: member.email || "",
@@ -350,6 +346,8 @@ export function TeamMemberCreateEditDialog({
         data: { tiers?: { minRevenue: number; commissionRate: number; tierOrder?: number }[] };
       }>(`/api/provider/staff/${staffId}/commission`)
       .catch(() => null);
+    const dateError = payPlanDateError(payPlan);
+    if (dateError) throw new Error(dateError);
     const tiers = (commissionRes?.data?.tiers ?? []).map((tier, i) => ({
       min_revenue: tier.minRevenue,
       commission_rate: tier.commissionRate,
@@ -408,11 +406,6 @@ export function TeamMemberCreateEditDialog({
           avatar_url: formData.avatar_url || null,
           role: (formData.role as string) === "staff" ? "employee" : formData.role,
         };
-        if (canManagePayroll && splitCommissionRatesEqual) {
-          updateData.commission_rate = formData.commission_enabled
-            ? Math.round(formData.commission_rate)
-            : null;
-        }
         await providerApi.updateTeamMember(member.id, updateData);
 
         const continueAfterActivePatch = async () => {
@@ -439,8 +432,6 @@ export function TeamMemberCreateEditDialog({
                     commission_enabled: formData.commission_enabled,
                     commission_rate: formData.commission_rate,
                   }),
-              hourly_rate: formData.hourly_rate,
-              salary: formData.salary,
               tips_enabled: formData.tips_enabled,
               time_clock_enabled: formData.time_clock_enabled,
               time_clock_pin: formData.time_clock_pin,
@@ -1180,95 +1171,9 @@ export function TeamMemberCreateEditDialog({
                 </p>
                 
                 <div className="space-y-5 sm:space-y-6">
-                  {!splitCommissionRatesEqual ? (
-                    <p className="text-sm text-muted-foreground">
-                      {t("provider.mobile.components.staffCommissionEditor.splitRates", {
-                        service: serviceCommissionRate ?? "—",
-                        product: productCommissionRate ?? "—",
-                      })}
-                    </p>
-                  ) : (
-                    <>
-                      <div className="flex items-start gap-4 p-4 sm:p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-sm">
-                        <Switch
-                          checked={formData.commission_enabled}
-                          onCheckedChange={(checked) =>
-                            setFormData({ ...formData, commission_enabled: checked })
-                          }
-                          className="mt-1 flex-shrink-0"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
-                            <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                            {t("web.provider.teamMemberDialog.serviceProductCommission")}
-                          </Label>
-                          <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                            {t("web.provider.teamMemberDialog.commissionHint")}
-                          </p>
-                        </div>
-                      </div>
-
-                      {formData.commission_enabled ? (
-                        <div className="ms-0 sm:ms-4 space-y-3 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
-                          <p className="text-sm font-medium text-gray-900">
-                            {Math.round(formData.commission_rate)}%
-                          </p>
-                          <Slider
-                            value={[formData.commission_rate]}
-                            onValueChange={([v]) =>
-                              setFormData({ ...formData, commission_rate: Math.round(v) })
-                            }
-                            min={0}
-                            max={100}
-                            step={1}
-                          />
-                        </div>
-                      ) : null}
-                    </>
-                  )}
-
-                  <Separator className="my-6" />
-
-                  <div className="space-y-2">
-                    <Label htmlFor="hourly_rate" className="text-sm sm:text-base font-semibold text-gray-900">
-                      {t("web.provider.teamMemberDialog.hourlyRate")}
-                    </Label>
-                    <Input
-                      id="hourly_rate"
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      value={formData.hourly_rate}
-                      onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 0 })}
-                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-                      placeholder={t("web.provider.teamMemberDialog.moneyPlaceholder")}
-                    />
-                    <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      {t("web.provider.teamMemberDialog.hourlyRateHint")}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="salary" className="text-sm sm:text-base font-semibold text-gray-900">
-                      {t("web.provider.teamMemberDialog.salary")}
-                    </Label>
-                    <Input
-                      id="salary"
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      value={formData.salary}
-                      onChange={(e) => setFormData({ ...formData, salary: parseFloat(e.target.value) || 0 })}
-                      className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-                      placeholder={t("web.provider.teamMemberDialog.moneyPlaceholder")}
-                    />
-                    <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      {t("web.provider.teamMemberDialog.salaryHint")}
-                    </p>
-                  </div>
-
-                  <Separator className="my-6" />
-
+                  <p className="text-sm text-gray-600">
+                    {t("web.provider.teamMemberDialog.payPlanOwnsPay")}
+                  </p>
                   <div className="flex items-start gap-4 p-4 sm:p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-sm">
                     <Switch
                       checked={formData.tips_enabled}

@@ -95,6 +95,14 @@ export function applyProviderNotificationRoute(router: ExpoRouter, data: Record<
     const productOrderId = String(data.product_order_id ?? data.order_id ?? "").trim();
     const actionUrl = String(data.action_url ?? data.link ?? data.url ?? data.deep_link ?? "").trim();
     const actionUrlLc = actionUrl.toLowerCase();
+    if (actionUrlLc.includes("my-earnings")) {
+      router.push("/(app)/(tabs)/more/team-pay?tab=my-earnings" as never);
+      return true;
+    }
+    if (actionUrlLc.includes("/team/payroll")) {
+      router.push("/(app)/(tabs)/more/team-pay?tab=payroll" as never);
+      return true;
+    }
     const typeLc = type.toLowerCase();
     const pushAction =
       String(data.action ?? "").trim() ||

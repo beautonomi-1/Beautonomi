@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -112,7 +113,7 @@ export async function POST(
     const unpaidAdditionalCharges = Array.isArray(bookingData.additional_charges)
       ? bookingData.additional_charges
           .filter((c: any) => c?.status !== "paid" && c?.status !== "rejected")
-          .reduce((sum: number, c: any) => sum + Number(c?.amount || 0), 0)
+          .reduce((sum: number, c: any) => addMoney(sum, Number(c?.amount || 0)), 0)
       : 0;
     const remainingBalance = computeBookingOutstandingDisplay({
       totalAmount: Number(bookingData.total_amount ?? 0),

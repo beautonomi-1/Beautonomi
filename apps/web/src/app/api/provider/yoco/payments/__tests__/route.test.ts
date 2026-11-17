@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockRequireRole = vi.fn();
 const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockCheckYocoFeatureAccess = vi.fn();
 const mockResolveTenantIdWithZaFallback = vi.fn();
@@ -27,6 +28,10 @@ vi.mock("@/lib/auth/requirePermission", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
 vi.mock("@/lib/supabase/api-helpers", () => ({
@@ -155,7 +160,9 @@ describe("POST /api/provider/yoco/payments", () => {
       hasSecretKey: false,
       hasOauthToken: false,
     });
-    mockGetSupabaseServer.mockResolvedValue(createSupabaseForLegacyTerminalFlow());
+    const client = createSupabaseForLegacyTerminalFlow();
+    mockGetSupabaseServer.mockResolvedValue(client);
+    mockGetSupabaseAdmin.mockReturnValue(client);
   });
 
   it("falls back to legacy terminal when modern device row is missing", async () => {
@@ -213,6 +220,56 @@ describe("POST /api/provider/yoco/payments", () => {
     expect((createInit.headers as Record<string, string>).Authorization).toBe(
       "Bearer legacy-secret-key",
     );
+  });
+
+  // F2-35: a bare `entity_type` / `entity_id` pair must go through the same
+  // ownership + outstanding-amount guard as `booking_id` etc. Previously it
+  // skipped the guard entirely and the payment was linked to any entity id.
+  it("F2-35: bare entity_type/entity_id for a booking the provider does not own is rejected before Yoco is called", async () => {
+    const mockComputeExpected = vi.fn(async () => null);
+    vi.doMock("@/lib/payments/paycloud-amount-guards", () => ({
+      computeExpectedAmountForEntity: (...args: unknown[]) => mockComputeExpected(...args),
+      yocoChargeMatchesExpected: vi.fn(() => true),
+    }));
+    vi.doMock("@/lib/supabase/admin", () => ({
+      getSupabaseAdmin: vi.fn(() => createSupabaseForLegacyTerminalFlow()),
+    }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "legacy-device-22" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      new Request("http://localhost/api/provider/yoco/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          device_id: "legacy-terminal-row-1",
+          amount: 1,
+          entity_type: "booking",
+          entity_id: "22222222-2222-4222-8222-222222222222",
+        }),
+      }),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error?.code).toBe("AMOUNT_MISMATCH");
+    expect(mockComputeExpected).toHaveBeenCalledWith(
+      expect.anything(),
+      "provider-1",
+      "booking",
+      "22222222-2222-4222-8222-222222222222",
+    );
+    // Only the device probe may have run — never the payment create.
+    const postCalls = fetchMock.mock.calls.filter(
+      (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === "POST",
+    );
+    expect(postCalls).toHaveLength(0);
   });
 });
 

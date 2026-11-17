@@ -414,7 +414,10 @@ describe("POST check-out", () => {
           update: vi.fn().mockReturnValue(makeQuery({ data: null, error: null })),
         };
       }
-      return { update: vi.fn().mockReturnValue(makeQuery({ data: null, error: null })) };
+      return {
+        update: vi.fn().mockReturnValue(makeQuery({ data: null, error: null })),
+        select: vi.fn().mockReturnValue(makeQuery({ data: [], error: null })),
+      };
     });
 
     getSupabaseAdminMock.mockReturnValue({ from: fromMock });

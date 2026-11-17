@@ -40,7 +40,8 @@ type SettingsPayload = {
   time_clock_pin?: string;
   bookable_from?: string | null;
   commission_enabled?: boolean;
-  commission_rate?: number;
+  commission_rate?: number | null;
+  commission_percentage?: number | null;
   service_commission_rate?: number | null;
   product_commission_rate?: number | null;
 };
@@ -53,6 +54,7 @@ type MemberSnapshot = {
   avatar_url?: string | null;
   role: string;
   commission_rate?: number | null;
+  commission_percentage?: number | null;
 };
 
 function formatLocalYmd(d: Date): string {
@@ -159,17 +161,22 @@ export function StaffProfileEditSheet({
         setBookableFrom(s.bookable_from ?? null);
         setTimeClock(s.time_clock_enabled === true);
         setTimeClockPin(s.time_clock_pin ?? "");
-        const svc = s.service_commission_rate ?? null;
-        const prod = s.product_commission_rate ?? null;
-        setServiceRate(svc);
-        setProductRate(prod);
-        const equal = svc === prod;
-        setSplitRatesEqual(equal);
+        const legacy =
+          s.commission_rate ??
+          s.commission_percentage ??
+          current.commission_rate ??
+          current.commission_percentage ??
+          0;
+        const service = s.service_commission_rate != null ? Number(s.service_commission_rate) : Number(legacy);
+        const product = s.product_commission_rate != null ? Number(s.product_commission_rate) : Number(legacy);
+        const serviceShown = Math.max(0, Math.min(100, service));
+        const productShown = Math.max(0, Math.min(100, product));
+        setServiceRate(serviceShown);
+        setProductRate(productShown);
+        setSplitRatesEqual(serviceShown === productShown);
         const enabled = s.commission_enabled === true;
         setCommissionEnabled(enabled);
-        const thumb =
-          svc != null ? svc : s.commission_rate != null ? s.commission_rate : current.commission_rate ?? 0;
-        setCommissionPercent(Math.round(Number(thumb) || 0));
+        setCommissionPercent(Math.round(serviceShown));
       }
       setSettingsLoaded(true);
     })();

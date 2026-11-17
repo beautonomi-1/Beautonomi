@@ -8,6 +8,7 @@
  * invariants. The campaign must already exist and belong to `providerId`.
  */
 
+import { multiplyMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { subDays, startOfDay, startOfMonth } from "date-fns";
 import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
@@ -238,7 +239,7 @@ export async function dispatchCampaign(
 
   if (debitsCredits) {
     const unitCost = await priceFor(supabase, campaign.type, category);
-    const estimated = validCustomers.length * unitCost;
+    const estimated = multiplyMoney(unitCost, validCustomers.length);
     const balance = await getMarketingBalance(supabase, providerId);
     if (balance.total_zar < estimated) {
       // Revert to scheduled/draft so it isn't stuck in "sending".

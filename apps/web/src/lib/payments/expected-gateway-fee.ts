@@ -13,6 +13,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { roundCurrency, addMoney, multiplyMoney } from "@beautonomi/utils";
 
 export type GatewayFeeOptions = {
   method?: string;    // e.g. 'card', 'capitec_pay', 'ozow_eft', 'bank_transfer'
@@ -88,11 +89,11 @@ export async function expectedGatewayFee(
   const cap = cfg.max_fee_amount != null ? Number(cfg.max_fee_amount) : null;
 
   // Percentage component
-  let computed = amount * pct;
+  let computed = multiplyMoney(amount, pct, currency);
 
   // Fixed component — waived when amount is below the waiver threshold
   if (waiver === null || amount >= waiver) {
-    computed += fixed;
+    computed = addMoney(computed, fixed, currency);
   }
 
   // Apply cap
@@ -102,8 +103,8 @@ export async function expectedGatewayFee(
 
   // Apply VAT if quoted rate is VAT-exclusive
   if (vatExclusive && vatRate > 0) {
-    computed *= 1 + vatRate;
+    computed = addMoney(computed, multiplyMoney(computed, vatRate, currency), currency);
   }
 
-  return Math.round(computed * 100) / 100;
+  return roundCurrency(computed, currency);
 }

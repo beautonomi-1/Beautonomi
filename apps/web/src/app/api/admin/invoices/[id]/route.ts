@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
@@ -40,7 +41,7 @@ export async function PATCH(
           .select("amount")
           .eq("invoice_id", id)
           .eq("status", "completed");
-        const sum = (pays ?? []).reduce((s, p) => s + Number((p as { amount?: number }).amount ?? 0), 0);
+        const sum = (pays ?? []).reduce((s, p) => addMoney(s, Number((p as { amount?: number }).amount ?? 0)), 0);
         if (sum > 0) {
           return handleApiError(
             new Error("Cannot cancel an invoice with completed payments"),

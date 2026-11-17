@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getProviderIdForUser, successResponse, handleApiError, errorResponse, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
 export const emailIntegrationTestBodySchema = z
@@ -25,7 +27,9 @@ export const emailIntegrationTestBodySchema = z
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requirePermission("edit_settings", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
@@ -49,7 +53,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { data: integration, error: fetchError } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: integration, error: fetchError } = await admin
       .from("provider_email_integrations")
       .select("*")
       .eq("provider_id", providerId)
@@ -67,7 +72,10 @@ export async function POST(request: NextRequest) {
           400,
         );
       }
-      const apiKey = integration.api_key || integration.api_secret;
+      const { revealIntegrationSecret } = await import("@/lib/security/integration-secrets");
+      const apiKey =
+        revealIntegrationSecret(integration.api_key) ||
+        revealIntegrationSecret(integration.api_secret);
       if (!apiKey) {
         return errorResponse("Mailchimp Transactional API key not configured", "NOT_FOUND", 404);
       }

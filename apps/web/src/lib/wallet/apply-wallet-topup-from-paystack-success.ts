@@ -24,8 +24,94 @@ export type WalletTopupPaystackPayload = {
   paymentProvider?: "paystack" | "stripe" | "flutterwave";
 };
 
+async function recordWalletTopupLedger(
+  supabase: SupabaseClient,
+  input: {
+    topupId: string;
+    reference: string;
+    amountInCurrency: number;
+    feesInCurrency: number;
+    paymentProvider: "paystack" | "stripe" | "flutterwave";
+    metadata: WalletTopupPaystackPayload["metadata"];
+    tenantId: string | null;
+  },
+): Promise<void> {
+  const { data: existingReceipt, error: receiptLookupError } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("reference", input.reference)
+    .eq("transaction_type", "wallet_topup")
+    .limit(1)
+    .maybeSingle();
+  if (receiptLookupError) {
+    console.error("[wallet_topup] payment lookup failed:", receiptLookupError);
+    throw receiptLookupError;
+  }
+  if (!existingReceipt) {
+    const { error: paymentError } = await supabase.from("payment_transactions").insert({
+      booking_id: null,
+      reference: input.reference,
+      amount: input.amountInCurrency,
+      fees: input.feesInCurrency,
+      net_amount: input.amountInCurrency,
+      status: "success",
+      provider: input.paymentProvider,
+      transaction_type: "wallet_topup",
+      metadata: { ...input.metadata, fee_source: input.paymentProvider },
+      created_at: new Date().toISOString(),
+    });
+    if (paymentError && (paymentError as { code?: string }).code !== "23505") {
+      console.error("[wallet_topup] payment_transactions insert failed:", paymentError);
+      throw new Error("wallet topup payment was not recorded");
+    }
+  }
+
+  const description = `Wallet topup: ${input.topupId}`;
+  const { data: existingFinance, error: financeLookupError } = await supabase
+    .from("finance_transactions")
+    .select("id")
+    .eq("transaction_type", "wallet_topup")
+    .eq("description", description)
+    .limit(1)
+    .maybeSingle();
+  if (financeLookupError) {
+    console.error("[wallet_topup] finance lookup failed:", financeLookupError);
+    throw financeLookupError;
+  }
+  if (existingFinance) return;
+
+  const { error: finErr } = await supabase.from("finance_transactions").insert({
+    booking_id: null,
+    provider_id: null,
+    tenant_id: input.tenantId,
+    transaction_type: "wallet_topup",
+    amount: input.amountInCurrency,
+    fees: input.feesInCurrency,
+    commission: 0,
+    net: input.amountInCurrency,
+    currency: typeof input.metadata.currency === "string" ? input.metadata.currency : undefined,
+    description,
+    metadata: {
+      ...input.metadata,
+      reference: input.reference,
+      wallet_topup_id: input.topupId,
+    },
+    created_at: new Date().toISOString(),
+  });
+  if (finErr) {
+    const msg = String((finErr as { message?: string }).message || finErr || "");
+    const code = String((finErr as { code?: string }).code || "");
+    if (code === "23505" || msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
+      return;
+    }
+    console.error("[wallet_topup] finance_transactions insert failed:", finErr);
+    throw finErr;
+  }
+}
+
 /**
  * Idempotent: marks wallet_topups paid and credits user wallet (same as Paystack webhook path).
+ * A wallet credit that was already saved still posts the payment and the finance row when they are missing.
  */
 export async function applyWalletTopupFromSuccessfulPaystackCharge(
   payload: WalletTopupPaystackPayload,
@@ -41,16 +127,6 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
   type TopupRow = { status?: string; currency?: string; user_id?: string; tenant_id?: string | null };
   const topupRow = topup as TopupRow;
   const enteredPaid = topupRow.status === "paid";
-
-  // Wallet credit is applied once. A later delivery still posts the payment
-  // receipt and the finance row when those were missing.
-  const { data: existingCredit } = await supabase
-    .from("wallet_transactions")
-    .select("id")
-    .eq("reference_id", topupId)
-    .eq("reference_type", "wallet_topup")
-    .limit(1)
-    .maybeSingle();
 
   let resolvedTenantId = topupRow.tenant_id ?? null;
   const metaTenant = payload.metadata?.tenant_id as string | undefined;
@@ -73,86 +149,33 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
     provider_id: null,
   });
 
-  const recordLedger = async () => {
-    const { data: existingReceipt, error: receiptLookupError } = await supabase
-      .from("payment_transactions")
-      .select("id")
-      .eq("reference", payload.reference)
-      .eq("transaction_type", "wallet_topup")
-      .limit(1)
-      .maybeSingle();
-    if (receiptLookupError) {
-      console.error("[wallet_topup] payment lookup failed:", receiptLookupError);
-      throw receiptLookupError;
-    }
-    if (!existingReceipt) {
-      const { error: paymentError } = await supabase.from("payment_transactions").insert({
-        booking_id: null,
-        reference: payload.reference,
-        amount: amountInCurrency,
-        fees: feesInCurrency,
-        net_amount: amountInCurrency,
-        status: "success",
-        provider: paymentProvider,
-        transaction_type: "wallet_topup",
-        metadata: { ...payload.metadata, fee_source: paymentProvider },
-        created_at: new Date().toISOString(),
-      });
-      if (paymentError && (paymentError as { code?: string }).code !== "23505") {
-        console.error("[wallet_topup] payment_transactions insert failed:", paymentError);
-        throw new Error("wallet topup payment was not recorded");
-      }
-    }
-
-    const description = `Wallet topup: ${topupId}`;
-    const { data: existingFinance, error: financeLookupError } = await supabase
-      .from("finance_transactions")
-      .select("id")
-      .eq("transaction_type", "wallet_topup")
-      .eq("description", description)
-      .limit(1)
-      .maybeSingle();
-    if (financeLookupError) {
-      console.error("[wallet_topup] finance lookup failed:", financeLookupError);
-      throw financeLookupError;
-    }
-    if (existingFinance) return;
-
-    const { error: finErr } = await supabase.from("finance_transactions").insert({
-      booking_id: null,
-      provider_id: null,
-      tenant_id: topupWalletTenantId,
-      transaction_type: "wallet_topup",
-      amount: amountInCurrency,
-      fees: feesInCurrency,
-      commission: 0,
-      net: amountInCurrency,
-      currency: typeof payload.metadata.currency === "string" ? payload.metadata.currency : undefined,
-      description,
-      metadata: {
-        ...payload.metadata,
-        reference: payload.reference,
-        wallet_topup_id: topupId,
-      },
-      created_at: new Date().toISOString(),
+  const recordLedger = () =>
+    recordWalletTopupLedger(supabase, {
+      topupId,
+      reference: payload.reference,
+      amountInCurrency,
+      feesInCurrency,
+      paymentProvider,
+      metadata: payload.metadata,
+      tenantId: topupWalletTenantId,
     });
-    if (finErr) {
-      const msg = String((finErr as { message?: string }).message || finErr || "");
-      const code = String((finErr as { code?: string }).code || "");
-      if (code === "23505" || msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
-        return;
-      }
-      console.error("[wallet_topup] finance_transactions insert failed:", finErr);
-      throw finErr;
-    }
-  };
 
+  // The wallet credit is applied once. A later delivery still posts the payment
+  // and the finance row when those were missing.
+  const { data: existingCredit } = await supabase
+    .from("wallet_transactions")
+    .select("id")
+    .eq("reference_id", topupId)
+    .eq("reference_type", "wallet_topup")
+    .limit(1)
+    .maybeSingle();
   if (existingCredit) {
     await recordLedger();
     return;
   }
 
-  // Atomically claim the pending -> paid transition. The single winner credits.
+  // Atomically claim pending|failed -> paid. Cancel-page failure marks the
+  // top-up failed; a later capture on the same reference must still credit.
   const { data: claimed } = await supabase
     .from("wallet_topups")
     .update({
@@ -163,16 +186,15 @@ export async function applyWalletTopupFromSuccessfulPaystackCharge(
       tenant_id: topupWalletTenantId,
     })
     .eq("id", topupId)
-    .eq("status", "pending")
+    .in("status", ["pending", "failed"])
     .select("id")
     .maybeSingle();
 
   if (!claimed) {
-    // We lost the atomic claim. If the top-up was still pending on entry, a
-    // concurrent caller (verify vs webhook) won the race and will credit — so
-    // we must NOT credit again. Only heal a genuinely stranded top-up that was
-    // already marked paid on entry but, due to an earlier failure, never got a
-    // wallet credit (the ledger guard above already proved none exists).
+    // We lost the atomic claim. If the top-up was still pending/failed on entry,
+    // a concurrent caller won the race and will credit — so we must NOT credit
+    // again. Only heal a genuinely stranded top-up that was already marked paid
+    // on entry but never got a wallet credit.
     if (!enteredPaid) return;
     await supabase
       .from("wallet_topups")

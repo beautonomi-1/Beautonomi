@@ -220,7 +220,7 @@ export async function GET(request: NextRequest) {
           if (data.user.email_confirmed_at) {
             updateData.email_verified = true;
           }
-          console.log("[auth/callback] Self-healing placeholder email for user", data.user.id, "->", realEmail);
+          console.log("[auth/callback] Self-healing placeholder email for user", data.user.id);
         } else if (existingRow && !existingRow.email_verified && data.user.email_confirmed_at && isMailableEmail(existingRow.email)) {
           // Email is already correct but verified flag may be stale — sync it.
           updateData.email_verified = true;

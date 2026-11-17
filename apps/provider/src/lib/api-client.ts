@@ -330,18 +330,29 @@ async function withSessionRecoveryAndObservability<T>(
   return res;
 }
 
+/**
+ * A write that times out client-side is usually still committed by the server, so
+ * the user sees an error and then the change appears anyway. Writes get more room
+ * than reads before we give up on them.
+ */
+const DEFAULT_MUTATION_TIMEOUT_MS = 60_000;
+
+function withMutationTimeout(init?: ApiClientExtraOptions): ApiClientExtraOptions {
+  return typeof init?.timeout === "number" ? init : { ...init, timeout: DEFAULT_MUTATION_TIMEOUT_MS };
+}
+
 /** API client – base URL resolved per request; session recovery on 401. */
 export const api = {
   get: <T>(path: string, init?: ApiClientExtraOptions) =>
     withSessionRecoveryAndObservability<T>(path, () => baseApi.get<T>(path, init)),
   post: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
-    withSessionRecoveryAndObservability<T>(path, () => baseApi.post<T>(path, body, init)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.post<T>(path, body, withMutationTimeout(init))),
   put: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
-    withSessionRecoveryAndObservability<T>(path, () => baseApi.put<T>(path, body, init)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.put<T>(path, body, withMutationTimeout(init))),
   patch: <T>(path: string, body?: ApiClientRequestBody, init?: ApiClientExtraOptions) =>
-    withSessionRecoveryAndObservability<T>(path, () => baseApi.patch<T>(path, body, init)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.patch<T>(path, body, withMutationTimeout(init))),
   delete: <T>(path: string, init?: ApiClientExtraOptions) =>
-    withSessionRecoveryAndObservability<T>(path, () => baseApi.delete<T>(path, init)),
+    withSessionRecoveryAndObservability<T>(path, () => baseApi.delete<T>(path, withMutationTimeout(init))),
   fetch: <T>(path: string, options?: Omit<RequestOptions, "baseUrl" | "getAccessToken">) =>
     withSessionRecoveryAndObservability<T>(path, () => baseApi.fetch<T>(path, options)),
 };

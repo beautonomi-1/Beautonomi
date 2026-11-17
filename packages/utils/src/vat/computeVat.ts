@@ -1,4 +1,4 @@
-import { percentOf, roundCurrency } from "../money";
+import { addMoney, multiplyMoney, percentOf, roundCurrency, subtractMoney } from "../money";
 
 export type ComputeVatInput = {
   baseAmount: number;
@@ -29,14 +29,14 @@ export function computeVat(input: ComputeVatInput): ComputeVatResult {
 
   if (input.inclusive) {
     const gross = roundCurrency(base, currency);
-    const taxAmount = roundCurrency(gross - gross / (1 + rate / 100), currency);
-    const netAmount = roundCurrency(gross - taxAmount, currency);
+    const taxAmount = multiplyMoney(gross, rate / (100 + rate), currency);
+    const netAmount = subtractMoney(gross, taxAmount, currency);
     return { netAmount, taxAmount, grossAmount: gross };
   }
 
   const netAmount = roundCurrency(base, currency);
   const taxAmount = percentOf(netAmount, rate, currency);
-  const grossAmount = roundCurrency(netAmount + taxAmount, currency);
+  const grossAmount = addMoney(netAmount, taxAmount, currency);
   return { netAmount, taxAmount, grossAmount };
 }
 
@@ -47,7 +47,7 @@ export function sumLineVat(
 ): number {
   let total = 0;
   for (const line of lines) {
-    total = roundCurrency(total + computeVat({ ...line, currency }).taxAmount, currency);
+    total = addMoney(total, computeVat({ ...line, currency }).taxAmount, currency);
   }
   return total;
 }

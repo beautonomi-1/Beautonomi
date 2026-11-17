@@ -1,10 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const mockProcessSuccessfulPayment = vi.fn();
+const mockProcessFailedPayment = vi.fn();
 const mockRetrieve = vi.fn();
 
 vi.mock("@/app/api/payments/webhook/_handlers/charge-success", () => ({
   processSuccessfulPayment: (...args: unknown[]) => mockProcessSuccessfulPayment(...args),
+  processFailedPayment: (...args: unknown[]) => mockProcessFailedPayment(...args),
 }));
 
 vi.mock("@/lib/payments/stripe-server", () => ({
@@ -70,5 +74,42 @@ describe("settleStripeCheckoutSession (setup mode)", () => {
       expect.anything(),
       expect.objectContaining({ paymentProvider: "stripe" }),
     );
+  });
+
+  it("sends a declined Stripe card through the same failure handler", async () => {
+    const { settleStripePaymentIntentFailed } = await import("../settle-stripe-online-payment");
+    await settleStripePaymentIntentFailed(
+      {
+        id: "pi_1",
+        client_reference_id: "ref-1",
+        metadata: { booking_id: "booking-1", wallet_amount_applied: "30" },
+        last_payment_error: { message: "Card declined" },
+      },
+      {} as never,
+    );
+
+    expect(mockProcessFailedPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reference: "ref-1",
+        __paymentProvider: "stripe",
+        gateway_response: "Card declined",
+        metadata: expect.objectContaining({ booking_id: "booking-1", wallet_amount_applied: "30" }),
+      }),
+      expect.anything(),
+    );
+  });
+});
+
+describe("stripe webhook failure cases", () => {
+  it("runs the failure handler for a declined payment intent and a session whose intent id is only a string", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/api/payments/stripe/webhook/route.ts"),
+      "utf8",
+    );
+    const declined = src.slice(src.indexOf('case "payment_intent.payment_failed"'));
+    expect(declined.slice(0, 400)).toContain("settleStripePaymentIntentFailed");
+    const sessionFailed = src.slice(src.indexOf('case "checkout.session.async_payment_failed"'));
+    expect(sessionFailed.slice(0, 900)).toContain('typeof pi === "string"');
+    expect(sessionFailed.slice(0, 900)).toContain("settleStripePaymentIntentFailed");
   });
 });

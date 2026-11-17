@@ -17,6 +17,7 @@ import {
   platformRevenueNetFromAggregate,
 } from "@/lib/admin/aggregate-finance-ledger-rows";
 import { fetchAllPages } from "@/lib/admin/finance-ledger-tenant";
+import { subtractMoney, addMoney, sumMoney, computeGrowthPercent } from "@beautonomi/utils";
 import {
   FINANCE_METRIC_CONTRACT_VERSION,
   getFinanceMetricContracts,
@@ -87,6 +88,7 @@ export async function GET(request: Request) {
     let referralPayouts = 0;
     let outstandingGiftCardLiability = 0;
     let bookingsGmv = 0;
+    let bookingsGmvAvailable = true;
     let grossBookingsGmv = 0;
     let walkInBookingsDeduction = 0;
     let terminalOrderCount = 0;
@@ -102,7 +104,7 @@ export async function GET(request: Request) {
       if (normalizedRange.end) topupQuery = topupQuery.lte("paid_at", normalizedRange.end);
       try {
         const { rows: topups } = await fetchAllPages<{ amount?: number | null }>(topupQuery);
-        walletTopupCashCollected = topups.reduce((s, r) => s + Number(r.amount || 0), 0);
+        walletTopupCashCollected = topups.reduce((s, r) => addMoney(s, Number(r.amount || 0)), 0);
       } catch (topErr) {
         console.warn("Wallet topups tenant-scoped query failed:", topErr);
       }
@@ -118,7 +120,7 @@ export async function GET(request: Request) {
       if (normalizedRange.end) refQuery = refQuery.lte("created_at", normalizedRange.end);
       try {
         const { rows: refTxs } = await fetchAllPages<{ amount?: number | null }>(refQuery);
-        referralPayouts = refTxs.reduce((s, r) => s + Number(r.amount || 0), 0);
+        referralPayouts = refTxs.reduce((s, r) => addMoney(s, Number(r.amount || 0)), 0);
       } catch (refErr) {
         console.warn("Referral wallet credits tenant-scoped query failed:", refErr);
       }
@@ -133,7 +135,7 @@ export async function GET(request: Request) {
       try {
         const { rows: giftCards } = await fetchAllPages<{ balance?: number | null }>(giftQuery);
         outstandingGiftCardLiability = giftCards.reduce(
-          (s, row) => s + Number(row.balance || 0),
+          (s, row) => addMoney(s, Number(row.balance || 0)),
           0,
         );
       } catch (giftErr) {
@@ -146,6 +148,7 @@ export async function GET(request: Request) {
         normalizedRange,
         agg.walk_in_additional_charges,
       );
+      bookingsGmvAvailable = alignedGmv.available;
       grossBookingsGmv = alignedGmv.grossBookingsGmv;
       walkInBookingsDeduction = alignedGmv.walkInAddOnDeduction;
       bookingsGmv = alignedGmv.alignedBookingsGmv;
@@ -175,6 +178,7 @@ export async function GET(request: Request) {
       }
     } catch (e) {
       console.warn("Wallet/referral counts failed:", e);
+      bookingsGmvAvailable = false;
     }
 
     // Cancellation fees from ledger (single source of truth, not from bookings table)
@@ -183,20 +187,26 @@ export async function GET(request: Request) {
     const customerPaidPlatformFees = agg.service_fee_revenue;
     const totalPlatformRecognizedRevenue = platformRevenueNetFromAggregate(agg);
     const totalPlatformRecognizedRevenueAfterReferrals =
-      totalPlatformRecognizedRevenue - referralPayouts;
+      subtractMoney(totalPlatformRecognizedRevenue, referralPayouts);
     const providerRefundImpact = Math.abs(agg.provider_refund_net_impact);
     const providerNetAfterRefunds =
-      agg.provider_recognized_revenue_gross - providerRefundImpact;
-    const gmvVariance = agg.service_collected_gross - bookingsGmv;
+      subtractMoney(agg.provider_recognized_revenue_gross, providerRefundImpact);
+    const gmvVariance = bookingsGmvAvailable
+      ? subtractMoney(agg.service_collected_gross, bookingsGmv)
+      : null;
     const GMV_VARIANCE_PCT_THRESHOLD = 100;
-    const gmvPctDenominator = Math.min(agg.service_collected_gross, bookingsGmv);
+    const gmvPctDenominator =
+      bookingsGmvAvailable && gmvVariance !== null
+        ? Math.min(agg.service_collected_gross, bookingsGmv)
+        : 0;
     const gmvVariancePct =
-      gmvPctDenominator >= GMV_VARIANCE_PCT_THRESHOLD
+      bookingsGmvAvailable && gmvVariance !== null && gmvPctDenominator >= GMV_VARIANCE_PCT_THRESHOLD
         ? (gmvVariance / gmvPctDenominator) * 100
         : null;
-    const outOfBalance = Math.abs(gmvVariance) > 1;
-    const gmvControlStatus =
-      gmvVariancePct === null
+    const outOfBalance = bookingsGmvAvailable && gmvVariance !== null ? Math.abs(gmvVariance) > 1 : false;
+    const gmvControlStatus = !bookingsGmvAvailable
+      ? "unavailable"
+      : gmvVariancePct === null
         ? outOfBalance
           ? "review"
           : "ok"
@@ -221,8 +231,8 @@ export async function GET(request: Request) {
       previousGmv = aggregateFinanceLedgerRows(prev).service_collected_gross;
     }
 
-    const gmvGrowth =
-      previousGmv > 0 ? ((agg.service_collected_gross - previousGmv) / previousGmv) * 100 : 0;
+    const gmvGrowthResult = computeGrowthPercent(agg.service_collected_gross, previousGmv);
+    const gmvGrowth = gmvGrowthResult.percent;
 
     const gatewayFeesTotal = gatewayFeesTotalFromAggregate(agg);
     const platformCashPosition = buildPlatformCashPosition({
@@ -284,7 +294,12 @@ export async function GET(request: Request) {
         // (excluding service fees) is preserved as total_platform_commission_net.
         total_platform_take_net: totalPlatformRecognizedRevenue,
         total_platform_commission_net:
-          agg.platform_take_net + agg.subscription_net + agg.ads_net + agg.marketing_credit_net,
+          sumMoney(
+            agg.platform_take_net,
+            agg.subscription_net,
+            agg.ads_net,
+            agg.marketing_credit_net,
+          ),
         total_platform_take_net_including_customer_fees: totalPlatformRecognizedRevenue,
 
         provider_earnings: agg.provider_earnings_net,
@@ -294,6 +309,9 @@ export async function GET(request: Request) {
         cancellation_fees_retained: cancellationFeesRetained,
         refunds_gross: agg.refunds_gross,
         refunds_abs_gross: agg.refunds_abs_gross,
+        refunds_store_credit: agg.refunds_store_credit,
+        refunds_in_person: agg.refunds_in_person,
+        refunds_platform_cash_out: agg.refunds_platform_cash_out,
         provider_refund_net_impact: agg.provider_refund_net_impact,
         gift_card_sales: agg.gift_card_sales,
         membership_sales: agg.membership_sales,
@@ -387,9 +405,19 @@ export async function GET(request: Request) {
         reconciliation: {
           generated_at: new Date().toISOString(),
           checks: {
+            wallet_topup_ledger_vs_table: {
+              wallet_topups_table: walletTopupCashCollected,
+              wallet_topup_ledger: agg.wallet_topup_ledger,
+              variance: subtractMoney(walletTopupCashCollected, agg.wallet_topup_ledger),
+              status:
+                Math.abs(subtractMoney(walletTopupCashCollected, agg.wallet_topup_ledger)) > 0.01
+                  ? "review"
+                  : "ok",
+            },
             ledger_vs_bookings_gmv: {
               ledger_gmv: agg.service_collected_gross,
-              bookings_gmv: bookingsGmv,
+              bookings_gmv: bookingsGmvAvailable ? bookingsGmv : null,
+              bookings_gmv_available: bookingsGmvAvailable,
               gross_bookings_gmv: grossBookingsGmv,
               walk_in_deduction: walkInBookingsDeduction,
               variance: gmvVariance,
@@ -444,6 +472,7 @@ export async function GET(request: Request) {
         },
 
         gmv_growth: gmvGrowth,
+        gmv_growth_kind: gmvGrowthResult.kind,
         period: {
           start_date: normalizedRange.start || null,
           end_date: normalizedRange.end || null,

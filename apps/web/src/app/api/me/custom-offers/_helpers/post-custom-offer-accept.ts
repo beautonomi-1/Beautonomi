@@ -15,6 +15,7 @@ import {
   resolveHostedCheckoutCallbacks,
 } from "@/lib/payments/resolve-paystack-hosted-callback";
 import { chargeAuthorization } from "@/lib/payments/paystack-complete";
+import { classifySavedCardChargeStatus } from "@/lib/payments/saved-card-charge-status";
 import { computeCustomOfferPricing } from "./custom-offer-pricing";
 import { computeCustomOfferSplits } from "./custom-offer-splits";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -24,6 +25,7 @@ import { toMinorUnits, percentOf } from "@beautonomi/utils";
 import { chargeStripeOffSession } from "@/lib/payments/charge-stripe-off-session";
 import { chargeAndSettleFlutterwaveOffSession } from "@/lib/payments/charge-flutterwave-off-session";
 import { patchCustomOfferMessageAttachments } from "@/lib/custom-offers/sync-offer-message-attachments";
+import { reopenCustomRequestIfNoLiveOffers } from "@/lib/custom-offers/reopen-request-if-no-live-offers";
 import { finalizeCustomOfferPayment } from "@/lib/custom-offers/finalize-custom-offer-payment";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack-complete";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
@@ -291,9 +293,14 @@ export async function postCustomOfferAccept(
             );
           } catch (walletErr) {
             console.error("[custom-offers/accept] wallet refund on expire failed:", walletErr);
+            const { rememberCustomOfferWalletStillDue } = await import(
+              "@/lib/custom-offers/credit-wallet-for-offer-abandon"
+            );
+            await rememberCustomOfferWalletStillDue(adminEarly, id);
           }
         }
         await patchCustomOfferMessageAttachments(adminEarly, id, { status: "expired" });
+        await reopenCustomRequestIfNoLiveOffers(adminEarly, req?.id);
         void notifyCustomerCustomOfferExpiredBestEffort({
           customerId: user.id,
           providerId: req?.provider_id,
@@ -313,25 +320,34 @@ export async function postCustomOfferAccept(
       );
     }
 
-    const adminSupabase = getSupabaseAdmin();
-
-    if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
-      await adminSupabase
-        .from("custom_offers")
-        .update({ status: "expired", updated_at: new Date().toISOString() })
-        .eq("id", id);
-      await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "expired" });
-      void notifyCustomerCustomOfferExpiredBestEffort({
-        customerId: user.id,
-        providerId: req?.provider_id,
-        offerId: id,
-        requestId: req?.id,
-      });
-      return errorResponse("This offer has expired.", "OFFER_EXPIRED", 410);
-    }
-
     if (offer.status === "withdrawn") {
       return errorResponse("This offer has been withdrawn.", "OFFER_WITHDRAWN", 400);
+    }
+
+    const adminSupabase = getSupabaseAdmin();
+
+    if (
+      offer.expiration_at &&
+      new Date(offer.expiration_at).getTime() < Date.now() &&
+      (offer.status === "pending" || offer.status === "changes_requested")
+    ) {
+      const { data: claimedExpired } = await adminSupabase
+        .from("custom_offers")
+        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .in("status", ["pending", "changes_requested"])
+        .select("id");
+      if ((claimedExpired?.length ?? 0) > 0) {
+        await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "expired" });
+        await reopenCustomRequestIfNoLiveOffers(adminSupabase, req?.id);
+        void notifyCustomerCustomOfferExpiredBestEffort({
+          customerId: user.id,
+          providerId: req?.provider_id,
+          offerId: id,
+          requestId: req?.id,
+        });
+      }
+      return errorResponse("This offer has expired.", "OFFER_EXPIRED", 410);
     }
 
     if (offer.status === "changes_requested") {
@@ -476,6 +492,8 @@ export async function postCustomOfferAccept(
       tip_amount: result.tipAmount,
       tax_amount: result.taxAmount,
       tax_rate: result.taxRate,
+      tax_inclusive: result.taxInclusive,
+      provider_vat_number_snapshot: result.providerVatNumberSnapshot,
       travel_fee: result.travelFee,
       service_fee_amount: result.serviceFeeAmount,
       service_fee_percentage: result.serviceFeePercentage,
@@ -518,6 +536,33 @@ export async function postCustomOfferAccept(
     // `finalizeCustomOfferPayment` once the booking row exists.
     const reservedRollbacks: Array<() => Promise<void>> = [];
 
+    if ((offer as { payment_reference?: string | null }).payment_reference === "custom_offer_wallet_refund_still_due") {
+      try {
+        const { creditWalletForCustomOfferAbandon, CUSTOM_OFFER_WALLET_STILL_DUE } = await import(
+          "@/lib/custom-offers/credit-wallet-for-offer-abandon"
+        );
+        await creditWalletForCustomOfferAbandon(
+          getSupabaseAdmin(),
+          id,
+          user.id,
+          req?.provider_id ?? offer.provider_id ?? null,
+          { reason: "failed" },
+        );
+        await getSupabaseAdmin()
+          .from("custom_offers")
+          .update({ payment_reference: null, updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("payment_reference", CUSTOM_OFFER_WALLET_STILL_DUE);
+      } catch (walletErr) {
+        console.error("[custom-offers/accept] wallet return from the last payment failed:", walletErr);
+        return errorResponse(
+          "We could not return your wallet from the last payment. Please try again.",
+          "WALLET_REFUND_STILL_DUE",
+          409,
+        );
+      }
+    }
+
     if (walletAmount > 0) {
       try {
         const walletLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
@@ -543,8 +588,12 @@ export async function postCustomOfferAccept(
               req?.provider_id ?? offer.provider_id ?? null,
               { reason: "failed" },
             );
-          } catch {
-            /* best-effort refund */
+          } catch (walletErr) {
+            console.error("[custom-offers/accept] wallet refund after a failed payment start:", walletErr);
+            const { rememberCustomOfferWalletStillDue } = await import(
+              "@/lib/custom-offers/credit-wallet-for-offer-abandon"
+            );
+            await rememberCustomOfferWalletStillDue(getSupabaseAdmin(), id);
           }
         });
       } catch (walletErr: any) {
@@ -720,6 +769,14 @@ export async function postCustomOfferAccept(
           stripePaymentMethodId: stripePmId,
           metadata: pricingMetadata,
         });
+        if (stripeCharge.ok === false && stripeCharge.pending === true) {
+          return successResponse({
+            pending: true,
+            paymentUrl: null,
+            reference: stripeCharge.reference,
+            message: stripeCharge.message,
+          });
+        }
         if (stripeCharge.ok === false) {
           for (const rb of reservedRollbacks) await rb();
           await adminSupabase
@@ -750,7 +807,7 @@ export async function postCustomOfferAccept(
           reference,
           metadata: pricingMetadata,
         });
-        if (flwCharge.ok === false) {
+        if (flwCharge.ok === false && !flwCharge.pending) {
           for (const rb of reservedRollbacks) await rb();
           await adminSupabase
             .from("custom_offers")
@@ -763,6 +820,14 @@ export async function postCustomOfferAccept(
             .eq("id", id);
           await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "pending" });
           return errorResponse(flwCharge.message || "Failed to charge card", "CHARGE_FAILED", 400);
+        }
+        if (flwCharge.ok === false) {
+          return successResponse({
+            pending: true,
+            paymentUrl: null,
+            reference,
+            message: flwCharge.message,
+          });
         }
         chargeResult = {
           status: true,
@@ -792,6 +857,33 @@ export async function postCustomOfferAccept(
           .eq("id", id);
         await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "pending" });
         return errorResponse(chargeResult.message || "Failed to charge card", "CHARGE_FAILED", 400);
+      }
+
+      const recordedStatus = chargeResult.data?.status;
+      if (recordedStatus != null) {
+        const outcome = classifySavedCardChargeStatus(String(recordedStatus));
+        if (outcome === "failed") {
+          for (const rb of reservedRollbacks) await rb();
+          await adminSupabase
+            .from("custom_offers")
+            .update({
+              status: "pending",
+              payment_url: null,
+              payment_reference: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", id);
+          await patchCustomOfferMessageAttachments(adminSupabase, id, { status: "pending" });
+          return errorResponse(chargeResult.message || "Failed to charge card", "CHARGE_FAILED", 400);
+        }
+        if (outcome !== "success") {
+          return successResponse({
+            pending: true,
+            paymentUrl: null,
+            reference: chargeResult.data?.reference ?? reference,
+            message: chargeResult.message || "Card charge is still pending",
+          });
+        }
       }
 
       // Inline finalize — mirrors the zero-Paystack branch so the offer reaches

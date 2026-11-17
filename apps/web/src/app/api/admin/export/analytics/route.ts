@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -126,7 +127,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     const totalRevenue = (revenueData || []).reduce(
-      (sum, t) => sum + Math.abs(Number(t.net || 0)),
+      (sum, t) => addMoney(sum, Math.abs(Number(t.net || 0))),
       0
     );
 

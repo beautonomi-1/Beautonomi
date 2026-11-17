@@ -2,13 +2,14 @@
  * Mirrors filtered summary math in more/transactions.tsx
  */
 import { describe, it, expect } from "@jest/globals";
+import { multiplyMoney } from "@beautonomi/utils";
 
 type Tx = { type: string; amount: number; sign?: number };
 
 function signedContributionForSummary(t: Tx): number {
   if (t.type === "earning" || t.type === "tip") return t.amount;
-  if (t.type === "payout" || t.type === "refund" || t.type === "fee") return -t.amount;
-  if (t.type === "adjustment") return (t.sign ?? 1) * t.amount;
+  if (t.type === "payout" || t.type === "refund" || t.type === "fee") return multiplyMoney(t.amount, -1);
+  if (t.type === "adjustment") return multiplyMoney(t.amount, t.sign ?? 1);
   return 0;
 }
 

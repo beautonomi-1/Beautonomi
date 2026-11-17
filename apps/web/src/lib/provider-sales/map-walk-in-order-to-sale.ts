@@ -2,6 +2,7 @@
  * Map a walk-in product_order (+ items) onto the legacy POS sale list shape
  * so sales history can union both sources.
  */
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 
 export type SaleHistoryItem = {
   id: string;
@@ -40,6 +41,7 @@ export type WalkInOrderForSale = {
   subtotal?: number | string | null;
   tax_amount?: number | string | null;
   total_amount?: number | string | null;
+  refunded_amount?: number | string | null;
   payment_method?: string | null;
   payment_status?: string | null;
   customer_id?: string | null;
@@ -91,7 +93,7 @@ export function mapWalkInOrderToSaleShape(input: {
     })),
     subtotal: Number(order.subtotal || 0),
     tax: Number(order.tax_amount || 0),
-    total: Number(order.total_amount || 0),
+    total: productOrderKeptAmount(order),
     payment_method: order.payment_method || "cash",
     payment_status: mapWalkInPaymentStatus(order.payment_status),
     team_member_id: teamMemberId,

@@ -38,6 +38,22 @@ describe("mapWalkInOrderToSaleShape", () => {
     expect(row.payment_status).toBe("completed");
     expect(row.items[0]?.name).toBe("Shampoo");
     expect(row.team_member_name).toBe("Nolo");
+    expect(row.total).toBe(115);
+
+    const refunded = mapWalkInOrderToSaleShape({
+      order: {
+        id: "ord-2",
+        total_amount: 130,
+        refunded_amount: 50,
+        payment_status: "partially_refunded",
+      },
+      items: [],
+      clientName: null,
+      teamMemberId: null,
+      teamMemberName: null,
+    });
+    expect(refunded.total).toBe(80);
+    expect(refunded.payment_status).toBe("partially_refunded");
   });
 
   it("dedupes migrated legacy sales in favor of walk-in product orders", () => {

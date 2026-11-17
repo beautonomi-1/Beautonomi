@@ -5,6 +5,10 @@ import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabas
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { z } from "zod";
+import {
+  canActOnStaffTimeRecords,
+  STAFF_TIME_RECORD_FORBIDDEN_MESSAGE,
+} from "@/lib/auth/staff-time-record-access";
 
 const _clockInSchema = z.object({
   pin: z.string().optional(),
@@ -41,6 +45,10 @@ export async function POST(
 
     if (staffError || !staff) {
       return notFoundResponse("Staff member not found");
+    }
+
+    if (!(await canActOnStaffTimeRecords(user, staff, request))) {
+      return errorResponse(STAFF_TIME_RECORD_FORBIDDEN_MESSAGE, "FORBIDDEN", 403);
     }
 
     // If PIN provided, verify it
@@ -119,13 +127,17 @@ export async function PATCH(
     // Verify staff belongs to provider
     const { data: staff } = await supabase
       .from("provider_staff")
-      .select("id")
+      .select("id, user_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
     if (!staff) {
       return notFoundResponse("Staff member not found");
+    }
+
+    if (!(await canActOnStaffTimeRecords(user, staff, request))) {
+      return errorResponse(STAFF_TIME_RECORD_FORBIDDEN_MESSAGE, "FORBIDDEN", 403);
     }
 
     // Find active time card
@@ -207,13 +219,17 @@ export async function GET(
     // Verify staff belongs to provider
     const { data: staff } = await supabase
       .from("provider_staff")
-      .select("id, name")
+      .select("id, name, user_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
     if (!staff) {
       return notFoundResponse("Staff member not found");
+    }
+
+    if (!(await canActOnStaffTimeRecords(user, staff, request))) {
+      return errorResponse(STAFF_TIME_RECORD_FORBIDDEN_MESSAGE, "FORBIDDEN", 403);
     }
 
     // Build query

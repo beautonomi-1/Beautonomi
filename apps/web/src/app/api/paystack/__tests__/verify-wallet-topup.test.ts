@@ -163,4 +163,15 @@ describe("GET /api/paystack/verify wallet top-up", () => {
       expect.anything(),
     );
   });
+
+  it("reports success when the wallet is credited but the receipt row cannot be stored", async () => {
+    mockApplyWalletTopup.mockRejectedValue(new Error("wallet topup payment was not recorded"));
+    const res = await GET(
+      new NextRequest(`http://localhost/api/paystack/verify?reference=${encodeURIComponent(PAYSTACK_REF)}`),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.data.status).toBe("success");
+    expect(json.data.type).toBe("wallet_topup");
+  });
 });

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 /**
  * One redemption row exists per booking. Reuse it only when it already holds
@@ -23,7 +24,7 @@ export function giftCardBalanceAfterHold(current: number, amount: number): numbe
   if (!Number.isFinite(balance) || !Number.isFinite(take) || take <= 0 || balance + 0.001 < take) {
     return null;
   }
-  return Math.round((balance - take) * 100) / 100;
+  return subtractMoney(balance, take);
 }
 
 export type GiftHoldResult =
@@ -47,7 +48,7 @@ export async function holdGiftCardOnBooking(
     userId: string | null;
   },
 ): Promise<GiftHoldResult> {
-  const amount = Math.round(Math.max(0, Number(input.amount) || 0) * 100) / 100;
+  const amount = roundCurrency(Math.max(0, Number(input.amount) || 0));
   const code = input.code.trim().toUpperCase();
   if (amount <= 0 || !code) return { ok: false, reason: "invalid_gift_card" };
 

@@ -11,6 +11,8 @@ import {
 import { checkStaffSmsNotificationsFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { isProviderOwner } from "@/lib/auth/permissions";
+import { canViewStaffPay, redactStaffPayFields } from "@/lib/auth/provider-team-roster-access";
 import { z } from "zod";
 
 /**
@@ -38,6 +40,7 @@ export async function GET(
       .from("provider_staff")
       .select(`
         id,
+        user_id,
         name,
         email,
         phone,
@@ -54,6 +57,7 @@ export async function GET(
         work_hours_enabled,
         commission_enabled,
         commission_rate,
+        commission_percentage,
         hourly_rate,
         salary,
         tips_enabled,
@@ -81,7 +85,12 @@ export async function GET(
                  : staff.role === "manager" ? "provider_manager"
                  : "provider_staff";
 
-    return successResponse({
+    const payVisible =
+      user.role === "superadmin" ||
+      staff.user_id === user.id ||
+      (await canViewStaffPay(user.id, request));
+
+    return successResponse(redactStaffPayFields({
       id: staff.id,
       name: staff.name,
       email: staff.email,
@@ -100,7 +109,9 @@ export async function GET(
       desktop_notifications_enabled: staff.desktop_notifications_enabled ?? false,
       work_hours_enabled: staff.work_hours_enabled ?? true,
       commission_enabled: staff.commission_enabled ?? false,
-      commission_rate: staff.commission_rate ?? 0,
+      commission_rate: staff.commission_rate ?? null,
+      commission_percentage:
+        (staff as { commission_percentage?: number | null }).commission_percentage ?? null,
       hourly_rate: staff.hourly_rate ?? 0,
       salary: staff.salary ?? 0,
       tips_enabled: staff.tips_enabled ?? true,
@@ -113,7 +124,7 @@ export async function GET(
         (staff as { service_commission_rate?: number | null }).service_commission_rate ?? null,
       product_commission_rate:
         (staff as { product_commission_rate?: number | null }).product_commission_rate ?? null,
-    });
+    }, payVisible));
   } catch (error) {
     return handleApiError(error, "Failed to fetch staff settings");
   }
@@ -219,6 +230,20 @@ export async function PATCH(
         return errorResponse("Forbidden", "FORBIDDEN", 403);
       }
       isOwnerOrSuper = true;
+    }
+
+    // `is_admin` grants every permission — only the linked business owner or a
+    // superadmin may set it (F3-13). manage_team managers and self-edits get 403.
+    if (validationResult.data.is_admin !== undefined) {
+      const canGrantAdmin =
+        user.role === "superadmin" || (await isProviderOwner(user.id, request));
+      if (!canGrantAdmin) {
+        return errorResponse(
+          "Only the business owner can change admin access.",
+          "FORBIDDEN",
+          403,
+        );
+      }
     }
 
     // Map camelCase to snake_case for database

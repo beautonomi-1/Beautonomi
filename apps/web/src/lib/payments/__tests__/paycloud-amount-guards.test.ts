@@ -168,6 +168,19 @@ describe("computeExpectedAmountForEntity", () => {
     await expect(
       computeExpectedAmountForEntity(supabase, "provider-1", "product_order", "order-partial"),
     ).resolves.toEqual({ amount: 40, currency: "ZAR" });
+
+    orderData = {
+      total_amount: 130,
+      wallet_amount: 0,
+      gift_card_amount: 0,
+      currency: "ZAR",
+      payment_status: "partially_refunded",
+      status: "delivered",
+      order_source: "walk_in",
+    };
+    await expect(
+      computeExpectedAmountForEntity(supabase, "provider-1", "product_order", "order-refunded"),
+    ).resolves.toBeNull();
   });
 
   it("returns unpaid additional_charge amount with booking location", async () => {
@@ -350,6 +363,14 @@ describe("computeExpectedAmountForEntity sale gift", () => {
     await expect(
       computeExpectedAmountForEntity(supabase, "provider-1", "sale", "sale-1"),
     ).resolves.toEqual({ amount: 60, currency: "ZAR" });
+
+    sales.maybeSingle.mockResolvedValue({
+      data: { total_amount: 100, currency: "ZAR", payment_status: "refunded" },
+      error: null,
+    });
+    await expect(
+      computeExpectedAmountForEntity(supabase, "provider-1", "sale", "sale-1"),
+    ).resolves.toBeNull();
   });
 });
 

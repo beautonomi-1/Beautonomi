@@ -1,3 +1,5 @@
+import { bookingGiftVoidOutcome, visitClosedForGiftReturn } from "@/lib/bookings/gift-value-still-due";
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -7,6 +9,7 @@ import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { mapMoneySqlError } from "@/lib/finance/map-money-sql-error";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 import {
@@ -16,7 +19,12 @@ import {
   computeRefundCaps,
   deriveRefundMethodFromCaps,
 } from "@/lib/bookings/booking-refund-limits";
-import { walletStoreCreditAmountWhenVoidingGiftOnFullRefund } from "@/lib/bookings/settle-booking-cancellation";
+import {
+  customerStoreCreditRefundNotice,
+  refundableExcludingGiftStillDue,
+  staffRefundIssuedNotice,
+  walletStoreCreditAmountWhenVoidingGiftOnFullRefund,
+} from "@/lib/bookings/settle-booking-cancellation";
 import {
   cashRefundConfirmationDeadline,
   finalizeCashRefund,
@@ -139,7 +147,8 @@ export async function POST(
         location_id,
         loyalty_points_used,
         loyalty_points_redeemed,
-        gift_card_amount
+        gift_card_amount,
+        status
       `)
       .eq("id", bookingId)
       .eq("provider_id", providerId)
@@ -193,7 +202,7 @@ export async function POST(
     // booking_payments rows that already feed total_paid.
     const { data: bookingData } = await supabase
       .from("bookings")
-      .select("total_paid, total_refunded, wallet_amount, gift_card_amount")
+      .select("total_paid, total_refunded, wallet_amount, gift_card_amount, cancellation_settlement_error")
       .eq("id", bookingId)
       .single();
 
@@ -201,8 +210,16 @@ export async function POST(
     const walletPaid = (bookingData as { wallet_amount?: number } | null)?.wallet_amount || 0;
     const giftPaid = (bookingData as { gift_card_amount?: number } | null)?.gift_card_amount || 0;
     const totalRefunded = bookingData?.total_refunded || 0;
-    const totalCollectedAllSources = Math.max(totalPaid, walletPaid + giftPaid);
-    const availableForRefund = totalCollectedAllSources - totalRefunded;
+    const totalCollectedAllSources = Math.max(totalPaid, addMoney(walletPaid, giftPaid));
+    const availableForRefund = refundableExcludingGiftStillDue(
+      subtractMoney(totalCollectedAllSources, totalRefunded),
+      (bookingData as { cancellation_settlement_error?: string | null } | null)
+        ?.cancellation_settlement_error,
+      {
+        giftCardAmount: giftPaid,
+        visitClosed: visitClosedForGiftReturn((booking as { status?: string | null }).status),
+      },
+    );
 
     // Validate refund amount
     if (amount > availableForRefund) {
@@ -270,7 +287,7 @@ export async function POST(
     // Cash handed back instead of the machine refund releases the obligation below.
     const cashCap = computeInPersonRefundableCap(
       bookingPayments,
-      Math.max(0, completedInPersonRefunds - awaitingMachineTotal),
+      Math.max(0, subtractMoney(completedInPersonRefunds, awaitingMachineTotal)),
     );
 
     if (refundMethod === "cash" && amount > cashCap) {
@@ -507,6 +524,10 @@ export async function POST(
 
     if (refundError || !refund) {
       console.error("Error creating refund record:", refundError);
+      const mapped = mapMoneySqlError(refundError);
+      if (mapped) {
+        return errorResponse(mapped.message, mapped.code, mapped.status);
+      }
       return errorResponse("Failed to create refund record", "REFUND_ERROR", 500);
     }
 
@@ -521,14 +542,17 @@ export async function POST(
     if (
       refundMethod === "store_credit" &&
       giftPaid > 0 &&
-      totalRefunded + amount + 0.01 >= totalCollectedAllSources
+      addMoney(totalRefunded, amount) + 0.01 >= totalCollectedAllSources
     ) {
       try {
         const { data, error } = await (supabaseAdmin.rpc as any)("void_gift_card_redemption", {
           p_booking_id: bookingId,
         });
         if (error) giftCardRestored = "unknown";
-        else giftCardRestored = data === true;
+        else {
+          const outcome = bookingGiftVoidOutcome(data);
+          giftCardRestored = outcome === "restored" ? true : outcome === "spent" ? false : "unknown";
+        }
       } catch (voidErr) {
         console.warn("Gift card void before store-credit refund failed:", voidErr);
         giftCardRestored = "unknown";
@@ -544,6 +568,8 @@ export async function POST(
             giftCardRestored,
           })
         : amount;
+    let walletPaidToCustomer = walletCreditAmount;
+    let giftCardReturnedToCustomer = false;
 
     if (refundMethod === "store_credit") {
       if (!booking.customer_id) {
@@ -667,22 +693,151 @@ export async function POST(
       } catch (syncErr) {
         console.warn("Failed to sync payment transaction after terminal refund:", syncErr);
       }
-    } else {
-      // Wallet credited successfully — finalise the refund. The status flip
-      // to `completed` triggers (a) the finance_transactions reversal row
-      // via 490 and (b) the booking.payment_status recalculation via 126.
+    }
+
+    // Keep full-refund detection aligned with the same all-source coverage cap.
+    const newTotalRefunded = addMoney(totalRefunded, amount);
+    const isFullyRefunded = newTotalRefunded >= totalCollectedAllSources;
+
+    if (isFullyRefunded) {
+      try {
+        if (booking.customer_id) {
+          const { finishCancellationLoyalty, markLoyaltyStillDue } = await import(
+            "@/lib/bookings/settle-booking-cancellation"
+          );
+          const loyalty = await finishCancellationLoyalty(
+            supabaseAdmin,
+            {
+              id: bookingId,
+              customer_id: booking.customer_id,
+              booking_number: (booking as { booking_number?: string | null }).booking_number,
+            },
+            "provider",
+          );
+          await markLoyaltyStillDue(supabaseAdmin, bookingId, loyalty.stillDue);
+        }
+      } catch (loyaltyErr) {
+        console.warn("Failed to restore loyalty points on full refund:", loyaltyErr);
+      }
+
+      const giftCardAmount = Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0);
+      if (giftCardRestored === true) giftCardReturnedToCustomer = true;
+      if (giftCardAmount > 0) {
+        let giftReturned = false;
+        let giftFailed = false;
+        try {
+          const { data, error } = await (supabaseAdmin.rpc as any)("void_gift_card_redemption", {
+            p_booking_id: bookingId,
+          });
+          if (error) {
+            giftFailed = true;
+            console.warn("Gift card void on full provider refund failed:", error);
+          } else if (bookingGiftVoidOutcome(data) === "restored") {
+            giftReturned = true;
+          } else if (bookingGiftVoidOutcome(data) === "unknown") {
+            giftFailed = true;
+          }
+        } catch (gcErr) {
+          giftFailed = true;
+          console.warn("Gift card void on full provider refund failed:", gcErr);
+        }
+        if (giftReturned) {
+          giftCardReturnedToCustomer = true;
+          await supabaseAdmin
+            .from("bookings")
+            .update({ gift_card_amount: 0, gift_card_id: null })
+            .eq("id", bookingId);
+        } else if (
+          refundMethod === "store_credit" &&
+          giftCardRestored === "unknown" &&
+          !giftFailed
+        ) {
+          const heldBack = Math.max(0, subtractMoney(amount, walletCreditAmount));
+          if (heldBack > 0.009 && booking.customer_id) {
+            const { error: giftCreditErr } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
+              p_user_id: booking.customer_id,
+              p_amount: heldBack,
+              p_currency: booking.currency || lastResortCurrency,
+              p_description: `Gift card value for booking ${booking.booking_number || booking.ref_number || bookingId.slice(0, 8)}: ${reason}`,
+              p_reference_id: bookingId,
+              p_reference_type: "booking_refund",
+              p_tenant_id: walletTenantId,
+              p_idempotency_key: `provider_booking_refund_gift:${refundId}`,
+            });
+            if (giftCreditErr) {
+              const { markGiftCardValueStillDue } = await import(
+                "@/lib/bookings/settle-booking-cancellation"
+              );
+              await markGiftCardValueStillDue(supabaseAdmin, bookingId, heldBack);
+            } else {
+              walletPaidToCustomer = addMoney(walletPaidToCustomer, heldBack);
+            }
+          }
+        } else if (giftFailed && refundMethod === "store_credit" && giftCardRestored === "unknown") {
+          const heldBack = Math.max(0, subtractMoney(amount, walletCreditAmount));
+          const { markGiftCardValueStillDue, markGiftCardStillHeld } = await import(
+            "@/lib/bookings/settle-booking-cancellation"
+          );
+          if (heldBack > 0.009) await markGiftCardValueStillDue(supabaseAdmin, bookingId, heldBack);
+          else await markGiftCardStillHeld(supabaseAdmin, bookingId, true);
+        } else if (giftFailed) {
+          const { markGiftCardStillHeld } = await import("@/lib/bookings/settle-booking-cancellation");
+          await markGiftCardStillHeld(supabaseAdmin, bookingId, true);
+        }
+      }
+    }
+
+    const giftHeldOut = Math.max(0, subtractMoney(amount, walletCreditAmount));
+    const refundRecordedAmount =
+      refundMethod === "store_credit" && giftHeldOut > 0.009 && !giftCardReturnedToCustomer
+        ? walletPaidToCustomer
+        : amount;
+
+    if (refundMethod === "store_credit") {
+      // The ledger row is written when status becomes completed, so the amount
+      // has to be the value that has actually moved. A restored gift is included.
+      // A gift that is still held is not.
       const { error: finalizeErr } = await supabaseAdmin
         .from("booking_refunds")
-        .update({ status: "completed" })
+        .update({ status: "completed", amount: refundRecordedAmount })
         .eq("id", refundId);
 
       if (finalizeErr) {
         console.error("Refund finalize failed after wallet credit:", finalizeErr);
-        return errorResponse(
-          "Refund credited to wallet but failed to finalise; please re-trigger.",
-          "FINALIZE_ERROR",
-          500,
-        );
+        if (walletPaidToCustomer > 0.009 && booking.customer_id) {
+          const { revertWalletRefundCreditAfterFinalizeFailure } = await import(
+            "@/lib/bookings/revert-wallet-refund-credit"
+          );
+          const revert = await revertWalletRefundCreditAfterFinalizeFailure(supabaseAdmin, {
+            refundId,
+            bookingId,
+            customerId: booking.customer_id,
+            amount: walletPaidToCustomer,
+            currency: booking.currency || lastResortCurrency,
+            tenantId: walletTenantId ?? null,
+            finalizeErrorMessage: finalizeErr.message,
+          });
+          if (revert.reverted) {
+            return errorResponse(
+              "Refund could not be finalised; the wallet credit was reverted. Please retry.",
+              "FINALIZE_ERROR",
+              500,
+            );
+          }
+          return errorResponse(
+            "Refund credited to wallet but failed to finalise and could not be reverted. Do not retry — finance has been notified.",
+            "FINALIZE_ERROR_UNREVERTED",
+            500,
+          );
+        }
+        await supabaseAdmin
+          .from("booking_refunds")
+          .update({
+            status: "failed",
+            notes: `Finalize failed (${finalizeErr.message})`,
+          })
+          .eq("id", refundId);
+        return errorResponse("Failed to finalise the refund.", "FINALIZE_ERROR", 500);
       }
 
       try {
@@ -699,14 +854,13 @@ export async function POST(
       }
     }
 
-    // Record booking event for audit trail
     try {
       await supabaseAdmin.from("booking_events").insert({
         booking_id: bookingId,
         event_type: "refunded",
         event_data: {
           refund_id: refundId,
-          amount,
+          amount: refundRecordedAmount,
           reason,
           refund_method: refundMethod,
         },
@@ -717,7 +871,7 @@ export async function POST(
         event_type: "refund_issued_by_staff",
         event_data: {
           refund_id: refundId,
-          amount,
+          amount: refundRecordedAmount,
           reason,
           refund_method: refundMethod,
           caps: refundCaps,
@@ -725,45 +879,62 @@ export async function POST(
         },
         created_by: user.id,
       });
-      const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
-      const staffRefundBookingRef =
-        booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
-      await notifyProviderTeamUsers(providerId, {
-        type: "staff_refund_issued",
-        title: "Refund issued",
-        message: `A ${formatMoney(amount)} ${refundMethod.replace("_", " ")} refund was issued for booking ${staffRefundBookingRef}.`,
-        data: { booking_id: bookingId, refund_id: refundId, amount, refund_method: refundMethod },
-      }, { managersOnly: true, push: true });
     } catch (eventErr) {
       console.warn("Failed to create refund booking event:", eventErr);
     }
 
-    // Keep full-refund detection aligned with the same all-source coverage cap.
-    const newTotalRefunded = totalRefunded + amount;
-    const isFullyRefunded = newTotalRefunded >= totalCollectedAllSources;
-
-    // Notify the customer. Wallet refunds point at the wallet; in-person (cash)
-    // refunds just confirm the money was returned at the salon. Skip entirely
-    // when there is no customer account (walk-in cash refund with null customer).
     const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
+    const storeCreditNotice =
+      refundMethod === "store_credit"
+        ? customerStoreCreditRefundNotice({
+            walletAmount: walletPaidToCustomer,
+            giftReturned: giftCardReturnedToCustomer,
+            bookingRef,
+            formatAmount: formatMoney,
+          })
+        : null;
+    const staffNotice = staffRefundIssuedNotice({
+      method: refundMethod,
+      amount,
+      walletAmount: walletPaidToCustomer,
+      giftReturned: giftCardReturnedToCustomer,
+      bookingRef,
+      formatAmount: formatMoney,
+    });
     const notifyTitle =
       refundMethod === "cash"
         ? "Refund processed"
         : refundMethod === "original"
           ? "Refund to your card"
-          : "Refund added to wallet";
+          : storeCreditNotice?.title ?? "Refund added to wallet";
     const notifyMessage =
       refundMethod === "cash"
         ? `A refund of ${formatMoney(amount)} for booking ${bookingRef} has been returned to you in person.`
         : refundMethod === "original"
           ? `A refund of ${formatMoney(amount)} for booking ${bookingRef} is on its way back to your card. It may take a few days to appear on your statement.`
-          : `A refund of ${formatMoney(amount)} for booking ${bookingRef} has been added to your wallet. Use it for your next booking.`;
+          : storeCreditNotice?.message ?? "";
     const notifyUrl =
-      refundMethod === "cash"
+      storeCreditNotice?.title === "Gift card returned"
         ? `/account-settings/bookings/${bookingId}`
-        : refundMethod === "original"
+        : refundMethod === "cash" || refundMethod === "original"
           ? `/account-settings/bookings/${bookingId}`
           : "/account-settings/wallet";
+    try {
+      const { notifyProviderTeamUsers } = await import("@/lib/notifications/notify-provider-team");
+      await notifyProviderTeamUsers(providerId, {
+        type: "staff_refund_issued",
+        title: "Refund issued",
+        message: staffNotice.message,
+        data: {
+          booking_id: bookingId,
+          refund_id: refundId,
+          amount: staffNotice.amount,
+          refund_method: refundMethod,
+        },
+      }, { managersOnly: true, push: true });
+    } catch (staffNotifyErr) {
+      console.warn("Failed to notify staff about the refund:", staffNotifyErr);
+    }
     if (booking.customer_id) {
       try {
         const { insertNotification } = await import("@/lib/notifications/insert-notification");
@@ -776,13 +947,12 @@ export async function POST(
             booking_id: bookingId,
             booking_ref: bookingRef,
             refund_id: (refund as { id: string }).id,
-            amount,
+            amount: refundMethod === "store_credit" ? walletPaidToCustomer : amount,
             reason,
             refund_method: refundMethod,
           },
           action_url: notifyUrl,
         });
-
         const { sendToUser } = await import("@/lib/notifications/onesignal");
         await sendToUser(
           booking.customer_id,
@@ -793,44 +963,10 @@ export async function POST(
             url: notifyUrl,
           },
           ["push"],
-          { appType: "customer" }
+          { appType: "customer" },
         );
       } catch (notifError) {
         console.warn("Failed to create refund notification:", notifError);
-      }
-    }
-
-    if (isFullyRefunded) {
-      try {
-        if (booking.customer_id) {
-          const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
-          await refundRedeemedLoyaltyPoints(supabaseAdmin, {
-            bookingId,
-            customerId: booking.customer_id,
-            reason: "provider_refund",
-          });
-          const { clawBackEarnedLoyaltyForBooking } = await import(
-            "@/lib/loyalty/claw-back-earned-for-booking"
-          );
-          await clawBackEarnedLoyaltyForBooking(supabaseAdmin, {
-            bookingId,
-            customerId: booking.customer_id,
-            bookingNumber: (booking as { booking_number?: string | null }).booking_number,
-          });
-        }
-      } catch (loyaltyErr) {
-        console.warn("Failed to restore loyalty points on full refund:", loyaltyErr);
-      }
-
-      const giftCardAmount = Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0);
-      if (giftCardAmount > 0) {
-        try {
-          await (supabaseAdmin.rpc as any)("void_gift_card_redemption", {
-            p_booking_id: bookingId,
-          });
-        } catch (gcErr) {
-          console.warn("Gift card void on full provider refund failed:", gcErr);
-        }
       }
     }
 
@@ -842,7 +978,7 @@ export async function POST(
           ? `Refund of ${formatMoney(amount)} recorded as returned in person`
           : refundMethod === "original"
             ? `Refund of ${formatMoney(amount)} recorded as returned to the customer's card`
-            : `Refund of ${formatMoney(amount)} added to customer wallet`,
+            : staffNotice.message,
       fully_refunded: isFullyRefunded,
     });
   } catch (error) {

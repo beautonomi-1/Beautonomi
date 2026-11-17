@@ -67,6 +67,7 @@ describe("splitProductOrderRefundTender", () => {
       refundedAmount: 90,
       refundId: "gw-2",
     });
+    vi.mocked(voidProductOrderGiftCardIfNeeded).mockResolvedValue("restored");
     const giftOrder = { ...order, gift_card_amount: 40, wallet_amount: 20 };
     const result = await splitProductOrderRefundTender({} as never, giftOrder, {
       refundAmount: 150,
@@ -91,5 +92,37 @@ describe("splitProductOrderRefundTender", () => {
     expect(result.walletCreditAmount).toBe(50);
     expect(result.onlineRefundedAmount).toBe(0);
     expect(result.tenderMoved).toBe(false);
+  });
+
+  it("full refund: a gift card that does not answer is not treated as returned", async () => {
+    vi.mocked(voidProductOrderGiftCardIfNeeded).mockResolvedValue("failed");
+    const giftOrder = { ...order, gift_card_amount: 40 };
+    const result = await splitProductOrderRefundTender({} as never, giftOrder, {
+      refundAmount: 150,
+      reason: "refund",
+      idempotencyKey: "k5",
+    });
+    expect(result.giftVoidFailed).toBe(true);
+    expect(result.giftCardRestored).toBe(0);
+    expect(result.tenderMoved).toBe(false);
+    expect(refundProductOrderOnlineTender).not.toHaveBeenCalled();
+  });
+
+  it("full refund: a gift card with no redemption is paid into the wallet", async () => {
+    vi.mocked(voidProductOrderGiftCardIfNeeded).mockResolvedValue("missing");
+    vi.mocked(refundProductOrderOnlineTender).mockResolvedValue({
+      attempted: true,
+      refundedAmount: 110,
+      refundId: "gw-3",
+    });
+    const giftOrder = { ...order, gift_card_amount: 40 };
+    const result = await splitProductOrderRefundTender({} as never, giftOrder, {
+      refundAmount: 150,
+      reason: "refund",
+      idempotencyKey: "k6",
+    });
+    expect(result.giftCardRestored).toBe(0);
+    expect(result.walletCreditAmount).toBe(40);
+    expect(result.giftVoidFailed).toBe(false);
   });
 });

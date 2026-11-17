@@ -74,7 +74,9 @@ export async function POST(request: Request) {
     // Verify booking belongs to user; use booking tenant for PSP + currency (immutable market for this booking).
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, customer_id, total_amount, status, tenant_id, currency, provider_id")
+      .select(
+        "id, customer_id, total_amount, status, tenant_id, currency, provider_id, cancelled_at, cancellation_reason",
+      )
       .eq("id", booking_id)
       .eq("customer_id", auth.user.id)
       .single();
@@ -96,6 +98,8 @@ export async function POST(request: Request) {
       tenant_id?: string | null;
       status?: string;
       currency?: string | null;
+      cancelled_at?: string | null;
+      cancellation_reason?: string | null;
     };
     const tenantResolved = await resolvePaymentTenantForBookingRequest(
       request,
@@ -109,7 +113,32 @@ export async function POST(request: Request) {
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const payableStatuses = new Set(["pending", "pending_payment"]);
-    if (!bookingData.status || !payableStatuses.has(bookingData.status)) {
+    const isPaymentFailedCancel =
+      bookingData.status === "cancelled" &&
+      bookingData.cancellation_reason === "Payment failed";
+    if (isPaymentFailedCancel) {
+      await supabaseAdmin
+        .from("bookings")
+        .update({
+          status: "pending_payment",
+          payment_status: "pending",
+          cancelled_at: null,
+          cancelled_by: null,
+          cancellation_reason: null,
+        })
+        .eq("id", booking_id)
+        .eq("customer_id", auth.user.id)
+        .eq("status", "cancelled")
+        .eq("cancellation_reason", "Payment failed");
+      bookingData.status = "pending_payment";
+      bookingData.cancelled_at = null;
+      bookingData.cancellation_reason = null;
+    } else if (
+      bookingData.cancelled_at ||
+      bookingData.status === "cancelled" ||
+      !bookingData.status ||
+      !payableStatuses.has(bookingData.status)
+    ) {
       return NextResponse.json(
         {
           data: null,

@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -209,31 +210,10 @@ function maskPhone(value?: string | null) {
   return digits.length >= 4 ? `ending ${digits.slice(-4)}` : "Not set";
 }
 
-function csrfHeader(): Record<string, string> {
-  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
-  return match?.[1] ? { "x-csrf-token": match[1] } : {};
-}
-
 async function uploadPoster(id: string, file: File) {
   const form = new FormData();
   form.set("file", file);
-  const res = await fetch(`/api/admin/paystack-terminal/terminals/${id}/poster`, {
-    method: "POST",
-    credentials: "include",
-    headers: csrfHeader(),
-    body: form,
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const message =
-      typeof json?.error?.message === "string"
-        ? json.error.message
-        : typeof json?.message === "string"
-          ? json.message
-          : "Failed to upload poster";
-    throw new Error(message);
-  }
-  return json;
+  await adminApi.postForm(`/api/admin/paystack-terminal/terminals/${encodeURIComponent(id)}/poster`, form);
 }
 
 export function PaystackTerminalOperationsPage() {
@@ -453,13 +433,13 @@ export function PaystackTerminalOperationsPage() {
     return payments.reduce(
       (acc, row) => {
         const amount = Number(row.paid_amount ?? 0);
-        acc.received += amount;
+        acc.received = addMoney(acc.received, amount);
         if (["allocated", "admin_resolved", "split_allocated"].includes(row.allocation_status)) {
-          acc.allocated += Number(row.allocated_amount ?? amount);
+          acc.allocated = addMoney(acc.allocated, Number(row.allocated_amount ?? amount));
         }
-        if (row.payout_eligibility_status === "held") acc.held += amount;
-        if (row.allocation_status === "provider_declined") acc.declined += amount;
-        if (row.allocation_status === "admin_review") acc.review += amount;
+        if (row.payout_eligibility_status === "held") acc.held = addMoney(acc.held, amount);
+        if (row.allocation_status === "provider_declined") acc.declined = addMoney(acc.declined, amount);
+        if (row.allocation_status === "admin_review") acc.review = addMoney(acc.review, amount);
         return acc;
       },
       { received: 0, allocated: 0, held: 0, declined: 0, review: 0 },

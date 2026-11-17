@@ -15,6 +15,7 @@
  * Recognition rows are inserted when credits are consumed.
  * (refund/chargeback) posts `provider_marketing_credit_refund`.
  */
+import { subtractMoney } from "@beautonomi/utils";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
@@ -66,29 +67,30 @@ export async function recordMarketingCreditTopupPayment(params: {
       return (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? LAST_RESORT_CURRENCY;
     })());
 
-  const { data: existingFinance } = await supabase
-    .from("finance_transactions")
-    .select("id")
-    .eq("provider_id", providerId)
-    .eq("transaction_type", "provider_marketing_credit_topup")
-    .contains("metadata", { paystack_reference: reference })
-    .maybeSingle();
-  if (existingFinance) {
-    return { recorded: false, alreadyRecorded: true };
-  }
-
   const nowIso = new Date().toISOString();
-  const netAmount = amountMajor - feesMajor;
+  const netAmount = subtractMoney(amountMajor, feesMajor);
 
-  const { data: existingPaymentTx } = await supabase
+  const { data: existingPaymentTx, error: paymentLookupError } = await supabase
     .from("payment_transactions")
-    .select("id")
+    .select("id, status")
+    .eq("provider", paymentProvider)
     .eq("reference", reference)
-    .contains("metadata", { kind: "marketing_credit_topup" })
     .maybeSingle();
-
-  if (!existingPaymentTx) {
-    await supabase.from("payment_transactions").insert({
+  if (paymentLookupError) {
+    console.error("[marketing_topup] payment lookup failed:", paymentLookupError);
+    throw paymentLookupError;
+  }
+  const existingPaymentStatus = String(
+    (existingPaymentTx as { status?: string } | null)?.status ?? "",
+  ).toLowerCase();
+  if (existingPaymentTx && existingPaymentStatus === "failed") {
+    await supabase
+      .from("payment_transactions")
+      .delete()
+      .eq("id", (existingPaymentTx as { id: string }).id);
+  }
+  if (!existingPaymentTx || existingPaymentStatus === "failed") {
+    const { error: paymentError } = await supabase.from("payment_transactions").insert({
       booking_id: null,
       reference,
       amount: amountMajor,
@@ -104,6 +106,25 @@ export async function recordMarketingCreditTopupPayment(params: {
       },
       created_at: nowIso,
     });
+    if (paymentError && (paymentError as { code?: string }).code !== "23505") {
+      console.error("[marketing_topup] payment_transactions insert failed:", paymentError);
+      throw new Error("marketing credit payment was not recorded");
+    }
+  }
+
+  const { data: existingFinance, error: financeLookupError } = await supabase
+    .from("finance_transactions")
+    .select("id")
+    .eq("provider_id", providerId)
+    .eq("transaction_type", "provider_marketing_credit_topup")
+    .contains("metadata", { paystack_reference: reference })
+    .maybeSingle();
+  if (financeLookupError) {
+    console.error("[marketing_topup] finance lookup failed:", financeLookupError);
+    throw financeLookupError;
+  }
+  if (existingFinance) {
+    return { recorded: false, alreadyRecorded: true };
   }
 
   const { error: financeErr } = await supabase.from("finance_transactions").insert({

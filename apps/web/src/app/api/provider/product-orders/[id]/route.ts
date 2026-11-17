@@ -9,11 +9,19 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
+import {
+  mergeProductOrderContact,
+  PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT,
+} from "@/lib/orders/product-order-columns";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
   applyProductOrderCancelRefundSideEffects,
   releaseUnpaidProductOrderHolds,
+  ABANDONED_ORDER_REFUND_STILL_DUE,
   restockProductOrderLineItems,
+  productOrderHasStockStillOut,
 } from "@/lib/orders/product-order-lifecycle";
 import { splitProductOrderRefundTender } from "@/lib/ecommerce/product-order-refund-tender";
 import { allowsInPersonProductOrderRefund } from "@/lib/orders/product-order-tender";
@@ -23,7 +31,13 @@ import {
 } from "@/lib/notifications/notify-product-order-status";
 import { z } from "zod";
 import { cancelCourierShipmentForOrder } from "@/lib/orders/shipping";
+import {
+  productOrderStatusFitsFulfillment,
+  syncProductOrderLinesToOrderStatus,
+} from "@/lib/ecommerce/product-order-line-fulfilment";
+import { fulfillWalkInProductOrderDelivery } from "@/lib/provider-sales/fulfill-walk-in-product-order-delivery";
 import { withProductOrderAmountStillDue } from "@/lib/payments/resolve-paystack-initialize-amount";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 
 const NOTIFY_STATUSES = new Set<ProductOrderNotifyStatus>([
   "confirmed",
@@ -90,6 +104,9 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -97,7 +114,7 @@ export async function GET(
     const { data: order, error } = await (supabase.from("product_orders") as any)
       .select(
         `
-        *,
+        ${PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT},
         items:product_order_items (
           id, product_id, product_variant_id, product_name, product_image_url, quantity, unit_price, total_price,
           fulfilment_status, fulfilled_qty, fulfilment_updated_at,
@@ -124,7 +141,13 @@ export async function GET(
     }
 
     const [orderWithDue] = await withProductOrderAmountStillDue(getSupabaseAdmin(), [order]);
-    return successResponse({ order: orderWithDue ?? order });
+    const [orderWithContact] = await mergeProductOrderContact(
+      [orderWithDue ?? order],
+      canViewClients,
+    );
+    return successResponse({
+      order: redactBookingCustomerContact(orderWithContact ?? order, canViewClients),
+    });
   } catch (err) {
     return handleApiError(err, "Failed to fetch order");
   }
@@ -154,13 +177,16 @@ export async function PATCH(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
     const { data: order, error: fetchErr } = await (supabase.from("product_orders") as any)
       .select(
-        "id, status, provider_id, payment_status, payment_method, payment_reference, total_amount, wallet_amount, gift_card_amount, customer_id, currency, tenant_id, order_number, fulfillment_type, tracking_number, courier_shipment_id, refunded_amount, refund_method, refunded_at, refund_reason",
+        "id, status, provider_id, payment_status, payment_method, payment_reference, total_amount, wallet_amount, gift_card_amount, customer_id, currency, tenant_id, order_number, order_source, delivered_at, fulfillment_type, tracking_number, courier_shipment_id, refunded_amount, refund_method, refunded_at, refund_reason",
       )
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -175,13 +201,14 @@ export async function PATCH(
       parsed.refund_method ?? "store_credit";
     const orderTotal = Number(order.total_amount ?? 0);
     const alreadyRefunded = Math.max(0, Number(order.refunded_amount ?? 0));
-    const remainingRefundable = Math.max(0, Math.round((orderTotal - alreadyRefunded) * 100) / 100);
+    const orderCurrency = (order as { currency?: string | null }).currency || LAST_RESORT_CURRENCY;
+    const remainingRefundable = Math.max(0, subtractMoney(orderTotal, alreadyRefunded, orderCurrency));
     const refundAmount =
       parsed.refund_amount != null ? parsed.refund_amount : remainingRefundable;
     // A refund that leaves money on the order keeps it active: no terminal status, no restock.
     const isPartialRefund =
-      parsed.status === "refunded" && alreadyRefunded + refundAmount < orderTotal - 0.01;
-    const cumulativeRefunded = Math.round((alreadyRefunded + refundAmount) * 100) / 100;
+      parsed.status === "refunded" && addMoney(alreadyRefunded, refundAmount, orderCurrency) < orderTotal - 0.01;
+    const cumulativeRefunded = addMoney(alreadyRefunded, refundAmount, orderCurrency);
     const refundKeySuffix =
       isPartialRefund || alreadyRefunded > 0
         ? `:${alreadyRefunded.toFixed(2)}:${refundAmount.toFixed(2)}`
@@ -203,6 +230,50 @@ export async function PATCH(
           "INVALID_TRANSITION",
           400,
         );
+      }
+      if (
+        (order.status === "refunded" || order.status === "cancelled") &&
+        parsed.status === order.status
+      ) {
+        if (await productOrderHasStockStillOut(supabase, id)) {
+          await restockProductOrderLineItems(supabase, id, {
+            movementType: order.status === "refunded" ? "return" : "cancel",
+            actorUserId: user.id,
+            reason:
+              order.status === "refunded"
+                ? parsed.refund_reason ?? "Order refunded"
+                : parsed.cancellation_reason ?? "Order cancelled by provider",
+          });
+        }
+        if (order.status === "cancelled" && order.payment_status === "paid") {
+          const sideEffects = await applyProductOrderCancelRefundSideEffects(
+            supabase,
+            getSupabaseAdmin(),
+            order,
+            {
+              newStatus: "cancelled",
+              cancellationReason:
+                parsed.cancellation_reason ?? "Order cancelled by provider",
+            },
+          );
+          if (sideEffects.giftRestoreFailed) {
+            return errorResponse(
+              "The order was cancelled, but the gift card was not returned yet. Cancel again to finish the return.",
+              "GIFT_CARD_NOT_RETURNED",
+              502,
+            );
+          }
+          if (sideEffects.walletCreditFailed) {
+            return errorResponse(
+              "The order was cancelled, but the customer's wallet refund was not finished. Cancel again to finish the return.",
+              "REFUND_PENDING",
+              502,
+            );
+          }
+        }
+        return successResponse({
+          order: redactBookingCustomerContact({ id, status: order.status }, canViewClients),
+        });
       }
       if (
         parsed.status === "cancelled" &&
@@ -235,6 +306,18 @@ export async function PATCH(
         return errorResponse(
           "This order has not been paid online yet. Wait for payment before fulfilling it, or cancel it.",
           "PAYMENT_REQUIRED",
+          400,
+        );
+      }
+      if (
+        parsed.status !== order.status &&
+        !productOrderStatusFitsFulfillment(parsed.status, order.fulfillment_type)
+      ) {
+        return errorResponse(
+          parsed.status === "shipped"
+            ? "Collection orders are marked ready for collection, then collected. They are not shipped."
+            : "Delivery orders are marked shipped, then delivered. They are not ready for collection.",
+          "FULFILLMENT_STATUS_MISMATCH",
           400,
         );
       }
@@ -273,6 +356,28 @@ export async function PATCH(
             400,
           );
         }
+      }
+    }
+
+    if (
+      parsed.status === "delivered" &&
+      order.status !== "delivered" &&
+      String(order.order_source ?? "") === "walk_in"
+    ) {
+      const delivery = await fulfillWalkInProductOrderDelivery({
+        supabase: getSupabaseAdmin() as never,
+        providerId,
+        orderId: id,
+        actorUserId: user.id,
+      });
+      if (delivery.ok === false) {
+        return errorResponse(
+          delivery.reason === "payment_not_settled"
+            ? "The sale is not paid, so the products were not taken."
+            : delivery.reason,
+          "STOCK_ERROR",
+          409,
+        );
       }
     }
 
@@ -325,8 +430,19 @@ export async function PATCH(
           : updateQuery.eq("refunded_amount", order.refunded_amount);
     }
     const { data: updated, error: updateErr } = await updateQuery
-      .select("*, customer:users!product_orders_customer_id_fkey(id, full_name)")
+      .select(
+        `${PRODUCT_ORDER_COLUMNS_WITHOUT_CONTACT}, customer:users!product_orders_customer_id_fkey(id, full_name)`,
+      )
       .single();
+
+    if (
+      !updateErr &&
+      updatePayload.status &&
+      parsed.status &&
+      parsed.status !== order.status
+    ) {
+      await syncProductOrderLinesToOrderStatus(supabase, id, parsed.status);
+    }
 
     if (updateErr) {
       if (movingRefundMoney && (updateErr as { code?: string }).code === "PGRST116") {
@@ -382,6 +498,23 @@ export async function PATCH(
         idempotencyKey: `product_order_refund_online:${id}${refundKeySuffix}`,
       });
       onlineRefundedAmount = tender.onlineRefundedAmount;
+      if (tender.giftVoidFailed) {
+        await (supabase.from("product_orders") as any)
+          .update({
+            payment_status: order.payment_status,
+            status: order.status,
+            refund_method: order.refund_method ?? null,
+            refunded_amount: order.refunded_amount ?? null,
+            refunded_at: order.refunded_at ?? null,
+            refund_reason: order.refund_reason ?? null,
+          })
+          .eq("id", id);
+        return errorResponse(
+          "The gift card was not returned. The refund was not recorded.",
+          "GIFT_CARD_NOT_RETURNED",
+          502,
+        );
+      }
       const tenderMoved = tender.tenderMoved;
       if (tender.onlineRefundFailed) {
         console.warn(
@@ -441,6 +574,7 @@ export async function PATCH(
     // Reverse platform-held revenue on the ledger and credit wallet when cancelling
     // or refunding a paid order (shared with admin route).
     let cancelRefundWalletFailed = false;
+    let cancelRefundGiftFailed = false;
     if (
       movingRefundMoney ||
       (enteringTerminal && parsed.status === "cancelled" && order.payment_status === "paid")
@@ -459,6 +593,7 @@ export async function PATCH(
         },
       );
       cancelRefundWalletFailed = sideEffects.walletCreditFailed;
+      cancelRefundGiftFailed = sideEffects.giftRestoreFailed;
     } else if (enteringTerminal && parsed.status === "cancelled" && order.payment_status !== "paid") {
       const released = await releaseUnpaidProductOrderHolds(
         getSupabaseAdmin(),
@@ -466,11 +601,31 @@ export async function PATCH(
         `Wallet refund (order cancelled before payment) ${order.order_number || id.slice(0, 8)}`,
       );
       cancelRefundWalletFailed = released.failed;
+      if (released.failed || released.giftRestoreFailed) {
+        cancelRefundGiftFailed = true;
+        await (getSupabaseAdmin().from("product_orders") as any)
+          .update({
+            cancellation_reason: ABANDONED_ORDER_REFUND_STILL_DUE,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", id);
+      }
     }
 
+    if (cancelRefundGiftFailed) {
+      return errorResponse(
+        order.payment_status === "paid"
+          ? "The order was cancelled, but the gift card was not returned yet. Cancel again to finish the return."
+          : "The order was cancelled, but the gift card was not returned yet. The next check returns it.",
+        "GIFT_CARD_NOT_RETURNED",
+        502,
+      );
+    }
     if (cancelRefundWalletFailed) {
       return errorResponse(
-        "The order was cancelled, but the customer's wallet refund failed. Support will complete it — do not cancel again.",
+        order.payment_status === "paid"
+          ? "The order was cancelled, but the customer's wallet refund was not finished. Cancel again to finish the return."
+          : "The order was cancelled, but the refund was not finished yet. The next check returns it.",
         "REFUND_PENDING",
         502,
       );
@@ -550,7 +705,13 @@ export async function PATCH(
       }
     }
 
-    return successResponse({ order: updated });
+    const [updatedWithContact] = await mergeProductOrderContact(
+      updated ? [updated] : [],
+      canViewClients,
+    );
+    return successResponse({
+      order: redactBookingCustomerContact(updatedWithContact ?? updated, canViewClients),
+    });
   } catch (err) {
     return handleApiError(err, "Failed to update order");
   }

@@ -12,6 +12,7 @@
  * settings are the single source of truth.
  */
 
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type GiftCardPurchaseCaps = {
@@ -128,7 +129,7 @@ export function checkGiftCardDailyCaps(
       },
     };
   }
-  if (input.priorAmount + input.totalAmount > caps.maxAmountPerDay + 0.005) {
+  if (addMoney(input.priorAmount, input.totalAmount) > caps.maxAmountPerDay + 0.005) {
     return {
       ok: false,
       violation: {
@@ -158,7 +159,7 @@ export async function loadPurchaserDailyGiftCardUsage(
   let priorAmount = 0;
   for (const row of (data ?? []) as Array<{ quantity?: number | null; total_amount?: number | string | null }>) {
     priorCards += Number(row.quantity ?? 1);
-    priorAmount += Number(row.total_amount ?? 0);
+    priorAmount = addMoney(priorAmount, Number(row.total_amount ?? 0));
   }
   return { priorCards, priorAmount };
 }

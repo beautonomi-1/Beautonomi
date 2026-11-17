@@ -77,19 +77,15 @@ export default function MarketingIntegrationsPage() {
     }
 
     const hosted = readHostedCheckoutReturnParams(searchParams);
-    if (isHostedCheckoutFailureStatus(hosted.hostedStatus)) {
-      toast.info(t("web.provider.settings.pages.marketing-integrations.topUpFailed"));
-      router.replace("/provider/settings/marketing-integrations");
-      return;
-    }
-
     void (async () => {
       try {
+        const failedReturn = isHostedCheckoutFailureStatus(hosted.hostedStatus);
         const verifyResult = await verifyWithRetry(reference, {
-          maxAttempts: 5,
+          maxAttempts: failedReturn ? 1 : 5,
           delayMs: 1500,
           sessionId: hosted.sessionId,
           transactionId: hosted.transactionId,
+          redirectStatus: hosted.hostedStatus,
         });
         await loadCredits();
         await loadStatus();

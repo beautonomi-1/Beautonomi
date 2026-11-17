@@ -1,7 +1,11 @@
+import { addMoney } from "@beautonomi/utils";
 import { SupabaseClient } from "@supabase/supabase-js";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import { handleApiError } from "@/lib/supabase/api-helpers";
+import { providerVatSnapshotColumns } from "@/lib/tax/resolve-provider-vat";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
+import { releaseBookingSlotAfterPaymentFailure } from "./release-booking-slot-after-payment-failure";
+import { returnBorrowedSessionIfReleased } from "@/lib/bookings/reschedule-carry-over";
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
 
@@ -12,15 +16,27 @@ export interface CreatedBookingResult {
   createdBookingServices: any[];
 }
 
+const releasedBookingResponses = new WeakMap<Response, string>();
+
+/** The visit was released before this error was returned. */
+export function releasedBookingIdFromResponse(response: Response): string | null {
+  return releasedBookingResponses.get(response) ?? null;
+}
+
+function responseAfterRelease(response: Response, bookingId: string): Response {
+  releasedBookingResponses.set(response, bookingId);
+  return response;
+}
+
 /** discount_amount sent to create_booking_with_locking (loyalty folded in for total trigger). */
 export function discountAmountForBookingRpcInsert(v: {
   packageDiscountAmount: number;
   loyaltyDiscountAmount: number;
   loyaltyPointsRedeemed: number;
 }): number {
-  return (
-    v.packageDiscountAmount +
-    (v.loyaltyPointsRedeemed > 0 ? v.loyaltyDiscountAmount : 0)
+  return addMoney(
+    v.packageDiscountAmount,
+    v.loyaltyPointsRedeemed > 0 ? v.loyaltyDiscountAmount : 0,
   );
 }
 
@@ -61,7 +77,7 @@ export async function createBookingRecord(
      * was post-package while `discount_amount` ALSO carried the package amount, which
      * double-subtracted the package discount on every reconciliation surface.
      */
-    subtotal: v.subtotal + v.packageDiscountAmount,
+    subtotal: addMoney(v.subtotal, v.packageDiscountAmount),
     travel_fee: v.travelFee,
     platform_fee_config_id: v.serviceFeeConfigId,
     platform_fee_percentage: v.serviceFeePercentage,
@@ -75,6 +91,7 @@ export async function createBookingRecord(
     tip_amount: v.tipAmount,
     tax_amount: v.taxAmount,
     tax_rate: v.taxRate ?? null,
+    ...providerVatSnapshotColumns(v.providerVat),
     // Package/manual catalog discount only; promo is promotion_discount_amount.
     // Loyalty is folded in for RPC insert so validate_booking_total balances; split after redeem.
     discount_amount: discountAmountForBookingRpcInsert({
@@ -193,6 +210,28 @@ export async function createBookingRecord(
     );
   }
 
+  const releaseVisit = async (id: string, reason: string) => {
+    try {
+      await releaseBookingSlotAfterPaymentFailure(adminSupabase, id, v.customerId, reason);
+    } catch (releaseErr) {
+      console.error("[public bookings] could not release the visit", id, releaseErr);
+    }
+  };
+
+  const keepBorrowedSession = async (id: string) => {
+    if (!validatedDraft.reschedule_booking_id || !entitlementId) return;
+    try {
+      await returnBorrowedSessionIfReleased(adminSupabase, {
+        id,
+        customer_id: v.customerId,
+        customer_package_entitlement_id: entitlementId,
+        rescheduled_from_booking_id: String(validatedDraft.reschedule_booking_id),
+      });
+    } catch (sessionErr) {
+      console.error("[public bookings] could not keep the borrowed package session", id, sessionErr);
+    }
+  };
+
   // ── Fetch the created booking ────────────────────────────────────────────
   const { data: booking, error: fetchError } = await adminSupabase
     .from("bookings")
@@ -201,16 +240,25 @@ export async function createBookingRecord(
     .single();
 
   if (fetchError || !booking) {
-    return handleApiError(
-      new Error("Failed to fetch created booking"),
-      "Failed to fetch created booking",
-      "FETCH_ERROR",
-      500
+    await releaseVisit(
+      String(bookingId),
+      "Booking could not be loaded — the time was released so you can try again",
+    );
+    return responseAfterRelease(
+      handleApiError(
+        new Error("Failed to fetch created booking"),
+        "Failed to fetch created booking",
+        "FETCH_ERROR",
+        500,
+      ),
+      String(bookingId),
     );
   }
 
-  // At-home columns not included in create_booking_with_locking() INSERT (see migration 187 + RPC).
-  const atHomePatch: Record<string, unknown> = {};
+  // At-home / ads columns are still outside the RPC INSERT list (10143 persists VAT).
+  const atHomePatch: Record<string, unknown> = {
+    ...providerVatSnapshotColumns(v.providerVat),
+  };
   if (draft.location_type === "at_home" && draft.address) {
     const a = draft.address;
     atHomePatch.apartment_unit = a.apartment_unit ?? null;
@@ -256,22 +304,17 @@ export async function createBookingRecord(
       bookingId,
     });
     if (!redemptionResult.recorded && redemptionResult.reason !== "already_redeemed") {
-      await adminSupabase
-        .from("bookings")
-        .update({
-          status: "cancelled",
-          cancellation_reason: "Loyalty points could not be redeemed",
-          discount_amount: v.packageDiscountAmount,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", bookingId);
-      return handleApiError(
-        new Error(redemptionResult.reason || "Loyalty redemption failed"),
-        "We could not redeem your loyalty points. Please try again.",
-        redemptionResult.reason === "insufficient_balance"
-          ? "INSUFFICIENT_LOYALTY_BALANCE"
-          : "LOYALTY_REDEMPTION_FAILED",
-        400,
+      await releaseVisit(String(bookingId), "Loyalty points could not be redeemed");
+      return responseAfterRelease(
+        handleApiError(
+          new Error(redemptionResult.reason || "Loyalty redemption failed"),
+          "We could not redeem your loyalty points. Please try again.",
+          redemptionResult.reason === "insufficient_balance"
+            ? "INSUFFICIENT_LOYALTY_BALANCE"
+            : "LOYALTY_REDEMPTION_FAILED",
+          400,
+        ),
+        String(bookingId),
       );
     }
     const { error: loyaltyPatchError } = await adminSupabase
@@ -284,11 +327,15 @@ export async function createBookingRecord(
       .eq("id", bookingId);
     if (loyaltyPatchError) {
       console.error("[create-booking-record] loyalty discount patch failed:", loyaltyPatchError);
-      return handleApiError(
-        new Error(loyaltyPatchError.message || "Failed to record loyalty redemption on booking"),
-        "Booking was created but loyalty could not be applied. Please contact support.",
-        "LOYALTY_PATCH_FAILED",
-        500,
+      await releaseVisit(String(bookingId), "Loyalty could not be applied — the time was released so you can try again");
+      return responseAfterRelease(
+        handleApiError(
+          new Error(loyaltyPatchError.message || "Failed to record loyalty redemption on booking"),
+          "Booking was created but loyalty could not be applied. Please contact support.",
+          "LOYALTY_PATCH_FAILED",
+          500,
+        ),
+        String(bookingId),
       );
     }
   }
@@ -361,7 +408,7 @@ export async function createBookingRecord(
 
       const primaryServiceTotal = primaryServiceIds.reduce((sum: number, id: string) => {
         const svc = servicesMap.get(id);
-        return sum + (svc ? Number(svc.price) : 0);
+        return addMoney(sum, svc ? Number(svc.price) : 0);
       }, 0);
       const primaryDurationMinutes = primaryServiceIds.reduce((sum: number, id: string) => {
         const svc = servicesMap.get(id);
@@ -396,7 +443,7 @@ export async function createBookingRecord(
             assigned.filter((a) => !a.isPrimary)[guestIdx]?.id;
           const guestPrice = guestServiceIds.reduce((sum: number, id: string) => {
             const svc = servicesMap.get(id);
-            return sum + (svc ? Number(svc.price) : 0);
+            return addMoney(sum, svc ? Number(svc.price) : 0);
           }, 0);
           const guestDuration = guestServiceIds.reduce((sum: number, id: string) => {
             const svc = servicesMap.get(id);
@@ -505,25 +552,14 @@ export async function createBookingRecord(
         booking.id as string,
         v.customerId,
       );
-      const entitlementId = validatedDraft.customer_package_entitlement_id ?? null;
-      if (entitlementId) {
-        try {
-          await adminSupabase.rpc("restore_customer_package_entitlement", {
-            p_entitlement_id: entitlementId,
-            p_customer_id: v.customerId,
-          });
-        } catch (restoreErr) {
-          console.error(
-            "[create-booking-record] restore_customer_package_entitlement after group failure",
-            restoreErr,
-          );
-        }
-      }
-      return handleApiError(
-        err instanceof Error ? err : new Error(String(err)),
-        "Could not complete your group booking. Please try again.",
-        "GROUP_BOOKING_CREATE_FAILED",
-        500,
+      return responseAfterRelease(
+        handleApiError(
+          err instanceof Error ? err : new Error(String(err)),
+          "Could not complete your group booking. Please try again.",
+          "GROUP_BOOKING_CREATE_FAILED",
+          500,
+        ),
+        booking.id as string,
       );
     }
   }
@@ -541,11 +577,18 @@ export async function createBookingRecord(
     // so the caller (process-payment / outer route) can release the slot
     // cleanly.
     console.error("[create-booking-record] fetch booking_services failed:", bookingServicesError);
-    return handleApiError(
-      new Error(bookingServicesError.message || "Failed to load booking services"),
-      "Booking was created but we couldn't finish preparing it. Please try again.",
-      "BOOKING_SERVICES_FETCH_ERROR",
-      500,
+    await releaseVisit(
+      booking.id as string,
+      "Booking could not be finished — the time was released so you can try again",
+    );
+    return responseAfterRelease(
+      handleApiError(
+        new Error(bookingServicesError.message || "Failed to load booking services"),
+        "Booking was created but we couldn't finish preparing it. Please try again.",
+        "BOOKING_SERVICES_FETCH_ERROR",
+        500,
+      ),
+      booking.id as string,
     );
   }
 
@@ -577,14 +620,16 @@ export async function createBookingRecord(
     const { error: bookingAddonsError } = await adminSupabase
       .from("booking_addons")
       .insert(bookingAddonsRows);
-    if (bookingAddonsError) throw bookingAddonsError;
+    if (bookingAddonsError) {
+      await releaseVisit(booking.id as string, "Add-on could not be saved — the time was released so you can try again");
+      await keepBorrowedSession(booking.id as string);
+      throw bookingAddonsError;
+    }
   }
 
   // ── Products ─────────────────────────────────────────────────────────────
   const products = draft.products ?? [];
   if (products.length > 0) {
-    const primaryStaffId = draft.services?.[0]?.staff_id ?? null;
-    const stockDeductedAt = new Date().toISOString();
     const bookingProductsRows = products.map((product) => ({
       booking_id: booking.id,
       product_id: product.productId ?? product.product_id,
@@ -593,38 +638,88 @@ export async function createBookingRecord(
       unit_price: Number(product.unitPrice),
       total_price: Number(product.totalPrice),
       currency: v.currency,
-      staff_id: primaryStaffId,
-      stock_deducted_at: v.productById.get(product.productId ?? product.product_id ?? "")?.track_stock_quantity
-        ? stockDeductedAt
-        : null,
+      staff_id: null,
+      stock_deducted_at: null,
     }));
 
-    const { error: bookingProductsError } = await adminSupabase
+    const { data: insertedProducts, error: bookingProductsError } = await adminSupabase
       .from("booking_products")
-      .insert(bookingProductsRows);
-    if (bookingProductsError) throw bookingProductsError;
+      .insert(bookingProductsRows)
+      .select("id, product_id, product_variant_id");
+    if (bookingProductsError) {
+      await releaseVisit(booking.id as string, "Products could not be saved — the time was released so you can try again");
+      await keepBorrowedSession(booking.id as string);
+      throw bookingProductsError;
+    }
 
-    // Update stock (variant or product-level)
+    const unstamped = [...((insertedProducts ?? []) as Array<{
+      id: string;
+      product_id: string | null;
+      product_variant_id?: string | null;
+    }>)];
+    const stockDeductedAt = new Date().toISOString();
+
+    try {
     for (const product of products) {
       const pid = product.productId ?? product.product_id;
       const productData = pid ? v.productById.get(pid) : undefined;
       if (productData?.track_stock_quantity !== true) continue;
 
+      const quantity = Number(product.quantity);
+      if (!(quantity > 0)) continue;
+
+      const undoTakenStock = async () => {
+        const { incrementStockQuantity } = await import("@/lib/orders/product-order-lifecycle");
+        const restored = await incrementStockQuantity(adminSupabase, {
+          variantId: product.productVariantId ?? null,
+          productId: pid ?? null,
+        }, quantity);
+        if (!restored) {
+          console.error("[public bookings] undo stock after a failed taken mark:", pid);
+        }
+      };
+
       if (product.productVariantId) {
         const { error: variantStockError } = await (adminSupabase.rpc as any)("decrement_product_variant_stock", {
           p_variant_id: product.productVariantId,
-          p_quantity: product.quantity,
+          p_quantity: quantity,
         });
         if (variantStockError) throw variantStockError;
-      } else {
-        if (pid) {
-          const { error: stockError } = await adminSupabase.rpc("decrement_product_stock", {
-            p_product_id: pid,
-            p_quantity: product.quantity,
-          });
-          if (stockError) throw stockError;
-        }
+      } else if (pid) {
+        const { error: stockError } = await adminSupabase.rpc("decrement_product_stock", {
+          p_product_id: pid,
+          p_quantity: quantity,
+        });
+        if (stockError) throw stockError;
       }
+
+      const variantId = product.productVariantId ?? null;
+      const lineIndex = unstamped.findIndex(
+        (row) =>
+          row.product_id === pid &&
+          (row.product_variant_id ?? null) === variantId,
+      );
+      const line = lineIndex >= 0 ? unstamped.splice(lineIndex, 1)[0] : null;
+      if (!line) {
+        await undoTakenStock();
+        throw new Error("Could not record the stock deduction");
+      }
+      const { error: stampError } = await adminSupabase
+        .from("booking_products")
+        .update({ stock_deducted_at: stockDeductedAt })
+        .eq("id", line.id);
+      if (stampError) {
+        await undoTakenStock();
+        throw stampError;
+      }
+    }
+    } catch (stockErr) {
+      await releaseVisit(
+        booking.id as string,
+        "Product stock could not be taken — the time was released so you can try again",
+      );
+      await keepBorrowedSession(booking.id as string);
+      throw stockErr;
     }
 
     try {

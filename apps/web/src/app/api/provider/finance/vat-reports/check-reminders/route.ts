@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { endOfMonth } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { dateRangeBoundsUtc, formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
 
 type BiPeriod = { period_start: string; period_end: string; deadline_date: string };
@@ -37,7 +38,12 @@ function buildBiMonthlyPeriods(year: number, tz: string): BiPeriod[] {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const permissionCheck = await requireAnyPermission(
+      ["view_sales", "view_reports", "process_payments"],
+      request,
+    );
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 

@@ -1,4 +1,5 @@
 "use client";
+import { multiplyMoney } from "@beautonomi/utils";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -651,7 +652,7 @@ function ProductDetailContent() {
                     >
                       {addingToCart
                         ? "Adding…"
-                        : `Add to cart — ${formatPrice(displayPrice * quantity, product.currency, tenantCurrency)}`}
+                        : `Add to cart — ${formatPrice(multiplyMoney(displayPrice, quantity), product.currency, tenantCurrency)}`}
                     </button>
                   ) : (
                     <Link

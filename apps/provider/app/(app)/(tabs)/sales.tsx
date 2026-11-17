@@ -51,7 +51,15 @@ import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catal
 import { downloadPdf } from "@/lib/pdf-file";
 import { shareProviderSaleReceipt } from "@/lib/share-receipt";
 import { PROVIDER_SERVICES_CATALOG_CHANGED } from "@/lib/provider-services-catalog-events";
-import { manualCardCollectOptionLabel } from "@beautonomi/utils";
+import {
+  addMoney,
+  computeVat,
+  manualCardCollectOptionLabel,
+  multiplyMoney,
+  roundCurrency,
+  subtractMoney,
+  sumMoney,
+} from "@beautonomi/utils";
 import { isProductSellable, maxSellableUnits } from "@/features/products/cartItem";
 import type { ProductItem as PosProductItem } from "@/features/products/types";
 import { BarcodeScannerModal } from "@/features/products/BarcodeScannerModal";
@@ -522,25 +530,29 @@ export default function SalesScreen() {
   }, [refreshMetrics, refreshSales]);
 
   // Cart helpers
-  const taxRate =
+  const taxRatePercent =
     paymentSettings?.isVatRegistered === true
-      ? (paymentSettings.taxRatePercent ?? 0) / 100
+      ? (paymentSettings.taxRatePercent ?? 0)
       : 0;
+  const taxRate = taxRatePercent / 100;
   const taxInclusive = paymentSettings?.taxInclusive ?? true;
 
   const cartTotal = useMemo(
-    () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    () => cart.reduce((sum, item) => addMoney(sum, multiplyMoney(item.price, item.quantity)), 0),
     [cart]
   );
   const discountAmount = Number(discount) || 0;
   const tipAmount = Number(tip) || 0;
-  const afterDiscount = Math.max(0, cartTotal - discountAmount);
-  const taxAmount = taxInclusive
-    ? afterDiscount - afterDiscount / (1 + taxRate)
-    : afterDiscount * taxRate;
+  const afterDiscount = Math.max(0, subtractMoney(cartTotal, discountAmount));
+  const vatSplit = computeVat({
+    baseAmount: afterDiscount,
+    ratePercent: taxRatePercent,
+    inclusive: taxInclusive,
+  });
+  const taxAmount = vatSplit.taxAmount;
   const grandTotal = taxInclusive
-    ? afterDiscount + tipAmount
-    : afterDiscount + taxAmount + tipAmount;
+    ? addMoney(afterDiscount, tipAmount)
+    : sumMoney(afterDiscount, taxAmount, tipAmount);
 
   async function handleServiceRowPress(service: CatalogueService) {
     if (variantLoadingId) return;
@@ -899,7 +911,7 @@ export default function SalesScreen() {
         paystackTerminalCollectionIntentPayload({
           entity_type: payEntity.entity_type,
           entity_id: payEntity.entity_id,
-          expected_amount: Number(grandTotal.toFixed(2)),
+          expected_amount: roundCurrency(grandTotal),
           customer_reference: selectedClient?.full_name
             ? sl("saleForClient", { name: selectedClient.full_name })
             : sl("walkInSale"),
@@ -1481,7 +1493,7 @@ export default function SalesScreen() {
               </Text>
             </View>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
-              {formatCurrency(item.price * item.quantity)}
+              {formatCurrency(multiplyMoney(item.price, item.quantity))}
             </Text>
           </View>
         ))}
@@ -1663,7 +1675,7 @@ export default function SalesScreen() {
                 {item.name} x{item.quantity}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>
-                {formatCurrency(item.price * item.quantity)}
+                {formatCurrency(multiplyMoney(item.price, item.quantity))}
               </Text>
             </View>
           ))}

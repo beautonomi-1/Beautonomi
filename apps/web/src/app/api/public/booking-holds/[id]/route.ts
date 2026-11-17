@@ -128,7 +128,7 @@ async function handleGet(
       supabase
         .from("providers")
         .select(
-          "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, customer_fee_config_id, accept_online, accept_cash",
+          "tips_enabled, tip_presets, currency, timezone, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, customer_fee_config_id, accept_online, accept_cash",
         )
         .eq("id", hold.provider_id)
         .eq("tenant_id", tenantId)
@@ -274,6 +274,9 @@ async function handleGet(
       hold_id: hold.id,
       provider_id: hold.provider_id,
       provider_slug: providerSlug,
+      /** IANA zone (e.g. Africa/Johannesburg). Clients format the slot in this zone, not the device zone. */
+      provider_timezone:
+        (providerRow as { timezone?: string | null } | null)?.timezone?.trim() || null,
       staff_id: hold.staff_id,
       staff_name: staffNameFromSolo,
       booking_services_snapshot: hold.booking_services_snapshot,

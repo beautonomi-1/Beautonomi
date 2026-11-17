@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addMoney, roundCurrency } from "@beautonomi/utils";
+import { insertStaffEarningsLinesIgnoreDuplicates } from "./insert-staff-earnings-lines";
 
 export type EarningsLineRow = {
   id: string;
@@ -54,16 +56,16 @@ export function planEarningsReassignment(
     if (params.bookingServiceId && l.booking_service_id && l.booking_service_id !== params.bookingServiceId) continue;
     const key = `${l.source_finance_transaction_id}:${l.kind === "reversal" ? String((l as any).metadata?.reversed_kind ?? "commission") : l.kind}`;
     const cur = netByKey.get(key) ?? { net: 0, sample: l, base: 0 };
-    cur.net += Number(l.amount ?? 0);
+    cur.net = addMoney(cur.net, Number(l.amount ?? 0));
     if (l.kind !== "reversal") {
       cur.sample = l;
-      cur.base += Number(l.base_amount ?? 0);
+      cur.base = addMoney(cur.base, Number(l.base_amount ?? 0));
     }
     netByKey.set(key, cur);
   }
 
   for (const [, entry] of netByKey) {
-    const amount = Math.round(entry.net * 100) / 100;
+    const amount = roundCurrency(entry.net);
     if (amount <= 0) {
       skipped++;
       continue;
@@ -144,29 +146,20 @@ export async function reassignStaffEarningsLines(
     return { reversed: 0, created: 0, skipped: plan.skipped, netMoved: 0 };
   }
 
-  const { data: revRows, error: revErr } = await admin
-    .from("staff_earnings_lines")
-    .upsert(plan.reversals, {
-      onConflict: "source_finance_transaction_id,staff_id,kind",
-      ignoreDuplicates: true,
-    })
-    .select("id");
-  if (revErr) throw revErr;
+  const reversed = await insertStaffEarningsLinesIgnoreDuplicates(
+    admin,
+    plan.reversals as unknown as Array<Record<string, unknown>>,
+  );
+  const created = await insertStaffEarningsLinesIgnoreDuplicates(
+    admin,
+    plan.newLines as unknown as Array<Record<string, unknown>>,
+  );
 
-  const { data: newRows, error: newErr } = await admin
-    .from("staff_earnings_lines")
-    .upsert(plan.newLines, {
-      onConflict: "source_finance_transaction_id,staff_id,kind",
-      ignoreDuplicates: true,
-    })
-    .select("id");
-  if (newErr) throw newErr;
-
-  const netMoved = plan.newLines.reduce((s, l) => s + Number((l as { amount: number }).amount), 0);
+  const netMoved = plan.newLines.reduce((s, l) => addMoney(s, Number((l as { amount: number }).amount)), 0);
   return {
-    reversed: (revRows ?? []).length,
-    created: (newRows ?? []).length,
+    reversed,
+    created,
     skipped: plan.skipped,
-    netMoved: Math.round(netMoved * 100) / 100,
+    netMoved: roundCurrency(netMoved),
   };
 }

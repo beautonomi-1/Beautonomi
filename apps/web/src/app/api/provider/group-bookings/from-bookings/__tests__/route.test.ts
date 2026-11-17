@@ -32,6 +32,14 @@ vi.mock("@/lib/auth/requirePermission", () => ({
   requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
+vi.mock("@/lib/auth/permissions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/permissions")>();
+  return {
+    ...actual,
+    hasPermission: vi.fn(async () => true),
+  };
+});
+
 const mockGroupBookingsEnabled = vi.fn();
 vi.mock("@/lib/bookings/assert-provider-group-bookings-enabled", () => ({
   assertProviderStaffGroupBookingsEnabled: (...args: unknown[]) => mockGroupBookingsEnabled(...args),

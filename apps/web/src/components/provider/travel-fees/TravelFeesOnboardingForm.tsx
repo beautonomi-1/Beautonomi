@@ -1,5 +1,7 @@
 "use client";
 
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { fetcher } from "@/lib/http/fetcher";
@@ -46,7 +48,7 @@ function computePreviewFee(
   const maximumRaw = settings.use_platform_default
     ? platformLimits?.default_maximum_fee
     : settings.maximum_fee;
-  const uncapped = minimum + km * rate;
+  const uncapped = addMoney(minimum, multiplyMoney(rate, km));
   return maximumRaw != null ? Math.min(uncapped, Number(maximumRaw)) : uncapped;
 }
 

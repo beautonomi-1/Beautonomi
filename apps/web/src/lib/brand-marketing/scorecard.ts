@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { roundCurrency, addMoney } from "@beautonomi/utils";
 import { getKpiByKey } from "./kpis";
 import { fetchMeasuredForCampaign, type MeasuredCampaignSlice } from "./measured";
 import { sumEnteredPlacementMetrics, sumKnownSpendForCampaign } from "./placement-metrics";
@@ -141,8 +142,15 @@ async function aggregateCampaignMetrics(
       broadcastLogIds: campPlacements.map((p) => p.broadcast_log_id).filter(Boolean) as string[],
       waitlistCity: campPlacements.find((p) => p.waitlist_city)?.waitlist_city,
     });
+    const moneyKeys = new Set<keyof MeasuredCampaignSlice>([
+      "promo_discount",
+      "promo_booking_value",
+      "attributed_booking_value",
+      "referral_rewards",
+    ]);
     for (const k of Object.keys(slice) as (keyof MeasuredCampaignSlice)[]) {
-      measured[k] += slice[k] as number;
+      if (moneyKeys.has(k)) measured[k] = addMoney(measured[k], slice[k]);
+      else measured[k] += slice[k];
     }
   }
 
@@ -252,8 +260,8 @@ export async function buildStrategyScorecard(
       kpi_id: kpi.id,
       kpi_key: kpi.kpi_key,
       target,
-      actual: Math.round(actual * 100) / 100,
-      expected_to_date: Math.round(expected * 100) / 100,
+      actual: roundCurrency(actual),
+      expected_to_date: roundCurrency(expected),
       status,
       baseline: kpi.baseline != null ? Number(kpi.baseline) : null,
       weight: kpi.weight ?? 1,

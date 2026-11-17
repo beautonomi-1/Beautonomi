@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { sumMoney } from "@beautonomi/utils";
+import { sumMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 import { recordBookingPaystackPayment } from "@/lib/bookings/record-booking-paystack-payment";
 import { recordBookingStripePayment } from "@/lib/bookings/record-booking-stripe-payment";
 import { recordBookingFlutterwavePayment } from "@/lib/bookings/record-booking-flutterwave-payment";
@@ -22,10 +22,6 @@ function normalizeGuestShareGateway(raw?: string | null): GuestShareGateway {
   return "paystack";
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
 /** Pure: how much of a guest charge can be applied, the rest is refunded. */
 export function computeGroupShareApplication(input: {
   chargeMajor: number;
@@ -33,13 +29,13 @@ export function computeGroupShareApplication(input: {
   sharePaid: number;
   bookingOutstanding: number;
 }): { applied: number; excess: number } {
-  const charge = round2(Math.max(0, input.chargeMajor));
+  const charge = roundCurrency(Math.max(0, input.chargeMajor));
   const shareRemaining =
-    input.shareDue > 0 ? round2(Math.max(0, input.shareDue - input.sharePaid)) : charge;
-  const applied = round2(
+    input.shareDue > 0 ? Math.max(0, subtractMoney(input.shareDue, input.sharePaid)) : charge;
+  const applied = roundCurrency(
     Math.max(0, Math.min(charge, shareRemaining, Math.max(0, input.bookingOutstanding))),
   );
-  return { applied, excess: round2(Math.max(0, charge - applied)) };
+  return { applied, excess: Math.max(0, subtractMoney(charge, applied)) };
 }
 
 async function recordGuestShareSettlement(

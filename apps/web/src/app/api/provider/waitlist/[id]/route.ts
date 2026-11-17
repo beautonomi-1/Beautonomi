@@ -2,6 +2,12 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
+import {
+  mergeWaitlistContact,
+  WAITLIST_COLUMNS_WITHOUT_CONTACT,
+} from "@/lib/waitlist/waitlist-columns";
 import { z } from "zod";
 
 const updateWaitlistSchema = z.object({
@@ -33,6 +39,9 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -45,7 +54,7 @@ export async function GET(
     const { data: entry, error } = await supabase
       .from("waitlist_entries")
       .select(`
-        *,
+        ${WAITLIST_COLUMNS_WITHOUT_CONTACT},
         offerings:service_id(id, title),
         provider_staff:staff_id(id, name:users(full_name))
       `)
@@ -57,31 +66,54 @@ export async function GET(
       return notFoundResponse("Waitlist entry not found");
     }
 
+    const entryRow = entry as unknown as {
+      id: string;
+      customer_id: string | null;
+      customer_name: string | null;
+      customer_email?: string | null;
+      customer_phone?: string | null;
+      service_id: string | null;
+      staff_id: string | null;
+      preferred_date: string | null;
+      preferred_time_start: string | null;
+      preferred_time_end: string | null;
+      notes: string | null;
+      status: string | null;
+      priority: number | null;
+      created_at: string | null;
+      notified_at: string | null;
+      location_id?: string | null;
+      offerings?: { title?: string | null } | null;
+      provider_staff?: { name?: { full_name?: string | null } | null } | null;
+    };
+    const [visibleEntry] = await mergeWaitlistContact([entryRow], canViewClients);
+    const source = visibleEntry ?? entryRow;
+
     // Transform to match frontend WaitlistEntry type
     const transformedEntry = {
-      id: entry.id,
-      customer_id: entry.customer_id,
-      customer_name: entry.customer_name,
-      customer_email: entry.customer_email,
-      customer_phone: entry.customer_phone,
-      service_id: entry.service_id,
-      service_name: (entry as any).offerings?.title || "",
-      staff_id: entry.staff_id,
-      staff_name: (entry as any).provider_staff?.name?.full_name || "",
-      preferred_date: entry.preferred_date,
-      preferred_time: entry.preferred_time_start || undefined,
-      preferred_time_start: entry.preferred_time_start,
-      preferred_time_end: entry.preferred_time_end,
-      notes: entry.notes,
-      priority: entry.priority === 0 ? "normal" : entry.priority > 0 ? "high" : "low",
-      status: entry.status === "waiting" ? "active" : entry.status,
-      created_at: entry.created_at,
-      created_date: entry.created_at,
-      notified_date: entry.notified_at,
-      location_id: (entry as { location_id?: string | null }).location_id ?? null,
+      id: source.id,
+      customer_id: source.customer_id,
+      customer_name: source.customer_name,
+      customer_email: source.customer_email,
+      customer_phone: source.customer_phone,
+      service_id: source.service_id,
+      service_name: (source as any).offerings?.title || "",
+      staff_id: source.staff_id,
+      staff_name: (source as any).provider_staff?.name?.full_name || "",
+      preferred_date: source.preferred_date,
+      preferred_time: source.preferred_time_start || undefined,
+      preferred_time_start: source.preferred_time_start,
+      preferred_time_end: source.preferred_time_end,
+      notes: source.notes,
+      priority: source.priority === 0 ? "normal" : source.priority > 0 ? "high" : "low",
+      status: source.status === "waiting" ? "active" : source.status,
+      created_at: source.created_at,
+      created_date: source.created_at,
+      notified_date: source.notified_at,
+      location_id: (source as { location_id?: string | null }).location_id ?? null,
     };
 
-    return successResponse(transformedEntry);
+    return successResponse(redactBookingCustomerContact(transformedEntry, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch waitlist entry");
   }
@@ -100,6 +132,9 @@ export async function PATCH(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -145,7 +180,7 @@ export async function PATCH(
       .update(updateData)
       .eq("id", id)
       .select(`
-        *,
+        ${WAITLIST_COLUMNS_WITHOUT_CONTACT},
         offerings:service_id(id, title),
         provider_staff:staff_id(id, name:users(full_name))
       `)
@@ -155,31 +190,34 @@ export async function PATCH(
       throw updateError || new Error("Failed to update waitlist entry");
     }
 
+    const [visibleUpdated] = await mergeWaitlistContact([updatedEntry], canViewClients);
+    const updated = visibleUpdated ?? updatedEntry;
+
     // Transform to match frontend WaitlistEntry type
     const transformedEntry = {
-      id: updatedEntry.id,
-      customer_id: updatedEntry.customer_id,
-      customer_name: updatedEntry.customer_name,
-      customer_email: updatedEntry.customer_email,
-      customer_phone: updatedEntry.customer_phone,
-      service_id: updatedEntry.service_id,
-      service_name: (updatedEntry as any).offerings?.title || "",
-      staff_id: updatedEntry.staff_id,
-      staff_name: (updatedEntry as any).provider_staff?.name?.full_name || "",
-      preferred_date: updatedEntry.preferred_date,
-      preferred_time: updatedEntry.preferred_time_start || undefined,
-      preferred_time_start: updatedEntry.preferred_time_start,
-      preferred_time_end: updatedEntry.preferred_time_end,
-      notes: updatedEntry.notes,
-      priority: updatedEntry.priority === 0 ? "normal" : updatedEntry.priority > 0 ? "high" : "low",
-      status: updatedEntry.status === "waiting" ? "active" : updatedEntry.status,
-      created_at: updatedEntry.created_at,
-      created_date: updatedEntry.created_at,
-      notified_date: updatedEntry.notified_at,
-      location_id: (updatedEntry as { location_id?: string | null }).location_id ?? null,
+      id: updated.id,
+      customer_id: updated.customer_id,
+      customer_name: updated.customer_name,
+      customer_email: updated.customer_email,
+      customer_phone: updated.customer_phone,
+      service_id: updated.service_id,
+      service_name: (updated as any).offerings?.title || "",
+      staff_id: updated.staff_id,
+      staff_name: (updated as any).provider_staff?.name?.full_name || "",
+      preferred_date: updated.preferred_date,
+      preferred_time: updated.preferred_time_start || undefined,
+      preferred_time_start: updated.preferred_time_start,
+      preferred_time_end: updated.preferred_time_end,
+      notes: updated.notes,
+      priority: updated.priority === 0 ? "normal" : updated.priority > 0 ? "high" : "low",
+      status: updated.status === "waiting" ? "active" : updated.status,
+      created_at: updated.created_at,
+      created_date: updated.created_at,
+      notified_date: updated.notified_at,
+      location_id: (updated as { location_id?: string | null }).location_id ?? null,
     };
 
-    return successResponse(transformedEntry);
+    return successResponse(redactBookingCustomerContact(transformedEntry, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to update waitlist entry");
   }

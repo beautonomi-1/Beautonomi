@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export async function sumKnownSpendForTenant(
@@ -25,8 +26,8 @@ export async function sumKnownSpendForTenant(
 
   let entered = 0;
   for (const [, v] of latestByPlacementMetric) {
-    if (v.converted != null) entered += v.converted;
-    else entered += v.value;
+    if (v.converted != null) entered = addMoney(entered, v.converted);
+    else entered = addMoney(entered, v.value);
   }
 
   const { data: pricebook } = await supabase.from("marketing_channel_pricebook").select("channel, unit_cost_zar");
@@ -46,8 +47,8 @@ export async function sumKnownSpendForTenant(
       0;
     const ch = pl.channel_key.replace(/^owned_/, "");
     const rate = rateByChannel.get(ch) ?? rateByChannel.get("email") ?? 0;
-    estimated_owned += sends * rate;
+    estimated_owned = addMoney(estimated_owned, multiplyMoney(rate, sends));
   }
 
-  return { entered, estimated_owned, known: entered + estimated_owned };
+  return { entered, estimated_owned, known: addMoney(entered, estimated_owned) };
 }

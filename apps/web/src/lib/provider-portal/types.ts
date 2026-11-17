@@ -59,6 +59,8 @@ export interface TeamMember {
   rating?: number;
   is_active: boolean;
   time_clock_enabled?: boolean;
+  /** Open time card with no clock-out. */
+  clocked_in?: boolean;
   time_clock_pin?: string;
   /** Staff-specific working hours (day key -> { open, close, closed }). From provider_staff.working_hours. */
   working_hours?: Record<string, WorkingHoursDay> | null;

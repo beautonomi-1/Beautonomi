@@ -1,3 +1,4 @@
+import { multiplyMoney, addMoney } from "@beautonomi/utils";
 import { useState, useCallback, useMemo } from "react";
 import {
   View,
@@ -124,7 +125,7 @@ export default function MembershipPlansScreen() {
       subscribers: plans.reduce((s, p) => s + (p.subscriber_count ?? 0), 0),
       revenue: plans
         .filter((p) => p.is_active)
-        .reduce((s, p) => s + (p.monthly_revenue ?? p.price_monthly * (p.subscriber_count ?? 0)), 0),
+        .reduce((s, p) => addMoney(s, p.monthly_revenue ?? multiplyMoney(p.price_monthly, p.subscriber_count ?? 0)), 0),
     };
   }, [plans]);
 

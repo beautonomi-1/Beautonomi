@@ -221,6 +221,22 @@ export function PayrollContent({ embedded = false }: { embedded?: boolean } = {}
           <Text style={twStyle("mt-1 text-sm text-emerald-800")}>
             {canManagePayroll ? pr("ownerHint") : pr("staffHint")}
           </Text>
+          <Text style={twStyle("mt-2 text-sm text-emerald-800")}>
+            {pr("basisHint", {
+              defaultValue:
+                "Commission and tips count on the day the client pays, not the appointment day. A refund, a returned product, or a returned tip in that period comes off.",
+            })}
+          </Text>
+          {canManagePayroll ? (
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/settings/team-commissions" as never)}
+              style={twStyle("mt-3")}
+            >
+              <Text style={twStyle("text-sm font-semibold text-emerald-900")}>
+                {pr("howPeopleArePaid", { defaultValue: "How people are paid" })}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
         {payRuns.length === 0 ? (
           <EmptyState

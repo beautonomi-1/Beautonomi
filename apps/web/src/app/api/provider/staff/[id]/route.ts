@@ -8,16 +8,19 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { commissionRatePatch } from "@/lib/provider/staff-commission-patch-fields";
 import type { PermissionRequestContext } from "@/lib/auth/permissions";
 import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import {
   findFutureBookingsForStaff,
   futureBookingsConflictResponse,
 } from "@/lib/provider/find-future-bookings-for-staff";
 import {
+  canViewStaffPay,
   getTeamRosterDetailLevel,
   getProviderStaffIdForUser,
+  redactStaffPayFields,
   redactStaffRowForViewer,
 } from "@/lib/auth/provider-team-roster-access";
 import { z } from "zod";
@@ -93,10 +96,13 @@ async function respondWithStaffDetail(
   if (!detail) {
     return notFoundResponse("Staff member not found");
   }
+  const payVisible =
+    detail.user_id === viewerUserId || (await canViewStaffPay(viewerUserId, request));
+  const detailForViewer = redactStaffPayFields(detail, payVisible);
   const rosterDetailLevel = await getTeamRosterDetailLevel(viewerUserId, request);
   const redacted = redactStaffRowForViewer(
     {
-      ...detail,
+      ...detailForViewer,
       user_id: (detail.user_id as string | null) ?? null,
       email: detail.email as string,
       phone: detail.phone as string | null,
@@ -158,6 +164,7 @@ async function fetchStaffDetailForApi(
         is_active,
         mobile_ready,
         commission_rate,
+        commission_percentage,
         commission_enabled,
         service_commission_rate,
         product_commission_rate,
@@ -187,6 +194,7 @@ async function fetchStaffDetailForApi(
     is_active?: boolean | null;
     mobile_ready?: boolean | null;
     commission_rate?: number | null;
+    commission_percentage?: number | null;
     service_commission_rate?: number | null;
     product_commission_rate?: number | null;
     public_title?: string | null;
@@ -250,6 +258,7 @@ async function fetchStaffDetailForApi(
     is_active: r.is_active ?? true,
     mobileReady: r.mobile_ready ?? false,
     commission_rate: r.commission_rate ?? null,
+    commission_percentage: r.commission_percentage ?? null,
     service_commission_rate: r.service_commission_rate ?? null,
     product_commission_rate: r.product_commission_rate ?? null,
     public_title: r.public_title ?? null,
@@ -361,7 +370,7 @@ export async function PATCH(
     const { data: existingRow, error: existingErr } = await supabase
       .from("provider_staff")
       .select(
-        "id, role, user_id, commission_rate, service_commission_rate, product_commission_rate",
+        "id, role, user_id, commission_rate, commission_percentage, service_commission_rate, product_commission_rate",
       )
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -377,6 +386,7 @@ export async function PATCH(
       role: string;
       user_id?: string | null;
       commission_rate?: number | null;
+      commission_percentage?: number | null;
       service_commission_rate?: number | null;
       product_commission_rate?: number | null;
     };
@@ -391,6 +401,21 @@ export async function PATCH(
     }
 
     const newRoleApi = validationResult.data.role;
+
+    // F3-14: a non-owner (even with manage_team) may not change their own
+    // role or job preset — that would let them self-assign the manager preset.
+    if (
+      editingSelf &&
+      !ownerOps &&
+      (newRoleApi !== undefined || validationResult.data.job !== undefined)
+    ) {
+      return errorResponse(
+        "You cannot change your own role. Ask the business owner.",
+        "FORBIDDEN",
+        403,
+      );
+    }
+
     if (newRoleApi === "provider_owner" && existing.role !== "owner") {
       if (!ownerOps) {
         return errorResponse(
@@ -477,24 +502,7 @@ export async function PATCH(
     if (d.is_active !== undefined) updateData.is_active = d.is_active;
     if (d.mobileReady !== undefined) updateData.mobile_ready = d.mobileReady;
     if (d.commission_rate !== undefined) {
-      const svcRate = existing.service_commission_rate ?? null;
-      const prodRate = existing.product_commission_rate ?? null;
-      const splitRatesEqual = svcRate === prodRate;
-      if (d.commission_rate === null) {
-        updateData.commission_rate = null;
-        updateData.commission_enabled = false;
-        if (splitRatesEqual) {
-          updateData.service_commission_rate = null;
-          updateData.product_commission_rate = null;
-        }
-      } else {
-        updateData.commission_rate = d.commission_rate;
-        updateData.commission_enabled = true;
-        if (splitRatesEqual) {
-          updateData.service_commission_rate = d.commission_rate;
-          updateData.product_commission_rate = d.commission_rate;
-        }
-      }
+      Object.assign(updateData, commissionRatePatch(d.commission_rate, existing));
     }
     if (!forceProceed && d.is_active === false) {
       const conflicts = await findFutureBookingsForStaff(supabase, providerId, id);

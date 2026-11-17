@@ -7,7 +7,8 @@ import Link from "next/link";
 import { XCircle } from "lucide-react";
 import { useTranslation } from "@beautonomi/i18n";
 
-const ACCENT = "var(--primary, #FF0077)";
+/** `--primary` is stored as bare HSL components (`330 100% 50%`), so it must be wrapped in `hsl()`. */
+const ACCENT = "hsl(var(--primary, 330 100% 50%))";
 const TEXT_PRIMARY = "#111827";
 const TEXT_SECONDARY = "#6B7280";
 
@@ -22,6 +23,38 @@ function CancelledContent() {
   const paymentType = params.get("payment_type");
   const offerId = params.get("offer_id");
   const nativeContext = isNativeAppContext(params.get("context"));
+
+  useEffect(() => {
+    let ignore = false;
+    const run = async () => {
+      let reference =
+        params.get("reference") || params.get("trxref") || params.get("tx_ref") || "";
+      if (!reference && bookingId) {
+        try {
+          const bookingRes = await fetch(`/api/me/bookings/${encodeURIComponent(bookingId)}`, {
+            credentials: "include",
+            headers: { Accept: "application/json" },
+          });
+          if (bookingRes.ok) {
+            const json = await bookingRes.json();
+            const stored = json?.data?.payment_reference;
+            if (typeof stored === "string") reference = stored;
+          }
+        } catch {
+          // The cancel screen still renders if lookup fails.
+        }
+      }
+      if (!reference || ignore) return;
+      await fetch(
+        `/api/paystack/verify?reference=${encodeURIComponent(reference)}&status=cancelled`,
+        { credentials: "include", headers: { Accept: "application/json" } },
+      ).catch(() => undefined);
+    };
+    void run();
+    return () => {
+      ignore = true;
+    };
+  }, [params, bookingId]);
 
   useEffect(() => {
     if (!nativeContext || typeof window === "undefined") return;

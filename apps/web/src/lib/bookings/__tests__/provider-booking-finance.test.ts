@@ -155,6 +155,17 @@ describe("resolveProviderBookingDeposit", () => {
     expect(result.depositPercentage).toBeNull();
   });
 
+  it("derives percentage deposits with percentOf (F4-06)", () => {
+    const result = resolveProviderBookingDeposit({
+      paymentOption: "deposit",
+      depositRequired: true,
+      depositPercentage: 15,
+      depositAmount: 0,
+      totalAmount: 333.33,
+    });
+    expect(result.depositAmount).toBe(50);
+  });
+
   it("caps a 100% deposit at the booking total", () => {
     const result = resolveProviderBookingDeposit({
       paymentOption: "deposit",

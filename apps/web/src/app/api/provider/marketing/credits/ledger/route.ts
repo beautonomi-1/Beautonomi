@@ -1,11 +1,12 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getMarketingBalance } from "@/lib/marketing/credits";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,9 @@ type LedgerRow = {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await (await import("@/lib/supabase/server")).getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
@@ -80,22 +83,22 @@ export async function GET(request: NextRequest) {
       const delta = Number(r.delta_zar) || 0;
       switch (r.reason) {
         case "topup":
-          summary.topped_up += delta;
+          summary.topped_up = addMoney(summary.topped_up, delta);
           break;
         case "monthly_grant":
-          summary.granted += delta;
+          summary.granted = addMoney(summary.granted, delta);
           break;
         case "admin_adjustment":
-          summary.admin_adjustments += delta;
+          summary.admin_adjustments = addMoney(summary.admin_adjustments, delta);
           break;
         case "refund":
-          summary.refunded += delta;
+          summary.refunded = addMoney(summary.refunded, delta);
           break;
         case "campaign_send":
         case "automation_send":
-          summary.spent += Math.abs(delta);
+          summary.spent = addMoney(summary.spent, Math.abs(delta));
           if (r.channel && r.channel in summary.spent_by_channel) {
-            summary.spent_by_channel[r.channel] += Math.abs(delta);
+            summary.spent_by_channel[r.channel] = addMoney(summary.spent_by_channel[r.channel], Math.abs(delta));
           }
           break;
       }

@@ -22,6 +22,12 @@ vi.mock("@/lib/orders/product-order-lifecycle", () => ({
   refundUnpaidProductOrderCardCharges: (...args: unknown[]) => refundCards(...args),
   restockProductOrderLineItems: (...args: unknown[]) => restock(...args),
   voidProductOrderGiftCardIfNeeded: (...args: unknown[]) => voidGift(...args),
+  ABANDONED_ORDER_REFUND_STILL_DUE: "Payment was not completed in time — refund still due",
+  abandonedOrderMoneyStillDue: (input: {
+    walletFailed: boolean;
+    giftVoid: string;
+    cardFailed?: boolean;
+  }) => input.walletFailed || input.giftVoid === "failed" || input.cardFailed === true,
 }));
 
 vi.mock("@/lib/notifications/onesignal", () => ({
@@ -82,6 +88,9 @@ describe("charge.failed product order holds", () => {
     refundCards.mockReset();
     insertNotification.mockReset();
     sendTemplateNotification.mockReset();
+    creditWallet.mockResolvedValue({ credited: false, failed: false });
+    voidGift.mockResolvedValue("none");
+    refundCards.mockResolvedValue({ onlineRefunded: 0, walletFallback: 0, failed: false });
   });
 
   it("leaves an online Paystack hold pending and notifies once per reference", async () => {
@@ -142,5 +151,60 @@ describe("charge.failed product order holds", () => {
       cancellation_reason: "Card payment failed",
     });
     expect(restock).toHaveBeenCalled();
+  });
+
+  it("puts products back when the failure is delivered again after the order was already cancelled", async () => {
+    const order = {
+      id: "order-3",
+      customer_id: "cust-1",
+      provider_id: "prov-1",
+      payment_status: "failed",
+      status: "cancelled",
+      order_source: "online",
+      payment_method: "card",
+      order_number: "PO-3",
+      wallet_amount: 40,
+      gift_card_amount: 10,
+      currency: "ZAR",
+    };
+    const { client, updates } = supabaseFor(order, []);
+
+    await processFailedPayment(charge("ref-3", "order-3"), client);
+
+    expect(restock).toHaveBeenCalledWith(client, "order-3");
+    expect(creditWallet).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ id: "order-3", wallet_amount: 40 }),
+      "Wallet refund (card payment failed)",
+      "product_order_payment_failed",
+    );
+    expect(voidGift).toHaveBeenCalledWith(client, expect.objectContaining({ id: "order-3" }));
+    expect(refundCards).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ id: "order-3" }),
+      "Card refund (card payment failed)",
+    );
+    expect(updates).toHaveLength(0);
+  });
+
+  it("does not put products back when the order was already paid", async () => {
+    const order = {
+      id: "order-4",
+      customer_id: "cust-1",
+      provider_id: "prov-1",
+      payment_status: "paid",
+      status: "confirmed",
+      order_source: "online",
+      payment_method: "paystack",
+      order_number: "PO-4",
+    };
+    const { client } = supabaseFor(order, []);
+
+    await processFailedPayment(charge("ref-4", "order-4"), client);
+
+    expect(restock).not.toHaveBeenCalled();
+    expect(creditWallet).not.toHaveBeenCalled();
+    expect(voidGift).not.toHaveBeenCalled();
+    expect(refundCards).not.toHaveBeenCalled();
   });
 });

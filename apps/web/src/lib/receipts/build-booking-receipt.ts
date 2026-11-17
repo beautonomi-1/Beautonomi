@@ -7,6 +7,7 @@ import {
   computeBookingOutstandingDisplay,
   computePackageAppliedForDisplay,
 } from "@/lib/bookings/display-invariants";
+import { addMoney, subtractMoney, sumMoney } from "@beautonomi/utils";
 import { isPaidBookingPaymentStatus } from "@/lib/payments/booking-payment-status";
 
 export {
@@ -74,37 +75,37 @@ export function computeBookingReceiptFinancials(input: {
     discount_amount: discount,
     promotion_discount_amount: promotionDiscount,
   });
-  const packageDiscount = packageActuallyApplied ? Math.max(0, discount - promotionDiscount) : 0;
-  const discountTotal = discount + promotionDiscount + membershipDiscount + loyaltyDiscount;
+  const packageDiscount = packageActuallyApplied ? Math.max(0, subtractMoney(discount, promotionDiscount)) : 0;
+  const discountTotal = sumMoney(discount, promotionDiscount, membershipDiscount, loyaltyDiscount);
 
   const totalFromRow =
     b.total_amount != null && !Number.isNaN(Number(b.total_amount))
       ? Number(b.total_amount)
-      : subtotal + tax + platformFee + travelFee + tipAmount - discountTotal - cancellationFee;
+      : subtractMoney(subtractMoney(sumMoney(subtotal, tax, platformFee, travelFee, tipAmount), discountTotal), cancellationFee);
 
   const completedPayments = (input.booking_payments || []).filter((p) => isPaidBookingPaymentStatus(p.status));
-  const paymentsPaid = completedPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const paymentsPaid = completedPayments.reduce((sum, p) => addMoney(sum, Number(p.amount || 0)), 0);
   const walletGiftPaymentsPaid = completedPayments
     .filter((p) => {
       const method = String(p.payment_method || "").toLowerCase();
       const provider = String(p.payment_provider || "").toLowerCase();
       return method === "wallet" || method === "gift_card" || provider === "wallet" || provider === "gift_card";
     })
-    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    .reduce((sum, p) => addMoney(sum, Number(p.amount || 0)), 0);
   const walletCredit = Number(b.wallet_amount ?? 0);
   const giftCardCredit = Number(b.gift_card_amount ?? 0);
   const totalPaidRow = Number(b.total_paid ?? 0);
   const totalRefundedRow = Number(b.total_refunded ?? 0);
-  const walletGiftCoverage = Math.max(0, walletCredit + giftCardCredit);
-  const legacyWalletGiftRemainder = Math.max(0, walletGiftCoverage - walletGiftPaymentsPaid);
+  const walletGiftCoverage = Math.max(0, addMoney(walletCredit, giftCardCredit));
+  const legacyWalletGiftRemainder = Math.max(0, subtractMoney(walletGiftCoverage, walletGiftPaymentsPaid));
   const amountPaid =
     totalPaidRow > 0
       ? Math.max(totalPaidRow, paymentsPaid, walletGiftCoverage)
-      : Math.max(totalPaidRow, paymentsPaid + legacyWalletGiftRemainder, walletGiftCoverage);
+      : Math.max(totalPaidRow, addMoney(paymentsPaid, legacyWalletGiftRemainder), walletGiftCoverage);
 
   const unpaidAdditionalCharges = (input.additional_charges || [])
     .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
-    .reduce((sum, ac) => sum + Number(ac.amount || 0), 0);
+    .reduce((sum, ac) => addMoney(sum, Number(ac.amount || 0)), 0);
 
   const balanceDue = computeBookingOutstandingDisplay({
     totalAmount: totalFromRow,

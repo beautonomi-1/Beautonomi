@@ -128,8 +128,12 @@ export async function validatePaycloudPaymentInitiate(
       .eq("provider_id", params.providerId)
       .maybeSingle();
     if (!sale) return { ok: false, code: "SALE_NOT_FOUND", message: "Sale not found.", status: 404 };
-    if (sale.payment_status === "completed") {
+    const saleStatus = String(sale.payment_status ?? "").toLowerCase();
+    if (saleStatus === "completed") {
       return { ok: false, code: "ALREADY_PAID", message: "Sale is already paid.", status: 400 };
+    }
+    if (saleStatus === "refunded") {
+      return { ok: false, code: "SALE_NOT_COLLECTIBLE", message: "This sale cannot be charged.", status: 400 };
     }
   }
 
@@ -169,8 +173,12 @@ export async function validatePaycloudPaymentInitiate(
         status: 400,
       };
     }
-    if (order.payment_status === "paid") {
+    const orderPayment = String(order.payment_status ?? "").toLowerCase();
+    if (orderPayment === "paid") {
       return { ok: false, code: "ALREADY_PAID", message: "Order is already paid.", status: 400 };
+    }
+    if (orderPayment === "partially_refunded" || orderPayment === "refunded") {
+      return { ok: false, code: "ORDER_NOT_COLLECTIBLE", message: "This order cannot be charged.", status: 400 };
     }
     if (order.status === "cancelled" || order.status === "refunded") {
       return { ok: false, code: "ORDER_NOT_COLLECTIBLE", message: "This order cannot be charged.", status: 400 };

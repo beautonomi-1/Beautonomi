@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -17,6 +18,7 @@ import {
   settleAdditionalChargeWithoutPaystack,
 } from "@/lib/bookings/settle-additional-charge-without-paystack";
 import { rollbackCollectibleSplitLeg } from "@/lib/bookings/rollback-collectible-split-leg";
+import { assertYocoMarkPaidReference } from "@/lib/payments/assert-yoco-mark-paid-reference";
 
 /**
  * POST /api/provider/bookings/[id]/additional-charges/[chargeId]/mark-paid
@@ -167,8 +169,22 @@ export async function POST(
     }
 
     const held = await sumAdditionalChargeTenderLegs(supabaseAdmin, bookingId, chargeId);
-    const heldTotal = held.wallet + held.gift;
+    const heldTotal = addMoney(held.wallet, held.gift);
     const stillDue = additionalChargeAmountStillDue(chargeAmount, heldTotal);
+    if (paymentProvider === "yoco" && stillDue > 0.009) {
+      const yocoCheck = await assertYocoMarkPaidReference(supabaseAdmin, {
+        providerId,
+        reference: String(reference).trim(),
+        expectedEntityType: "additional_charge",
+        expectedEntityId: chargeId,
+        expectedAppointmentId: bookingId,
+        expectedAmountMajor: stillDue,
+        currency,
+      });
+      if (yocoCheck.ok === false) {
+        return errorResponse(yocoCheck.message, yocoCheck.code, 400);
+      }
+    }
     if (heldTotal > 0.009) {
       if (stillDue <= 0.009) {
         const covered = await settleAdditionalChargeWithoutPaystack(supabaseAdmin, {

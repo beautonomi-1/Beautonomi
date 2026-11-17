@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { addMoney } from "@beautonomi/utils";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
@@ -105,7 +106,7 @@ export async function GET(request: NextRequest) {
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString());
     const totalPlatformCommission = (commissionRows || []).reduce(
-      (s: number, r: any) => s + Math.max(0, Number(r.net ?? 0)),
+      (s: number, r: any) => addMoney(s, Math.max(0, Number(r.net ?? 0))),
       0
     );
 
@@ -130,7 +131,7 @@ export async function GET(request: NextRequest) {
 
     const totalPayouts = payouts
       .filter((p: any) => p.status === "completed")
-      .reduce((s: number, p: any) => s + p.net_amount, 0);
+      .reduce((s: number, p: any) => addMoney(s, p.net_amount), 0);
     // Use ledger-derived commission rather than (revenue - payouts) which has timing issues.
     const totalPlatformFees = totalPlatformCommission;
 

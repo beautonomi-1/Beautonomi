@@ -27,5 +27,21 @@ describe("provider-retail-takings date keys", () => {
         payment_method: "cash",
       }),
     ).toBe(80);
+    expect(
+      providerRetailTakingsAmount({
+        total_amount: 130,
+        payment_method: "cash",
+        refunded_amount: 50,
+        refund_method: "cash",
+      }),
+    ).toBe(80);
+    expect(
+      providerRetailTakingsAmount({
+        total_amount: 130,
+        payment_method: "cash",
+        refunded_amount: 50,
+        refund_method: "store_credit",
+      }),
+    ).toBe(130);
   });
 });

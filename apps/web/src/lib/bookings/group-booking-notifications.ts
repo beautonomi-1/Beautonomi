@@ -14,6 +14,7 @@ import { sendToUser } from '@/lib/notifications/onesignal';
 import { enqueueMultiChannel } from '@/lib/notifications/enqueue';
 import { insertNotification } from '@/lib/notifications/insert-notification';
 import { getGroupBooking } from './group-booking';
+import { mergeParticipantContact } from './participant-columns';
 import { hashGroupInviteToken } from './group-invites';
 import { resolveTwilioCredentials, sendTwilioSMS } from '@/lib/integrations/twilio';
 import { sendResendEmail } from '@/lib/integrations/resend';
@@ -71,11 +72,14 @@ export async function sendGroupBookingNotifications(
   } else {
     const { data: bookingParticipants } = await supabase
       .from('booking_participants')
-      .select('id, participant_name, participant_email, participant_phone, is_primary_contact, customer_id')
+      .select('id, participant_name, is_primary_contact, customer_id')
       .eq('booking_id', bookingId);
 
     if (bookingParticipants) {
-      participants = bookingParticipants as GroupNotificationParticipant[];
+      participants = (await mergeParticipantContact(
+        bookingParticipants as GroupNotificationParticipant[],
+        true,
+      )) as GroupNotificationParticipant[];
     }
   }
 
@@ -299,7 +303,9 @@ export async function notifyGroupGuestsWithoutAccountsOfCancellation(
     }>;
     providerId?: string | null;
     bookingRef: string;
-    cancelledBy: 'customer' | 'provider';
+    cancelledBy: 'customer' | 'provider' | 'admin';
+    /** A guest card refund on this group did not finish. */
+    guestCardRefundPending?: boolean;
   },
 ): Promise<{ notified: number }> {
   let smsCreds: Awaited<ReturnType<typeof resolveTwilioCredentials>> | null | undefined;
@@ -332,10 +338,16 @@ export async function notifyGroupGuestsWithoutAccountsOfCancellation(
     }
 
     const name = participant.participant_name?.trim() || 'there';
-    const who = input.cancelledBy === 'provider' ? 'the provider has cancelled' : 'the organiser has cancelled';
-    const message =
-      `Hi ${name}, ${who} group booking ${input.bookingRef}. ` +
-      'Any amount you paid online toward your share is refunded in full to the card you paid with.';
+    const who =
+      input.cancelledBy === "provider"
+        ? "the provider has cancelled"
+        : input.cancelledBy === "admin"
+          ? "an administrator has cancelled"
+          : "the organiser has cancelled";
+    const shareReturn = input.guestCardRefundPending
+      ? "A payment you made toward your share is still being returned to the card you paid with."
+      : "Any amount you paid online toward your share is refunded in full to the card you paid with.";
+    const message = `Hi ${name}, ${who} group booking ${input.bookingRef}. ${shareReturn}`;
 
     if (email) {
       await sendGroupGuestEmail(supabase, email, `Group booking ${input.bookingRef} cancelled`, message);
@@ -410,8 +422,8 @@ async function sendWalkInGroupBookingConfirmation(
 
   if (!channels.email && !channels.sms) {
     console.warn('[group booking notifications] walk-in participant has no contact channels', {
-      email: participant.participant_email,
-      phone: participant.participant_phone,
+      booking_id: booking.id,
+      participant_id: participant.id ?? null,
     });
   }
 }

@@ -39,6 +39,7 @@ type ReceiptPayload = {
     discount_amount?: number;
     tip_amount?: number;
     total_amount?: number;
+    refunded_amount?: number;
     amount_paid?: number;
     balance_due?: number;
     currency?: string;
@@ -155,6 +156,14 @@ export async function GET(
           tone: "success",
         },
       ]);
+    }
+
+    if (Number(receipt.refunded_amount) > 0) {
+      drawPdfTotals(
+        doc,
+        [{ label: "Refunded", value: `-${moneyPdf(receipt.refunded_amount, currency)}` }],
+        { label: "Net after refunds", value: moneyPdf(receipt.amount_paid ?? 0, currency) },
+      );
     }
 
     if (Number(receipt.balance_due) > 0.01) {

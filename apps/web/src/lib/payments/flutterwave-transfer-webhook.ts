@@ -79,6 +79,41 @@ export async function handleFlutterwaveTransferWebhook(
   if (status === "completed" && payout.status === "completed") {
     return { handled: true, payoutId };
   }
+  if (status === "failed" && payout.status === "failed") {
+    return { handled: true, payoutId };
+  }
+
+  if (status === "failed") {
+    // F2-21: mirror the Paystack transfer.failed/reversed path. Any `payout`
+    // finance rows already posted for this payout (synchronous "successful"
+    // initiation or an earlier transfer.completed) must be reversed — and the
+    // reversal verified — BEFORE the payout is marked failed, otherwise the
+    // provider's available balance stays permanently understated. The helper
+    // is idempotent and a no-op when no ledger rows exist. If the reversal
+    // cannot be verified it throws: the payout keeps its status and the
+    // webhook is retried.
+    const failureReason =
+      (typeof data.complete_message === "string" && data.complete_message) ||
+      (typeof data.message === "string" && data.message) ||
+      (typeof data.narration === "string" && data.narration) ||
+      "transfer.failed";
+    const { reverseCompletedPayoutLedger } = await import(
+      "@/app/api/payments/webhook/_handlers/transfer-events"
+    );
+    try {
+      await reverseCompletedPayoutLedger(supabase, {
+        payoutId: payout.id,
+        reason: failureReason,
+        event: "transfer.failed",
+      });
+    } catch (glErr) {
+      console.error(
+        "[flutterwave-transfer] payout ledger reversal failed; payout status NOT changed:",
+        glErr,
+      );
+      throw glErr;
+    }
+  }
 
   if (status === "completed") {
     const currency =

@@ -94,6 +94,13 @@ function makeSupabase(request: Record<string, unknown> | null) {
       }
       if (table === "custom_offers") {
         return {
+          select: () => ({
+            eq: () => ({
+              in: () => ({
+                limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+              }),
+            }),
+          }),
           insert: () => ({
             select: () => ({
               single: vi.fn().mockResolvedValue({ data: { id: "offer-1" }, error: null }),

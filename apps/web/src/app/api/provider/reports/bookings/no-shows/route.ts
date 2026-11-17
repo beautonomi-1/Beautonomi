@@ -1,6 +1,9 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
 import { createClient } from "@supabase/supabase-js";
 import { getProviderNetAfterRefundsByBooking } from "@/lib/reports/revenue-helpers";
 import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
@@ -14,6 +17,10 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
+
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -173,7 +180,7 @@ export async function GET(request: NextRequest) {
         : new Map<string, number>();
 
     for (const bookingId of noShowBookingIds) {
-      lostRevenue += noShowLedgerByBooking.get(bookingId) || 0;
+      lostRevenue = addMoney(lostRevenue, noShowLedgerByBooking.get(bookingId) || 0);
     }
 
     // Group by client (repeat offenders)
@@ -193,8 +200,8 @@ export async function GET(request: NextRequest) {
           ledger_earnings: 0,
         };
         existing.count += 1;
-        existing.booked_value += Number(booking.total_amount || 0);
-        existing.ledger_earnings += noShowLedgerByBooking.get(booking.id) || 0;
+        existing.booked_value = addMoney(existing.booked_value, Number(booking.total_amount || 0));
+        existing.ledger_earnings = addMoney(existing.ledger_earnings, noShowLedgerByBooking.get(booking.id) || 0);
         repeatOffenderMap.set(clientId, existing);
       }
     });
@@ -234,7 +241,7 @@ export async function GET(request: NextRequest) {
       ledgerNetRecognized: lostRevenue,
       /** @deprecated Use ledgerNetRecognized — same value; name was misleading vs booked loss. */
       lostRevenue,
-      repeatOffenders,
+      repeatOffenders: redactBookingCustomerContacts(repeatOffenders, canViewClients),
       staffBreakdown,
       recentNoShows: noShowBookings?.slice(0, 20) || [],
       basisNote:

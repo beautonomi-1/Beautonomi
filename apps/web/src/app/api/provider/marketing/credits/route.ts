@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { getMarketingBalance } from "@/lib/marketing/credits";
 
 /**
@@ -13,7 +13,9 @@ import { getMarketingBalance } from "@/lib/marketing/credits";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const permissionCheck = await requirePermission("manage_marketing", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await (await import("@/lib/supabase/server")).getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");

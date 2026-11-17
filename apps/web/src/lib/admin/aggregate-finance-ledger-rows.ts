@@ -56,6 +56,12 @@ export type FinanceLedgerAggregate = {
   /** Customer cash refunded: abs(net) of cash refund legs, not abs(amount). */
   refunds_abs_gross: number;
   refunds_gross: number;
+  /** Refund value credited to customer wallet (store_credit tender). */
+  refunds_store_credit: number;
+  /** Refunds paid in person by the provider (cash tender). */
+  refunds_in_person: number;
+  /** Card/gateway cash returned to the customer (original tender or legacy rows). */
+  refunds_platform_cash_out: number;
   /** Net provider-side refund impact after removing platform contra allocation. */
   provider_refund_net_impact: number;
   /** Wallet credits applied to bookings (wallet-only or split wallet+card payments). */
@@ -174,7 +180,7 @@ function isBookingTaxRow(r: Row): boolean {
 }
 
 function sum(tx: Row[], types: string[], field: "amount" | "fees" | "net" | "commission"): number {
-  return tx.filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => s + Number(r[field] ?? 0), 0);
+  return tx.filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => addMoney(s, Number(r[field] ?? 0)), 0);
 }
 
 function platformHeldFee(row: Row): number {
@@ -192,7 +198,7 @@ function sumFees(tx: Row[], types: string[]): number {
 function sumAbsoluteAmount(tx: Row[], types: string[]): number {
   return tx
     .filter((r) => types.includes(r.transaction_type ?? ""))
-    .reduce((s, r) => s + Math.abs(Number(r.amount ?? 0)), 0);
+    .reduce((s, r) => addMoney(s, Math.abs(Number(r.amount ?? 0))), 0);
 }
 
 const TERMINAL_COMMERCE_TYPES = [
@@ -213,6 +219,13 @@ function isProviderEarningsRefundRow(r: Row): boolean {
   return r.transaction_type === "refund" && isProviderEarningsRefundComponent(r.refund_component);
 }
 
+function refundTenderFromRow(r: Row): string {
+  const meta = r.metadata as Record<string, unknown> | null | undefined;
+  const tender = meta?.refund_tender;
+  if (typeof tender === "string" && tender.trim()) return tender.trim();
+  return "original";
+}
+
 export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLedgerAggregate {
   const tx = rows as Row[];
 
@@ -228,9 +241,10 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const gatewayFeesServices = sumFees(tx, ["payment", "additional_charge_payment"]);
   const terminalGatewayFees = sumFees(tx, [...TERMINAL_COMMERCE_TYPES]);
   const terminalRevenueGross = sum(tx, [...TERMINAL_COMMERCE_TYPES], "amount");
-  const otherGatewayFees =
-    sumFees(tx, ["gift_card_sale", "wallet_topup"]) +
-    sumFees(tx, ["gateway_fee_adjustment"]);
+  const otherGatewayFees = addMoney(
+    sumFees(tx, ["gift_card_sale", "wallet_topup"]),
+    sumFees(tx, ["gateway_fee_adjustment"]),
+  );
   const membershipGatewayFees = sumFees(tx, ["membership_sale"]);
   const livePayoutRows = tx.filter((r) => r.transaction_type === "payout" && !isReversedPayoutRow(r));
   const payoutTransferFees = addMoney(
@@ -309,9 +323,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   tx.forEach((r) => {
     if (!r.booking_id) return;
     const b = gmvByBooking.get(r.booking_id) || { payment: 0, wallet: 0, giftCard: 0 };
-    if (r.transaction_type === "payment") b.payment += Number(r.amount ?? 0);
-    if (r.transaction_type === "wallet_payment") b.wallet += Number(r.amount ?? 0);
-    if (r.transaction_type === "gift_card_payment") b.giftCard += Number(r.amount ?? 0);
+    if (r.transaction_type === "payment") b.payment = addMoney(b.payment, Number(r.amount ?? 0));
+    if (r.transaction_type === "wallet_payment") b.wallet = addMoney(b.wallet, Number(r.amount ?? 0));
+    if (r.transaction_type === "gift_card_payment") b.giftCard = addMoney(b.giftCard, Number(r.amount ?? 0));
     gmvByBooking.set(r.booking_id, b);
   });
 
@@ -330,12 +344,12 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     // If we just use `payment` + `wallet` + `giftCard`, we double count new flows and all gateway-less flows.
     // The most accurate going forward is to just use `payment` for the base GMV, as it now correctly includes all funds.
     // For legacy split payments, this will understate GMV by the wallet/gift card amount, but it fixes the massive double-counting of gateway-less bookings.
-    baseGmv += b.payment;
+    baseGmv = addMoney(baseGmv, b.payment);
   }
 
   // Add any un-bookmarked payments (should be rare)
-  const unbookedPayment = tx.filter(r => !r.booking_id && r.transaction_type === "payment").reduce((s, r) => s + Number(r.amount ?? 0), 0);
-  baseGmv += unbookedPayment;
+  const unbookedPayment = tx.filter(r => !r.booking_id && r.transaction_type === "payment").reduce((s, r) => addMoney(s, Number(r.amount ?? 0)), 0);
+  baseGmv = addMoney(baseGmv, unbookedPayment);
 
   const walletCollected = sum(tx, ["wallet_payment"], "amount");
   const giftCardCollected = sum(tx, ["gift_card_payment"], "amount");
@@ -357,13 +371,14 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
 
   const cancellationFeesRetained = sum(tx, ["cancellation_fee"], "net");
   const walkInAdditionalCharges = sum(tx, ["walk_in_additional_charge"], "net");
-  const providerRecognizedRevenueGross =
-    sum(tx, ["provider_earnings", "membership_provider_earnings"], "net") +
-    sum(tx, ["membership_recognition"], "net") +
-    sum(tx, ["tip"], "net") +
-    sum(tx, ["travel_fee"], "net") +
-    cancellationFeesRetained +
-    walkInAdditionalCharges;
+  const providerRecognizedRevenueGross = sumMoney(
+    sum(tx, ["provider_earnings", "membership_provider_earnings"], "net"),
+    sum(tx, ["membership_recognition"], "net"),
+    sum(tx, ["tip"], "net"),
+    sum(tx, ["travel_fee"], "net"),
+    cancellationFeesRetained,
+    walkInAdditionalCharges,
+  );
   const promotionDiscounts = sum(tx, ["promotion_discount"], "amount");
   const membershipDiscounts = sum(tx, ["membership_discount"], "amount");
   const loyaltyRedemptions = sum(tx, ["loyalty_redemption"], "amount");
@@ -382,13 +397,33 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const platformRefundContra = sum(tx, ["refund"], "commission");
   const providerRefundNetImpact = tx
     .filter(isProviderEarningsRefundRow)
-    .reduce((s, r) => s + Number(r.net ?? 0), 0);
+    .reduce((s, r) => addMoney(s, Number(r.net ?? 0)), 0);
+
+  const cashRefundRows = tx.filter(isCashRefundRow);
+  const refundsAbsGross = cashRefundRows.reduce(
+    (s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))),
+    0,
+  );
+  let refundsStoreCredit = 0;
+  let refundsInPerson = 0;
+  let refundsPlatformCashOut = 0;
+  for (const r of cashRefundRows) {
+    const absNet = Math.abs(Number(r.net ?? 0));
+    const tender = refundTenderFromRow(r);
+    if (tender === "store_credit") {
+      refundsStoreCredit = addMoney(refundsStoreCredit, absNet);
+    } else if (tender === "cash") {
+      refundsInPerson = addMoney(refundsInPerson, absNet);
+    } else {
+      refundsPlatformCashOut = addMoney(refundsPlatformCashOut, absNet);
+    }
+  }
   // Cancellation fees are provider-retained income (not platform commission).
   // They are tracked separately via `cancellation_fees_retained`.
-  const platformCommissionNet = platformCommissionGross + platformRefundContra;
+  const platformCommissionNet = addMoney(platformCommissionGross, platformRefundContra);
   const manualAdjustmentsNet = sum(tx, ["manual_adjustment"], "net");
 
-  const platformTakeNet = platformCommissionNet - gatewayFeesServices + manualAdjustmentsNet;
+  const platformTakeNet = addMoney(subtractMoney(platformCommissionNet, gatewayFeesServices), manualAdjustmentsNet);
 
   // Phase 11 (ASC 606/IFRS 15): subscription_net / ads_net / marketing_credit_net
   // count RECOGNIZED amounts (recognition rows). Legacy cash-basis rows (net > 0)
@@ -396,29 +431,32 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   // holds the full amount (no separate recognition rows), so summing both types
   // double-counts only if both types exist for the same payment — which they
   // shouldn't (new payments have net=0 on the cash row and a separate recognition row).
-  const subscriptionNet =
-    sum(tx, ["subscription_recognition"], "net") +
+  const subscriptionNet = sumMoney(
+    sum(tx, ["subscription_recognition"], "net"),
     // Legacy fallback: old payment rows whose net > 0 (no recognition rows issued yet)
-    sum(tx, ["provider_subscription_payment"], "net") +
-    sum(tx, ["provider_subscription_refund"], "net");
+    sum(tx, ["provider_subscription_payment"], "net"),
+    sum(tx, ["provider_subscription_refund"], "net"),
+  );
   const subscriptionGatewayFees = sumFees(tx, ["provider_subscription_payment"]);
-  const subscriptionGross = subscriptionNet + subscriptionGatewayFees;
+  const subscriptionGross = addMoney(subscriptionNet, subscriptionGatewayFees);
 
-  const adsNet =
-    sum(tx, ["ads_recognition"], "net") +
-    sum(tx, ["provider_ads_payment"], "net") +
-    sum(tx, ["provider_ads_refund"], "net");
+  const adsNet = sumMoney(
+    sum(tx, ["ads_recognition"], "net"),
+    sum(tx, ["provider_ads_payment"], "net"),
+    sum(tx, ["provider_ads_refund"], "net"),
+  );
   const adsGatewayFees = sumFees(tx, ["provider_ads_payment"]);
-  const adsGross = adsNet + adsGatewayFees;
+  const adsGross = addMoney(adsNet, adsGatewayFees);
 
-  const marketingCreditNet =
-    sum(tx, ["marketing_credit_recognition"], "net") +
-    sum(tx, ["provider_marketing_credit_topup"], "net") +
-    sum(tx, ["provider_marketing_credit_refund"], "net");
+  const marketingCreditNet = sumMoney(
+    sum(tx, ["marketing_credit_recognition"], "net"),
+    sum(tx, ["provider_marketing_credit_topup"], "net"),
+    sum(tx, ["provider_marketing_credit_refund"], "net"),
+  );
   const marketingCreditGatewayFees = sumFees(tx, ["provider_marketing_credit_topup"]);
-  const marketingCreditGross = marketingCreditNet + marketingCreditGatewayFees;
+  const marketingCreditGross = addMoney(marketingCreditNet, marketingCreditGatewayFees);
 
-  const payoutsPaidTotal = livePayoutRows.reduce((s, r) => s + Number(r.net ?? 0), 0);
+  const payoutsPaidTotal = livePayoutRows.reduce((s, r) => addMoney(s, Number(r.net ?? 0)), 0);
   const giftCardBreakageRevenue = sum(tx, ["gift_card_breakage"], "amount");
   const cashbackTotal = sum(tx, ["cashback"], "amount");
   const membershipRecognitionNet = sum(tx, ["membership_recognition"], "net");
@@ -451,8 +489,11 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     // Cash refund legs are not a partition of `amount` (the payment leg stores a
     // negative service base while sibling legs store positive component amounts).
     // Absolute `net` of the cash legs equals the customer cash refunded.
-    refunds_abs_gross: tx.filter(isCashRefundRow).reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))), 0),
-    refunds_gross: tx.filter(isCashRefundRow).reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))), 0),
+    refunds_abs_gross: refundsAbsGross,
+    refunds_gross: refundsAbsGross,
+    refunds_store_credit: refundsStoreCredit,
+    refunds_in_person: refundsInPerson,
+    refunds_platform_cash_out: refundsPlatformCashOut,
     provider_refund_net_impact: providerRefundNetImpact,
     wallet_collected: walletCollected,
     gift_card_collected: giftCardCollected,
@@ -510,13 +551,13 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
  * inline sums. Includes customer-paid platform fees (`service_fee_revenue`).
  */
 export function platformRevenueNetFromAggregate(a: FinanceLedgerAggregate): number {
-  return (
-    a.platform_take_net +
-    a.subscription_net +
-    a.ads_net +
-    a.marketing_credit_net +
-    a.service_fee_revenue +
-    a.gift_card_breakage_revenue
+  return sumMoney(
+    a.platform_take_net,
+    a.subscription_net,
+    a.ads_net,
+    a.marketing_credit_net,
+    a.service_fee_revenue,
+    a.gift_card_breakage_revenue,
   );
 }
 
@@ -525,14 +566,14 @@ export function platformRevenueNetFromAggregate(a: FinanceLedgerAggregate): numb
  * This is the full cost side used for reconciliation and P&L.
  */
 export function gatewayFeesTotalFromAggregate(a: FinanceLedgerAggregate): number {
-  return (
-    a.gateway_fees_services +
-    a.terminal_gateway_fees +
-    a.subscription_gateway_fees +
-    a.ads_gateway_fees +
-    a.marketing_credit_gateway_fees +
-    a.other_gateway_fees +
-    a.membership_gateway_fees +
-    a.payout_transfer_fees
+  return sumMoney(
+    a.gateway_fees_services,
+    a.terminal_gateway_fees,
+    a.subscription_gateway_fees,
+    a.ads_gateway_fees,
+    a.marketing_credit_gateway_fees,
+    a.other_gateway_fees,
+    a.membership_gateway_fees,
+    a.payout_transfer_fees,
   );
 }

@@ -119,7 +119,9 @@ export async function GET(request: NextRequest) {
       fetchAllPaged(async (from, to) => {
         const { data, error } = await supabase
           .from("finance_transactions")
-          .select("id, amount, net, created_at, booking_id, description, metadata, refund_component")
+          // F2-24: transaction_type MUST be selected — the per-period filter
+          // below branches on it; without it every row was dropped (vat = 0).
+          .select("id, amount, net, created_at, booking_id, description, metadata, refund_component, transaction_type")
           .eq("provider_id", providerId)
           // VAT reports are built from tax legs PLUS tax-attributed refund legs.
           // Refund legs use transaction_type='refund' + refund_component='tax'.

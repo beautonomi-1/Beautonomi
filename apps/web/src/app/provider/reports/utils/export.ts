@@ -4,6 +4,7 @@
 
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { fromMinorUnits, multiplyMoney } from "@beautonomi/utils";
 import { i18n } from "@beautonomi/i18n";
 import { toast } from "sonner";
 
@@ -1197,7 +1198,7 @@ export function formatReportDataForExport(
         ...((data.payments as ReportRow[]) || []).map((p) => ({
           Date: p.created_at,
           "Yoco ID": p.yoco_payment_id,
-          Amount: `${((p.amount as number) / 100).toFixed(2)} ${p.currency}`,
+          Amount: `${fromMinorUnits(Number(p.amount ?? 0), String(p.currency || LAST_RESORT_CURRENCY)).toFixed(2)} ${p.currency}`,
           Status: p.status,
           "Link kind": (p.link_kind as string) ?? "",
           "Booking synced": p.link_kind === "booking" ? (p.booking_synced ? exportT("yesNo.yes") : exportT("yesNo.no")) : "—",
@@ -1230,7 +1231,7 @@ export function formatReportDataForExport(
           const lineRetail =
             typeof p.retail_line_value === "number"
               ? Number(p.retail_line_value)
-              : qty * Number((p.price as number) ?? (p.retail_price as number) ?? 0);
+              : multiplyMoney(Number((p.price as number) ?? (p.retail_price as number) ?? 0), qty);
           const displayPrice = Number((p.price as number) ?? (p.retail_price as number) ?? 0);
           return {
             Product: p.name ?? p.productName,

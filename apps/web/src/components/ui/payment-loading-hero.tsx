@@ -1,6 +1,7 @@
 "use client";
 
-const ACCENT = "var(--primary, #FF0077)";
+/** `--primary` is stored as bare HSL components (`330 100% 50%`), so it must be wrapped in `hsl()`. */
+const ACCENT = "hsl(var(--primary, 330 100% 50%))";
 const BG = "#F3F4F6";
 const TEXT_PRIMARY = "#111827";
 const TEXT_SECONDARY = "#6B7280";
@@ -22,8 +23,8 @@ export function PaymentLoadingHero({
       style={{ backgroundColor: BG }}
     >
       <div
-        className="w-11 h-11 rounded-full border-2 border-t-transparent animate-spin mb-5"
-        style={{ borderColor: ACCENT }}
+        className="w-11 h-11 rounded-full border-2 animate-spin mb-5"
+        style={{ borderColor: ACCENT, borderTopColor: "transparent" }}
         aria-hidden
       />
       <p className="text-lg font-bold text-center max-w-sm" style={{ color: TEXT_PRIMARY }}>

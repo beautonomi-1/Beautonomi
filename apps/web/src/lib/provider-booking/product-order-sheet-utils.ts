@@ -23,6 +23,7 @@ export interface ProductOrderSheetOrder {
   promotion_code?: string | null;
   platform_fee?: number;
   total_amount: number;
+  refunded_amount?: number | null;
   payment_status: string;
   fulfillment_type: string;
   order_source?: string | null;

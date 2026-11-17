@@ -6,8 +6,12 @@ import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { ApiError } from "@beautonomi/types";
 
-/** Must stay aligned with `apps/web/src/app/api/provider/bookings/route.ts` (Math.min(limit, 1000)). */
-export const PROVIDER_BOOKINGS_PAGE_SIZE = 1000;
+/**
+ * Must not exceed the server cap in `apps/web/src/app/api/provider/bookings/route.ts`
+ * (Math.min(limit, 1000)). Each row embeds ~10 relations; 1000-row pages over a
+ * 60-day window hit the database statement timeout (500 after ~40s) on busy salons.
+ */
+export const PROVIDER_BOOKINGS_PAGE_SIZE = 250;
 
 export function bookingsPathWithPagination(path: string, pageSize: number, offset: number): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
@@ -28,6 +32,13 @@ function throwBookingsFetchError(e: ApiError): never {
 }
 
 /**
+ * Screens mount several hooks over the same range (e.g. strip + overview), and each
+ * page can take tens of seconds on large accounts. Identical concurrent requests
+ * share one network call instead of piling duplicate load on the API.
+ */
+const inflightPages = new Map<string, Promise<unknown[]>>();
+
+/**
  * Fetch a single page of bookings for the given filter path.
  */
 export async function fetchProviderBookingsPage<T = Record<string, unknown>>(
@@ -38,9 +49,22 @@ export async function fetchProviderBookingsPage<T = Record<string, unknown>>(
   const pageSize = options?.pageSize ?? PROVIDER_BOOKINGS_PAGE_SIZE;
   const timeoutMs = options?.timeoutMs;
   const p = bookingsPathWithPagination(path, pageSize, offset);
-  const res = await api.get<T[]>(p, timeoutMs && timeoutMs > 0 ? { timeout: timeoutMs } : undefined);
-  if (res.error) throwBookingsFetchError(res.error);
-  return (Array.isArray(res.data) ? res.data : []) as T[];
+  const existing = inflightPages.get(p);
+  if (existing) return (await existing) as T[];
+  const request = (async () => {
+    const res = await api.get<T[]>(
+      p,
+      timeoutMs && timeoutMs > 0 ? { timeout: timeoutMs } : undefined,
+    );
+    if (res.error) throwBookingsFetchError(res.error);
+    return (Array.isArray(res.data) ? res.data : []) as T[];
+  })();
+  inflightPages.set(p, request);
+  try {
+    return await request;
+  } finally {
+    if (inflightPages.get(p) === request) inflightPages.delete(p);
+  }
 }
 
 /**

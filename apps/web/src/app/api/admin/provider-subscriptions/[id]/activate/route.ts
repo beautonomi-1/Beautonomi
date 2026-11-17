@@ -9,6 +9,7 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { computePaidPeriodExpiresAt } from "@/lib/subscriptions/provider-billing-merchant";
 
 /**
  * POST /api/admin/provider-subscriptions/[id]/activate
@@ -32,7 +33,7 @@ export async function POST(
     const { data: sub, error: subErr } = await supabase
       .from("provider_subscriptions")
       .select(
-        "id, provider_id, plan_id, status, paystack_sync_pending, billing_period, tenant_id, subscription_plans:plan_id(is_free, price_monthly, price_yearly)",
+        "id, provider_id, plan_id, status, expires_at, paystack_sync_pending, billing_period, tenant_id, subscription_plans:plan_id(is_free, price_monthly, price_yearly)",
       )
       .eq("id", id)
       .maybeSingle();
@@ -47,6 +48,7 @@ export async function POST(
       provider_id: string;
       plan_id: string;
       status?: string;
+      expires_at?: string | null;
       paystack_sync_pending?: boolean;
       billing_period?: string;
       tenant_id?: string;
@@ -101,19 +103,27 @@ export async function POST(
 
     const now = new Date();
     const billingPeriod = row.billing_period === "yearly" ? "yearly" : "monthly";
-    const expiresAt = new Date(now);
-    if (billingPeriod === "yearly") expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-    else expiresAt.setMonth(expiresAt.getMonth() + 1);
+    const grantedEnd = computePaidPeriodExpiresAt(billingPeriod, now);
+    const openUntilMs = row.expires_at ? Date.parse(row.expires_at) : Number.NaN;
+    const keepOpenEnd = Number.isFinite(openUntilMs) && openUntilMs > Date.parse(grantedEnd);
+    const expiresAtIso = keepOpenEnd ? new Date(openUntilMs).toISOString() : grantedEnd;
 
     const { data: updated, error: updateErr } = await supabase
       .from("provider_subscriptions")
       .update({
         status: "active",
-        started_at: now.toISOString(),
-        expires_at: isFree ? null : expiresAt.toISOString(),
+        ...(keepOpenEnd ? {} : { started_at: now.toISOString() }),
+        expires_at: isFree ? null : expiresAtIso,
+        ...(isFree || keepOpenEnd
+          ? {}
+          : {
+              billing_period_start: now.toISOString(),
+              billing_period_end: expiresAtIso,
+            }),
         paystack_sync_pending: false,
         paystack_sync_note: null,
         cancelled_at: null,
+        past_due_since: null,
         updated_at: now.toISOString(),
       })
       .eq("id", id)

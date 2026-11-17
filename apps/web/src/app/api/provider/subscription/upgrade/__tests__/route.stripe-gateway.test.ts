@@ -71,6 +71,15 @@ function supabaseForPaidUpgrade() {
           }),
         };
       }
+      if (table === "provider_subscriptions") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        };
+      }
       if (table === "subscription_plans") {
         return {
           select: () => ({

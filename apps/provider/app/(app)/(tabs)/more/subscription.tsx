@@ -138,8 +138,9 @@ export function SubscriptionContent() {
   // isPaidSubscriber check here is a defensive belt-and-suspenders guard so
   // this screen never surfaces a billing issue to someone on the free plan.
   const visibleBillingIssue = sub?.billing_issue ?? null;
+  const chargePending = visibleBillingIssue?.action === "charge_pending";
   const isUrgentIssue =
-    status === "past_due" || visibleBillingIssue?.type === "payment_failed";
+    !chargePending && (status === "past_due" || visibleBillingIssue?.type === "payment_failed");
 
   return (
     <ScrollView
@@ -185,7 +186,9 @@ export function SubscriptionContent() {
           >
             {visibleBillingIssue.type === "payment_failed"
               ? sh("paymentNotCompleted")
-              : visibleBillingIssue.type === "past_due"
+              : chargePending
+                ? sh("statusPastDue")
+                : visibleBillingIssue.type === "past_due"
                 ? sh("paymentActionNeeded")
                 : sh("billingActionNeeded")}
           </Text>
@@ -214,7 +217,7 @@ export function SubscriptionContent() {
           style={{ marginEnd: 8 }}
         />
         <Text style={twStyle("text-base font-bold text-white")}>
-          {visibleBillingIssue ? sh("resolveBilling") : sh("managePlan")}
+          {visibleBillingIssue && !chargePending ? sh("resolveBilling") : sh("managePlan")}
         </Text>
       </TouchableOpacity>
 
@@ -257,7 +260,7 @@ export function SubscriptionContent() {
                 </Text>
               ) : (
                 <Text style={twStyle("mt-2 text-sm text-gray-600")}>
-                  {sub.expires_at
+                  {sub.expires_at && status !== "past_due"
                     ? status === "active"
                       ? sh("renews", { date: formatDate(sub.expires_at) })
                       : status === "expired"

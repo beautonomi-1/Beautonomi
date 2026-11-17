@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { Switch } from "@/components/ui/switch";
 import { Bell, Mail, MessageSquare, Calendar, DollarSign, Star, Users, AlertCircle, Clock, FileText, TrendingUp, Wallet, Volume2 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { BOOKING_ALERT_SOUND_PREF_EVENT } from "@/components/provider-portal/ProviderBookingAlertListener";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -128,6 +129,7 @@ export default function ProviderNotificationPreferences() {
         ...prev,
         booking_alert_sound: enabled,
       }));
+      window.dispatchEvent(new CustomEvent(BOOKING_ALERT_SOUND_PREF_EVENT, { detail: enabled }));
       toast.success(
         enabled
           ? t("web.provider.settings.pages.notifications.alertSoundEnabled")

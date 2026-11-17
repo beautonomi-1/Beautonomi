@@ -27,7 +27,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney } from "@beautonomi/utils";
+import { multiplyMoney, formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { hasSupabaseAccessToken, pushLoginWithReturnTo, redirectLoginIfAuthRequired } from "@/lib/customer-auth-routing";
@@ -87,7 +87,7 @@ export default function GiftCardPurchaseScreen() {
   const [issuedGiftCardCodes, setIssuedGiftCardCodes] = useState<string[]>([]);
 
   const finalAmount = customAmount ? parseFloat(customAmount) || 0 : amount;
-  const total = finalAmount * quantity;
+  const total = multiplyMoney(finalAmount, quantity);
 
   useEffect(() => {
     if (savedCards.length > 0 && defaultCard?.id) {
@@ -273,10 +273,25 @@ export default function GiftCardPurchaseScreen() {
             return;
           }
           if (pr.outcome === "cancel") {
+            if (reference) {
+              void verifyPaystackWithRetry(reference, { redirectStatus: "cancelled", maxAttempts: 1 });
+            }
             return;
           }
-          if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
+          if (pr.outcome === "success" && pr.url) {
             const parsed = parseOnlineCheckoutReturnUrl(pr.url);
+            if (isCancelledPaystackUrl(pr.url) || parsed.status === "failed" || parsed.status === "cancelled") {
+              const failRef = parsed.reference || reference;
+              if (failRef) {
+                void verifyPaystackWithRetry(failRef, {
+                  redirectStatus: parsed.status === "failed" ? "failed" : "cancelled",
+                  sessionId: parsed.sessionId,
+                  transactionId: parsed.transactionId,
+                  maxAttempts: 1,
+                });
+              }
+              return;
+            }
             if (parsed.reference) reference = parsed.reference;
             checkoutSessionId = parsed.sessionId;
             flutterwaveTransactionId = parsed.transactionId;

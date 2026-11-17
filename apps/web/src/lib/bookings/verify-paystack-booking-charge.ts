@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { roundCurrency, subtractMoney } from "@beautonomi/utils";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { recordReconciliationException } from "@/lib/finance/record-reconciliation-exception";
 import { storedPlatformFeeAmount } from "@/lib/bookings/provider-booking-platform-fee";
@@ -30,6 +31,12 @@ export async function verifyBookingCharge(params: {
   bookingPaymentReference?: string | null;
   bookingCurrency?: string | null;
   psp?: string;
+  /**
+   * Card amount stored on the booking (total or deposit, minus wallet, gift,
+   * and reschedule credit). Used when the pending `payments` row was never
+   * written but this reference is the one checkout saved on the booking.
+   */
+  fallbackAmountMajor?: number | null;
 }): Promise<VerifyBookingChargeResult> {
   const psp = params.psp ?? "paystack";
   const currency = (params.chargeCurrency || params.bookingCurrency || "ZAR").toUpperCase();
@@ -65,6 +72,29 @@ export async function verifyBookingCharge(params: {
         pending = matches[0];
       }
     }
+  }
+
+  const referenceMatchesBooking =
+    Boolean(params.bookingPaymentReference) && params.bookingPaymentReference!.trim() === ref;
+  const fallbackAmount = Number(params.fallbackAmountMajor ?? NaN);
+  if (
+    !pending &&
+    referenceMatchesBooking &&
+    Number.isFinite(fallbackAmount) &&
+    fallbackAmount > 0 &&
+    Math.abs(amountMajor - fallbackAmount) <= 0.01
+  ) {
+    return {
+      ok: true,
+      amountMajor,
+      currency,
+      pendingPayment: {
+        amount: fallbackAmount,
+        currency,
+        metadata: null,
+        payment_provider_transaction_id: ref,
+      },
+    };
   }
 
   if (!pending) {
@@ -126,6 +156,7 @@ export async function verifyPaystackBookingCharge(params: {
   tenantId: string;
   bookingPaymentReference?: string | null;
   bookingCurrency?: string | null;
+  fallbackAmountMajor?: number | null;
 }): Promise<VerifyBookingChargeResult> {
   return verifyBookingCharge({
     ...params,
@@ -133,6 +164,34 @@ export async function verifyPaystackBookingCharge(params: {
     chargeCurrency: params.paystackCurrency,
     psp: "paystack",
   });
+}
+
+/**
+ * Card amount checkout should have charged: full total, or the deposit, after
+ * wallet, gift card, and reschedule credit already applied on the booking.
+ */
+export function expectedHostedCardAmountMajor(booking: {
+  total_amount?: unknown;
+  deposit_amount?: unknown;
+  payment_option?: unknown;
+  wallet_amount?: unknown;
+  gift_card_amount?: unknown;
+  reschedule_credit_pending?: unknown;
+  currency?: unknown;
+}): number {
+  const currency = String(booking.currency || "ZAR");
+  const total = Number(booking.total_amount ?? 0);
+  const deposit = Number(booking.deposit_amount ?? 0);
+  const option = String(booking.payment_option ?? "full").toLowerCase();
+  let base = option === "deposit" && deposit > 0 ? deposit : total;
+  for (const part of [
+    booking.wallet_amount,
+    booking.gift_card_amount,
+    booking.reschedule_credit_pending,
+  ]) {
+    base = subtractMoney(base, Number(part ?? 0), currency);
+  }
+  return Math.max(0, roundCurrency(base, currency));
 }
 
 export function bookingFinancialsFromDb(booking: Record<string, unknown>, pending?: PendingPaymentRow) {

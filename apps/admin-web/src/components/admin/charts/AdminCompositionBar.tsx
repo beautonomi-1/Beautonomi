@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 export function AdminCompositionBar({
@@ -7,7 +8,7 @@ export function AdminCompositionBar({
   segments: { label: string; value: number; colorClass: string }[];
   showShare?: boolean;
 }) {
-  const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0);
+  const total = segments.reduce((s, x) => addMoney(s, Math.max(0, x.value)), 0);
   if (total <= 0) {
     return <p className="text-sm text-gray-500">No revenue in this window.</p>;
   }

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchBobGoShipment } from "@beautonomi/shipping";
 import { applyBobGoShipmentSnapshotToOrder } from "@/lib/orders/bob-go-shipment-sync";
-import { bookShippingForOrder, BOB_GO_PROBE_RATES_TIMEOUT_MS } from "@/lib/orders/shipping";
+import { bookShippingForOrder, BOB_GO_PROBE_RATES_TIMEOUT_MS, refreshTrackingForOrder } from "@/lib/orders/shipping";
 import { resolveProviderOwnedCredentials } from "@/lib/orders/shipping-runtime";
 
 export async function reconcileBobGoShipments(admin: SupabaseClient): Promise<{
@@ -60,6 +60,24 @@ export async function reconcileBobGoShipments(admin: SupabaseClient): Promise<{
     } catch (e) {
       errors += 1;
       console.warn("[reconcile-bob-go] rates retry", row, e);
+    }
+  }
+
+  const { data: otherCourierOrders } = await (admin.from("product_orders") as any)
+    .select("id")
+    .eq("fulfillment_type", "delivery")
+    .in("carrier", ["aramex", "courier-guy"])
+    .in("status", ["pending", "confirmed", "processing", "shipped"])
+    .not("tracking_number", "is", null);
+
+  for (const row of otherCourierOrders ?? []) {
+    polled += 1;
+    try {
+      const result = await refreshTrackingForOrder(admin, (row as { id: string }).id);
+      if (!result.ok) errors += 1;
+    } catch (e) {
+      errors += 1;
+      console.warn("[reconcile-courier-tracking]", row, e);
     }
   }
 

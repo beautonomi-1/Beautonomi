@@ -18,6 +18,10 @@ export function emitChatBadgeRefresh(): void {
   emitNotificationBadgeRefresh();
 }
 
-export function emitAlertPrefsChanged(): void {
-  DeviceEventEmitter.emit(ALERT_PREFS_CHANGED_EVENT);
+export function emitAlertPrefsChanged(prefs?: {
+  booking_alert_sound?: boolean;
+  order_alert_sound?: boolean;
+  message_alert_sound?: boolean;
+}): void {
+  DeviceEventEmitter.emit(ALERT_PREFS_CHANGED_EVENT, prefs);
 }

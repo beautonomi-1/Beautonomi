@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import type { RecordProductOrderPaymentInput } from "@/lib/orders/record-product-order-payment";
 
 export type ProductOrderForPaymentResolve = {
@@ -62,7 +63,7 @@ export function resolveProductOrderRecordPaymentInput(
       provider: "paystack",
       source: "paystack_webhook",
       reference: ref,
-      amountMajor: paymentTx != null ? num(paymentTx.amount) : Math.max(0, total - wallet),
+      amountMajor: paymentTx != null ? num(paymentTx.amount) : Math.max(0, subtractMoney(total, wallet)),
       feesMajor: paymentTx != null ? num(paymentTx.fees) : 0,
     };
   }
@@ -76,7 +77,7 @@ export function resolveProductOrderRecordPaymentInput(
       provider: method,
       source: method === "flutterwave" ? "flutterwave_webhook" : "stripe_webhook",
       reference: ref,
-      amountMajor: paymentTx != null ? num(paymentTx.amount) : Math.max(0, total - wallet),
+      amountMajor: paymentTx != null ? num(paymentTx.amount) : Math.max(0, subtractMoney(total, wallet)),
       feesMajor: paymentTx != null ? num(paymentTx.fees) : 0,
     };
   }

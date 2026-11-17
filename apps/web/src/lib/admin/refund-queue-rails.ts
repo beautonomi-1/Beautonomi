@@ -5,6 +5,7 @@ import {
 } from "@/lib/admin/booking-refund-context";
 import { isPlatformCollected } from "@/lib/bookings/payment-collected-classifier";
 import type { BookingPaymentTender } from "@/lib/admin/refund-tender-labels";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export type BookingPaymentWithStatus = BookingPaymentTender & {
   status?: string | null;
@@ -19,7 +20,7 @@ export function sumPendingCashRefundAmount(
         String(r.status ?? "") === "pending" &&
         String(r.refund_method ?? "").toLowerCase() === "cash",
     )
-    .reduce((sum, r) => sum + parseRefundAmount(r.amount), 0);
+    .reduce((sum, r) => addMoney(sum, parseRefundAmount(r.amount)), 0);
 }
 
 /** Max amount for wallet credit (platform leg), or in-person substitute when allowed. */
@@ -29,12 +30,12 @@ export function resolveWalletCreditMaxAmount(params: {
   isWalletSubstituteAllowed: boolean;
 }): number {
   if (params.isWalletSubstituteAllowed) {
-    return Math.max(0, Math.round(params.remainingRefundable * 100) / 100);
+    return Math.max(0, roundCurrency(params.remainingRefundable));
   }
   if (params.walletRemainingRefundable > 0.01) {
-    return Math.max(0, Math.round(params.walletRemainingRefundable * 100) / 100);
+    return Math.max(0, roundCurrency(params.walletRemainingRefundable));
   }
-  return Math.max(0, Math.round(params.remainingRefundable * 100) / 100);
+  return Math.max(0, roundCurrency(params.remainingRefundable));
 }
 
 export function computeWalletRefundableRemaining(params: {
@@ -45,10 +46,10 @@ export function computeWalletRefundableRemaining(params: {
 }): number {
   const storeCreditDone = sumCompletedStoreCreditRefunds(params.bookingRefunds);
   if (params.hasGatewayCapture) {
-    return Math.max(0, Math.round(params.captureRemainingTotal * 100) / 100);
+    return Math.max(0, roundCurrency(params.captureRemainingTotal));
   }
   const platformCollected = params.payments
     .filter((p) => isPlatformCollected(p))
-    .reduce((sum, p) => sum + parseRefundAmount(p.amount), 0);
-  return Math.max(0, Math.round((platformCollected - storeCreditDone) * 100) / 100);
+    .reduce((sum, p) => addMoney(sum, parseRefundAmount(p.amount)), 0);
+  return Math.max(0, subtractMoney(platformCollected, storeCreditDone));
 }

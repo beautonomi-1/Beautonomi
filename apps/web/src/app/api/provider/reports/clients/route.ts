@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
         visits: 0,
         name: b.customer_id,
       };
-      existing.booked_gross_spend += Number(b.total_amount || 0);
+      existing.booked_gross_spend = addMoney(existing.booked_gross_spend, Number(b.total_amount || 0));
       existing.visits += 1;
       spendByCustomer.set(b.customer_id, existing);
     });
@@ -152,10 +153,10 @@ export async function GET(request: NextRequest) {
 
     const totalClients = customerIds.size;
     const retentionRate = totalClients > 0 ? (returningClients / totalClients) * 100 : 0;
-    const totalBookedGross = all.reduce((s, b: any) => s + Number(b.total_amount || 0), 0);
-    const totalLedgerEarnings = [...ledgerByCustomer.values()].reduce((s, v) => s + v, 0);
-    const avgBookedGross = totalClients > 0 ? totalBookedGross / totalClients : 0;
-    const avgLedgerEarnings = totalClients > 0 ? totalLedgerEarnings / totalClients : 0;
+    const totalBookedGross = all.reduce((s, b: any) => addMoney(s, Number(b.total_amount || 0)), 0);
+    const totalLedgerEarnings = [...ledgerByCustomer.values()].reduce((s, v) => addMoney(s, v), 0);
+    const avgBookedGross = totalClients > 0 ? multiplyMoney(totalBookedGross, 1 / totalClients) : 0;
+    const avgLedgerEarnings = totalClients > 0 ? multiplyMoney(totalLedgerEarnings, 1 / totalClients) : 0;
 
     return successResponse({
       new_clients: newClients,

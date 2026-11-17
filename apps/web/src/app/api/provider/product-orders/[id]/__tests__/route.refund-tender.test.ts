@@ -19,7 +19,9 @@ vi.mock("@/lib/orders/product-order-lifecycle", () => ({
   applyProductOrderCancelRefundSideEffects: vi.fn(async () => ({ walletCreditFailed: false })),
   releaseUnpaidProductOrderHolds: vi.fn(async () => ({ credited: false, failed: false, amount: 0 })),
   restockProductOrderLineItems: vi.fn(async () => undefined),
+  productOrderHasStockStillOut: vi.fn(async () => false),
   voidProductOrderGiftCardIfNeeded: vi.fn(async () => undefined),
+  ABANDONED_ORDER_REFUND_STILL_DUE: "Payment was not completed in time — refund still due",
 }));
 
 vi.mock("@/lib/ecommerce/refund-product-order-online-tender", () => ({
@@ -375,6 +377,37 @@ describe("PATCH /api/provider/product-orders/[id] refund tender split", () => {
 
     expect(res.status).toBe(200);
     expect(restockProductOrderLineItems).not.toHaveBeenCalled();
+    expect(applyProductOrderCancelRefundSideEffects).not.toHaveBeenCalled();
+  });
+
+  it("finishes the refund when a cancelled order is still marked paid", async () => {
+    const { restockProductOrderLineItems, applyProductOrderCancelRefundSideEffects } =
+      await import("@/lib/orders/product-order-lifecycle");
+    await setup({ ...makeOrder(), status: "cancelled", payment_status: "paid" });
+
+    const res = await patch({ status: "cancelled", cancellation_reason: "Changed my mind" });
+
+    expect(res.status).toBe(200);
+    expect(restockProductOrderLineItems).not.toHaveBeenCalled();
+    expect(applyProductOrderCancelRefundSideEffects).toHaveBeenCalledOnce();
+    expect(vi.mocked(applyProductOrderCancelRefundSideEffects).mock.calls[0][3]).toMatchObject({
+      newStatus: "cancelled",
+    });
+  });
+
+  it("puts products back when a cancelled order is sent again and the stock is still out", async () => {
+    const {
+      restockProductOrderLineItems,
+      productOrderHasStockStillOut,
+      applyProductOrderCancelRefundSideEffects,
+    } = await import("@/lib/orders/product-order-lifecycle");
+    vi.mocked(productOrderHasStockStillOut).mockResolvedValueOnce(true);
+    await setup({ ...makeOrder(), status: "cancelled", payment_status: "refunded" });
+
+    const res = await patch({ status: "cancelled" });
+
+    expect(res.status).toBe(200);
+    expect(restockProductOrderLineItems).toHaveBeenCalledOnce();
     expect(applyProductOrderCancelRefundSideEffects).not.toHaveBeenCalled();
   });
 

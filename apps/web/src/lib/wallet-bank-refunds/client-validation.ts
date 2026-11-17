@@ -1,3 +1,4 @@
+import { percentOf, roundCurrency, subtractMoney } from "@beautonomi/utils";
 export type BankRefundClientSettings = {
   enabled?: boolean;
   min_amount?: number;
@@ -11,14 +12,14 @@ export type BankRefundClientSettings = {
 /** Same rounding as `computeWalletBankRefundFee` on the server. */
 export function bankRefundFee(amount: number, settings: BankRefundClientSettings): { fee: number; net: number } {
   const value = Math.max(0, Number(settings.fee_value) || 0);
-  const raw = settings.fee_type === "percentage" ? (amount * value) / 100 : value;
-  const fee = Math.round(Math.min(raw, amount) * 100) / 100;
-  return { fee, net: Math.round((amount - fee) * 100) / 100 };
+  const raw = settings.fee_type === "percentage" ? percentOf(amount, value) : roundCurrency(value);
+  const fee = roundCurrency(Math.min(raw, amount));
+  return { fee, net: subtractMoney(amount, fee) };
 }
 
 export function parseRefundAmount(raw: string): number {
   const n = Number(raw.trim().replace(",", "."));
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+  return Number.isFinite(n) ? roundCurrency(n) : NaN;
 }
 
 export type BankRefundAmountError = "invalid" | "below_min" | "above_max" | "above_eligible" | "fee_exceeds";

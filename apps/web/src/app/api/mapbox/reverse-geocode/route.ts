@@ -4,7 +4,7 @@ import {
   isMapboxNotConfiguredError,
   mapboxNotConfiguredResponse,
 } from "@/lib/mapbox/mapbox-config-errors";
-import { optionalAuthInApi } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { checkMapboxRateLimit } from "@/lib/rate-limit/mapbox";
 import { z } from "zod";
 
@@ -20,11 +20,15 @@ const reverseGeocodeSchema = z.object({
  * for client alignment (e.g. customer app AddressPicker).
  */
 export async function POST(request: NextRequest) {
-  const { user } = await optionalAuthInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
-  const rateLimitResponse = await checkMapboxRateLimit(request, user?.id);
-  if (rateLimitResponse) return rateLimitResponse;
-
   try {
+    // F3-11: Mapbox is paid — require a signed-in user, then rate-limit.
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
+    const rateLimitResponse = await checkMapboxRateLimit(request, user.id);
+    if (rateLimitResponse) return rateLimitResponse;
+
     const body = await request.json();
     const validationResult = reverseGeocodeSchema.safeParse(body);
 
@@ -63,18 +67,9 @@ export async function POST(request: NextRequest) {
       }
       throw mapboxError;
     }
-  } catch (error: any) {
-    console.error("Error in reverse geocode:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: error.message || "Failed to reverse geocode coordinates",
-          code: "REVERSE_GEOCODE_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    const { handleApiError } = await import("@/lib/supabase/api-helpers");
+    return handleApiError(error, "Failed to reverse geocode coordinates");
   }
 }
 

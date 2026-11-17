@@ -12,6 +12,11 @@ import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { validateAdminPayoutReadiness } from "@/lib/admin/validate-provider-payout-readiness";
+import {
+  evaluatePayoutTransfer,
+  readRequestedBy,
+  resolvePayoutDualControlSettings,
+} from "@/lib/finance/payout-dual-control";
 
 const bodySchema = z.object({
   reason: z.string().optional().nullable(),
@@ -53,7 +58,16 @@ export async function POST(
       .single();
     if (payoutErr || !payout) throw payoutErr || new Error("Payout not found");
 
-    type PayoutRow = { status: string; provider_id: string; amount?: number; payout_number?: string; id: string; currency?: string; payout_account_details?: { bank_account_id?: string } };
+    type PayoutRow = {
+      status: string;
+      provider_id: string;
+      amount?: number;
+      payout_number?: string;
+      id: string;
+      currency?: string;
+      approved_by?: string | null;
+      payout_account_details?: { bank_account_id?: string; requested_by?: string };
+    };
     const p = payout as PayoutRow;
 
     const provCheck = await fetchProviderInAdminTenant(supabase, p.provider_id, tenantId, "id");
@@ -121,6 +135,35 @@ export async function POST(
           },
         },
         { status: 400 }
+      );
+    }
+
+    // F2-20: dual control — requester never moves money; above the configured
+    // threshold the transferring admin must differ from the approving admin.
+    const dualControl = evaluatePayoutTransfer({
+      actorId: user.id,
+      approvedBy: p.approved_by ?? null,
+      requestedBy: readRequestedBy(p.payout_account_details),
+      amount: Number(p.amount || 0),
+      settings: await resolvePayoutDualControlSettings(supabase, tenantId),
+    });
+    if (dualControl.ok === false) {
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: user.role ?? "superadmin",
+        action: "admin.payout.initiate_transfer",
+        entity_type: "payout",
+        entity_id: id,
+        module: "finance",
+        risk_level: "high",
+        retention_tier: "financial",
+        status: "failed",
+        reason: dualControl.code,
+        metadata: { provider_id: p.provider_id, amount: p.amount, approved_by: p.approved_by ?? null },
+      });
+      return NextResponse.json(
+        { data: null, error: { message: dualControl.message, code: dualControl.code } },
+        { status: dualControl.status },
       );
     }
 

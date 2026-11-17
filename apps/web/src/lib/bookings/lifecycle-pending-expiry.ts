@@ -4,7 +4,6 @@ import {
   isPendingExpireDue,
   resolveLifecycleProviderSettings,
   resolvePendingExpireDecision,
-  buildPendingExpiryRefundCopy,
   pendingExpiryCancellationReason,
   type PendingExpireBound,
   type WorkingHoursJson,
@@ -262,6 +261,7 @@ export async function cancelGroupPendingParticipants(
   const organiserStillPending = eligible.some((sibling) => sibling.id === organiserBookingId);
   let organiserPaymentStatus: string | null | undefined;
   let organiserWalletRefund: number | undefined;
+  let organiserRefundInfo: string | undefined;
   let organiserCurrency: string | null | undefined;
   let expired = 0;
   let skipped = skippedIneligible;
@@ -279,6 +279,7 @@ export async function cancelGroupPendingParticipants(
       expired += 1;
       if (sibling.id === organiserBookingId) {
         organiserWalletRefund = outcome.walletRefundAmount;
+        organiserRefundInfo = outcome.refundInfo;
         organiserCurrency = outcome.currency;
       }
     } else {
@@ -304,7 +305,9 @@ export async function cancelGroupPendingParticipants(
       await sendCancellationNotification(organiserBookingId, {
         cancelledBy: "system",
         cancellationReason,
-        refundInfo: buildPendingExpiryRefundCopy(organiserPaymentStatus),
+        refundInfo:
+          organiserRefundInfo ??
+          "Your refund is still processing and will be credited once it completes. No cancellation fee applies.",
         feeRetained: 0,
         walletRefund: organiserWalletRefund,
         currency: organiserCurrency ?? undefined,

@@ -68,7 +68,7 @@ export function pendingConfirmationSlaDisplay(input: {
       lastMinute: true,
       overnight: false,
       timeLabel,
-      body: `This is a last-minute request — the salon has until ${timeLabel} to confirm.`,
+      body: `This is a last-minute request — the provider has until ${timeLabel} to confirm.`,
     };
   }
 
@@ -78,7 +78,7 @@ export function pendingConfirmationSlaDisplay(input: {
       lastMinute: false,
       overnight: true,
       timeLabel,
-      body: `The salon opens at ${openTime} and will confirm by ${timeLabel}. If not, this time is released and you're ${refundLine}.`,
+      body: `The provider opens at ${openTime} and will confirm by ${timeLabel}. If not, this time is released and you're ${refundLine}.`,
     };
   }
 
@@ -86,6 +86,6 @@ export function pendingConfirmationSlaDisplay(input: {
     lastMinute: false,
     overnight: false,
     timeLabel,
-    body: `The salon will confirm by ${timeLabel}. If not, this time is released and you're ${refundLine}.`,
+    body: `The provider will confirm by ${timeLabel}. If not, this time is released and you're ${refundLine}.`,
   };
 }

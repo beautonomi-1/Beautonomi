@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { supportTicketQuery, formatMoney } from "@beautonomi/utils";
+import { subtractMoney, supportTicketQuery, formatMoney } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 
 interface GiftCardMetadata {
@@ -261,7 +261,7 @@ function GiftCardsSection() {
             const usable = isUsable(status);
             const balance = Number(card.balance ?? 0);
             const initial = Number(card.initial_balance ?? 0);
-            const usedAmount = Math.max(0, initial - balance);
+            const usedAmount = Math.max(0, subtractMoney(initial, balance));
             const usedPct = initial > 0 ? Math.min(100, Math.round((usedAmount / initial) * 100)) : 0;
             const isRevealed = revealedIds.has(card.id);
             const isCopied = copiedId === card.id;

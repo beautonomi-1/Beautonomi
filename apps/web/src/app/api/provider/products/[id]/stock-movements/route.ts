@@ -117,7 +117,7 @@ export async function POST(
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Stock adjustment failed";
-      if (msg.includes("Insufficient") || msg.includes("variants")) {
+      if (msg.includes("Insufficient") || msg.includes("variants") || msg.includes("Stock changed")) {
         return errorResponse(msg, "STOCK_ERROR", 400);
       }
       throw e;

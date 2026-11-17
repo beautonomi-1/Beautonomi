@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -21,6 +22,7 @@ import { eachUtcDay, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 import { fetchAllLedgerPages } from "@/lib/reports/fetch-all-ledger-pages";
 import { fetchMarketplaceHealthSeries } from "@/lib/admin/marketplace-health-api";
 import { isPlatformCommissionEnabled } from "@/lib/finance/resolve-commission-percentage";
+import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 
 export async function GET(request: NextRequest) {
   try {
@@ -253,6 +255,7 @@ export async function GET(request: NextRequest) {
               "tip",
               "cancellation_fee",
               "walk_in_additional_charge",
+              "refund",
             ],
           },
         );
@@ -265,11 +268,15 @@ export async function GET(request: NextRequest) {
       for (const row of merged) {
         const pid = resolveFinanceLedgerRowProviderId(row);
         if (!pid) continue;
+        const type = String(row.transaction_type ?? "");
+        if (type === "refund" && !isProviderEarningsRefundComponent(row.refund_component as string | null)) {
+          continue;
+        }
         const amt = Number(row.net ?? row.amount ?? 0);
-        providerRevenue[pid] = (providerRevenue[pid] || 0) + amt;
+        providerRevenue[pid] = addMoney(providerRevenue[pid] || 0, amt);
       }
 
-      const provider_net_earnings_total = Object.values(providerRevenue).reduce((s, v) => s + v, 0);
+      const provider_net_earnings_total = Object.values(providerRevenue).reduce((s, v) => addMoney(s, v), 0);
 
       const topProviders = Object.entries(providerRevenue)
         .sort((a, b) => b[1] - a[1])

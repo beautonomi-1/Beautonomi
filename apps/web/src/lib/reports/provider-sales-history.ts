@@ -1,3 +1,4 @@
+import { addMoney, subtractMoney, sumMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { subMonths } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
@@ -10,6 +11,7 @@ import {
 } from "@/lib/reports/provider-report-utils";
 import { bookingMatchesDashboardLocation } from "@/lib/server/provider/dashboard-booking-location-filter";
 import { providerCollectedRetailOrdersOrFilter } from "@/lib/reports/provider-retail-order-scope";
+import { productOrderTillRefundAmount } from "@/lib/orders/product-order-tender";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 import { chunkIds, fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unbounded";
 
@@ -140,16 +142,16 @@ function bumpAgg(
   const net = Number(row.net ?? 0);
   const comm = Number(row.commission ?? 0);
   const tt = row.transaction_type;
-  if (tt === "provider_earnings") agg.provider_earnings_net += net;
-  else if (tt === "platform_fee" || tt === "service_fee") agg.platform_fee += Math.abs(net);
-  else if (tt === "payment") agg.commission += Math.abs(comm) > 0 ? Math.abs(comm) : Math.abs(net);
-  else if (tt === "additional_charge_payment") agg.commission += Math.abs(comm) > 0 ? Math.abs(comm) : Math.abs(net);
-  else if (tt === "walk_in_additional_charge") agg.walk_in_additional_charge += net;
-  else if (tt === "tip") agg.tip += Math.abs(net);
-  else if (tt === "tax") agg.tax += Math.abs(Number(row.amount ?? 0));
-  else if (tt === "travel_fee") agg.travel_fee += Math.abs(net);
-  else if (tt === "cancellation_fee") agg.cancellation_fee += Math.abs(net);
-  else if (isDiscountContraType(tt)) agg.discount_contra += Math.abs(net);
+  if (tt === "provider_earnings") agg.provider_earnings_net = addMoney(agg.provider_earnings_net, net);
+  else if (tt === "platform_fee" || tt === "service_fee") agg.platform_fee = addMoney(agg.platform_fee, Math.abs(net));
+  else if (tt === "payment") agg.commission = addMoney(agg.commission, Math.abs(comm) > 0 ? Math.abs(comm) : Math.abs(net));
+  else if (tt === "additional_charge_payment") agg.commission = addMoney(agg.commission, Math.abs(comm) > 0 ? Math.abs(comm) : Math.abs(net));
+  else if (tt === "walk_in_additional_charge") agg.walk_in_additional_charge = addMoney(agg.walk_in_additional_charge, net);
+  else if (tt === "tip") agg.tip = addMoney(agg.tip, Math.abs(net));
+  else if (tt === "tax") agg.tax = addMoney(agg.tax, Math.abs(Number(row.amount ?? 0)));
+  else if (tt === "travel_fee") agg.travel_fee = addMoney(agg.travel_fee, Math.abs(net));
+  else if (tt === "cancellation_fee") agg.cancellation_fee = addMoney(agg.cancellation_fee, Math.abs(net));
+  else if (isDiscountContraType(tt)) agg.discount_contra = addMoney(agg.discount_contra, Math.abs(net));
   // Refunds are split into per-component rows by the trigger. provider_net only
   // deducts components that were the provider's money (earnings/tip/travel/
   // cancellation/walk-in add-on + legacy/manual whole refunds). Platform fee/
@@ -157,7 +159,7 @@ function bumpAgg(
   // provider's loss and must not reduce provider_net.
   else if (tt === "refund") {
     if (isProviderEarningsRefundComponent(row.refund_component as string | null | undefined)) {
-      agg.refunds += Math.abs(net);
+      agg.refunds = addMoney(agg.refunds, Math.abs(net));
     }
   }
   if (!agg.last_at || row.created_at > agg.last_at) agg.last_at = row.created_at;
@@ -313,13 +315,15 @@ type SalesHistoryIndexEntry = {
 };
 
 function providerNetFromAgg(agg: LedgerAgg): number {
-  return (
-    agg.provider_earnings_net +
-    agg.tip +
-    agg.travel_fee +
-    agg.cancellation_fee +
-    agg.walk_in_additional_charge -
-    agg.refunds
+  return subtractMoney(
+    sumMoney(
+      agg.provider_earnings_net,
+      agg.tip,
+      agg.travel_fee,
+      agg.cancellation_fee,
+      agg.walk_in_additional_charge,
+    ),
+    agg.refunds,
   );
 }
 
@@ -343,24 +347,24 @@ export function computeSalesHistoryTotalsFromAggs(
   for (const [id, gross] of bookingGrossById) {
     const agg = bookingAggs.get(id);
     if (!agg) continue;
-    total_gross += gross;
-    total_provider_net += providerNetFromAgg(agg);
-    total_platform_fee += agg.platform_fee;
-    total_commission += agg.commission;
+    total_gross = addMoney(total_gross, gross);
+    total_provider_net = addMoney(total_provider_net, providerNetFromAgg(agg));
+    total_platform_fee = addMoney(total_platform_fee, agg.platform_fee);
+    total_commission = addMoney(total_commission, agg.commission);
   }
   for (const [id, gross] of orderGrossById) {
     const agg = orderAggs.get(id);
     if (!agg) continue;
-    total_gross += gross;
-    total_provider_net += providerNetFromAgg(agg);
-    total_platform_fee += agg.platform_fee;
-    total_commission += agg.commission;
+    total_gross = addMoney(total_gross, gross);
+    total_provider_net = addMoney(total_provider_net, providerNetFromAgg(agg));
+    total_platform_fee = addMoney(total_platform_fee, agg.platform_fee);
+    total_commission = addMoney(total_commission, agg.commission);
   }
   for (const row of extraRows) {
-    total_gross += row.gross_total;
-    total_provider_net += row.provider_net;
-    total_platform_fee += row.platform_fee;
-    total_commission += row.commission;
+    total_gross = addMoney(total_gross, row.gross_total);
+    total_provider_net = addMoney(total_provider_net, row.provider_net);
+    total_platform_fee = addMoney(total_platform_fee, row.platform_fee);
+    total_commission = addMoney(total_commission, row.commission);
   }
 
   return { total_gross, total_provider_net, total_platform_fee, total_commission };
@@ -515,10 +519,10 @@ export async function queryProviderSalesHistory(
         const { data, error } = await db
           .from("product_orders")
           .select(
-            "id, order_number, customer_id, customer_name, total_amount, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
+            "id, order_number, customer_id, customer_name, total_amount, fulfillment_type, collection_location_id, paid_at, updated_at, created_at, refunded_amount, refund_method",
           )
           .eq("provider_id", providerId)
-          .eq("payment_status", "paid")
+          .in("payment_status", ["paid", "partially_refunded", "refunded"])
           .gte("paid_at", fromIso)
           .lte("paid_at", toIso)
           .or(providerCollectedRetailOrdersOrFilter())
@@ -556,7 +560,13 @@ export async function queryProviderSalesHistory(
           continue;
         }
         const gross = Number(row.total_amount ?? 0);
-        extraTotalsRows.push({ gross_total: gross, provider_net: gross, platform_fee: 0, commission: 0 });
+        const tillRefund = productOrderTillRefundAmount(row);
+        extraTotalsRows.push({
+          gross_total: gross,
+          provider_net: Math.max(0, subtractMoney(gross, tillRefund)),
+          platform_fee: 0,
+          commission: 0,
+        });
         index.push({
           id: row.id,
           source: "product_order",
@@ -687,7 +697,7 @@ async function materializeSalesHistoryRows(args: {
       db
         .from("product_orders")
         .select(
-          "id, order_number, customer_id, customer_name, total_amount, currency, payment_status, fulfillment_type, collection_location_id, paid_at, updated_at, created_at",
+          "id, order_number, customer_id, customer_name, total_amount, currency, payment_status, fulfillment_type, collection_location_id, paid_at, updated_at, created_at, refunded_amount, refund_method",
         )
         .eq("provider_id", providerId)
         .in("id", slice),
@@ -789,6 +799,7 @@ async function materializeSalesHistoryRows(args: {
         const customerName = row.customer_id ? customerMap.get(row.customer_id) ?? null : row.customer_name ?? "Walk-in";
         const ref = row.order_number || row.id;
         const gross = Number(row.total_amount ?? 0);
+        const tillRefund = productOrderTillRefundAmount(row);
         rows.push({
           id: row.id,
           source: "product_order",
@@ -799,13 +810,13 @@ async function materializeSalesHistoryRows(args: {
           gross_total: gross,
           platform_fee: 0,
           commission: 0,
-          provider_net: gross,
+          provider_net: Math.max(0, subtractMoney(gross, tillRefund)),
           tip: 0,
           tax: 0,
           travel_fee: 0,
           cancellation_fee: 0,
           discount_contra: 0,
-          refunds: 0,
+          refunds: tillRefund,
           payment_status: row.payment_status ?? null,
           currency: row.currency || "ZAR",
           location_id: reportLoc,
@@ -862,10 +873,10 @@ export async function buildProviderSalesHistoryRows(
 export function salesHistoryTotals(rows: SalesHistoryRow[]) {
   return rows.reduce(
     (acc, r) => {
-      acc.total_gross += r.gross_total;
-      acc.total_provider_net += r.provider_net;
-      acc.total_platform_fee += r.platform_fee;
-      acc.total_commission += r.commission;
+      acc.total_gross = addMoney(acc.total_gross, r.gross_total);
+      acc.total_provider_net = addMoney(acc.total_provider_net, r.provider_net);
+      acc.total_platform_fee = addMoney(acc.total_platform_fee, r.platform_fee);
+      acc.total_commission = addMoney(acc.total_commission, r.commission);
       return acc;
     },
     { total_gross: 0, total_provider_net: 0, total_platform_fee: 0, total_commission: 0 },

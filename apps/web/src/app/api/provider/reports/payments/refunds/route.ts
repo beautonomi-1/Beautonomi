@@ -18,6 +18,7 @@ import {
   summarizeLedgerLocationAttribution,
 } from "@/lib/reports/provider-report-utils";
 import { isCashRefundComponent } from "@/lib/ledger/refund-components";
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
 export const maxDuration = 60;
@@ -214,7 +215,7 @@ export async function GET(request: NextRequest) {
       const net = Number(r.net ?? r.amount ?? 0);
       const existing = logicalMap.get(key);
       if (existing) {
-        existing.netSum += net;
+        existing.netSum = addMoney(existing.netSum, net);
         if (new Date(r.created_at).getTime() > new Date(existing.created_at).getTime()) {
           existing.created_at = r.created_at;
         }
@@ -250,15 +251,15 @@ export async function GET(request: NextRequest) {
     }
 
     const totalRefunds = logicalRefunds.length;
-    const totalRefundAmount = logicalRefunds.reduce((sum, r) => sum + r.amount, 0);
+    const totalRefundAmount = logicalRefunds.reduce((sum, r) => addMoney(sum, r.amount), 0);
     const providerEarningsReversed = negativeEarningsRows.reduce(
-      (sum, r) => sum + Math.abs(Number(r.net ?? r.amount ?? 0)),
+      (sum, r) => addMoney(sum, Math.abs(Number(r.net ?? r.amount ?? 0))),
       0,
     );
-    const totalPaymentLedgerAmount = paymentRows.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+    const totalPaymentLedgerAmount = paymentRows.reduce((sum, r) => addMoney(sum, Number(r.amount ?? 0)), 0);
     const refundShareOfPaymentLedgerPercent =
       totalPaymentLedgerAmount > 0 ? (totalRefundAmount / totalPaymentLedgerAmount) * 100 : 0;
-    const averageRefundAmount = totalRefunds > 0 ? totalRefundAmount / totalRefunds : 0;
+    const averageRefundAmount = totalRefunds > 0 ? multiplyMoney(totalRefundAmount, 1 / totalRefunds) : 0;
 
     const refundsByMethod = new Map<string, { count: number; amount: number }>();
     logicalRefunds.forEach((refund) => {
@@ -271,7 +272,7 @@ export async function GET(request: NextRequest) {
       const existing = refundsByMethod.get(method) || { count: 0, amount: 0 };
       refundsByMethod.set(method, {
         count: existing.count + 1,
-        amount: existing.amount + refund.amount,
+        amount: addMoney(existing.amount, refund.amount),
       });
     });
 
@@ -290,7 +291,7 @@ export async function GET(request: NextRequest) {
       const existing = dailyRefunds.get(date) || { count: 0, amount: 0 };
       dailyRefunds.set(date, {
         count: existing.count + 1,
-        amount: existing.amount + refund.amount,
+        amount: addMoney(existing.amount, refund.amount),
       });
     });
 

@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { Redirect, useRouter } from "expo-router";
@@ -80,8 +81,8 @@ function isDebitType(t: Transaction): boolean {
 
 function signedContributionForSummary(t: Transaction): number {
   if (t.type === "earning" || t.type === "tip") return t.amount;
-  if (t.type === "payout" || t.type === "refund" || t.type === "fee") return -t.amount;
-  if (t.type === "adjustment") return (t.sign ?? 1) * t.amount;
+  if (t.type === "payout" || t.type === "refund" || t.type === "fee") return multiplyMoney(t.amount, -1);
+  if (t.type === "adjustment") return multiplyMoney(t.amount, t.sign ?? 1);
   return 0;
 }
 
@@ -224,19 +225,19 @@ export function TransactionsContent({
     if (useServerSummary) return serverSummary!.total_in;
     return filtered
       .filter((t) => t.type === "earning" || t.type === "tip")
-      .reduce((s, t) => s + t.amount, 0);
+      .reduce((s, t) => addMoney(s, t.amount), 0);
   }, [filtered, useServerSummary, serverSummary]);
 
   const totalOut = useMemo(() => {
     if (useServerSummary) return serverSummary!.total_out;
     return filtered
       .filter((t) => t.type === "payout" || t.type === "refund")
-      .reduce((s, t) => s + t.amount, 0);
+      .reduce((s, t) => addMoney(s, t.amount), 0);
   }, [filtered, useServerSummary, serverSummary]);
 
   const netAmount = useMemo(() => {
     if (useServerSummary) return serverSummary!.net;
-    return filtered.reduce((s, t) => s + signedContributionForSummary(t), 0);
+    return filtered.reduce((s, t) => addMoney(s, signedContributionForSummary(t)), 0);
   }, [filtered, useServerSummary, serverSummary]);
 
   async function handleExport() {

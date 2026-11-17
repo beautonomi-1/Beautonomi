@@ -22,12 +22,15 @@
  * 11. Write audit log
  */
 
+import { bookingGiftVoidOutcome } from "@/lib/bookings/gift-value-still-due";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { checkPeriodLock } from "@/lib/finance/period-lock";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { addMoney, subtractMoney } from "@beautonomi/utils";
+import { customerStoreCreditRefundNotice } from "@/lib/bookings/settle-booking-cancellation";
 
 export interface IssueAdminWalletRefundOptions {
   supabase: SupabaseClient;
@@ -236,7 +239,7 @@ export async function issueAdminWalletRefund(
   // (custom-offer charge rows embed the gift leg in `amount`).
   const giftCardAmount = Number(booking.gift_card_amount ?? 0);
   const prior = Math.max(0, Number(priorRefundAmount ?? 0));
-  const cumulativeRefundPreview = Math.round((prior + amount) * 100) / 100;
+  const cumulativeRefundPreview = addMoney(prior, amount);
   const isFullRefundForGiftCard =
     originalChargeAmount > 0 && cumulativeRefundPreview + 0.001 >= originalChargeAmount;
   const willVoidGiftCard = isFullRefundForGiftCard && giftCardAmount > 0;
@@ -250,7 +253,7 @@ export async function issueAdminWalletRefund(
         p_booking_id: bookingId,
       });
       if (error) giftVoid = "unknown";
-      else giftVoid = data === true ? "restored" : "spent";
+      else giftVoid = bookingGiftVoidOutcome(data);
     } catch (voidErr) {
       console.warn("[issueAdminWalletRefund] gift card void failed:", voidErr);
       giftVoid = "unknown";
@@ -260,10 +263,10 @@ export async function issueAdminWalletRefund(
   // Only subtract the gift leg once — on the refund that completes the full amount.
   const giftOffset =
     excludeGift && prior < giftCardAmount
-      ? Math.max(0, Math.round((giftCardAmount - prior) * 100) / 100)
+      ? Math.max(0, subtractMoney(giftCardAmount, prior))
       : 0;
   const walletCreditAmount = excludeGift
-    ? Math.max(0, Math.round((amount - giftOffset) * 100) / 100)
+    ? Math.max(0, subtractMoney(amount, giftOffset))
     : amount;
 
   const { data: refundRecord, error: refundInsertErr } = await supabase
@@ -290,7 +293,7 @@ export async function issueAdminWalletRefund(
   // the wallet so concurrent admin POSTs cannot both succeed. Accumulates
   // refund_amount across partial refunds and CAS on the expected prior amount.
   if (resolvedTransactionId) {
-    const cumulativeRefund = Math.round((prior + amount) * 100) / 100;
+    const cumulativeRefund = addMoney(prior, amount);
     const isFullRefund =
       originalChargeAmount <= 0 || cumulativeRefund + 0.001 >= originalChargeAmount;
     const refundReference = `wallet_refund_${resolvedTransactionId}_${Date.now()}`;
@@ -370,20 +373,6 @@ export async function issueAdminWalletRefund(
     return err("Failed to credit customer wallet", "WALLET_ERROR", 500);
   }
 
-  // 8. Finalize booking_refunds row — DB trigger writes ledger entry on status=completed
-  const { error: finalizeErr } = await supabase
-    .from("booking_refunds")
-    .update({ status: "completed" })
-    .eq("id", refundId);
-
-  if (finalizeErr) {
-    // Wallet already credited — log only; the row can be manually completed
-    console.error(
-      "[issueAdminWalletRefund] failed to finalize booking_refunds row:",
-      finalizeErr
-    );
-  }
-
   if (pendingCashToClose.length > 0) {
     try {
       const { closePendingCashReplacedByStoreCredit } = await import(
@@ -395,6 +384,91 @@ export async function issueAdminWalletRefund(
     }
   }
 
+  // A return that did not answer the first time is tried once more. If the card
+  // is back, the value stays out of the wallet. If the card was already spent,
+  // that value is paid into the wallet now. If it still does not answer, the
+  // visit stays marked with the amount that was held back.
+  let giftRestoredAmount = giftVoid === "restored" ? giftCardAmount : 0;
+  let extraGiftWallet = 0;
+  if (willVoidGiftCard && giftVoid === "unknown") {
+    let second: "restored" | "spent" | "unknown" = "unknown";
+    try {
+      const { data, error: gcError } = await (supabase.rpc as any)("void_gift_card_redemption", {
+        p_booking_id: bookingId,
+      });
+      if (gcError) {
+        console.warn("[issueAdminWalletRefund] gift card restoration failed:", gcError);
+      } else {
+        second = bookingGiftVoidOutcome(data);
+      }
+    } catch (gcErr) {
+      console.warn("[issueAdminWalletRefund] gift card restoration error:", gcErr);
+    }
+    const { giftValueFollowUp, markGiftCardValueStillDue } = await import(
+      "@/lib/bookings/settle-booking-cancellation"
+    );
+    const followUp = giftValueFollowUp(giftVoid, second);
+    if (followUp === "credit" && giftOffset > 0.009) {
+      const { error: giftCreditErr } = await rpc("wallet_credit_admin", {
+        p_user_id: booking.customer_id,
+        p_amount: giftOffset,
+        p_currency: currency,
+        p_description: `Gift card value for booking ${booking.booking_number}: ${reason}`,
+        p_reference_id: resolvedTransactionId ?? bookingId,
+        p_reference_type: "refund",
+        p_tenant_id: financeTenantId,
+        p_idempotency_key: `admin_refund_gift_spent:${refundId}`,
+      });
+      if (giftCreditErr) {
+        console.warn("[issueAdminWalletRefund] gift value credit failed:", giftCreditErr);
+        await markGiftCardValueStillDue(supabase, bookingId, giftOffset);
+      } else {
+        extraGiftWallet = giftOffset;
+      }
+    } else if (followUp === "mark") {
+      if (giftOffset > 0.009) {
+        await markGiftCardValueStillDue(supabase, bookingId, giftOffset);
+      } else {
+        const { markGiftCardStillHeld } = await import("@/lib/bookings/settle-booking-cancellation");
+        await markGiftCardStillHeld(supabase, bookingId, true);
+      }
+    } else if (second === "restored") {
+      giftRestoredAmount = giftCardAmount;
+      await supabase
+        .from("bookings")
+        .update({ gift_card_amount: 0, gift_card_id: null })
+        .eq("id", bookingId);
+    }
+  } else if (giftVoid === "restored") {
+    await supabase
+      .from("bookings")
+      .update({ gift_card_amount: 0, gift_card_id: null })
+      .eq("id", bookingId);
+  }
+
+  // The completed refund consumes every value that has actually moved: the wallet
+  // credit, a gift paid into the wallet after the first return failed, and a gift
+  // put back on the card. A gift that is still held stays off this row.
+  const recordedRefundAmount =
+    extraGiftWallet > 0.009
+      ? addMoney(walletCreditAmount, extraGiftWallet)
+      : giftRestoredAmount > 0.009
+        ? addMoney(walletCreditAmount, giftOffset)
+        : walletCreditAmount;
+
+  // 8. Finalize booking_refunds row — DB trigger writes the ledger from this amount.
+  const { error: finalizeErr } = await supabase
+    .from("booking_refunds")
+    .update({ status: "completed", amount: recordedRefundAmount })
+    .eq("id", refundId);
+
+  if (finalizeErr) {
+    console.error(
+      "[issueAdminWalletRefund] failed to finalize booking_refunds row:",
+      finalizeErr
+    );
+  }
+
   try {
     const { syncBookingRefundTransactions } = await import(
       "@/lib/finance/sync-booking-refund-transactions"
@@ -404,28 +478,21 @@ export async function issueAdminWalletRefund(
     console.warn("[issueAdminWalletRefund] multi-row payment sync failed:", syncErr);
   }
 
-  // 9. Restore gift card balance on full refund (best-effort)
-  if (willVoidGiftCard) {
-    try {
-      const { error: gcError } = await rpc("void_gift_card_redemption", {
-        p_booking_id: bookingId,
-      });
-      if (gcError) {
-        console.warn("[issueAdminWalletRefund] gift card restoration failed:", gcError);
-      }
-    } catch (gcErr) {
-      console.warn("[issueAdminWalletRefund] gift card restoration error:", gcErr);
-    }
-  }
-
   // 9. Push notification (best-effort)
+  const walletTold = addMoney(walletCreditAmount, extraGiftWallet);
+  const customerNotice = customerStoreCreditRefundNotice({
+    walletAmount: walletTold,
+    giftReturned: giftRestoredAmount > 0.009,
+    bookingRef: booking.booking_number || bookingId.slice(0, 8),
+    formatAmount: (n) => `${currency} ${n.toFixed(2)}`,
+  });
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
     await sendToUser(
       booking.customer_id,
       {
-        title: "Refund added to wallet",
-        message: `A refund of ${currency} ${walletCreditAmount.toFixed(2)} for booking ${booking.booking_number} has been added to your wallet. Use it for your next booking.`,
+        title: customerNotice.title,
+        message: customerNotice.message,
         data: {
           type: "refund_processed",
           booking_id: bookingId,
@@ -433,7 +500,9 @@ export async function issueAdminWalletRefund(
             ? { transaction_id: resolvedTransactionId }
             : {}),
         },
-        url: "/account-settings/wallet",
+        url: customerNotice.title === "Gift card returned"
+          ? `/account-settings/bookings/${bookingId}`
+          : "/account-settings/wallet",
       },
       ["push"],
       { appType: "customer" }
@@ -444,7 +513,9 @@ export async function issueAdminWalletRefund(
 
   try {
     const { notifyRefundProcessed } = await import("@/lib/notifications/notification-service");
-    await notifyRefundProcessed(bookingId, walletCreditAmount, reason);
+    if (walletTold > 0.009) {
+      await notifyRefundProcessed(bookingId, walletTold, reason);
+    }
   } catch (templateErr) {
     console.error("[issueAdminWalletRefund] refund_processed template failed:", templateErr);
   }
@@ -477,8 +548,8 @@ export async function issueAdminWalletRefund(
       entity_id: bookingId,
       metadata: {
         refund_amount: amount,
-        wallet_credit_amount: walletCreditAmount,
-        gift_card_restored: willVoidGiftCard ? giftCardAmount : 0,
+        wallet_credit_amount: addMoney(walletCreditAmount, extraGiftWallet),
+        gift_card_restored: giftRestoredAmount,
         refund_reason: reason,
         notes: notes ?? null,
         wallet_credit: true,
@@ -509,7 +580,7 @@ export async function issueAdminWalletRefund(
   return {
     success: true,
     refundId,
-    amount: walletCreditAmount,
+    amount: addMoney(walletCreditAmount, extraGiftWallet),
     providerBalanceWarning,
   };
 }

@@ -14,7 +14,12 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getMergedSubscriptionPlanIdsForTenant } from "@/lib/subscription/admin-merged-plan-ids";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { computeTrialEndsAt, DEFAULT_PROVIDER_TRIAL_DAYS } from "@/lib/subscriptions/trial";
-import { clearAppleMerchantOnFree } from "@/lib/subscriptions/provider-billing-merchant";
+import {
+  clearAppleMerchantOnFree,
+  paystackCodeAfterStop,
+  stopPaystackSubscriptionBeforeClear,
+} from "@/lib/subscriptions/provider-billing-merchant";
+import { markProviderSubscriptionPaymentsRelinquished } from "@/lib/subscriptions/provider-subscription-payment";
 import { providerHasEntitledAppleSubscriptionInLog } from "@/lib/iap/apple/resync-subscription-from-log";
 
 const patchSchema = z.object({
@@ -45,10 +50,7 @@ function planIsFree(plan: PlanRow | null | undefined): boolean {
 function applyFreeTierClears(update: Record<string, unknown>): void {
   update.expires_at = null;
   update.auto_renew = false;
-  update.paystack_subscription_code = null;
   update.next_payment_date = null;
-  update.paystack_sync_pending = false;
-  update.paystack_sync_note = null;
   Object.assign(update, clearAppleMerchantOnFree());
 }
 
@@ -237,7 +239,6 @@ export async function PATCH(
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           console.error("[admin provider-subscriptions] Paystack disable on cancel failed:", e);
-          update.paystack_sync_pending = true;
           update.paystack_sync_note = `We could not stop automatic billing (${msg}). Contact support if charges continue.`;
         }
       }
@@ -248,6 +249,27 @@ export async function PATCH(
           new Date(),
           trial_days ?? DEFAULT_PROVIDER_TRIAL_DAYS,
         );
+      }
+    }
+
+    if (
+      auto_renew === false &&
+      status !== "cancelled" &&
+      !planChanging &&
+      existingRow.paystack_subscription_code
+    ) {
+      const tenantId = await resolveTenantIdForFinanceLedger(supabase, {
+        tenant_id: existingRow.tenant_id ?? null,
+        provider_id: existingRow.provider_id ?? null,
+      });
+      try {
+        await disableSubscriptionByCode(existingRow.paystack_subscription_code, { tenantId });
+        update.paystack_subscription_code = null;
+        update.next_payment_date = null;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[admin provider-subscriptions] Paystack disable on auto-renew off failed:", e);
+        update.paystack_sync_note = `We could not stop automatic billing (${msg}). Contact support if charges continue.`;
       }
     }
 
@@ -275,6 +297,44 @@ export async function PATCH(
         update.paystack_sync_pending = false;
         update.paystack_sync_note = null;
       }
+    }
+
+    const nextStatus = typeof update.status === "string" ? update.status : existingRow.status;
+    if (nextStatus === "past_due") {
+      if (existingRow.status !== "past_due") {
+        update.past_due_since = new Date().toISOString();
+      }
+    } else if (typeof update.status === "string") {
+      update.past_due_since = null;
+    }
+
+    const applyingFreeTier =
+      (plan_id !== undefined && planIsFree(targetPlan)) ||
+      (status === "active" && planIsFree(effectivePlan));
+    if (applyingFreeTier && existingRow.provider_id) {
+      await markProviderSubscriptionPaymentsRelinquished(supabase, existingRow.provider_id);
+    }
+    if (applyingFreeTier && !existingRow.paystack_subscription_code) {
+      update.paystack_subscription_code = null;
+      update.paystack_sync_pending = false;
+      update.paystack_sync_note = null;
+    } else if (
+      applyingFreeTier &&
+      existingRow.paystack_subscription_code &&
+      update.paystack_subscription_code !== null
+    ) {
+      const stopped = await stopPaystackSubscriptionBeforeClear({
+        supabase,
+        code: existingRow.paystack_subscription_code,
+        tenantId: existingRow.tenant_id,
+        providerId: existingRow.provider_id,
+      });
+      if (stopped === "kept") delete update.paystack_subscription_code;
+      Object.assign(update, paystackCodeAfterStop(stopped));
+    }
+    if (applyingFreeTier && update.paystack_subscription_code === null) {
+      update.paystack_sync_pending = false;
+      update.paystack_sync_note = null;
     }
 
     const { data: row, error } = await supabase

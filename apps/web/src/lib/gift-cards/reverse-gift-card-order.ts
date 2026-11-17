@@ -16,6 +16,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { multiplyMoney, addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export type ReverseGiftCardOrderParams = {
   supabase: SupabaseClient;
@@ -81,8 +82,6 @@ type OrderRow = {
   currency?: string | null;
   metadata?: Record<string, unknown> | null;
 };
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function reverseGiftCardOrder(
   params: ReverseGiftCardOrderParams,
@@ -178,7 +177,7 @@ export async function reverseGiftCardOrder(
   }
 
   const liveCards = cards.filter((c) => !c.voided_at && c.is_active !== false && Number(c.balance ?? 0) > 0);
-  const unspentBalance = round2(liveCards.reduce((s, c) => s + Number(c.balance ?? 0), 0));
+  const unspentBalance = liveCards.reduce((s, c) => addMoney(s, Number(c.balance ?? 0)), 0);
 
   if (anySpent && !allowPartial) {
     return { ok: false, reason: "card_spent", orderId, unspentBalance };
@@ -187,7 +186,7 @@ export async function reverseGiftCardOrder(
     return { ok: false, reason: "nothing_to_refund", orderId, unspentBalance };
   }
 
-  const requested = refundAmountMajor != null ? round2(refundAmountMajor) : unspentBalance;
+  const requested = refundAmountMajor != null ? roundCurrency(refundAmountMajor) : unspentBalance;
   if (requested > unspentBalance + 0.005) {
     return { ok: false, reason: "exceeds_unspent", orderId, unspentBalance };
   }
@@ -203,9 +202,9 @@ export async function reverseGiftCardOrder(
   for (const card of sorted) {
     if (remaining <= 0.005) break;
     const bal = Number(card.balance ?? 0);
-    const take = round2(Math.min(bal, remaining));
+    const take = roundCurrency(Math.min(bal, remaining));
     if (take <= 0) continue;
-    const newBalance = round2(bal - take);
+    const newBalance = subtractMoney(bal, take);
     const voided = newBalance <= 0.005;
     const priorMeta = (card.metadata ?? {}) as Record<string, unknown>;
     const priorReversed = Number(priorMeta.refund_reversed_amount ?? 0);
@@ -218,7 +217,7 @@ export async function reverseGiftCardOrder(
         ...(voided ? { is_active: false, voided_at: nowIso } : {}),
         metadata: {
           ...priorMeta,
-          refund_reversed_amount: round2(priorReversed + take),
+          refund_reversed_amount: addMoney(priorReversed, take),
           refund_reason: reason,
           refund_order_id: orderId,
           ...(voided ? { voided_reason: reason } : {}),
@@ -235,8 +234,8 @@ export async function reverseGiftCardOrder(
     }
     touchedCardIds.push(card.id);
     if (voided) voidedCardIds.push(card.id);
-    reversedTotal = round2(reversedTotal + take);
-    remaining = round2(remaining - take);
+    reversedTotal = addMoney(reversedTotal, take);
+    remaining = subtractMoney(remaining, take);
   }
 
   if (reversedTotal <= 0) {
@@ -277,7 +276,7 @@ export async function reverseGiftCardOrder(
   }
 
   // ── Order state ───────────────────────────────────────────────────────────
-  const orderTotal = Number(order.total_amount ?? Number(order.amount ?? 0) * Number(order.quantity ?? 1));
+  const orderTotal = Number(order.total_amount ?? multiplyMoney(Number(order.amount ?? 0), Number(order.quantity ?? 1)));
   const fullyReversed = !anySpent && remaining <= 0.005 && reversedTotal + 0.005 >= orderTotal;
   const partial = !fullyReversed;
   await supabase

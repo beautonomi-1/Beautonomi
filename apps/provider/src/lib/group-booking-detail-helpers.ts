@@ -1,3 +1,5 @@
+import { subtractMoney, multiplyMoney, addMoney, roundCurrency } from "@beautonomi/utils";
+
 export type GroupPaymentSummarySource = {
   payment_status?: string | null;
   balance_due?: number | null;
@@ -62,7 +64,7 @@ export function amountDueOrFallback(
   fallback: number,
 ): number {
   if (balanceDue != null && Number.isFinite(Number(balanceDue))) {
-    return Math.max(0, Math.round(Number(balanceDue) * 100) / 100);
+    return Math.max(0, roundCurrency(Number(balanceDue)));
   }
   return Math.max(0, fallback);
 }
@@ -74,7 +76,7 @@ export function participantCollectAmount(participant: {
 }): number {
   return amountDueOrFallback(
     participant.balance_due,
-    Math.max(0, Number(participant.price ?? 0) - Number(participant.total_paid ?? 0)),
+    Math.max(0, subtractMoney(Number(participant.price ?? 0), Number(participant.total_paid ?? 0))),
   );
 }
 
@@ -88,10 +90,10 @@ export function groupCollectAmount(group: {
   }> | null;
 }): number {
   if (group.balance_due != null && Number.isFinite(Number(group.balance_due))) {
-    return Math.max(0, Math.round(Number(group.balance_due) * 100) / 100);
+    return Math.max(0, roundCurrency(Number(group.balance_due)));
   }
   if (group.participants && group.participants.length > 0) {
-    return group.participants.reduce((sum, participant) => sum + participantCollectAmount(participant), 0);
+    return group.participants.reduce((sum, participant) => addMoney(sum, participantCollectAmount(participant)), 0);
   }
   return Math.max(0, Number(group.total_price ?? 0));
 }
@@ -112,7 +114,7 @@ export function participantMaxRefundable(args: {
   const totalPaid = Number(args.total_paid ?? 0);
   const totalRefunded = Number(args.total_refunded ?? 0);
   const walletGift = Number(args.wallet_gift_coverage ?? 0);
-  return Math.max(0, Math.max(totalPaid, walletGift) - totalRefunded);
+  return Math.max(0, subtractMoney(Math.max(totalPaid, walletGift), totalRefunded));
 }
 
 /** Online single-charge: primary holds the group charge; guests have no separate booking. */
@@ -152,7 +154,7 @@ function financialProductLineTotal(product: GroupFinancialProductLine): number {
     Number(
       product.total_price ??
         product.totalPrice ??
-        (Number(product.unit_price ?? product.unitPrice ?? 0) || 0) * qty,
+        multiplyMoney(Number(product.unit_price ?? product.unitPrice ?? 0) || 0, qty),
     ) || 0,
   );
 }
@@ -163,27 +165,27 @@ export function computeGroupFinancialBreakdown(
 ): GroupFinancialBreakdown {
   const participants = group.participants ?? [];
   const participantServicesTotal = participants.reduce(
-    (sum, p) => sum + (Number(p.price) || 0),
+    (sum, p) => addMoney(sum, Number(p.price) || 0),
     0,
   );
   const productsTotal = (group.products ?? []).reduce(
-    (sum, product) => sum + financialProductLineTotal(product),
+    (sum, product) => addMoney(sum, financialProductLineTotal(product)),
     0,
   );
   const travelFee =
     group.location_type === "at_home" ? Math.max(0, Number(group.travel_fee ?? 0)) : 0;
   const tipsTotal = participants.reduce(
-    (sum, p) => sum + (Number(p.tip_amount ?? 0) || 0),
+    (sum, p) => addMoney(sum, Number(p.tip_amount ?? 0) || 0),
     0,
   );
   const packageDiscount = Math.max(0, Number(group.package_discount_amount ?? 0));
   const additionalChargesTotal = (group.bookings ?? []).reduce((sum, booking) => {
     const charges = booking.additional_charges ?? [];
-    return (
-      sum +
+    return addMoney(
+      sum,
       charges
         .filter((charge) => String(charge.status ?? "").toLowerCase() !== "rejected")
-        .reduce((inner, charge) => inner + (Number(charge.amount ?? 0) || 0), 0)
+        .reduce((inner, charge) => addMoney(inner, Number(charge.amount ?? 0) || 0), 0),
     );
   }, 0);
   const total = Number(group.total_price ?? 0);

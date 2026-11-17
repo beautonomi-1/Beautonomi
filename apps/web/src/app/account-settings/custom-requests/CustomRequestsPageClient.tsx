@@ -1,7 +1,7 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { getDefaultMoneyLocale, subtractMoney } from "@beautonomi/utils";
 import { mergeCurrencyChoiceCodes, currencySelectLabel } from "@/lib/locale/currency";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -741,17 +741,21 @@ export default function CustomRequestsPageClient({
                     <>
                       {r.offers.map((o) => {
                         const st = String(o.status || "pending").toLowerCase();
-                        const isPaid = st === "paid";
+                        const pastExpiration = !!o.expiration_at && new Date(o.expiration_at).getTime() <= Date.now();
+                        const isPaid = st === "paid" || (st === "accepted" && !!o.booking_id);
+                        const isAcceptedWithoutBooking = st === "accepted" && !isPaid;
                         const isDeclined = st === "declined";
                         const isWithdrawn = st === "withdrawn";
-                        const isExpired = st === "expired";
                         const isFinalizeFailed = st === "finalize_failed";
-                        const isPaymentPending = st === "payment_pending";
-                        const isChangesRequested = st === "changes_requested";
-                        const isInactive = isPaid || isWithdrawn || isExpired || isDeclined || isFinalizeFailed;
+                        const isExpired =
+                          st === "expired" ||
+                          (pastExpiration && !isPaid && !isFinalizeFailed && !isWithdrawn && !isDeclined && !isAcceptedWithoutBooking);
+                        const isPaymentPending = st === "payment_pending" && !isExpired;
+                        const isChangesRequested = st === "changes_requested" && !isExpired;
+                        const isInactive = isPaid || isWithdrawn || isExpired || isDeclined || isFinalizeFailed || isAcceptedWithoutBooking;
                         const badgeClass = isPaid
                           ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                          : isFinalizeFailed
+                          : isFinalizeFailed || isAcceptedWithoutBooking
                             ? "bg-red-100 text-red-700 border border-red-200"
                             : isDeclined
                               ? "bg-slate-100 text-slate-600 border border-slate-200"
@@ -766,7 +770,7 @@ export default function CustomRequestsPageClient({
                                 : "bg-blue-50 text-blue-700 border border-blue-200";
                         const badgeLabel = isPaid
                           ? t("web.accountSettings.customRequests.badgePaid")
-                          : isFinalizeFailed
+                          : isFinalizeFailed || isAcceptedWithoutBooking
                             ? t("web.accountSettings.customRequests.badgeNeedsSupport")
                             : isDeclined
                               ? t("web.accountSettings.customRequests.badgeDeclined")
@@ -820,7 +824,9 @@ export default function CustomRequestsPageClient({
                                 ) : isInactive ? (
                                   <Button variant="secondary" size="sm" disabled className="capitalize">{badgeLabel}</Button>
                                 ) : isPaymentPending ? (
-                                  <Button variant="secondary" size="sm" disabled>{t("web.accountSettings.customRequests.badgeProcessing")}</Button>
+                                  <Button size="sm" onClick={() => void acceptAndPay(o.id)}>
+                                    {t("web.accountSettings.customRequests.continuePayment", { defaultValue: "Continue payment" })}
+                                  </Button>
                                 ) : isChangesRequested ? (
                                   <Button variant="secondary" size="sm" disabled>{t("web.accountSettings.customRequests.badgeChangesRequested")}</Button>
                                 ) : (
@@ -1424,7 +1430,7 @@ export default function CustomRequestsPageClient({
                       </div>
                       {depositQuote.deposit.full_total != null && depositQuote.deposit.deposit_amount != null && (
                         <p className="text-xs text-gray-500 mb-2">
-                          {t("web.accountSettings.customRequests.remainingDue", { amount: formatMoney(depositQuote.deposit.full_total - depositQuote.deposit.deposit_amount, depositOfferCurrency) })}
+                          {t("web.accountSettings.customRequests.remainingDue", { amount: formatMoney(subtractMoney(depositQuote.deposit.full_total, depositQuote.deposit.deposit_amount, depositOfferCurrency), depositOfferCurrency) })}
                         </p>
                       )}
                       <Button
@@ -1461,13 +1467,17 @@ export default function CustomRequestsPageClient({
             const d = offerDetailData;
             const req = d.request ?? d;
             const rawStatus = String(d.status ?? "pending").toLowerCase();
-            const isPaid = rawStatus === "paid" || !!d.booking_id;
+            const isPaid = rawStatus === "paid" || (rawStatus === "accepted" && !!d.booking_id);
             const isWithdrawn = rawStatus === "withdrawn";
             const isDeclined = rawStatus === "declined";
-            const isExpired = rawStatus === "expired";
-            const isFinalizeFailed = rawStatus === "finalize_failed";
-            const isPaymentPending = rawStatus === "payment_pending";
-            const isChangesRequested = rawStatus === "changes_requested";
+            const isFinalizeFailed = rawStatus === "finalize_failed" || (rawStatus === "accepted" && !d.booking_id);
+            const pastExpiration =
+              !!d.expiration_at && new Date(d.expiration_at).getTime() <= Date.now();
+            const isExpired =
+              rawStatus === "expired" ||
+              (pastExpiration && !isPaid && !isFinalizeFailed && !isWithdrawn && !isDeclined);
+            const isPaymentPending = rawStatus === "payment_pending" && !isExpired;
+            const isChangesRequested = rawStatus === "changes_requested" && !isExpired;
             const statusLabel = isPaid
               ? t("web.accountSettings.customRequests.badgePaid")
               : isFinalizeFailed
@@ -1586,6 +1596,7 @@ export default function CustomRequestsPageClient({
                 <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
                   {!isProvider && !isPaid && !isWithdrawn && !isExpired && !isDeclined && !isFinalizeFailed && !isPaymentPending && d.id && (
                     <>
+                      {rawStatus === "pending" && (
                       <Button
                         className="w-full"
                         disabled={isAcceptingDetail}
@@ -1596,6 +1607,7 @@ export default function CustomRequestsPageClient({
                       >
                         {t("web.accountSettings.customRequests.acceptAndPay")}
                       </Button>
+                      )}
                       {rawStatus === "pending" && (
                         <Button
                           variant="outline"
@@ -1618,6 +1630,11 @@ export default function CustomRequestsPageClient({
                         {decliningOfferId === d.id ? t("web.accountSettings.customRequests.declining") : t("web.accountSettings.customRequests.declineOffer")}
                       </Button>
                     </>
+                  )}
+                  {!isProvider && isPaymentPending && d.id && (
+                    <Button className="w-full" onClick={() => { setOfferDetailOpen(false); void acceptAndPay(d.id); }}>
+                      {t("web.accountSettings.customRequests.continuePayment", { defaultValue: "Continue payment" })}
+                    </Button>
                   )}
                   {!isProvider && isPaid && d.booking_id && (
                     <Button

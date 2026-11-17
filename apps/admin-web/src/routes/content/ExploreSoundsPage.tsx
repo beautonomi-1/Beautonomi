@@ -72,24 +72,7 @@ export function ExploreSoundsPage() {
       const fd = new FormData();
       fd.append("file", file);
       if (titleDraft.trim()) fd.append("title", titleDraft.trim());
-      const res = await fetch("/api/admin/explore/sounds/upload", {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        data?: SoundRow;
-        error?: string | { message?: string };
-      };
-      if (!res.ok) {
-        const msg =
-          typeof json.error === "string"
-            ? json.error
-            : json.error && typeof json.error === "object" && json.error.message
-              ? String(json.error.message)
-              : `Upload failed (${res.status})`;
-        throw new Error(msg);
-      }
+      await adminApi.postForm("/api/admin/explore/sounds/upload", fd);
       adminToast.success("Sound uploaded");
       setTitleDraft("");
       if (fileRef.current) fileRef.current.value = "";

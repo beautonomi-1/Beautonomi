@@ -19,6 +19,16 @@ import {
 import { getYocoEndpoints } from "@/lib/payments/yoco";
 import { verifyYocoWebhookRequest } from "@/lib/payments/yoco-webhook-verify";
 import { reconcileYocoRefundWebhook } from "@/lib/bookings/awaiting-machine-refunds";
+import { redactGatewayPayload } from "@/lib/payments/redact-gateway-payload";
+import { fromMinorUnits } from "@beautonomi/utils";
+import {
+  acquireWebhookEventLease,
+  markWebhookEventFailed,
+  markWebhookEventProcessed,
+} from "@/lib/payment/webhook-event-lease";
+import { yocoWebhookDedupeId } from "@/lib/payments/yoco-webhook-event-id";
+
+const YOCO_WEBHOOK_SOURCE = "yoco";
 
 export const maxDuration = 60;
 
@@ -229,13 +239,33 @@ export async function POST(request: Request) {
     event = event ?? (JSON.parse(body) as Record<string, unknown>);
     webhookProviderId = webhookProviderId ?? extractProviderIdFromEvent(event);
 
+    // F-06: dedupe pre-check on the event id before any processing. Yoco
+    // retries on non-2xx; a replay of an already-processed message must be
+    // acknowledged without touching money rows or appending another event row.
+    const eventId = yocoWebhookDedupeId(webhookId, event);
+    if (!eventId) {
+      return NextResponse.json({ error: "Event has no id" }, { status: 400 });
+    }
+    const lease = await acquireWebhookEventLease(supabase, {
+      eventId,
+      source: YOCO_WEBHOOK_SOURCE,
+      eventType: String(event.type ?? "unknown"),
+      payload: redactGatewayPayload(event),
+    });
+    if (lease.outcome === "duplicate") {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+    if (lease.outcome === "in_flight") {
+      return NextResponse.json({ received: true, processing: true }, { status: 503 });
+    }
     const { data: insertedEvent } = await supabase
       .from("provider_yoco_webhook_events")
       .insert({
-        webhook_id: webhookId ?? String(event.id ?? "checkout-api"),
+        webhook_id: eventId,
         ...(webhookProviderId ? { provider_id: webhookProviderId } : {}),
         event_type: event.type,
-        payload: event,
+        // F2-69: never persist card / customer PII from the gateway payload.
+        payload: redactGatewayPayload(event),
         signature,
         status: "received",
         created_at: new Date().toISOString(),
@@ -289,6 +319,7 @@ export async function POST(request: Request) {
           })
           .eq("id", eventRowId);
       }
+      await markWebhookEventProcessed(supabase, { eventId, source: YOCO_WEBHOOK_SOURCE });
     } catch (error) {
       console.error("Error processing Yoco webhook:", error);
 
@@ -302,6 +333,11 @@ export async function POST(request: Request) {
           })
           .eq("id", eventRowId);
       }
+      await markWebhookEventFailed(supabase, {
+        eventId,
+        source: YOCO_WEBHOOK_SOURCE,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
 
       // Return 500 so Yoco retries delivery for financial events
       return NextResponse.json(
@@ -445,14 +481,14 @@ async function handlePaymentNotification(
       const failedMessage =
         status === "failed"
           ? "Card declined – ask customer to try another card."
-          : `Payment failed for amount ${(amountCents / 100).toFixed(2)} ${currency}`;
+          : `Payment failed for amount ${fromMinorUnits(amountCents, currency).toFixed(2)} ${currency}`;
       await sendToUser(
         String(metadata.processed_by ?? ""),
         {
           title: status === "successful" ? "Payment Successful" : "Payment Failed",
           message:
             status === "successful"
-              ? `Payment completed for amount ${(amountCents / 100).toFixed(2)} ${currency}`
+              ? `Payment completed for amount ${fromMinorUnits(amountCents, currency).toFixed(2)} ${currency}`
               : failedMessage,
           data: {
             type: "yoco_payment",
@@ -581,7 +617,7 @@ async function handleRefundSuccess(
     if (reconcileBookingId) {
       const alreadyRecorded = await reconcileYocoRefundWebhook(getSupabaseAdmin(), {
         bookingId: reconcileBookingId,
-        amount: amountCents / 100,
+        amount: fromMinorUnits(amountCents, currency),
         yocoRefundId: id,
         paymentId: null,
         mode: "full",
@@ -616,7 +652,8 @@ async function handleRefundSuccess(
       return;
     }
 
-    const amountInCurrency = amountCents / 100;
+    // F2-36: single-sourced minor-unit conversion (Yoco amounts are integer cents).
+    const amountInCurrency = fromMinorUnits(amountCents, currency);
 
     const { data: bookingPayment } = await supabaseAdmin
       .from("booking_payments")

@@ -33,14 +33,16 @@ import {
 import {
   allowsInPersonProductOrderRefund,
   displayedProductOrderAmountStillDue,
+  productOrderKeptAmount,
 } from "@/lib/orders/product-order-tender";
-import { isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { subtractMoney, isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
 import {
   productOrderDisplayCustomerEmail,
   productOrderDisplayCustomerName,
   productOrderDisplayCustomerPhone,
 } from "@/lib/orders/product-order-customer-snapshot";
 import {
+  filterProductOrderStatusActions,
   isValidLineTransition,
   LINE_FULFILMENT_STATUSES,
   normalizeLineStatus,
@@ -178,7 +180,7 @@ export function ProductOrderViewSheet({
   const handleStatusChange = async (newStatus: string) => {
     if (!order) return;
     if (newStatus === "refunded") {
-      setRefundAmount(Number(order.total_amount ?? 0).toFixed(2));
+      setRefundAmount(productOrderKeptAmount(order).toFixed(2));
       setRefundReason("");
       const inPerson = allowsInPersonProductOrderRefund(order);
       const canWallet = Boolean(order.customer?.id);
@@ -253,7 +255,8 @@ export function ProductOrderViewSheet({
   const handleRefund = async () => {
     if (!order) return;
     const amount = Number(refundAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const remaining = productOrderKeptAmount(order);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > remaining + 0.01) {
       toast.error(t("web.provider.productOrderViewSheet.invalidRefundAmount"));
       return;
     }
@@ -325,15 +328,37 @@ export function ProductOrderViewSheet({
     order?.status !== "refunded";
   const canCollectCardMachine =
     (yocoEnabled || paycloudEnabled) && canCollect && !isAppointmentOrder && inPersonDue > 0;
+  const keptAmount = order ? productOrderKeptAmount(order) : 0;
   const canRefund =
     canProcessPayments &&
-    order?.payment_status === "paid" &&
-    order.status !== "cancelled" &&
-    order.status !== "refunded";
-  const actions = order ? PRODUCT_ORDER_STATUS_ACTIONS[order.status] ?? [] : [];
-  const totalAmount = Number(order?.total_amount ?? 0);
+    (order?.payment_status === "paid" || order?.payment_status === "partially_refunded") &&
+    keptAmount > 0 &&
+    order?.status !== "cancelled" &&
+    order?.status !== "refunded";
+  const actions = order
+    ? filterProductOrderStatusActions(
+        PRODUCT_ORDER_STATUS_ACTIONS[order.status] ?? [],
+        order.fulfillment_type,
+      )
+    : [];
+  const statusOptions = order
+    ? PRODUCT_ORDER_STATUS_OPTIONS.filter((status) => {
+        if (status === order.status) return true;
+        if (status === "refunded") return canRefund || order.status === "refunded";
+        if (status === "cancelled") {
+          return (
+            order.status !== "cancelled" &&
+            order.status !== "refunded" &&
+            order.payment_status !== "partially_refunded"
+          );
+        }
+        return actions.some((action) => action.next === status);
+      })
+    : [];
+  const totalAmount = keptAmount;
+  const refundedAmount = Math.max(0, Number(order?.refunded_amount ?? 0));
   const platformFee = Number(order?.platform_fee ?? 0);
-  const providerEarnings = Math.max(0, totalAmount - platformFee);
+  const providerEarnings = Math.max(0, subtractMoney(totalAmount, platformFee));
 
   const header = (
     <div className="flex items-center gap-2">
@@ -435,7 +460,9 @@ export function ProductOrderViewSheet({
                           className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 disabled:opacity-50"
                         >
                           {LINE_FULFILMENT_STATUSES.filter(
-                            (status) => status === from || isValidLineTransition(from, status),
+                            (status) =>
+                              status === from ||
+                              isValidLineTransition(from, status, order.fulfillment_type),
                           ).map((status) => (
                             <option key={status} value={status}>
                               {t(LINE_STATUS_I18N[status] ?? status)}
@@ -454,6 +481,9 @@ export function ProductOrderViewSheet({
 
             <BookingSectionCard>
               <BookingSectionLabel className="mb-2">{t("web.provider.productOrderViewSheet.totals")}</BookingSectionLabel>
+              {refundedAmount > 0 ? (
+                <BookingSummaryRow label={t("web.provider.productOrderViewSheet.refunded")} value={formatMoney(refundedAmount)} />
+              ) : null}
               <BookingSummaryRow label={t("web.provider.productOrderViewSheet.total")} value={formatMoney(totalAmount)} emphasize />
               {Number(order.gift_card_amount ?? 0) > 0 ? (
                 <BookingSummaryRow
@@ -635,9 +665,7 @@ export function ProductOrderViewSheet({
                 disabled={busy || order.status === "cancelled" || order.status === "refunded"}
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm min-h-[44px]"
               >
-                {PRODUCT_ORDER_STATUS_OPTIONS.filter(
-                  (s) => s !== "refunded" || canRefund || order.status === "refunded",
-                ).map((status) => (
+                {statusOptions.map((status) => (
                   <option key={status} value={status}>
                     {t(ORDER_STATUS_I18N[status] ?? status)}
                   </option>

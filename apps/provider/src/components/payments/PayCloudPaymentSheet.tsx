@@ -1,6 +1,7 @@
 /**
  * PayCloudPaymentSheet – Bottom sheet for in-person card payments via PayCloud terminal.
  */
+import { addMoney } from "@beautonomi/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
@@ -516,7 +517,7 @@ export function PayCloudPaymentSheet({
 
   // Cashback is handed to the client in cash and recovered on the card, so it is
   // part of what the card is actually charged — the headline must include it.
-  const totalAmount = amount + parsedTip + parsedCashback;
+  const totalAmount = addMoney(addMoney(amount, parsedTip, currency), parsedCashback, currency);
   const displayAmount = formatCurrency(totalAmount, currency);
   const baseDisplay = formatCurrency(amount, currency);
 

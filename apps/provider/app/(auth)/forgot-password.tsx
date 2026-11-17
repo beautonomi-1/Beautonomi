@@ -23,18 +23,14 @@ import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { NewPasswordFields } from "@/components/auth/NewPasswordFields";
 import { isCompleteOtpForLength, normalizeSupabaseSmsOtpToken } from "@/lib/supabase-sms-otp";
 import { DEFAULT_AUTH } from "@/lib/config-bundle";
-import { getNewPasswordIssue, type NewPasswordIssue } from "@/lib/auth/password-recovery";
+import { getNewPasswordIssue, passwordRecoveryRedirectUrl, type NewPasswordIssue } from "@/lib/auth/password-recovery";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useAuth } from "@/providers/AuthProvider";
 
 const RESET_NS = "provider.mobile.screens.resetPassword";
 
 function getRedirectUrl(): string {
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    return `${window.location.origin}/auth/callback`;
-  }
-  const base = APP_URL?.replace(/\/$/, "") || "";
-  return base ? `${base}/auth/callback` : "";
+  return passwordRecoveryRedirectUrl(APP_URL);
 }
 
 export default function ForgotPasswordScreen() {
@@ -74,8 +70,9 @@ export default function ForgotPasswordScreen() {
       Alert.alert(fp("notAvailableTitle"), fp("notAvailableBody"));
       return false;
     }
+    const address = trimmed.trim().toLowerCase();
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+      const { error } = await supabase.auth.resetPasswordForEmail(address, {
         redirectTo,
       });
       if (error) {
@@ -142,7 +139,7 @@ export default function ForgotPasswordScreen() {
     try {
       if (!codeVerified) {
         const { error } = await supabase.auth.verifyOtp({
-          email: email.trim(),
+          email: email.trim().toLowerCase(),
           token: normalizeSupabaseSmsOtpToken(code),
           type: "recovery",
         });

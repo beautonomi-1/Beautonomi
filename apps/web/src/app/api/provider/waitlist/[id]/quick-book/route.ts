@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { WAITLIST_COLUMNS_WITHOUT_CONTACT } from "@/lib/waitlist/waitlist-columns";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
@@ -8,6 +9,10 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
+import {
+  resolveWaitlistProviderVat,
+  waitlistBookingMoney,
+} from "@/lib/waitlist/waitlist-booking-financials";
 
 const quickBookSchema = z.object({
   date: z.string().date(),
@@ -50,7 +55,7 @@ export async function POST(
     // Load waitlist entry (provider owner and linked staff must both be allowed)
     const { data: entry, error: entryError } = await supabase
       .from("waitlist_entries")
-      .select("*")
+      .select(WAITLIST_COLUMNS_WITHOUT_CONTACT)
       .eq("id", waitlistEntryId)
       .single();
 
@@ -62,9 +67,17 @@ export async function POST(
         404
       );
     }
+    const row = entry as unknown as {
+      provider_id: string;
+      status: string;
+      service_id: string | null;
+      staff_id: string | null;
+      customer_id: string | null;
+      customer_name: string | null;
+    };
 
     const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId || providerId !== (entry as { provider_id: string }).provider_id) {
+    if (!providerId || providerId !== row.provider_id) {
       return handleApiError(
         new Error("Unauthorized"),
         "You can only book waitlist entries for your provider",
@@ -73,7 +86,7 @@ export async function POST(
       );
     }
 
-    if (entry.status !== 'waiting' && entry.status !== 'contacted') {
+    if (row.status !== 'waiting' && row.status !== 'contacted') {
       return handleApiError(
         new Error("Waitlist entry is not available for booking"),
         "This waitlist entry cannot be booked",
@@ -85,7 +98,7 @@ export async function POST(
     const { data: providerTenantRow } = await adminSupabase
       .from("providers")
       .select("tenant_id")
-      .eq("id", entry.provider_id)
+      .eq("id", row.provider_id)
       .maybeSingle();
     const bookingTenantId =
       (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
@@ -97,11 +110,11 @@ export async function POST(
     // Get service details
     let serviceDuration = 60;
     let servicePrice = 0;
-    if (entry.service_id) {
+    if (row.service_id) {
       const { data: service } = await supabase
         .from('offerings')
         .select('duration_minutes, price')
-        .eq('id', entry.service_id)
+        .eq('id', row.service_id)
         .single();
       
       if (service) {
@@ -120,7 +133,7 @@ export async function POST(
     const { data: providerTzRow } = await adminSupabase
       .from("providers")
       .select("timezone")
-      .eq("id", entry.provider_id)
+      .eq("id", row.provider_id)
       .maybeSingle();
     const providerTz = (providerTzRow as { timezone?: string | null } | null)
       ?.timezone;
@@ -133,7 +146,7 @@ export async function POST(
     const bookingEnd = new Date(bookingDatetime.getTime() + serviceDuration * 60000);
 
     // Validate conflicts before creating the booking
-    const effectiveStaffId = staff_id || entry.staff_id;
+    const effectiveStaffId = staff_id || row.staff_id;
     if (effectiveStaffId) {
       const { checkBookingConflict } = await import("@/lib/bookings/conflict-check");
       const conflictResult = await checkBookingConflict(
@@ -153,18 +166,26 @@ export async function POST(
       }
     }
 
+    const waitlistVat = await resolveWaitlistProviderVat(adminSupabase, row.provider_id);
+    const money = waitlistBookingMoney({
+      servicePrice,
+      currency: lastResortCurrency,
+      vat: waitlistVat,
+    });
+
     // Create booking
     const { data: booking, error: bookingError } = await adminSupabase
       .from('bookings')
       .insert({
-        provider_id: entry.provider_id,
-        customer_id: entry.customer_id,
+        provider_id: row.provider_id,
+        customer_id: row.customer_id,
         tenant_id: bookingTenantId,
+        booking_number: "",
         scheduled_at: bookingDatetime.toISOString(),
         location_type: 'at_salon', // Default, could be configurable
         status: 'confirmed',
-        total_amount: servicePrice,
-        currency: lastResortCurrency,
+        payment_status: "pending",
+        ...money,
       })
       .select()
       .single();
@@ -174,19 +195,19 @@ export async function POST(
     }
 
     // Create booking service if service_id exists
-    if (entry.service_id) {
+    if (row.service_id) {
       const { error: serviceError } = await adminSupabase
         .from('booking_services')
         .insert({
           booking_id: booking.id,
-          offering_id: entry.service_id,
-          staff_id: staff_id || entry.staff_id || null,
+          offering_id: row.service_id,
+          staff_id: staff_id || row.staff_id || null,
           scheduled_start_at: bookingDatetime.toISOString(),
           scheduled_end_at: bookingEnd.toISOString(),
           duration_minutes: serviceDuration,
           price: servicePrice,
           currency: lastResortCurrency,
-          guest_name: entry.customer_name,
+          guest_name: row.customer_name,
         });
 
       if (serviceError) {

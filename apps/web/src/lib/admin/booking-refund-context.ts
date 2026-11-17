@@ -1,3 +1,4 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 export type BookingRefundSummary = {
   id: string;
   booking_id: string;
@@ -44,7 +45,7 @@ export function sumCompletedStoreCreditRefunds(
         String(r.status ?? "") === "completed" &&
         String(r.refund_method ?? "store_credit") === "store_credit",
     )
-    .reduce((sum, r) => sum + parseRefundAmount(r.amount), 0);
+    .reduce((sum, r) => addMoney(sum, parseRefundAmount(r.amount)), 0);
 }
 
 export function latestCompletedStoreCreditRefund(
@@ -103,7 +104,7 @@ export function computeRefundState(args: {
   const effectiveRefunded = Math.max(txnRefundedTotal, walletCreditedTotal);
   const remaining = Math.max(
     0,
-    Math.round((chargeAmount - effectiveRefunded) * 100) / 100,
+    subtractMoney(chargeAmount, effectiveRefunded),
   );
 
   if (
@@ -141,7 +142,7 @@ export function computeEffectiveRemainingRefundable(args: {
   );
   return Math.max(
     0,
-    Math.round((args.chargeAmount - effectiveRefunded) * 100) / 100,
+    subtractMoney(args.chargeAmount, effectiveRefunded),
   );
 }
 
@@ -198,7 +199,7 @@ export function allocateBookingWalletAcrossCharges(
     const walletApplied = Math.min(chargeAmount, walletRemaining);
     walletRemaining = Math.max(
       0,
-      Math.round((walletRemaining - walletApplied) * 100) / 100,
+      subtractMoney(walletRemaining, walletApplied),
     );
     const effectiveRefunded = Math.min(
       chargeAmount,
@@ -206,7 +207,7 @@ export function allocateBookingWalletAcrossCharges(
     );
     const remainingRefundable = Math.max(
       0,
-      Math.round((chargeAmount - effectiveRefunded) * 100) / 100,
+      subtractMoney(chargeAmount, effectiveRefunded),
     );
     result.set(charge.id, {
       walletApplied,

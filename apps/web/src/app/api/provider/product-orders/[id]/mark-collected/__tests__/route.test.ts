@@ -5,6 +5,7 @@ const mockRequirePermission = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockRecordProductOrderPayment = vi.fn();
+const mockFulfillWalkInProductOrderDelivery = vi.fn();
 
 vi.mock("@/lib/auth/requirePermission", () => ({
   requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
@@ -36,6 +37,11 @@ vi.mock("@/lib/orders/record-product-order-payment", () => ({
   recordProductOrderPayment: (...args: unknown[]) => mockRecordProductOrderPayment(...args),
 }));
 
+vi.mock("@/lib/provider-sales/fulfill-walk-in-product-order-delivery", () => ({
+  fulfillWalkInProductOrderDelivery: (...args: unknown[]) =>
+    mockFulfillWalkInProductOrderDelivery(...args),
+}));
+
 vi.mock("@/lib/notifications/notify-product-order-paid", () => ({
   notifyProductOrderPaidIfTransitioned: vi.fn().mockResolvedValue(undefined),
 }));
@@ -63,6 +69,7 @@ describe("POST /api/provider/product-orders/[id]/mark-collected", () => {
     mockRequirePermission.mockResolvedValue({ authorized: true, user: { id: "user-1" } });
     mockGetProviderIdForUser.mockResolvedValue(PROVIDER_ID);
     mockProductOrderCardAmountStillDue.mockResolvedValue({ ok: true, due: 80 });
+    mockFulfillWalkInProductOrderDelivery.mockResolvedValue({ ok: true });
   });
 
   it("rejects appointment-linked orders with PAYMENT_ON_BOOKING", async () => {
@@ -120,6 +127,71 @@ describe("POST /api/provider/product-orders/[id]/mark-collected", () => {
 
     expect(res.status).toBe(200);
     expect(mockRecordProductOrderPayment).toHaveBeenCalled();
+    expect(mockFulfillWalkInProductOrderDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: PROVIDER_ID, orderId: ORDER_ID }),
+    );
+  });
+
+  it("does not say the walk-in is collected when the products were not taken", async () => {
+    mockGetSupabaseServer.mockResolvedValue(
+      makeSupabase({
+        id: ORDER_ID,
+        provider_id: PROVIDER_ID,
+        order_number: "PO-2",
+        total_amount: 80,
+        payment_status: "pending",
+        payment_method: "cash",
+        status: "confirmed",
+        order_source: "walk_in",
+      }),
+    );
+    mockRecordProductOrderPayment.mockResolvedValue({
+      ok: true,
+      duplicate: false,
+      transitionedToPaid: true,
+    });
+    mockFulfillWalkInProductOrderDelivery.mockResolvedValue({
+      ok: false,
+      reason: "Only 0 of Shampoo is in stock",
+    });
+
+    const { POST } = await import("../route");
+    const req = new NextRequest(`http://localhost/api/provider/product-orders/${ORDER_ID}/mark-collected`, {
+      method: "POST",
+      body: JSON.stringify({ payment_method: "cash" }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ id: ORDER_ID }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error.message).toBe("Only 0 of Shampoo is in stock");
+  });
+
+  it("takes the products on a later try after the walk-in was already paid", async () => {
+    mockGetSupabaseServer.mockResolvedValue(
+      makeSupabase({
+        id: ORDER_ID,
+        provider_id: PROVIDER_ID,
+        order_number: "PO-2",
+        total_amount: 80,
+        payment_status: "paid",
+        payment_method: "cash",
+        status: "confirmed",
+        order_source: "walk_in",
+      }),
+    );
+    mockProductOrderCardAmountStillDue.mockResolvedValue({ ok: true, due: 0 });
+
+    const { POST } = await import("../route");
+    const req = new NextRequest(`http://localhost/api/provider/product-orders/${ORDER_ID}/mark-collected`, {
+      method: "POST",
+      body: JSON.stringify({ payment_method: "cash" }),
+    });
+    const res = await POST(req, { params: Promise.resolve({ id: ORDER_ID }) });
+
+    expect(res.status).toBe(200);
+    expect(mockRecordProductOrderPayment).not.toHaveBeenCalled();
+    expect(mockFulfillWalkInProductOrderDelivery).toHaveBeenCalled();
   });
 
   it("records only the in-person remainder when wallet and gift card already paid", async () => {

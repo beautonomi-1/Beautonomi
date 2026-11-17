@@ -11,6 +11,7 @@
  * @module lib/notifications/appointment-notifications
  */
 
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import {
   notifyBookingConfirmed,
   notifyBookingRescheduled,
@@ -190,35 +191,123 @@ export async function sendCancellationNotification(
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const admin = getSupabaseAdmin();
-    const { data: bookingRow } = await admin
+    const { data: bookingRow, error: bookingError } = await admin
       .from("bookings")
-      .select("cancellation_fee, total_refunded, total_paid, currency")
+      .select(
+        "cancellation_fee, total_paid, currency, cancellation_settled_at, cancellation_settlement_error",
+      )
       .eq("id", bookingId)
       .maybeSingle();
 
-    const feeRetained = Number((bookingRow as { cancellation_fee?: number } | null)?.cancellation_fee ?? 0);
-    const walletRefund = Math.max(
-      0,
-      Number((bookingRow as { total_refunded?: number } | null)?.total_refunded ?? 0),
+    const row = bookingRow as {
+      cancellation_fee?: number | null;
+      total_paid?: number | null;
+      currency?: string | null;
+      cancellation_settled_at?: string | null;
+      cancellation_settlement_error?: string | null;
+    } | null;
+    const feeRetained = Number(row?.cancellation_fee ?? 0);
+    const bookingCurrencyCode = row?.currency || undefined;
+    const { data: refundRows, error: refundRowsError } = await admin
+      .from("booking_refunds")
+      .select("id, amount, refund_method, status")
+      .eq("booking_id", bookingId)
+      .in("status", ["completed", "pending"]);
+    const refundIds = ((refundRows ?? []) as Array<{ id?: string | null }>).map((refund) =>
+      String(refund.id ?? ""),
     );
-    const bookingCurrencyCode = (bookingRow as { currency?: string } | null)?.currency;
+    const { refundWalletIdempotencyKeys } = await import(
+      "@/lib/bookings/cancellation-outcome-bridge"
+    );
+    const walletKeys = refundWalletIdempotencyKeys(bookingId, refundIds);
+    const { data: walletByBooking, error: walletByBookingError } = await admin
+      .from("wallet_transactions")
+      .select("id, amount, type, reference_type, idempotency_key")
+      .eq("reference_id", bookingId);
+    const { data: walletByKey, error: walletByKeyError } = await admin
+      .from("wallet_transactions")
+      .select("id, amount, type, reference_type, idempotency_key")
+      .in("idempotency_key", walletKeys);
+    const recordsKnown = !bookingError && !refundRowsError && !walletByBookingError && !walletByKeyError;
+    const walletRows = new Map<string, {
+      amount?: number | string | null;
+      type?: string | null;
+      reference_type?: string | null;
+      idempotency_key?: string | null;
+    }>();
+    for (const tx of [...(walletByBooking ?? []), ...(walletByKey ?? [])] as Array<{
+      id?: string | null;
+      amount?: number | string | null;
+      type?: string | null;
+      reference_type?: string | null;
+      idempotency_key?: string | null;
+    }>) {
+      const key = String(tx.id ?? tx.idempotency_key ?? "");
+      if (key) walletRows.set(key, tx);
+    }
+
+    let storeCreditRecorded = 0;
+    let inPersonAmount = 0;
+    let cardAmount = 0;
+    const currencyForSum = bookingCurrencyCode || "ZAR";
+    for (const refund of (refundRows ?? []) as Array<{
+      amount?: number | string | null;
+      refund_method?: string | null;
+      status?: string | null;
+    }>) {
+      const amount = Math.max(0, Number(refund.amount ?? 0));
+      const method = String(refund.refund_method ?? "").toLowerCase();
+      const completed = String(refund.status ?? "") === "completed";
+      if ((method === "store_credit" || method === "wallet") && completed) {
+        storeCreditRecorded = addMoney(storeCreditRecorded, amount, currencyForSum);
+      } else if (method === "cash") {
+        inPersonAmount = addMoney(inPersonAmount, amount, currencyForSum);
+      } else if (method === "original") {
+        cardAmount = addMoney(cardAmount, amount, currencyForSum);
+      }
+    }
+    let walletCredited = 0;
+    for (const tx of walletRows.values()) {
+      const amount = Math.max(0, Number(tx.amount ?? 0));
+      const referenceType = String(tx.reference_type ?? "");
+      const idempotencyKey = String(tx.idempotency_key ?? "");
+      const creditForThisBooking =
+        tx.type === "credit" &&
+        (referenceType === "booking_refund" ||
+          referenceType === "refund" ||
+          referenceType === "booking_dispute" ||
+          walletKeys.includes(idempotencyKey));
+      if (creditForThisBooking && !idempotencyKey.endsWith("_revert") && !idempotencyKey.includes("_revert:")) {
+        walletCredited = addMoney(walletCredited, amount, currencyForSum);
+      } else if (
+        tx.type === "debit" &&
+        (referenceType === "booking_refund_reversal" || idempotencyKey.includes("provider_booking_refund_revert:"))
+      ) {
+        walletCredited = subtractMoney(walletCredited, amount, currencyForSum);
+      }
+    }
+    walletCredited = Math.max(0, walletCredited);
+
+    const { describeResendCancellationRefund } = await import(
+      "@/lib/bookings/cancellation-outcome-bridge"
+    );
+    const described = describeResendCancellationRefund({
+      currency: bookingCurrencyCode || "ZAR",
+      cancellationType,
+      feeRetained,
+      totalPaid: bookingError ? Number.NaN : Number(row?.total_paid ?? 0),
+      settled: Boolean(row?.cancellation_settled_at),
+      settlementError: row?.cancellation_settlement_error,
+      walletCredited,
+      storeCreditRecorded,
+      inPersonAmount,
+      cardAmount,
+      recordsKnown,
+    });
+    const refundInfo = described.refundInfo;
+    const walletRefund = described.walletRefund;
 
     const cancelledBy = cancellationType === "no_show" ? "system" : "provider";
-    let refundInfo = "Settlement follows the booking cancellation policy.";
-    if (cancellationType === "no_show") {
-      refundInfo =
-        feeRetained > 0
-          ? `Marked as no-show. A no-show fee of ${feeRetained.toFixed(2)} was retained; any remainder was credited to the customer's Beautonomi wallet.`
-          : "Marked as no-show. Amounts paid were credited to the customer's Beautonomi wallet.";
-    } else if (feeRetained > 0 && walletRefund > 0) {
-      refundInfo = `Cancellation fee retained: ${feeRetained.toFixed(2)}. Wallet refund issued: ${walletRefund.toFixed(2)}.`;
-    } else if (walletRefund > 0) {
-      refundInfo = `A wallet refund of ${walletRefund.toFixed(2)} has been credited to the customer's Beautonomi wallet.`;
-    } else if (feeRetained > 0) {
-      refundInfo = `A cancellation fee of ${feeRetained.toFixed(2)} was retained per the provider policy.`;
-    } else {
-      refundInfo = "No amounts were collected on this booking.";
-    }
 
     const result = await notifyBookingCancelled(
       bookingId,

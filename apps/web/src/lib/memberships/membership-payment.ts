@@ -13,6 +13,7 @@
  *
  * Commission is intentionally 0 — provider keeps gross minus Paystack fees.
  */
+import { subtractMoney } from "@beautonomi/utils";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
@@ -60,7 +61,7 @@ export async function recordMembershipPayment(
     paymentProvider = "paystack",
   } = params;
 
-  const netAmount = Math.max(0, grossAmount - feeAmount);
+  const netAmount = Math.max(0, subtractMoney(grossAmount, feeAmount));
 
   if (!reference || !providerId) {
     console.error("[recordMembershipPayment] missing reference or providerId", { reference, providerId });
@@ -81,6 +82,23 @@ export async function recordMembershipPayment(
       (existingTx as { status?: string }).status ?? "",
     ).toLowerCase();
     if (existingStatus === "success") {
+      const savedTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+        tenant_id: tenantIdHint,
+        provider_id: providerId,
+      });
+      await ensureMembershipFinanceLegs(supabase, {
+        providerId,
+        financeTenantId: savedTenantId,
+        reference,
+        orderId,
+        planId,
+        userId,
+        grossAmount,
+        feeAmount,
+        netAmount,
+        kind,
+        nowIso: new Date().toISOString(),
+      });
       return { recorded: false, alreadyRecorded: true, netAmount, reference };
     }
     if (existingStatus === "failed") {
@@ -123,54 +141,124 @@ export async function recordMembershipPayment(
   if (ptErr) {
     // 23505 = unique_violation; the record was inserted by a concurrent call.
     if ((ptErr as { code?: string }).code === "23505") {
+      await ensureMembershipFinanceLegs(supabase, {
+        providerId,
+        financeTenantId,
+        reference,
+        orderId,
+        planId,
+        userId,
+        grossAmount,
+        feeAmount,
+        netAmount,
+        kind,
+        nowIso,
+      });
       return { recorded: false, alreadyRecorded: true, netAmount, reference };
     }
     console.error("[recordMembershipPayment] payment_transactions insert error:", ptErr);
     throw ptErr;
   }
 
-  // finance_transactions: membership_sale (gross recognition)
-  const { error: ftSaleErr } = await supabase.from("finance_transactions").insert({
-    booking_id: null,
-    provider_id: providerId,
-    tenant_id: financeTenantId,
-    transaction_type: "membership_sale",
-    amount: grossAmount,
-    fees: feeAmount,
-    commission: 0,
-    net: 0,
-    description: kind === "membership_renewal" ? "Membership renewal (gross)" : "Membership sale (gross)",
-    metadata: { kind, reference, membership_order_id: orderId, plan_id: planId, user_id: userId },
-    created_at: nowIso,
+  await ensureMembershipFinanceLegs(supabase, {
+    providerId,
+    financeTenantId,
+    reference,
+    orderId,
+    planId,
+    userId,
+    grossAmount,
+    feeAmount,
+    netAmount,
+    kind,
+    nowIso,
   });
 
-  if (ftSaleErr && (ftSaleErr as { code?: string }).code !== "23505") {
-    console.error("[recordMembershipPayment] finance_transactions membership_sale error:", ftSaleErr);
+  return { recorded: true, alreadyRecorded: false, netAmount, reference };
+}
+
+async function ensureMembershipFinanceLegs(
+  supabase: SupabaseClient,
+  input: {
+    providerId: string;
+    financeTenantId: string | null;
+    reference: string;
+    orderId: string;
+    planId: string;
+    userId: string;
+    grossAmount: number;
+    feeAmount: number;
+    netAmount: number;
+    kind: "membership_order" | "membership_renewal";
+    nowIso: string;
+  },
+): Promise<void> {
+  const { data: existingLegs, error: legsError } = await supabase
+    .from("finance_transactions")
+    .select("transaction_type")
+    .eq("provider_id", input.providerId)
+    .contains("metadata", { reference: input.reference })
+    .in("transaction_type", ["membership_sale", "membership_provider_earnings"]);
+  if (legsError) {
+    console.error("[recordMembershipPayment] finance leg lookup failed:", legsError);
+    return;
+  }
+  const have = new Set(
+    (existingLegs ?? []).map((row) =>
+      String((row as { transaction_type?: string }).transaction_type ?? ""),
+    ),
+  );
+
+  if (!have.has("membership_sale")) {
+    const { error: ftSaleErr } = await supabase.from("finance_transactions").insert({
+      booking_id: null,
+      provider_id: input.providerId,
+      tenant_id: input.financeTenantId,
+      transaction_type: "membership_sale",
+      amount: input.grossAmount,
+      fees: input.feeAmount,
+      commission: 0,
+      net: 0,
+      description:
+        input.kind === "membership_renewal" ? "Membership renewal (gross)" : "Membership sale (gross)",
+      metadata: {
+        kind: input.kind,
+        reference: input.reference,
+        membership_order_id: input.orderId,
+        plan_id: input.planId,
+        user_id: input.userId,
+      },
+      created_at: input.nowIso,
+    });
+    if (ftSaleErr && (ftSaleErr as { code?: string }).code !== "23505") {
+      console.error("[recordMembershipPayment] finance_transactions membership_sale error:", ftSaleErr);
+    }
   }
 
-  // finance_transactions: membership_provider_earnings (net)
-  // Uses a dedicated type so the GL trigger can post DR 2600 Membership liability /
-  // CR 2000 Provider payable — rather than a wash entry — correctly crediting
-  // provider payable from the deferred membership liability.
-  if (providerId) {
+  if (!have.has("membership_provider_earnings")) {
     const { error: ftEarnErr } = await supabase.from("finance_transactions").insert({
       booking_id: null,
-      provider_id: providerId,
-      tenant_id: financeTenantId,
+      provider_id: input.providerId,
+      tenant_id: input.financeTenantId,
       transaction_type: "membership_provider_earnings",
-      amount: grossAmount,
-      fees: feeAmount,
+      amount: input.grossAmount,
+      fees: input.feeAmount,
       commission: 0,
-      net: netAmount,
-      description: kind === "membership_renewal" ? "Provider earnings from membership renewal" : "Provider earnings from membership sale",
-      metadata: { kind, reference, membership_order_id: orderId, plan_id: planId },
-      created_at: nowIso,
+      net: input.netAmount,
+      description:
+        input.kind === "membership_renewal"
+          ? "Provider earnings from membership renewal"
+          : "Provider earnings from membership sale",
+      metadata: {
+        kind: input.kind,
+        reference: input.reference,
+        membership_order_id: input.orderId,
+        plan_id: input.planId,
+      },
+      created_at: input.nowIso,
     });
-
     if (ftEarnErr && (ftEarnErr as { code?: string }).code !== "23505") {
       console.error("[recordMembershipPayment] finance_transactions provider_earnings error:", ftEarnErr);
     }
   }
-
-  return { recorded: true, alreadyRecorded: false, netAmount, reference };
 }

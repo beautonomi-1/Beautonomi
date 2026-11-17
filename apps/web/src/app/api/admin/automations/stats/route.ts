@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
         providersWithActiveAutomations.has(sub.provider_id) &&
         sub.plan?.features?.marketing_automations?.enabled
       ) {
-        revenueFromAutomations += sub.plan.price_monthly || 0;
+        revenueFromAutomations = addMoney(revenueFromAutomations, sub.plan.price_monthly || 0);
       }
     });
 

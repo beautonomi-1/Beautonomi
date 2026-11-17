@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 export type BookingListStatsRow = { status?: string; total_amount?: number };
 
 export type AdminBookingsListStats = {
@@ -29,7 +30,7 @@ export function computeAdminBookingsListStats(rows: BookingListStatsRow[]): Admi
     else if (status === "in_progress") stats.in_progress += 1;
     else if (status === "completed") {
       stats.completed += 1;
-      stats.completed_gmv += Number(row.total_amount ?? 0);
+      stats.completed_gmv = addMoney(stats.completed_gmv, Number(row.total_amount ?? 0));
     } else if (status === "cancelled") stats.cancelled += 1;
     else if (status === "no_show") stats.no_show += 1;
   }

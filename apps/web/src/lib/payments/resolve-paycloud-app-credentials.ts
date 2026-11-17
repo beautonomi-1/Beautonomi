@@ -154,6 +154,40 @@ export async function resolvePaycloudAppCredentials(
   return result.ok ? result.credentials : null;
 }
 
+/**
+ * F2-37: candidate gateway public keys for verifying an inbound PayCloud
+ * notify BEFORE any payment row is read. Keys are resolved from the notify
+ * envelope's `app_id` (config lookup only — independent of merchant_order_no,
+ * so an unauthenticated sender learns nothing about our payments). When the
+ * envelope carries no app_id, fall back to the global live/sandbox apps.
+ */
+export async function resolvePaycloudWebhookGatewayPublicKeys(
+  supabase: SupabaseClient,
+  params: { appId?: string | null },
+): Promise<string[]> {
+  const keys = new Set<string>();
+  const appId = (params.appId ?? "").trim();
+  if (appId) {
+    const { data } = await supabase
+      .from("tenant_paycloud_apps")
+      .select("gateway_rsa_public_key, is_enabled")
+      .eq("app_id", appId);
+    for (const row of (data ?? []) as Array<{ gateway_rsa_public_key?: string | null; is_enabled?: boolean }>) {
+      if (row.is_enabled === false) continue;
+      if (row.gateway_rsa_public_key) keys.add(row.gateway_rsa_public_key);
+    }
+  }
+  if (keys.size === 0) {
+    for (const environment of ["live", "sandbox"] as PaycloudEnvironment[]) {
+      const row = await findAppRow(supabase, { environment, global: true });
+      if (row && row.is_enabled !== false && row.gateway_rsa_public_key) {
+        keys.add(row.gateway_rsa_public_key);
+      }
+    }
+  }
+  return [...keys];
+}
+
 /** Gateway public key only (webhook signature verify). */
 export async function resolvePaycloudGatewayPublicKey(
   supabase: SupabaseClient,

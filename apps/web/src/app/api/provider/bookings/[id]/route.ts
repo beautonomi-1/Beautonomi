@@ -3,9 +3,18 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  deductBookingRetailStock,
+  restoreBookingRetailStock,
+  lineUpBookingStockWithSavedStatus,
+  type BookingRetailStockLine,
+} from "@/lib/bookings/deduct-booking-retail-stock";
+import { returnPackageSessionAfterCancel } from "@/lib/bookings/return-package-session-after-cancel";
 import { missingBookingStatusTimestamp } from "@/lib/bookings/booking-status-timestamps";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 import { assertCalendarScopeAllowsBooking } from "@/lib/auth/calendar-scope";
 import type { Booking } from "@/types/beautonomi";
 import type { ProviderClientMemory } from "@/lib/provider/provider-client-memory";
@@ -46,6 +55,7 @@ import {
   computeBookingOutstandingDisplay,
   computePackageAppliedForDisplay,
 } from "@/lib/bookings/display-invariants";
+import { addMoney } from "@beautonomi/utils";
 import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 import { syncAppointmentProductOrder } from "@/lib/orders/sync-appointment-product-order";
@@ -53,6 +63,7 @@ import { validateProviderBookingProducts } from "@/lib/bookings/validate-provide
 import {
   buildExistingReservedQuantities,
   reconcileBookingProductStockOnEdit,
+  reverseReconciledBookingProductStock,
   type ExistingBookingProductRow,
 } from "@/lib/bookings/reconcile-booking-product-stock";
 import { buildMergedGroupRowFromGroupDetailApi } from "@/lib/provider-booking/build-merged-group-row-from-group-detail";
@@ -251,6 +262,9 @@ export async function GET(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
@@ -335,7 +349,9 @@ export async function GET(
         staffName,
         locationRow,
       });
-      return successResponse(synthetic as unknown as BookingResponse);
+      return successResponse(
+        redactBookingCustomerContact(synthetic, canViewClients) as unknown as BookingResponse,
+      );
     }
 
     // Use admin client for the booking read (same as GET list) so RLS doesn't block
@@ -597,7 +613,7 @@ export async function GET(
         type AcRow = { status?: string; amount?: number };
         const unpaidCharges = ((bookingData as unknown as { additional_charges?: AcRow[] }).additional_charges ?? [])
           .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
-          .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0);
+          .reduce((sum, ac) => addMoney(sum, Number(ac.amount ?? 0)), 0);
         return computeBookingOutstandingDisplay({
           totalAmount: tot,
           totalPaid: paid,
@@ -793,7 +809,7 @@ export async function GET(
         });
     }
 
-    return successResponse(transformedBooking);
+    return successResponse(redactBookingCustomerContact(transformedBooking, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch booking");
   }
@@ -820,6 +836,9 @@ export async function PATCH(
       return permissionCheck.response!;
     }
     const { user } = permissionCheck;
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     const supabase = await getSupabaseServer(request);
 
@@ -1551,6 +1570,35 @@ export async function PATCH(
       }
     }
 
+    const stockTaken: BookingRetailStockLine[] = [];
+    const stockReturned: BookingRetailStockLine[] = [];
+    if (dbStatus === "completed" && (currentBooking as BookingRow).status !== "completed") {
+      try {
+        stockTaken.push(...(await deductBookingRetailStock(supabaseAdminPatch, id)));
+      } catch (stockErr) {
+        return errorResponse(
+          stockErr instanceof Error ? stockErr.message : "Product stock could not be deducted",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+    }
+    const previousStatusForStock = (currentBooking as BookingRow).status;
+    if (
+      (dbStatus === "cancelled" && previousStatusForStock !== "cancelled") ||
+      (dbStatus === "no_show" && previousStatusForStock !== "no_show")
+    ) {
+      try {
+        stockReturned.push(...(await restoreBookingRetailStock(supabaseAdminPatch, id)));
+      } catch (stockErr) {
+        return errorResponse(
+          stockErr instanceof Error ? stockErr.message : "Product stock could not be restored",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+    }
+
     // Use service role: RLS only allows the provider *owner* to UPDATE bookings; staff with
     // permission + branch checks above can still update through this route.
     // Enforce optimistic lock: UPDATE only succeeds if version still matches the row we read.
@@ -1560,6 +1608,19 @@ export async function PATCH(
       .eq("id", id)
       .eq("version", currentVersion)
       .select("id");
+
+    if (updateError || !updatedRows || updatedRows.length === 0) {
+      try {
+        await lineUpBookingStockWithSavedStatus(supabaseAdminPatch, id, stockTaken, stockReturned);
+      } catch (undoErr) {
+        console.error("[provider PATCH bookings/:id] stock could not be lined up after the visit was not saved:", undoErr);
+        return errorResponse(
+          "This booking changed, and the product stock could not be put back in line with it.",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+    }
 
     if (updateError) {
       const mapped = providerBookingUpdateErrorResponse(
@@ -1585,6 +1646,10 @@ export async function PATCH(
       );
     }
 
+    if (dbStatus === "cancelled") {
+      await returnPackageSessionAfterCancel(supabaseAdminPatch, id);
+    }
+
     const linkedGroupId = (currentBooking as { group_booking_id?: string | null }).group_booking_id;
     if (linkedGroupId && updateData.status !== undefined) {
       try {
@@ -1598,8 +1663,7 @@ export async function PATCH(
       full_name?: string | null;
       email?: string | null;
     };
-    const actorName =
-      actorProfile.full_name?.trim() || actorProfile.email || "Provider";
+    const actorName = actorProfile.full_name?.trim() || "Provider";
 
     try {
       if (
@@ -2131,6 +2195,40 @@ export async function PATCH(
         );
       }
 
+      const stockAlreadyHeld = existingRows.some((row) => row.stock_deducted_at);
+      const stockDeductedAtForNewRows = stockAlreadyHeld ? new Date().toISOString() : null;
+      let insertedProductIds: string[] = [];
+
+      if (productValidation.products.length > 0) {
+        const productsToInsert = productValidation.products.map((product) => ({
+          booking_id: id,
+          product_id: product.productId,
+          product_variant_id: product.productVariantId,
+          quantity: product.quantity,
+          unit_price: product.unitPrice,
+          total_price: product.totalPrice,
+          staff_id: null,
+          ...(stockDeductedAtForNewRows && product.trackStock
+            ? { stock_deducted_at: stockDeductedAtForNewRows }
+            : {}),
+        }));
+
+        const { data: insertedProducts, error: productsError } = await supabaseAdminPatch
+          .from("booking_products")
+          .insert(productsToInsert)
+          .select("id");
+
+        if (productsError) {
+          console.error("Error updating booking_products:", productsError);
+          return errorResponse(
+            "The booking was updated, but product items could not be saved. Please try again.",
+            "BOOKING_PRODUCTS_FAILED",
+            422,
+          );
+        }
+        insertedProductIds = ((insertedProducts ?? []) as Array<{ id: string }>).map((row) => row.id);
+      }
+
       const stockReconcile = await reconcileBookingProductStockOnEdit(supabaseAdminPatch, {
         providerId,
         bookingId: id,
@@ -2139,47 +2237,31 @@ export async function PATCH(
         newProducts: productValidation.products,
       });
       if (stockReconcile.ok === false) {
+        if (insertedProductIds.length > 0) {
+          await supabaseAdminPatch.from("booking_products").delete().in("id", insertedProductIds);
+        }
         return errorResponse(stockReconcile.message, stockReconcile.code, 400);
       }
 
-      const stockDeductedAtForNewRows = stockReconcile.stockWasDeducted
-        ? new Date().toISOString()
-        : null;
-
-      // Delete existing products
-      await supabaseAdminPatch
-        .from("booking_products")
-        .delete()
-        .eq("booking_id", id);
-
-      // Insert new products
-      if (productValidation.products.length > 0) {
-        const { data: bookingServices } = await supabaseAdminPatch
-          .from("booking_services")
-          .select("staff_id")
-          .eq("booking_id", id)
-          .not("staff_id", "is", null)
-          .limit(1);
-        const primaryStaffId = bookingServices?.[0]?.staff_id ?? null;
-        const productsToInsert = productValidation.products.map((product) => ({
-          booking_id: id,
-          product_id: product.productId,
-          product_variant_id: product.productVariantId,
-          quantity: product.quantity,
-          unit_price: product.unitPrice,
-          total_price: product.totalPrice,
-          staff_id: primaryStaffId,
-          ...(stockDeductedAtForNewRows ? { stock_deducted_at: stockDeductedAtForNewRows } : {}),
-        }));
-
-        const { error: productsError } = await supabaseAdminPatch
+      const existingIds = existingRows.map((row) => row.id).filter((rowId): rowId is string => Boolean(rowId));
+      if (existingIds.length > 0) {
+        const { error: deleteError } = await supabaseAdminPatch
           .from("booking_products")
-          .insert(productsToInsert);
-
-        if (productsError) {
-          console.error("Error updating booking_products:", productsError);
+          .delete()
+          .in("id", existingIds);
+        if (deleteError) {
+          await reverseReconciledBookingProductStock(supabaseAdminPatch, {
+            providerId,
+            bookingId: id,
+            actorUserId: user.id,
+            deductLines: stockReconcile.deductLines,
+            restockLines: stockReconcile.restockLines,
+          });
+          if (insertedProductIds.length > 0) {
+            await supabaseAdminPatch.from("booking_products").delete().in("id", insertedProductIds);
+          }
           return errorResponse(
-            "The booking was updated, but product items could not be saved. Please try again.",
+            "Product items could not be saved. Stock was left unchanged.",
             "BOOKING_PRODUCTS_FAILED",
             422,
           );
@@ -2223,21 +2305,28 @@ export async function PATCH(
         }
 
         if (dbStatus === "cancelled") {
-          const { describeRefundFromOutcome } = await import(
+          const { cancellationNoticeFromSettlement } = await import(
             "@/lib/bookings/cancellation-outcome-bridge"
           );
-          const refundInfo =
-            cancelOutcome && cancelNotifyCurrency
-              ? describeRefundFromOutcome(
-                  cancelOutcome,
-                  preCancelGrossTotal,
-                  cancelNotifyCurrency,
-                )
-              : (cancellationSettlementResult?.terminalRefundDue ?? 0) > 0.01
-                ? (cancellationSettlementResult?.walletRefundAmount ?? 0) > 0.01
-                  ? "Card payments are being refunded to the card you paid with; the rest has been credited to your Beautonomi wallet."
-                  : "Your payment is being refunded to the card you paid with."
-                : "A full refund has been credited to the customer Beautonomi wallet for amounts already paid.";
+          const noticeCurrency =
+            cancelNotifyCurrency ||
+            String((currentBooking as { currency?: string | null }).currency ?? "");
+          const refundInfo = cancellationSettlementResult
+            ? cancellationNoticeFromSettlement({
+                currency: noticeCurrency,
+                walletRefundAmount: cancellationSettlementResult.walletRefundAmount ?? 0,
+                refundSucceeded: cancellationSettlementResult.refundResult?.success === true,
+                giftCardRestored: cancellationSettlementResult.giftCardVoidAttempted === true,
+                giftValueStillDue: cancellationSettlementResult.giftValueStillDue === true,
+                inPersonRefundDue: cancellationSettlementResult.inPersonCashRefundDue,
+                terminalRefundDue: cancellationSettlementResult.terminalRefundDue,
+              }).refundInfo
+            : cancellationNoticeFromSettlement({
+                currency: noticeCurrency,
+                walletRefundAmount: 0,
+                refundSucceeded: false,
+                settlementFailed: true,
+              }).refundInfo;
           if (emergency_cancellation === true) {
             const { notifyEmergencyCancellation } = await import(
               "@/lib/notifications/notification-service"
@@ -2259,7 +2348,12 @@ export async function PATCH(
               cancelledBy: "provider",
               refundInfo,
               cancellationReason: cancellation_reason || null,
-              walletRefund: cancellationSettlementResult?.walletRefundAmount,
+              walletRefund:
+                cancellationSettlementResult &&
+                cancellationSettlementResult.refundResult?.success === true &&
+                (cancellationSettlementResult.walletRefundAmount ?? 0) > 0.009
+                  ? cancellationSettlementResult.walletRefundAmount
+                  : undefined,
               feeRetained: cancellationSettlementResult?.cancellationFeeApplied,
               currency: cancelNotifyCurrency,
             });
@@ -2272,56 +2366,7 @@ export async function PATCH(
             console.error("[provider PATCH cancel] waitlist matching failed:", waitlistErr);
           }
 
-          // §Provider-audit 2026-04 (round 2): if this booking had retail
-          // products that were stock-deducted at completion, re-increment
-          // them and clear the deduction timestamp so inventory is correct
-          // after a late cancel. Safe to run unconditionally — it only acts
-          // on rows that were previously deducted (see migration 519).
-          try {
-            const { data: deductedProducts } = await supabaseAdmin
-              .from("booking_products")
-              .select("id, product_id, product_variant_id, quantity")
-              .eq("booking_id", id)
-              .not("stock_deducted_at", "is", null);
-            if (Array.isArray(deductedProducts) && deductedProducts.length > 0) {
-              for (const row of deductedProducts as Array<{
-                id: string;
-                product_id: string | null;
-                product_variant_id?: string | null;
-                quantity: number | null;
-              }>) {
-                if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
-                const { error: incErr } = row.product_variant_id
-                  ? await (supabaseAdmin.rpc as any)("increment_product_variant_stock", {
-                    p_variant_id: row.product_variant_id,
-                    p_quantity: row.quantity,
-                  })
-                  : await supabaseAdmin.rpc(
-                    "increment_product_stock",
-                    {
-                      p_product_id: row.product_id,
-                      p_quantity: row.quantity,
-                    },
-                  );
-                if (incErr) {
-                  console.error(
-                    `[provider PATCH cancel] increment_product_stock failed for booking ${id}, row ${row.id}:`,
-                    incErr,
-                  );
-                  continue;
-                }
-                await supabaseAdmin
-                  .from("booking_products")
-                  .update({ stock_deducted_at: null })
-                  .eq("id", row.id);
-              }
-            }
-          } catch (stockErr) {
-            console.error(
-              "[provider PATCH cancel] failed to re-increment retail stock:",
-              stockErr,
-            );
-          }
+          // Retail stock is returned before the visit is marked cancelled.
         } else if (dbStatus === "no_show") {
           const { notifyCustomerNoShow } = await import("@/lib/notifications/notification-service");
           await notifyCustomerNoShow(
@@ -2349,61 +2394,7 @@ export async function PATCH(
             );
           }
 
-          // §Provider-audit 2026-04 (round 2): deduct retail inventory for
-          // any products attached to this booking. Previously `booking_products`
-          // never touched `products.quantity`, so providers selling retail
-          // at checkout saw stock counts drift. Idempotent via the
-          // `stock_deducted_at` column (migration 519): rows with a non-null
-          // timestamp are skipped, preventing double-deduct on repeated
-          // status transitions.
-          try {
-            const { data: pendingProducts } = await supabaseAdmin
-              .from("booking_products")
-              .select("id, product_id, product_variant_id, quantity, products:products!booking_products_product_id_fkey(track_stock_quantity)")
-              .eq("booking_id", id)
-              .is("stock_deducted_at", null);
-            if (Array.isArray(pendingProducts) && pendingProducts.length > 0) {
-              const deductTs = new Date().toISOString();
-              for (const row of pendingProducts as Array<{
-                id: string;
-                product_id: string | null;
-                product_variant_id?: string | null;
-                quantity: number | null;
-                products?: { track_stock_quantity?: boolean | null } | null;
-              }>) {
-                if (!row.product_id || !row.quantity || row.quantity <= 0) continue;
-                if (row.products?.track_stock_quantity === false) continue;
-                const { error: decErr } = row.product_variant_id
-                  ? await (supabaseAdmin.rpc as any)("decrement_product_variant_stock", {
-                    p_variant_id: row.product_variant_id,
-                    p_quantity: row.quantity,
-                  })
-                  : await supabaseAdmin.rpc(
-                    "decrement_product_stock",
-                    {
-                      p_product_id: row.product_id,
-                      p_quantity: row.quantity,
-                    },
-                  );
-                if (decErr) {
-                  console.error(
-                    `[provider PATCH complete] decrement_product_stock failed for booking ${id}, row ${row.id}:`,
-                    decErr,
-                  );
-                  throw new Error(decErr.message || "Product stock could not be deducted");
-                }
-                await supabaseAdmin
-                  .from("booking_products")
-                  .update({ stock_deducted_at: deductTs })
-                  .eq("id", row.id);
-              }
-            }
-          } catch (stockErr) {
-            console.error(
-              "[provider PATCH complete] failed to deduct retail stock:",
-              stockErr,
-            );
-          }
+          // Retail stock is taken before the visit is marked complete.
 
           // Completion notification is handled by the database notification system below
           // No additional action needed here
@@ -2465,7 +2456,7 @@ export async function PATCH(
       try {
         const { data: userData } = await supabase
           .from("users")
-          .select("full_name, email")
+          .select("full_name")
           .eq("id", user.id)
           .single();
 
@@ -2483,7 +2474,7 @@ export async function PATCH(
               reason: body.cancellation_reason || null,
             },
             created_by: user.id,
-            created_by_name: userData?.full_name || userData?.email || "System",
+            created_by_name: userData?.full_name || "System",
           });
       } catch (auditError) {
         // Log but don't fail the request if audit logging fails
@@ -2584,7 +2575,7 @@ export async function PATCH(
     const patchUnpaidCharges = Array.isArray((bookingData as any).additional_charges)
       ? (bookingData as any).additional_charges
           .filter((charge: any) => charge?.status !== "paid" && charge?.status !== "rejected")
-          .reduce((sum: number, charge: any) => sum + Number(charge?.amount || 0), 0)
+          .reduce((sum: number, charge: any) => addMoney(sum, Number(charge?.amount || 0)), 0)
       : 0;
     const patchWalletAmount = Number((bookingData as any).wallet_amount ?? 0);
     const patchGiftCardAmount = Number((bookingData as any).gift_card_amount ?? 0);
@@ -2756,7 +2747,7 @@ export async function PATCH(
           }
         : null;
     return successResponse({
-      booking: transformedBooking,
+      booking: redactBookingCustomerContact(transformedBooking, canViewClients),
       ...(cardMachineRefundDue ? { card_machine_refund_due: cardMachineRefundDue } : {}),
     });
   } catch (error) {

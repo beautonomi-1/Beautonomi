@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAppleTransactionJws } from "../jws";
+import { applePriceToMajor, parseAppleTransactionJws } from "../jws";
 
 function buildSampleTransactionJws(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "ES256", typ: "JWT" })).toString("base64url");
@@ -63,5 +63,12 @@ describe("parseAppleTransactionJws", () => {
     expect(() => parseAppleTransactionJws(signed)).toThrow(
       "Apple transaction JWS missing transactionId or productId",
     );
+  });
+});
+
+describe("applePriceToMajor (F4-06)", () => {
+  it("converts milliunits with canonical rounding", () => {
+    expect(applePriceToMajor(119990, "ZAR")).toBe(119.99);
+    expect(applePriceToMajor(undefined, "ZAR")).toBe(0);
   });
 });

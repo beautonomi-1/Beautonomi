@@ -3,7 +3,8 @@ import { useTranslation } from "@beautonomi/i18n";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
-import { computeVat } from "@beautonomi/utils";
+import { addMoney, computeVat, multiplyMoney } from "@beautonomi/utils";
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 import {
   Search,
   Plus,
@@ -128,7 +129,7 @@ function buildWalkInProductFromBarcodeHit(
 }
 
 function walkInCartTotals(cart: CartItem[], taxRatePercent = 0, taxInclusive = true) {
-  const subtotal = cart.reduce((sum, c) => sum + c.unitPrice * c.qty, 0);
+  const subtotal = cart.reduce((sum, c) => addMoney(sum, multiplyMoney(c.unitPrice, c.qty)), 0);
   if (taxRatePercent <= 0) return { subtotal, taxAmount: 0, grandTotal: subtotal };
   const split = computeVat({
     baseAmount: subtotal,
@@ -146,6 +147,7 @@ interface WalkInOrder {
   id: string;
   order_number: string;
   total_amount: number;
+  refunded_amount?: number | null;
   payment_method: string;
   customer_name: string | null;
   created_at: string;
@@ -555,7 +557,7 @@ export default function WalkInSalePage() {
                     </div>
                     <div className="text-end">
                       <p className="font-bold text-pink-600">
-                        {formatMoney(Number(sale.total_amount))}
+                        {formatMoney(productOrderKeptAmount(sale))}
                       </p>
                       <p className="text-xs text-gray-400">
                         {new Date(sale.created_at).toLocaleString(locale)}
@@ -711,7 +713,7 @@ export default function WalkInSalePage() {
                             </button>
                           </div>
                           <span className="w-20 text-end text-sm font-semibold text-gray-900">
-                            {formatMoney(item.unitPrice * item.qty)}
+                            {formatMoney(multiplyMoney(item.unitPrice, item.qty))}
                           </span>
                           <button
                             onClick={() => removeFromCart(key)}

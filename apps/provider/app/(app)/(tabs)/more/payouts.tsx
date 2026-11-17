@@ -25,6 +25,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
+import { subtractMoney, roundCurrency } from "@beautonomi/utils";
 import { PayoutReconciliationCard, type PayoutReconciliation } from "@/components/PayoutReconciliationCard";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
@@ -268,7 +269,7 @@ export function PayoutsContent() {
 
   const handleRequestPayout = useCallback(async () => {
     const raw = parseFloat(amount.replace(/,/g, "."));
-    const num = Math.round((raw + Number.EPSILON) * 100) / 100;
+    const num = roundCurrency(raw);
     if (Number.isNaN(raw) || Number.isNaN(num) || num <= 0) {
       Alert.alert(po("invalidAmountTitle"), po("invalidAmountBody"));
       return;
@@ -288,7 +289,7 @@ export function PayoutsContent() {
       Alert.alert(po("balanceUnavailableTitle"), po("balanceUnavailableBody"));
       return;
     }
-    if (num > Math.round((availableBalance + Number.EPSILON) * 100) / 100 + 1e-6) {
+    if (num > roundCurrency(availableBalance) + 1e-6) {
       Alert.alert(
         po("insufficientTitle"),
         po("insufficientBody", {
@@ -314,7 +315,7 @@ export function PayoutsContent() {
           : selectedAccount
             ? formatAccountLabel(selectedAccount, po)
             : po("bankRequiredBody"),
-      available: formatCurrency(Math.max(0, availableBalance - num), defaultCurrency),
+      available: formatCurrency(Math.max(0, subtractMoney(availableBalance, num)), defaultCurrency),
       pending: formatCurrency(pendingPayouts, defaultCurrency),
       schedule: scheduleLabel,
       po,

@@ -13913,7 +13913,8 @@
       "requestChangesTitle": "isicelo tshintshas",
       "requestChangesBody": "Vertel die verskaffer wat jy wil hê moet aangepas word.",
       "requestChangesEmpty": "Nceda describe the tshintshas you want.",
-      "requestChangesFailed": "Kusilele uku-isicelo tshintshas"
+      "requestChangesFailed": "Kusilele uku-isicelo tshintshas",
+      "offerStatusNeedsSupport": "Needs inkxaso"
     },
     "walletScreen": {
       "balanceLabel": "isipaji ibhalansi",
@@ -15600,7 +15601,7 @@
           "refundAmountLabel": "imbuyiselo isixa:",
           "requestedOn": "Kuceliwe ngo-{{date}}",
           "items": "Izinto",
-          "itemQtyPrice": "{{count}} x {{price}}",
+          "itemQtyPrice": "{{count}} × {{price}}",
           "yourDetails": "iinkcukacha yakho",
           "nameLabel": "Igama",
           "emailLabel": "i-imeyile",
@@ -15647,7 +15648,11 @@
           "accessLabel": "Ukufikelela",
           "parkingLabel": "Ukupaka",
           "landmarksLabel": "Iimpawu",
-          "partiallyRefundedContactProvider": "Lo myalelo uye wabuyiswa ngokuyinxenye. Qhagamshelana nomboneleli ukuze ubuyisele imali eseleyo."
+          "partiallyRefundedContactProvider": "Lo myalelo uye wabuyiswa ngokuyinxenye. Qhagamshelana nomboneleli ukuze ubuyisele imali eseleyo.",
+          "refunded": "Kubuyiselwe imali",
+          "messageProvider": "Thumela umyalezo kumboneleli",
+          "messageFailedTitle": "umyalezo",
+          "messageFailedBody": "Ayikwazanga ukuqala incoko neli shishini."
         },
         "customRequestsList": {
           "startPaymentFailed": "Kusilele uku-qala intlawulo",
@@ -18421,14 +18426,14 @@
     "memberDiscountFallback": "Member isaphulelo",
     "saveCardInfoA11y": "Info Malunga ivagcina Ikhadi",
     "customTipA11y": "Okwezifiso ithiphu isixa",
-    "bookingSuccessTitleConfirmed": "ukubhukisha qinisekisaed!",
-    "bookingSuccessTitlePending": "ukubhukisha received!",
-    "bookingSuccessTitlePendingPayment": "intlawulo iyaqhuba...",
-    "bookingSuccessPendingPaymentBody": "intlawulo is being qinisekisaed. You'll receive a isaziso shortly. yakho.",
-    "bookingSuccessPendingBody": "Wag op verskafferbevestiging - gewoonlik binne 8 uur",
-    "bookingSuccessFooter": "Taking you to your ukubhukisha…",
+    "bookingSuccessTitleConfirmed": "Ukubhukisha kuqinisekisiwe!",
+    "bookingSuccessTitlePending": "Ukubhukisha kufunyenwe!",
+    "bookingSuccessTitlePendingPayment": "Intlawulo iyaqhutywa…",
+    "bookingSuccessPendingPaymentBody": "Intlawulo yakho iyaqinisekiswa. Uza kufumana isaziso kungekudala.",
+    "bookingSuccessPendingBody": "Silinde ukuba umboneleli aqinisekise — siza kukwazisa nje ukuba baphendule",
+    "bookingSuccessFooter": "Sivula ibhukisho lakho…",
     "totalPaidPrefix": "Iyonke ehlawulweyo",
-    "platformFeeInclusive": " (kuquka imali yepulatifomu {{amount}})",
+    "platformFeeInclusive": " (kuquka ukhuseleko lwebhukisho {{amount}})",
     "securePaymentTitle": "Secure intlawulo",
     "paymentCancelledTitle": "intlawulo kurhoxisiwe",
     "paymentCancelledBody": "Urhoxise intlawulo. Ukubhukisha kwakho akukaqinisekiswa.",
@@ -20926,7 +20931,8 @@
         "createOfferFailedShort": "Kusilele uku-yila offer",
         "changeClient": "Tshintsha",
         "searchClientPlaceholder": "Khangela ngegama, i-imeyile okanye umnxeba (umz. 082…)",
-        "searchClientHint": "Chwetheza ubuncinane iimpawu ezi-2"
+        "searchClientHint": "Chwetheza ubuncinane iimpawu ezi-2",
+        "continuePayment": "qhubeka intlawulo"
       },
       "privacyAndSharing": {
         "tabAccount": "Iakhawunti",
@@ -35519,7 +35525,9 @@
         "editOffer": "Hlela offer",
         "withdrawOfferConfirm": "Uqinisekile ukuba ufuna ukurhoxisa lesi sibonelelo?",
         "withdrawOffer": "Rhoxisa isaphulelo",
-        "couldNotLoadOfferDetails": "Ayikwazanga uku-ulayisha offer iinkcukacha."
+        "couldNotLoadOfferDetails": "Ayikwazanga uku-ulayisha offer iinkcukacha.",
+        "statusNeedsSupport": "Needs inkxaso",
+        "resumePayment": "qhubeka intlawulo"
       },
       "customOfferModal": {
         "loadOfferFailed": "Ayikwazanga uku-ulayisha offer",
@@ -36462,7 +36470,13 @@
         "waitingBody": "Siyayiqinisekisa intlawulo yakho. Hlaziya izicelo zakho zesiko ngomzuzwana.",
         "backToRequests": "emva to Okwezifiso izicelo",
         "changesRequestedTitle": "Unikezelo luyahlaziywa",
-        "changesRequestedBody": "Umboneleli wakho uhlaziya olu nikezelo emva kwesicelo sakho sokutshintsha."
+        "changesRequestedBody": "Umboneleli wakho uhlaziya olu nikezelo emva kwesicelo sakho sokutshintsha.",
+        "viewBooking": "Jonga ukubhukisha",
+        "needsSupportTitle": "intlawulo needs inkxaso",
+        "resumePayment": "qhubeka intlawulo",
+        "needsSupportBody": "Sifumene intlawulo, kodwa asikwazanga ukudala ibhukisho. Qhagamshelana noncedo ngenombolo yakho yentlawulo.",
+        "unavailableBody": "Cela ishishini isilinganiso esitsha ukuba usawufuna lo msebenzi.",
+        "unavailableTitle": "Eli tyelo alisahlawulwa"
       }
     },
     "groupInvite": {

@@ -6,9 +6,9 @@ import {
   errorResponse,
   getProviderIdForUser,
   handleApiError,
-  requireRoleInApi,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { checkPaystackVirtualTerminalFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
@@ -45,7 +45,11 @@ const setupRequestSchema = z.object({
 });
 
 async function resolveProvider(request: NextRequest) {
-  const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+  const permissionCheck = await requirePermission("process_payments", request);
+  if (!permissionCheck.authorized) {
+    return { denied: permissionCheck.response! };
+  }
+  const { user } = permissionCheck;
   const supabase = await getSupabaseServer(request);
   const providerId = await getProviderIdForUser(user.id, supabase, { request });
   if (!providerId) return { supabase, user, providerId: null, provider: null };
@@ -56,19 +60,22 @@ async function resolveProvider(request: NextRequest) {
     .eq("id", providerId)
     .maybeSingle();
 
-  return { supabase, user, providerId, provider };
+  return { denied: undefined, supabase, user, providerId, provider };
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const { supabase, providerId } = await resolveProvider(request);
+    const resolved = await resolveProvider(request);
+    if (resolved.denied) return resolved.denied;
+    const { supabase, providerId } = resolved;
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
 
     const gate = await requirePaystackVirtualTerminalEnabledForProvider(supabase, providerId);
     if (gate) return gate;
 
     const access = await checkPaystackVirtualTerminalFeatureAccess(providerId, supabase as any);
-    const { data, error } = await (supabase
+    const admin = getSupabaseAdmin();
+    const { data, error } = await (admin
       .from("provider_paystack_virtual_terminals") as any)
       .select("*")
       .eq("provider_id", providerId)
@@ -76,7 +83,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    const { data: setupRequests, error: setupError } = await (supabase
+    const { data: setupRequests, error: setupError } = await (admin
       .from("provider_paystack_virtual_terminal_setup_requests") as any)
       .select("*")
       .eq("provider_id", providerId)
@@ -97,7 +104,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { supabase, user, providerId, provider } = await resolveProvider(request);
+    const resolved = await resolveProvider(request);
+    if (resolved.denied) return resolved.denied;
+    const { supabase, user, providerId, provider } = resolved;
     if (!providerId) return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
     const admin = getSupabaseAdmin();
 
@@ -238,7 +247,7 @@ export async function POST(request: NextRequest) {
       requestId: setupRequest.id,
       providerId,
       providerName: providerBusinessName,
-      requestedBy: user.email ?? user.id,
+      requestedBy: (user as { email?: string | null }).email ?? user.id,
       suggestedTerminalName: terminalName,
       destinationTarget,
     });

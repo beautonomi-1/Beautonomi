@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -139,9 +140,9 @@ export async function GET(_request: NextRequest) {
       existing.count += 1;
       const cost = costStockValue(product);
       const retail = retailStockValue(product);
-      existing.stockValue += cost;
-      existing.costStockValue += cost;
-      existing.retailStockValue += retail;
+      existing.stockValue = addMoney(existing.stockValue, cost);
+      existing.costStockValue = addMoney(existing.costStockValue, cost);
+      existing.retailStockValue = addMoney(existing.retailStockValue, retail);
       categoryMap.set(category, existing);
     });
 

@@ -90,21 +90,19 @@ export async function resolveFlutterwaveWebhookVerificationSecrets(
   return uniqueSecrets(secrets);
 }
 
+/**
+ * F2-30: a signature is required in EVERY environment. There is no unsigned
+ * development bypass — a missing header, a missing configured hash or a
+ * mismatch all reject. Comparison is constant-time (`verifyFlutterwaveWebhookHash`
+ * uses `crypto.timingSafeEqual`).
+ */
 export async function verifyFlutterwaveWebhookSignature(
   body: string,
   signature: string | null,
 ): Promise<boolean> {
-  const allowUnsignedDev =
-    process.env.NODE_ENV !== "production" &&
-    (!process.env.VERCEL_ENV || process.env.VERCEL_ENV === "development");
-
-  if (allowUnsignedDev && !signature) {
-    return true;
-  }
+  const header = (signature ?? "").trim();
+  if (!header) return false;
   const secrets = await resolveFlutterwaveWebhookVerificationSecrets(body);
-  if (secrets.length === 0) {
-    return allowUnsignedDev;
-  }
-  if (!signature) return false;
-  return secrets.some((secret) => verifyFlutterwaveWebhookHash(signature, secret));
+  if (secrets.length === 0) return false;
+  return secrets.some((secret) => verifyFlutterwaveWebhookHash(header, secret));
 }

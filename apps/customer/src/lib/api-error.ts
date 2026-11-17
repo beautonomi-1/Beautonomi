@@ -66,16 +66,43 @@ export function getBookingHoldSlotUnavailableMessage(
   return getApiErrorMessage(error, fallback);
 }
 
+const FRIENDLY_BY_CODE: Record<string, string> = {
+  FORBIDDEN: "You do not have permission to do this.",
+  INVALID_AMOUNT: "Enter a valid amount and try again.",
+  INSUFFICIENT_BALANCE: "There is not enough balance for this request.",
+  PAYOUT_HELD: "Payouts are temporarily on hold. Contact support if you need help.",
+  OVER_REFUND: "Refund exceeds the amount collected.",
+  LEDGER_POSTING_FAILED: "The payment could not be recorded. Please retry.",
+  PERIOD_LOCKED: "This financial period is locked.",
+  VALIDATION_ERROR: "Check the details and try again.",
+  IDEMPOTENCY_KEY_CONFLICT: "This request was already processed.",
+};
+
+function looksLikeRawSql(message: string): boolean {
+  return /finance ledger posting failed|violates check constraint|SQLSTATE|P0001|new_total_refunded|Refund amount validation failed/i.test(
+    message,
+  );
+}
+
 export function getApiErrorMessage(
   error: unknown,
   fallback: string = "Something went wrong. Please try again."
 ): string {
   if (error == null) return fallback;
-  if (typeof error === "string") return error.trim() || fallback;
-  if (error instanceof Error) return error.message.trim() || fallback;
-  const msg = (error as { message?: string }).message;
-  if (typeof msg === "string" && msg.trim()) return msg.trim();
-  return fallback;
+  const code = getApiErrorCode(error);
+  const friendly = code ? FRIENDLY_BY_CODE[code] : undefined;
+  if (typeof error === "string") {
+    const trimmedString = error.trim();
+    if (!trimmedString || looksLikeRawSql(trimmedString)) return friendly || fallback;
+    return trimmedString;
+  }
+  const msg =
+    error instanceof Error
+      ? error.message
+      : (error as { message?: string }).message;
+  const trimmed = typeof msg === "string" ? msg.trim() : "";
+  if (!trimmed || looksLikeRawSql(trimmed)) return friendly || fallback;
+  return trimmed;
 }
 
 /**

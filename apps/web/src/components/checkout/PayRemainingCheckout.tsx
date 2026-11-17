@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
-import { normalizeTipPercentPresets, percentOf } from "@beautonomi/utils";
+import { addMoney, normalizeTipPercentPresets, percentOf, roundCurrency } from "@beautonomi/utils";
 import { formatCurrency } from "@/lib/utils";
 
 type Preview = {
@@ -22,8 +22,8 @@ type PayRemainingCheckoutProps = {
   autoStart?: boolean;
 };
 
-function roundMoney(n: number): number {
-  return Math.round(n * 100) / 100;
+function roundMoney(n: number, currency?: string): number {
+  return roundCurrency(n, currency);
 }
 
 export function PayRemainingCheckout({
@@ -73,13 +73,13 @@ export function PayRemainingCheckout({
   const tipAmount = useMemo(() => {
     if (!preview?.tips_enabled) return 0;
     if (tipMode === "custom") {
-      return roundMoney(Math.max(0, Number(customTip) || 0));
+      return roundMoney(Math.max(0, Number(customTip) || 0), preview?.currency);
     }
     if (tipMode === 0) return 0;
     return percentOf(preview.service_tip_base, tipMode, preview.currency);
   }, [preview, tipMode, customTip]);
 
-  const payTotal = roundMoney((preview?.remaining_balance ?? 0) + tipAmount);
+  const payTotal = addMoney(preview?.remaining_balance ?? 0, tipAmount, preview?.currency);
 
   const startPay = useCallback(async () => {
     if (!preview) return;

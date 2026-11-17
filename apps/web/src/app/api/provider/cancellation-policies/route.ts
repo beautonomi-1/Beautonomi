@@ -7,10 +7,11 @@ import {
   deriveEnforcementFields,
   normalizePolicyLocationType,
 } from "@/lib/provider/cancellation-policy-enforcement";
+import { cancellationFeeAmountError } from "@/lib/provider/cancellation-policy-bounds";
 
 const createPolicySchema = z.object({
   name: z.string().min(1),
-  hours_before: z.number().int().min(0),
+  hours_before: z.number().int().min(0).max(24 * 365),
   refund_percentage: z.number().int().min(0).max(100),
   fee_amount: z.number().min(0).optional(),
   fee_type: z.enum(["fixed", "percentage"]).optional(),
@@ -121,6 +122,10 @@ export async function POST(request: NextRequest) {
     }
 
     const data = validationResult.data;
+    const feeErr = cancellationFeeAmountError(data.fee_type, data.fee_amount);
+    if (feeErr) {
+      return errorResponse(feeErr, "VALIDATION_ERROR", 400);
+    }
 
     // If this is set as default, unset other defaults
     if (data.is_default) {

@@ -6,6 +6,7 @@
  * downloads and pays them — it does not create or edit them. The matching write
  * endpoints are superadmin-only and would 403 here.
  */
+import { subtractMoney } from "@beautonomi/utils";
 import { useState, useCallback, useMemo, useEffect, type ReactNode } from "react";
 import {
   View,
@@ -26,6 +27,8 @@ import { Redirect, useRouter } from "expo-router";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
+import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
+import { parseOnlineCheckoutReturnUrl } from "@/lib/payments/onlineCheckoutReturn";
 import { downloadPdf } from "@/lib/pdf-file";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -189,7 +192,7 @@ function getInvoicePeriodRange(period: string): { from?: string; to?: string } {
 function amountDue(inv: Invoice): number {
   const stored = Number(inv.amount_due ?? NaN);
   if (Number.isFinite(stored)) return stored;
-  return Number(inv.total_amount ?? 0) - Number(inv.amount_paid ?? 0);
+  return subtractMoney(Number(inv.total_amount ?? 0), Number(inv.amount_paid ?? 0));
 }
 
 export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {}) {
@@ -241,6 +244,7 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
   const { execute: startPayment } = useApiMutation<{
     payment_url?: string;
     authorization_url?: string;
+    reference?: string;
     amount?: number;
   }>("post");
   const { waitForCheckout } = useInAppPaystackCheckout();
@@ -346,15 +350,44 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
         return;
       }
 
+      const startedRef = data.reference?.trim() || "";
       if (result.outcome === "success") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(
-          iv("paymentReceivedTitle"),
-          iv("paymentReceivedBody"),
-        );
-        setSelected(null);
+        let reference = startedRef;
+        let redirectStatus: string | null = null;
+        if (result.url) {
+          const parsed = parseOnlineCheckoutReturnUrl(result.url);
+          if (parsed.reference) reference = parsed.reference;
+          if (parsed.status === "failed" || parsed.status === "cancelled") redirectStatus = parsed.status;
+        }
+        const verified = reference
+          ? await verifyPaystackWithRetry(reference, {
+              redirectStatus,
+              maxAttempts: redirectStatus ? 1 : 5,
+            })
+          : null;
+        if (verified?.status === "failed") {
+          Alert.alert(iv("paymentCancelledTitle"), iv("paymentCancelledBody"));
+        } else {
+          if (verified?.status === "success") {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          Alert.alert(iv("paymentReceivedTitle"), iv("paymentReceivedBody"));
+          setSelected(null);
+        }
       } else if (result.outcome === "cancel") {
+        if (startedRef) {
+          void verifyPaystackWithRetry(startedRef, { redirectStatus: "cancelled", maxAttempts: 1 });
+        }
         Alert.alert(iv("paymentCancelledTitle"), iv("paymentCancelledBody"));
+      } else if (startedRef) {
+        const verified = await verifyPaystackWithRetry(startedRef, { maxAttempts: 5 });
+        if (verified.status === "failed") {
+          Alert.alert(iv("paymentCancelledTitle"), iv("paymentCancelledBody"));
+        } else if (verified.status === "success") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert(iv("paymentReceivedTitle"), iv("paymentReceivedBody"));
+          setSelected(null);
+        }
       }
       await refresh();
     } finally {

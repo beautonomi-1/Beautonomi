@@ -16,6 +16,8 @@
  * For **cancelled** or **refunded** bookings, show **0** outstanding when nothing is owed
  * (use `payment_status` + `total_refunded` to avoid implying debt after full refund).
  */
+import { addMoney, subtractMoney } from "@beautonomi/utils";
+
 export const BOOKING_FINANCIAL_INVARIANTS_DOC = "display-invariants.ts";
 
 export {
@@ -68,7 +70,7 @@ export function computePackageAppliedForDisplay(input: {
   if (typeof ent === "string" && ent.trim().length > 0) return true;
   const inferredPackagePortion = Math.max(
     0,
-    Number(input.discount_amount ?? 0) - Number(input.promotion_discount_amount ?? 0),
+    subtractMoney(Number(input.discount_amount ?? 0), Number(input.promotion_discount_amount ?? 0)),
   );
   return inferredPackagePortion > 0;
 }
@@ -100,7 +102,7 @@ export function reconcileReceiptTotal(receipt: ReceiptInvariantPayload): number 
   const loy = Number(receipt.loyalty_discount_amount ?? 0);
   const cancel = Number(receipt.cancellation_fee ?? 0);
   /** Mirrors decomposed booking columns: discount_amount + promotion + membership + loyalty. */
-  return sub + travel + tax + fees + tip - disc - promo - mem - loy - cancel;
+  return subtractMoney(subtractMoney(subtractMoney(subtractMoney(subtractMoney(addMoney(addMoney(addMoney(addMoney(sub, travel), tax), fees), tip), disc), promo), mem), loy), cancel);
 }
 
 /**
@@ -132,7 +134,7 @@ export function warnIfReceiptTotalDriftsDevOnly(label: string, receipt: ReceiptI
 export function additionalChargeAmountStillDue(chargeAmount: number, heldWalletAndGift: number): number {
   const charge = Math.max(0, Number(chargeAmount) || 0);
   const held = Math.max(0, Number(heldWalletAndGift) || 0);
-  return Math.round(Math.max(0, charge - held) * 100) / 100;
+  return Math.max(0, subtractMoney(charge, held));
 }
 
 export function computeBookingOutstandingDisplay(input: BookingOutstandingInputs): number {
@@ -161,10 +163,10 @@ export function computeBookingOutstandingDisplay(input: BookingOutstandingInputs
    * showing phantom outstanding. We pick the LARGER of the two coverage
    * estimates — never their sum — so we never double-subtract.
    */
-  const effectivePaid = Math.max(0, Number(totalPaid) - Number(totalRefunded));
-  const walletGiftCoverage = Math.max(0, Number(walletAmount) + Number(giftCardAmount));
+  const effectivePaid = Math.max(0, subtractMoney(Number(totalPaid), Number(totalRefunded)));
+  const walletGiftCoverage = Math.max(0, addMoney(Number(walletAmount), Number(giftCardAmount)));
   const pendingWalletGift = Math.max(0, Number(input.pendingWalletGiftAmount ?? 0));
-  const coverage = Math.max(effectivePaid + pendingWalletGift, walletGiftCoverage);
-  const raw = Number(totalAmount) + Number(unpaidAdditionalCharges) - coverage;
+  const coverage = Math.max(addMoney(effectivePaid, pendingWalletGift), walletGiftCoverage);
+  const raw = subtractMoney(addMoney(Number(totalAmount), Number(unpaidAdditionalCharges)), coverage);
   return Math.max(0, raw);
 }

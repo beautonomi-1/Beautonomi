@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -89,9 +90,7 @@ export async function POST(
     const voidMerchantOrderNo = buildMerchantOrderNo("BV");
     const notifyUrl = getPaycloudNotifyUrl(request);
     const voidAmount = normalizePaycloudMajorAmount(
-      Number(payment.amount) +
-        Math.max(0, Number(payment.tip_amount ?? 0)) +
-        Math.max(0, Number(payment.cashback_amount ?? 0)),
+      addMoney(addMoney(Number(payment.amount), Math.max(0, Number(payment.tip_amount ?? 0))), Math.max(0, Number(payment.cashback_amount ?? 0))),
     );
 
     const { data: voidPaymentRow, error: insertError } = await admin

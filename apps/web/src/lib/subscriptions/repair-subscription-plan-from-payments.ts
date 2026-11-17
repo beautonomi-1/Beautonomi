@@ -3,6 +3,10 @@ import { resolveCatalogPlanIdForProviderSubscription } from "@/lib/subscriptions
 import { isAppleBillingActive } from "@/lib/iap/apple/billing-active";
 
 function paymentTermStillActive(meta: Record<string, unknown> | null | undefined): boolean {
+  if (typeof meta?.reversed_at === "string" && meta.reversed_at.trim()) return false;
+  if (typeof meta?.access_relinquished_at === "string" && meta.access_relinquished_at.trim()) {
+    return false;
+  }
   const termEnd = meta?.term_end;
   if (typeof termEnd === "string" && termEnd.trim()) {
     const end = new Date(termEnd);
@@ -33,15 +37,39 @@ export async function repairSubscriptionPlanFromPayments(
 
   const { data: payments } = await supabase
     .from("finance_transactions")
-    .select("provider_id, metadata, created_at")
+    .select("id, provider_id, metadata, created_at")
     .eq("tenant_id", tenantId)
     .eq("transaction_type", "provider_subscription_payment");
+
+  const { data: refunds } = await supabase
+    .from("finance_transactions")
+    .select("metadata")
+    .eq("tenant_id", tenantId)
+    .eq("transaction_type", "provider_subscription_refund");
+
+  const refundedPaymentIds = new Set<string>();
+  const refundedReferences = new Set<string>();
+  for (const refund of refunds ?? []) {
+    const meta = (refund as { metadata?: Record<string, unknown> }).metadata;
+    const sourceId = meta?.source_payment_id;
+    if (typeof sourceId === "string" && sourceId.trim()) refundedPaymentIds.add(sourceId);
+    const reference = meta?.reference;
+    if (typeof reference === "string" && reference.trim()) refundedReferences.add(reference);
+  }
 
   let repaired = 0;
   const now = new Date();
   for (const p of payments ?? []) {
     const providerId = String((p as { provider_id?: string }).provider_id ?? "");
     const meta = (p as { metadata?: Record<string, unknown> }).metadata;
+    const paymentId = String((p as { id?: string }).id ?? "");
+    const reference = typeof meta?.reference === "string" ? meta.reference : "";
+    if (
+      (paymentId && refundedPaymentIds.has(paymentId)) ||
+      (reference && refundedReferences.has(reference))
+    ) {
+      continue;
+    }
     const paidPlanId =
       meta && typeof meta.plan_id === "string" ? meta.plan_id : null;
     if (!providerId || !paidPlanId || paidPlanId === freePlanId) continue;
@@ -83,6 +111,7 @@ export async function repairSubscriptionPlanFromPayments(
       .update({
         plan_id: paidPlanId,
         status: "active",
+        past_due_since: null,
         billing_provider: "paystack",
         paystack_sync_pending: false,
         paystack_sync_note: null,

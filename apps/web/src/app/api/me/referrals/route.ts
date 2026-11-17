@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
@@ -64,10 +65,10 @@ export async function GET(request: NextRequest) {
         stats.successful_referrals = referrals.filter(r => r.status === "completed").length;
         stats.total_earnings = referrals
           .filter(r => r.status === "completed")
-          .reduce((sum, r) => sum + (Number(r.reward_amount) || 0), 0);
+          .reduce((sum, r) => addMoney(sum, Number(r.reward_amount) || 0), 0);
         stats.pending_earnings = referrals
           .filter(r => r.status === "pending")
-          .reduce((sum, r) => sum + (Number(r.reward_amount) || 0), 0);
+          .reduce((sum, r) => addMoney(sum, Number(r.reward_amount) || 0), 0);
       }
     } catch {
       // Table might not exist yet, use defaults

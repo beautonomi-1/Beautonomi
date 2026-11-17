@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   calculateBookingTotals,
   effectiveTravelFee,
+  expectedPersistedBookingTotal,
   type BookingPricingInput,
 } from "./calculateBookingPricing";
+import { percentOf, roundCurrency } from "../money";
 
 describe("effectiveTravelFee", () => {
   it("returns fee only for at_home", () => {
@@ -13,8 +15,8 @@ describe("effectiveTravelFee", () => {
   });
 });
 
-/** Round to 2 decimals for comparison (mirrors server Math.round(x*100)/100). */
-const r = (n: number) => Math.round(n * 100) / 100;
+/** Round to 2 decimals for comparison (canonical roundCurrency). */
+const r = (n: number) => roundCurrency(n);
 
 const base: BookingPricingInput = {
   subtotal: 0,
@@ -348,7 +350,7 @@ describe("deposit math — pure computations", () => {
   it("deposit percentage calculation", () => {
     const totalAmount = 1000;
     const depositPercentage = 30;
-    const depositAmount = Math.ceil((totalAmount * depositPercentage) / 100);
+    const depositAmount = percentOf(totalAmount, depositPercentage);
     const balanceDue = totalAmount - depositAmount;
     expect(depositAmount).toBe(300);
     expect(balanceDue).toBe(700);
@@ -357,17 +359,16 @@ describe("deposit math — pure computations", () => {
   it("deposit percentage with fractional total", () => {
     const totalAmount = 750;
     const depositPercentage = 30;
-    const depositAmount = Math.ceil((totalAmount * depositPercentage) / 100);
+    const depositAmount = percentOf(totalAmount, depositPercentage);
     expect(depositAmount).toBe(225);
     expect(totalAmount - depositAmount).toBe(525);
   });
 
-  it("deposit percentage rounds up (ceil)", () => {
+  it("deposit percentage uses percentOf (not ceil)", () => {
     const totalAmount = 999;
     const depositPercentage = 30;
-    const depositAmount = Math.ceil((totalAmount * depositPercentage) / 100);
-    // 999 * 0.30 = 299.7, ceil = 300
-    expect(depositAmount).toBe(300);
+    const depositAmount = percentOf(totalAmount, depositPercentage);
+    expect(depositAmount).toBe(299.7);
   });
 
   it("deposit on tax-inclusive total after discount", () => {
@@ -377,7 +378,7 @@ describe("deposit math — pure computations", () => {
       discountAmount: 200,
     });
     const depositPercentage = 50;
-    const depositAmount = Math.ceil((result.totalAmount * depositPercentage) / 100);
+    const depositAmount = percentOf(result.totalAmount, depositPercentage);
     expect(r(result.totalAmount)).toBe(800);
     expect(depositAmount).toBe(400);
     expect(result.totalAmount - depositAmount).toBe(400);
@@ -390,7 +391,7 @@ describe("deposit math — pure computations", () => {
       subtotal: 1000,
     });
     const depositPercentage = 30;
-    const depositAmount = Math.ceil((result.totalAmount * depositPercentage) / 100);
+    const depositAmount = percentOf(result.totalAmount, depositPercentage);
     expect(r(result.totalAmount)).toBe(1150);
     expect(depositAmount).toBe(345);
     expect(result.totalAmount - depositAmount).toBe(805);
@@ -696,5 +697,60 @@ describe("calculateBookingTotals — membership and loyalty discounts", () => {
     expect(result.afterDiscount).toBe(750);
     expect(r(result.platformFeeAmount)).toBe(75);
     expect(r(result.totalAmount)).toBe(825);
+  });
+});
+
+describe("expectedPersistedBookingTotal (F2-13 SQL formula)", () => {
+  it("matches calculateBookingTotals for VAT-inclusive (tax not added)", () => {
+    const totals = calculateBookingTotals({
+      ...base,
+      subtotal: 318.33,
+      travelFee: 0,
+      tipAmount: 0,
+    });
+    const expected = expectedPersistedBookingTotal({
+      subtotal: 318.33,
+      taxAmount: totals.taxAmount,
+      taxInclusive: true,
+      serviceFeeAmount: totals.platformFeeAmount,
+    });
+    expect(totals.totalAmount).toBe(expected);
+    expect(expected).toBe(318.33);
+  });
+
+  it("matches calculateBookingTotals for VAT-exclusive (tax added)", () => {
+    const totals = calculateBookingTotals({
+      ...base,
+      subtotal: 100,
+      taxInclusive: false,
+      taxRate: 0.15,
+    });
+    const expected = expectedPersistedBookingTotal({
+      subtotal: 100,
+      taxAmount: totals.taxAmount,
+      taxInclusive: false,
+      serviceFeeAmount: totals.platformFeeAmount,
+    });
+    expect(totals.totalAmount).toBe(expected);
+    expect(expected).toBe(115);
+  });
+
+  it("nets membership and loyalty like 10142", () => {
+    const totals = calculateBookingTotals({
+      ...base,
+      subtotal: 200,
+      membershipDiscountAmount: 18,
+      loyaltyDiscountAmount: 10,
+    });
+    expect(
+      expectedPersistedBookingTotal({
+        subtotal: 200,
+        membershipDiscountAmount: 18,
+        loyaltyDiscountAmount: 10,
+        taxAmount: totals.taxAmount,
+        taxInclusive: true,
+        serviceFeeAmount: totals.platformFeeAmount,
+      }),
+    ).toBe(totals.totalAmount);
   });
 });

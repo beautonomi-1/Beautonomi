@@ -1,3 +1,4 @@
+import { subtractMoney } from "@beautonomi/utils";
 import { aggregateGroupChildPaymentRollup } from "@/lib/provider-booking/build-merged-group-row-from-group-detail";
 
 export type GroupPaymentRollupFields = {
@@ -34,7 +35,7 @@ export function computeGroupPaymentRollupFields(
     payment.totalAmount > 0 ? Math.max(displayTotal, payment.totalAmount) : displayTotal;
   const balanceDue = Math.max(
     0,
-    payment.totalAmount > 0 ? payment.balanceDue : resolvedDisplayTotal - payment.coverage,
+    payment.totalAmount > 0 ? payment.balanceDue : subtractMoney(resolvedDisplayTotal, payment.coverage),
   );
 
   let paymentStatus: string;

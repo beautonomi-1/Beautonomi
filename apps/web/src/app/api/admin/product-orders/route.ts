@@ -1,5 +1,8 @@
+import { addMoney } from "@beautonomi/utils";
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection,
   successResponse,
   handleApiError,
@@ -24,8 +27,13 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const offset = (page - 1) * limit;
 
-    type OrderStatRow = { status?: string; total_amount?: number | string; payment_status?: string };
-    let query = supabase
+    type OrderStatRow = {
+      status?: string;
+      total_amount?: number | string;
+      refunded_amount?: number | string | null;
+      payment_status?: string;
+    };
+    let query = getSupabaseAdmin()
       .from("product_orders")
       .select(
         `*,
@@ -55,7 +63,7 @@ export async function GET(request: NextRequest) {
 
     const { data: stats } = await supabase
       .from("product_orders")
-      .select("status, total_amount, payment_status, provider:providers!inner(tenant_id)")
+      .select("status, total_amount, refunded_amount, payment_status, provider:providers!inner(tenant_id)")
       .eq("provider.tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
@@ -71,8 +79,11 @@ export async function GET(request: NextRequest) {
     const summary = {
       total_orders: statRows.length,
       total_revenue: statRows
-        .filter((o) => o.payment_status === "paid")
-        .reduce((s, o) => s + Number(o.total_amount ?? 0), 0),
+        .filter((o) => {
+          const payment = String(o.payment_status ?? "");
+          return payment === "paid" || payment === "partially_refunded" || payment === "refunded";
+        })
+        .reduce((s, o) => addMoney(s, productOrderKeptAmount(o)), 0),
       pending: statRows.filter((o) => o.status === "pending").length,
       delivered: statRows.filter((o) => o.status === "delivered").length,
       cancelled: statRows.filter((o) => o.status === "cancelled").length,

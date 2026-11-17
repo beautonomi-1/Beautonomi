@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { findOpenTerminalPayments } from "@/lib/payments/open-terminal-payments";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
 import { sumPendingWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export type CompletionBlockerCode =
   | "TERMINAL_IN_FLIGHT"
@@ -52,9 +53,9 @@ export function decideCompletionBlockers(input: {
     return st !== "cancelled" && st !== "no_show";
   });
 
-  const totalRefunded = active.reduce((s, b) => s + Number(b.total_refunded ?? 0), 0);
+  const totalRefunded = active.reduce((s, b) => addMoney(s, Number(b.total_refunded ?? 0)), 0);
   const netKept = active.reduce(
-    (s, b) => s + Math.max(0, Number(b.total_paid ?? 0) - Number(b.total_refunded ?? 0)),
+    (s, b) => addMoney(s, Math.max(0, subtractMoney(Number(b.total_paid ?? 0), Number(b.total_refunded ?? 0)))),
     0,
   );
   const everyChildRefunded =
@@ -77,8 +78,8 @@ export function decideCompletionBlockers(input: {
     if (!childBookingEligibleForCompletionComplete(b)) continue;
     const unpaidAdditionalCharges = (b.additional_charges ?? [])
       .filter((c) => c?.status !== "paid" && c?.status !== "rejected")
-      .reduce((s, c) => s + Number(c?.amount ?? 0), 0);
-    balanceDue += computeWalletGiftCoverageOutstanding({
+      .reduce((s, c) => addMoney(s, Number(c?.amount ?? 0)), 0);
+    balanceDue = addMoney(balanceDue, computeWalletGiftCoverageOutstanding({
       totalAmount: Number(b.total_amount ?? 0),
       totalPaid: Number(b.total_paid ?? 0),
       totalRefunded: Number(b.total_refunded ?? 0),
@@ -86,9 +87,9 @@ export function decideCompletionBlockers(input: {
       giftCardAmount: Number(b.gift_card_amount ?? 0),
       unpaidAdditionalCharges,
       pendingWalletGiftAmount: input.pendingWalletGiftByChild?.get(b.id) ?? 0,
-    });
+    }));
   }
-  balanceDue = Math.round(balanceDue * 100) / 100;
+  balanceDue = roundCurrency(balanceDue);
 
   if (balanceDue > 0.01 && !input.allowUnpaid) {
     blockers.push({
@@ -181,19 +182,18 @@ export async function evaluateSingleBookingCompletion(
   }
   const unpaidAdditionalCharges = (charges ?? [])
     .filter((c) => c?.status !== "paid" && c?.status !== "rejected")
-    .reduce((s, c) => s + Number(c?.amount ?? 0), 0);
-  const balanceDue =
-    Math.round(
-      computeWalletGiftCoverageOutstanding({
-        totalAmount: Number(b.total_amount ?? 0),
-        totalPaid: Number(b.total_paid ?? 0),
-        totalRefunded: Number(b.total_refunded ?? 0),
-        walletAmount: Number(b.wallet_amount ?? 0),
-        giftCardAmount: Number(b.gift_card_amount ?? 0),
-        unpaidAdditionalCharges,
-        pendingWalletGiftAmount: await sumPendingWalletGiftBookingPayments(admin, b.id),
-      }) * 100,
-    ) / 100;
+    .reduce((s, c) => addMoney(s, Number(c?.amount ?? 0)), 0);
+  const balanceDue = roundCurrency(
+    computeWalletGiftCoverageOutstanding({
+      totalAmount: Number(b.total_amount ?? 0),
+      totalPaid: Number(b.total_paid ?? 0),
+      totalRefunded: Number(b.total_refunded ?? 0),
+      walletAmount: Number(b.wallet_amount ?? 0),
+      giftCardAmount: Number(b.gift_card_amount ?? 0),
+      unpaidAdditionalCharges,
+      pendingWalletGiftAmount: await sumPendingWalletGiftBookingPayments(admin, b.id),
+    }),
+  );
 
   if (balanceDue > 0.01 && !params.allowUnpaid) {
     blockers.push({

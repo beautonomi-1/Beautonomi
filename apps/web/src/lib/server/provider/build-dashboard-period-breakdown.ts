@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { isProviderEarningsRefundComponent } from "@/lib/ledger/refund-components";
 import { normalizeBookingChannel } from "@/lib/reports/booking-channel-breakdown";
 import {
@@ -124,7 +125,7 @@ function sumAmountInWindow(
   for (const r of rows) {
     if (!types.includes(r.transaction_type)) continue;
     if (!inWindow(r.createdDate, window)) continue;
-    sum += r.amountValue;
+    sum = addMoney(sum, r.amountValue);
   }
   return sum;
 }
@@ -134,11 +135,11 @@ function sumRefundsInWindow(rows: DashboardParsedLedgerRow[], window: PeriodWind
   for (const r of rows) {
     if (!inWindow(r.createdDate, window)) continue;
     if (r.transaction_type === "refund" && isProviderEarningsRefundComponent(r.refund_component)) {
-      sum += Math.abs(r.netValue);
+      sum = addMoney(sum, Math.abs(r.netValue));
       continue;
     }
     if (r.transaction_type === "provider_earnings" && r.netValue < 0) {
-      sum += Math.abs(r.netValue);
+      sum = addMoney(sum, Math.abs(r.netValue));
     }
   }
   return sum;

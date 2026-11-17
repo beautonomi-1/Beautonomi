@@ -76,6 +76,19 @@ describe("resolveIosPurchaseEligibility", () => {
     expect(result.eligible).toBe(false);
   });
 
+  it("blocks IAP for past_due Flutterwave without a Paystack code", async () => {
+    const result = await resolveIosPurchaseEligibility(
+      mockSupabase({
+        billing_provider: "flutterwave",
+        status: "past_due",
+        plan: { is_free: false },
+      }),
+      "provider-1",
+    );
+    expect(result.eligible).toBe(false);
+    expect(result.billing_provider).toBe("flutterwave");
+  });
+
   it("blocks IAP for past_due Paystack", async () => {
     const result = await resolveIosPurchaseEligibility(
       mockSupabase({

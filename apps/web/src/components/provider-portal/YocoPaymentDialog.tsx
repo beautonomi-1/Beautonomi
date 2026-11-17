@@ -1,6 +1,7 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { fromMinorUnits, toMinorUnits } from "@beautonomi/utils";
 
 import React, { useState, useEffect, useRef } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -235,7 +236,7 @@ export function YocoPaymentDialog({
   };
 
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
-  const amountInCents = Math.round(parseFloat(customAmount) * 100) || 0;
+  const amountInCents = toMinorUnits(Number.parseFloat(customAmount) || 0, tenantCurrency);
 
   useEffect(() => {
     const payload = paymentResult?.qr_payload || paymentResult?.checkout_url;
@@ -317,7 +318,7 @@ export function YocoPaymentDialog({
                   <div className="font-semibold mb-1">{t("web.provider.portal.yocoPaymentDialog.paymentSuccessful")}</div>
                   <div className="text-sm space-y-1">
                     <div>{t("web.provider.portal.yocoPaymentDialog.paymentIdLabel")} {paymentResult.yoco_payment_id}</div>
-                    <div>{t("web.provider.portal.yocoPaymentDialog.amountLabel")} <Money amount={paymentResult.amount / 100} /></div>
+                    <div>{t("web.provider.portal.yocoPaymentDialog.amountLabel")} <Money amount={fromMinorUnits(paymentResult.amount, tenantCurrency)} /></div>
                     <div>{t("web.provider.portal.yocoPaymentDialog.deviceLabel")} {paymentResult.device_name}</div>
                     {paymentResult.receipt_url && (
                       <div>
@@ -461,7 +462,7 @@ export function YocoPaymentDialog({
                 disabled={isProcessing}
               />
               <p className="text-xs text-gray-500 mt-1">
-                {t("web.provider.portal.yocoPaymentDialog.amountLabel")} <Money amount={amountInCents / 100} />
+                {t("web.provider.portal.yocoPaymentDialog.amountLabel")} <Money amount={fromMinorUnits(amountInCents, tenantCurrency)} />
               </p>
             </div>
 

@@ -1,9 +1,16 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { checkMarketingFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
+import {
+  encryptIntegrationSecret,
+  isEncryptedIntegrationSecret,
+  revealIntegrationSecret,
+} from "@/lib/security/integration-secrets";
 
 const putSchema = z.object({
   provider_name: z.enum(["sendgrid", "mailchimp"]),
@@ -20,7 +27,9 @@ const putSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    const permissionCheck = await requireAnyPermission(["manage_marketing", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
 
     // For superadmin, allow viewing any provider's integration
@@ -40,7 +49,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: integration, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: integration, error } = await admin
       .from("provider_email_integrations")
       .select("*")
       .eq("provider_id", providerId)
@@ -113,7 +123,7 @@ export async function PUT(request: NextRequest) {
     const keyIsMasked = api_key === "••••••••";
 
     // Check if integration exists
-    const { data: existing } = await supabase
+    const { data: existing } = await getSupabaseAdmin()
       .from("provider_email_integrations")
       .select("id, api_key, api_secret, connected_date, provider_name")
       .eq("provider_id", providerId)
@@ -132,7 +142,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const resolvedApiKey =
-      api_key && api_key !== "••••••••" ? api_key : existing?.api_key ?? "";
+      api_key && api_key !== "••••••••"
+        ? api_key
+        : revealIntegrationSecret(existing?.api_key);
 
     const { validateEmailApiKeyForProvider, pingMailchimpTransactional } = await import(
       "@/lib/marketing/send-via-mailchimp"
@@ -159,22 +171,24 @@ export async function PUT(request: NextRequest) {
       is_enabled: is_enabled !== undefined ? is_enabled : false,
     };
 
-    // Only update API key if it's not masked
+    // Only update API key if it's not masked. Encrypt at rest (F3-24).
     if (api_key && api_key !== "••••••••") {
-      integrationData.api_key = api_key;
+      integrationData.api_key = encryptIntegrationSecret(api_key);
     } else if (existing?.api_key) {
-      // Keep existing API key if masked value provided
-      integrationData.api_key = existing.api_key;
+      integrationData.api_key = isEncryptedIntegrationSecret(existing.api_key)
+        ? existing.api_key
+        : encryptIntegrationSecret(revealIntegrationSecret(existing.api_key));
     } else {
       return errorResponse("API key is required", "VALIDATION_ERROR", 400);
     }
 
     // Only update API secret if provided and not masked
     if (api_secret && api_secret !== "••••••••") {
-      integrationData.api_secret = api_secret;
+      integrationData.api_secret = encryptIntegrationSecret(api_secret);
     } else if (existing?.api_secret && api_secret === "••••••••") {
-      // Keep existing API secret if masked value provided
-      integrationData.api_secret = existing.api_secret;
+      integrationData.api_secret = isEncryptedIntegrationSecret(existing.api_secret)
+        ? existing.api_secret
+        : encryptIntegrationSecret(revealIntegrationSecret(existing.api_secret));
     }
 
     if (is_enabled && !existing?.connected_date) {
@@ -184,7 +198,8 @@ export async function PUT(request: NextRequest) {
     let result;
     if (existing) {
       // Update existing
-      const { data, error } = await supabase
+      const admin = getSupabaseAdmin();
+      const { data, error } = await admin
         .from("provider_email_integrations")
         .update(integrationData)
         .eq("id", existing.id)
@@ -195,7 +210,8 @@ export async function PUT(request: NextRequest) {
       result = data;
     } else {
       // Create new
-      const { data, error } = await supabase
+      const admin = getSupabaseAdmin();
+      const { data, error } = await admin
         .from("provider_email_integrations")
         .insert(integrationData)
         .select()

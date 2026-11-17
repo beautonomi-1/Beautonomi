@@ -15,7 +15,8 @@ import { Switch } from "@/components/ui/switch";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
-import { manualCardCollectOptionLabel } from "@beautonomi/utils";
+import { manualCardCollectOptionLabel, percentOf } from "@beautonomi/utils";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { BookingSectionCard, BookingSectionLabel } from "../ui";
 import { useTranslation } from "@beautonomi/i18n";
 
@@ -60,6 +61,7 @@ export function CreatePaymentSection({
   totalAmount = 0,
 }: CreatePaymentSectionProps) {
   const { t } = useTranslation();
+  const { currency } = useProviderMoneyFormat();
   const yocoEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PAYMENT_YOCO);
   const paycloudEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PAYMENT_PAYCLOUD);
   const paystackEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PAYMENT_PAYSTACK_VIRTUAL_TERMINAL);
@@ -112,7 +114,7 @@ export function CreatePaymentSection({
 
   const depositDue =
     collectDeposit && depositPercentage > 0 && totalAmount > 0
-      ? Math.ceil((totalAmount * depositPercentage) / 100)
+      ? percentOf(totalAmount, depositPercentage, currency)
       : 0;
 
   return (

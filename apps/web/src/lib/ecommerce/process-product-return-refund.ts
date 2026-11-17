@@ -1,3 +1,4 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
@@ -62,7 +63,7 @@ export async function processProductReturnRefund(
   const { data: order, error: orderError } = await supabase
     .from("product_orders")
     .select(
-      "id, provider_id, payment_status, payment_method, total_amount, wallet_amount, customer_id, currency, tenant_id, order_number, refunded_amount, status, gift_card_amount",
+      "id, provider_id, payment_status, payment_method, total_amount, wallet_amount, customer_id, currency, tenant_id, order_number, refunded_amount, refund_reason, status, gift_card_amount",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -75,18 +76,28 @@ export async function processProductReturnRefund(
     status?: string;
     refunded_amount?: number | null;
     gift_card_amount?: number | null;
+    refund_reason?: string | null;
   };
 
-  if (orderRow.payment_status !== "paid" && orderRow.payment_status !== "partially_refunded") {
+  const orderTotal = Number(orderRow.total_amount ?? 0);
+  const priorRefunded = Number(orderRow.refunded_amount ?? 0);
+  const paymentStatus = String(orderRow.payment_status ?? "");
+  const returnMarker = `return:${returnId}`;
+  if (String(orderRow.refund_reason ?? "").includes(returnMarker)) {
+    return {
+      fullyRefunded: priorRefunded >= orderTotal - 0.005 || paymentStatus === "refunded",
+      refundAmount,
+    };
+  }
+
+  if (paymentStatus !== "paid" && paymentStatus !== "partially_refunded") {
     throw new ProductReturnRefundError(
       "Only paid orders can be refunded through a return.",
       "INVALID_REFUND_STATUS",
     );
   }
 
-  const orderTotal = Number(orderRow.total_amount ?? 0);
-  const priorRefunded = Number(orderRow.refunded_amount ?? 0);
-  const remainingRefundable = orderTotal - priorRefunded;
+  const remainingRefundable = subtractMoney(orderTotal, priorRefunded);
   if (refundAmount > remainingRefundable + 0.005) {
     throw new ProductReturnRefundError(
       `Refund amount cannot exceed ${Math.max(0, remainingRefundable).toFixed(2)}.`,
@@ -148,12 +159,17 @@ export async function processProductReturnRefund(
     storeCreditClawbackKey: `product_return_refund:${returnId}`,
   });
 
-  const newRefundedTotal = priorRefunded + refundAmount;
+  const newRefundedTotal = addMoney(priorRefunded, refundAmount);
   const fullyRefunded = newRefundedTotal >= orderTotal - 0.005;
+  const previousReason = String(orderRow.refund_reason ?? "").trim();
+  const reasonText = refundReason ?? "Return refunded";
   const orderUpdate: Record<string, unknown> = {
     refunded_amount: newRefundedTotal,
     refunded_at: new Date().toISOString(),
     refund_method: refundMethod,
+    refund_reason: previousReason
+      ? `${previousReason} ${reasonText} (${returnMarker})`
+      : `${reasonText} (${returnMarker})`,
   };
   if (fullyRefunded) {
     orderUpdate.payment_status = "refunded";

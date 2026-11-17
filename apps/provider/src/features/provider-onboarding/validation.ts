@@ -211,6 +211,39 @@ export function validateStep(
 
 const optionalText = (v?: string | null) => (v && v.trim() ? v.trim() : undefined);
 
+const SOCIAL_BASE = {
+  facebook: "facebook.com",
+  instagram: "instagram.com",
+  twitter: "x.com",
+  linkedin: "linkedin.com/in",
+} as const;
+
+type SocialPlatform = keyof typeof SOCIAL_BASE;
+
+/** Same rules as the website wizard so a draft finished on the app still passes URL checks. */
+function normalizeSocialUrl(platform: SocialPlatform, raw: string): string {
+  const v = raw.trim();
+  if (/^https?:\/\//i.test(v)) return v;
+  const handle = v.replace(/^@/, "");
+  if (!handle.includes(".") && !handle.includes("/")) {
+    return `https://${SOCIAL_BASE[platform]}/${handle}`;
+  }
+  return `https://${handle}`;
+}
+
+function optionalSocial(platform: SocialPlatform, raw?: string | null): string | undefined {
+  const v = raw?.trim();
+  if (!v) return undefined;
+  return normalizeSocialUrl(platform, v);
+}
+
+function optionalWebsite(raw?: string | null): string | null {
+  const v = raw?.trim();
+  if (!v) return null;
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://${v}`;
+}
+
 export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Record<string, unknown> {
   const ownerE164 = optionalText(
     coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone,
@@ -231,7 +264,7 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     payroll_type: formData.payroll_type ?? null,
     payroll_details: formData.payroll_details ?? null,
     is_vat_registered: formData.is_vat_registered ?? null,
-    vat_number: formData.vat_number ?? null,
+    vat_number: formData.is_vat_registered === true ? (formData.vat_number ?? null) : null,
     business_name: formData.business_name,
     business_type: formData.business_type,
     description: formData.description || null,
@@ -256,7 +289,10 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
       .map((c) => ({ name: (c.name || "").trim(), global_category_id: c.global_category_id }))
       .filter((c) => c.name.length > 0),
     selected_zone_ids: formData.selected_zone_ids || [],
-    travel_fees: formData.travel_fees ?? { enabled: true, use_platform_default: true },
+    travel_fees:
+      formData.business_type === "mobile" || formData.business_type === "both"
+        ? (formData.travel_fees ?? { enabled: true, use_platform_default: true })
+        : undefined,
     operating_hours: formData.operating_hours || {},
     services: (formData.services || []).map(({ addons: _legacy, ...svc }) => svc),
     service_addons: formData.service_addons || [],
@@ -268,8 +304,13 @@ export function buildSubmitPayload(formData: Partial<OnboardingFormData>): Recor
     response_rate: 100,
     response_time_hours: 1,
     languages_spoken: formData.languages_spoken?.length ? formData.languages_spoken : ["English"],
-    social_media_links: formData.social_media_links || {},
-    website: formData.website ?? null,
+    social_media_links: {
+      facebook: optionalSocial("facebook", formData.social_media_links?.facebook),
+      instagram: optionalSocial("instagram", formData.social_media_links?.instagram),
+      twitter: optionalSocial("twitter", formData.social_media_links?.twitter),
+      linkedin: optionalSocial("linkedin", formData.social_media_links?.linkedin),
+    },
+    website: optionalWebsite(formData.website),
     tax_rate_percent: null,
     tax_inclusive:
       formData.is_vat_registered === true ? (formData.tax_inclusive ?? true) : false,

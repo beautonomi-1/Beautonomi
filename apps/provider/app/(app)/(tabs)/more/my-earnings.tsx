@@ -2,8 +2,9 @@
  * Native My Earnings – pay stubs and earnings history for staff.
  * Full parity with web: list of pay stubs, expand for details.
  */
+import { addMoney } from "@beautonomi/utils";
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
+import { Alert, View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { useRouter, Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format } from "date-fns";
@@ -17,8 +18,10 @@ import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useTranslation } from "@beautonomi/i18n";
 import { formatCurrency } from "@/lib/format";
+import { sharePayrollFile } from "@/lib/open-payroll-file";
 
 interface PayStub {
+  item_id?: string;
   pay_run_id: string;
   pay_period_start: string;
   pay_period_end: string;
@@ -59,7 +62,9 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
       (data as { data?: PayStub[] })?.data ??
       [];
 
-  const live = !Array.isArray(data) ? (data as { live?: Record<string, { total: number; commission: number; tips: number }> })?.live : null;
+  const live = !Array.isArray(data)
+    ? (data as { live?: Record<string, { total: number; commission: number; tips: number; adjustments?: number }> })?.live
+    : null;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -103,16 +108,41 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
         {live ? (
           <View style={twStyle("rounded-2xl border border-teal-100 bg-teal-50/60 p-4 mb-4 mt-4")}>
             <Text style={twStyle("text-sm font-semibold text-teal-900 mb-2")}>{me("liveEarnings")}</Text>
-            {(["today", "week", "month"] as const).map((period) => (
-              <View key={period} style={twStyle("flex-row justify-between py-1")}>
-                <Text style={twStyle("text-sm text-teal-800")}>
-                  {period === "today" ? me("periodToday") : period === "week" ? me("periodWeek") : me("periodMonth")}
-                </Text>
-                <Text style={twStyle("text-sm font-medium text-teal-900")}>
-                  {formatCurrency(Number(live[period]?.total ?? 0), currency)}
-                </Text>
-              </View>
-            ))}
+            {(["today", "week", "month"] as const).map((period) => {
+              const row = live[period];
+              const adjustments = Number(row?.adjustments ?? 0);
+              return (
+                <View key={period} style={twStyle("py-1")}>
+                  <View style={twStyle("flex-row justify-between")}>
+                    <Text style={twStyle("text-sm text-teal-800")}>
+                      {period === "today" ? me("periodToday") : period === "week" ? me("periodWeek") : me("periodMonth")}
+                    </Text>
+                    <Text style={twStyle("text-sm font-medium text-teal-900")}>
+                      {formatCurrency(Number(row?.total ?? 0), currency)}
+                    </Text>
+                  </View>
+                  <Text style={twStyle("text-xs text-teal-800")}>
+                    {me("commissionTips", {
+                      commission: formatCurrency(Number(row?.commission ?? 0), currency),
+                      tips: formatCurrency(Number(row?.tips ?? 0), currency),
+                      defaultValue: "Commission {{commission}} · Tips {{tips}}",
+                    })}
+                    {adjustments !== 0
+                      ? ` · ${me("adjustments", {
+                          amount: formatCurrency(adjustments, currency),
+                          defaultValue: "Adjustments {{amount}}",
+                        })}`
+                      : ""}
+                  </Text>
+                </View>
+              );
+            })}
+            <Text style={twStyle("mt-2 text-xs text-teal-800")}>
+              {me("liveBasis", {
+                defaultValue:
+                  "Commission and tips count on the day the client pays, not the appointment day. A refund, a returned product, or a returned tip in that period comes off.",
+              })}
+            </Text>
           </View>
         ) : null}
         {payStubs.length === 0 ? (
@@ -128,10 +158,10 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
         ) : (
           payStubs.map((stub) => {
             const isExpanded = expandedId === stub.pay_run_id;
-            const deductions =
-              Number(stub.manual_deductions) +
-              Number(stub.tax_deduction) +
-              Number(stub.uif_contribution);
+            const deductions = [stub.manual_deductions, stub.tax_deduction, stub.uif_contribution, stub.carry_forward_in].reduce<number>(
+              (sum, amount) => addMoney(sum, Number(amount || 0)),
+              0,
+            );
 
             return (
               <View
@@ -185,21 +215,15 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
                           value={formatCurrency(Number(stub.commission_clawback), currency)}
                         />
                       ) : null}
-                      {Number(stub.carry_forward_in) !== 0 ? (
-                        <Row
-                          label={me("carryForwardIn")}
-                          value={formatCurrency(Number(stub.carry_forward_in), currency)}
-                        />
-                      ) : null}
                       {Number(stub.carry_forward_out) !== 0 ? (
                         <Row
                           label={me("carryForwardOut")}
-                          value={formatCurrency(Number(stub.carry_forward_out), currency)}
+                          value={formatCurrency(Math.abs(Number(stub.carry_forward_out)), currency)}
                         />
                       ) : null}
                       <View style={twStyle("flex-row justify-between py-1")}>
                         <Text style={twStyle("text-sm text-red-600")}>
-                          {me("deductions")}
+                          {me("totalDeductions", { defaultValue: "Total deductions" })}
                         </Text>
                         <Text style={twStyle("text-sm font-medium text-red-600")}>
                           -{formatCurrency(deductions, currency)}
@@ -215,6 +239,25 @@ export function MyEarningsContent({ embedded = false }: { embedded?: boolean } =
                     {stub.notes && (
                       <Text style={twStyle("text-xs text-gray-500 mt-2")}>{stub.notes}</Text>
                     )}
+                    {stub.item_id && stub.status !== "draft" ? (
+                      <TouchableOpacity
+                        onPress={() => {
+                          void sharePayrollFile(
+                            `/api/provider/pay-runs/items/${stub.item_id}/payslip`,
+                            `payslip-${stub.item_id!.slice(0, 8)}.html`,
+                            "text/html",
+                          ).then((err) => {
+                            if (err) Alert.alert(me("payslip", { defaultValue: "Payslip" }), err);
+                          });
+                        }}
+                        style={twStyle("mt-3 self-start rounded-lg border border-gray-300 px-3 py-2")}
+                        accessibilityRole="button"
+                      >
+                        <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                          {me("payslip", { defaultValue: "Payslip" })}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 )}
               </View>

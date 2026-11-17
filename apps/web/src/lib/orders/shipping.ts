@@ -14,6 +14,10 @@ import {
 } from "@beautonomi/shipping";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
+  applyCourierMovementToDeliveryOrder,
+  strongestCourierMovement,
+} from "@/lib/orders/courier-delivery-movement";
+import {
   isLiveCourierBookingEnabled,
   isShippingKillSwitchActive,
   resolveProviderOwnedCredentials,
@@ -99,7 +103,7 @@ export async function bookShippingForOrder(
 ): Promise<BookShippingResult> {
   const admin = getSupabaseAdmin();
 
-  const { data: order, error } = await supabase
+  const { data: order, error } = await admin
     .from("product_orders")
     .select(`
       id,
@@ -477,6 +481,14 @@ export async function refreshTrackingForOrder(
       };
     }
     const events = await courierFor(carrier, credentials).track(trackingNumber);
+    const movement = strongestCourierMovement(events);
+    if (movement.movement) {
+      await applyCourierMovementToDeliveryOrder(getSupabaseAdmin(), orderId, movement.movement, {
+        detail: movement.detail,
+        trackingNumber,
+        trackingUrl,
+      });
+    }
     return {
       ok: true,
       live: true,

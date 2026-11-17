@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
@@ -33,7 +34,7 @@ export async function sumLedgerEarningsByCustomer(
     if (!b.customer_id) continue;
     const earned = revenueByBooking.get(b.id) || 0;
     if (earned === 0) continue;
-    byCustomer.set(b.customer_id, (byCustomer.get(b.customer_id) || 0) + earned);
+    byCustomer.set(b.customer_id, addMoney(byCustomer.get(b.customer_id) || 0, earned));
   }
 
   return byCustomer;

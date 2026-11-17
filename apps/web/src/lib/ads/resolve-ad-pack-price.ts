@@ -1,3 +1,5 @@
+import { fromMinorUnits } from "@beautonomi/utils";
+
 export type AdPackPriceRow = {
   price_minor?: number | string | null;
   price_zar?: number | string | null;
@@ -7,7 +9,7 @@ export type AdPackPriceRow = {
 /** Pack catalog amount in major currency units (e.g. ZAR rands). */
 export function resolveAdPackAmountMajor(row: AdPackPriceRow): number {
   const minor = row.price_minor != null ? Number(row.price_minor) : NaN;
-  if (Number.isFinite(minor) && minor >= 0) return minor / 100;
+  if (Number.isFinite(minor) && minor >= 0) return fromMinorUnits(minor, resolveAdPackCurrency(row));
   const legacy = Number(row.price_zar ?? 0);
   return Number.isFinite(legacy) ? legacy : 0;
 }

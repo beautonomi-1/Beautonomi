@@ -1,3 +1,4 @@
+import { fromMinorUnits } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { openFraudCase } from "@/lib/fraud/open-fraud-case";
@@ -90,7 +91,7 @@ export async function handleStripeChargeDisputeCreated(
   if (reference && subjects.bookingId) {
     const amountMajor =
       dispute.amount != null && Number.isFinite(Number(dispute.amount))
-        ? Math.round(Number(dispute.amount)) / 100
+        ? fromMinorUnits(Math.round(Number(dispute.amount)), String(dispute.currency ?? "ZAR").toUpperCase())
         : 0;
     const { upsertOpenPaymentDispute } = await import(
       "@/lib/bookings/paystack-dispute-lifecycle"
@@ -133,7 +134,7 @@ export async function handleStripeChargeDisputeClosed(
 
   const amountMajor =
     dispute.amount != null && Number.isFinite(Number(dispute.amount))
-      ? Math.round(Number(dispute.amount)) / 100
+      ? fromMinorUnits(Math.round(Number(dispute.amount)), String(dispute.currency ?? "ZAR").toUpperCase())
       : 0;
 
   const { upsertOpenPaymentDispute } = await import("@/lib/bookings/paystack-dispute-lifecycle");

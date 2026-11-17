@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { computeBookingReceiptFinancials } from "@/lib/receipts/build-booking-receipt";
 
@@ -13,6 +14,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
+import { hasPermission } from "@/lib/auth/permissions";
+import { redactBookingCustomerContact } from "@/lib/provider/redact-booking-customer-contact";
 
 /**
  * GET /api/provider/bookings/[id]/receipt
@@ -72,6 +75,9 @@ export async function GET(
       const authed = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
       user = { id: authed.user.id, role: authed.user.role as string };
     }
+    const canViewClients =
+      user.role === "superadmin" ||
+      (await hasPermission(user.id, "view_clients", undefined, request));
 
     // §Multi-provider staff 2026-04: never gate this read on
     // getProviderIdForUser() — that helper returns only the *first*
@@ -241,7 +247,7 @@ export async function GET(
         duration: null,
         quantity: bp.quantity || 1,
         unit_price: bp.unit_price || bp.products?.retail_price || 0,
-        total: bp.total_price || (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
+        total: bp.total_price || multiplyMoney(bp.unit_price || bp.products?.retail_price || 0, bp.quantity || 1),
       };
     });
 
@@ -251,12 +257,12 @@ export async function GET(
       duration: null,
       quantity: ba.quantity || 1,
       unit_price: Number(ba.price || 0),
-      total: Number(ba.price || 0) * (ba.quantity || 1),
+      total: multiplyMoney(Number(ba.price || 0), ba.quantity || 1),
     }));
 
     const items = [...serviceItems, ...addonItems, ...productItems];
 
-    const linesSubtotal = items.reduce((s: number, i: any) => s + (i.total || 0), 0);
+    const linesSubtotal = items.reduce((s: number, i: any) => addMoney(s, i.total || 0), 0);
     const finances = computeBookingReceiptFinancials({
       row: b as Record<string, unknown>,
       linesSubtotal,
@@ -393,7 +399,7 @@ export async function GET(
       receipt_footer: receiptFooter,
     };
 
-    return successResponse(receiptData);
+    return successResponse(redactBookingCustomerContact(receiptData, canViewClients));
   } catch (error) {
     return handleApiError(error, "Failed to fetch receipt");
   }

@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { resolveEffectiveBookingLifecycleStatus } from "@beautonomi/utils";
+import { subtractMoney, resolveEffectiveBookingLifecycleStatus } from "@beautonomi/utils";
 import { customerStatusPillLabel } from "@/lib/customer-booking-display-labels";
 
 type GroupParticipant = {
@@ -92,7 +92,7 @@ function shareIsOpen(p: GroupParticipant): boolean {
   if (p.share_amount_due == null) return false;
   const status = String(p.share_status ?? "").toLowerCase();
   if (status === "paid" || status === "cancelled" || status === "waived") return false;
-  return Number(p.share_amount_due) - Number(p.share_amount_paid ?? 0) > 0.005;
+  return subtractMoney(Number(p.share_amount_due), Number(p.share_amount_paid ?? 0)) > 0.005;
 }
 
 export default function GroupBookingDetailPageClient() {
@@ -324,7 +324,7 @@ export default function GroupBookingDetailPageClient() {
                           ? gbd("shareStatusCancelled")
                           : gbd("shareStatusPending", {
                               amount: fmt(
-                                Math.max(0, Number(p.share_amount_due ?? 0) - Number(p.share_amount_paid ?? 0)),
+                                Math.max(0, subtractMoney(Number(p.share_amount_due ?? 0), Number(p.share_amount_paid ?? 0))),
                               ),
                             })}
                     </p>

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
-import { toMinorUnits } from "@beautonomi/utils";
+import { addMoney, toMinorUnits, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 export type ResolvePaystackAmountResult =
   | { ok: true; amountSmallestUnit: number }
@@ -20,7 +20,10 @@ export function productOrderAmountStillDue(input: {
 }): number {
   return Math.max(
     0,
-    Math.round((input.total - input.wallet - input.gift - input.priorCardPayments) * 100) / 100,
+    subtractMoney(
+      subtractMoney(subtractMoney(input.total, input.wallet), input.gift),
+      input.priorCardPayments,
+    ),
   );
 }
 
@@ -44,10 +47,14 @@ export async function productOrderCardAmountStillDue(
   reference: string,
 ): Promise<{ ok: true; due: number } | { ok: false; message: string }> {
   const { data: order, error } = await (supabase.from("product_orders") as any)
-    .select("total_amount, wallet_amount, gift_card_amount")
+    .select("total_amount, wallet_amount, gift_card_amount, payment_status")
     .eq("id", productOrderId)
     .maybeSingle();
   if (error || !order) return { ok: false, message: "Order not found" };
+  const paymentStatus = String(order.payment_status ?? "").toLowerCase();
+  if (paymentStatus === "paid" || paymentStatus === "refunded" || paymentStatus === "partially_refunded") {
+    return { ok: true, due: 0 };
+  }
   const recorded = await loadSuccessfulProductOrderCardCharges(supabase, productOrderId);
   if (recorded.ok === false) return { ok: false, message: recorded.message };
   const prior = priorProductOrderCardPayments(recorded.rows, reference);
@@ -75,10 +82,10 @@ export function priorProductOrderCardPayments(
       referenceAlreadyRecorded = true;
       continue;
     }
-    priorCardPayments += Number(row.amount ?? 0);
+    priorCardPayments = addMoney(priorCardPayments, Number(row.amount ?? 0));
   }
   return {
-    priorCardPayments: Math.round(priorCardPayments * 100) / 100,
+    priorCardPayments,
     referenceAlreadyRecorded,
   };
 }
@@ -285,11 +292,11 @@ export async function loadSuccessfulProductOrderCardPaidByOrderIds(
     for (const row of data ?? []) {
       const orderId = String((row as { metadata?: { product_order_id?: string } }).metadata?.product_order_id ?? "");
       if (!paidByOrderId.has(orderId)) continue;
-      paidByOrderId.set(orderId, (paidByOrderId.get(orderId) ?? 0) + Number((row as { amount?: number }).amount ?? 0));
+      paidByOrderId.set(orderId, addMoney(paidByOrderId.get(orderId) ?? 0, Number((row as { amount?: number }).amount ?? 0)));
     }
   }
   for (const [id, sum] of paidByOrderId) {
-    paidByOrderId.set(id, Math.round(sum * 100) / 100);
+    paidByOrderId.set(id, roundCurrency(sum));
   }
   return { ok: true, paidByOrderId };
 }

@@ -4,7 +4,6 @@
 
 import {
   currencySelectLabel as currencySelectLabelFromCatalog,
-  getCurrencyMeta,
   minorUnitFactor,
   normalizeCurrencyCode,
 } from "./currencies";
@@ -61,11 +60,33 @@ export function formatMoneyCompact(
 }
 
 /**
+ * Round a (possibly float-noisy) value to an integer, half away from zero —
+ * the semantics of Postgres `ROUND(numeric, n)`.
+ *
+ * Why not `Math.round(x)`: `Math.round` rounds half toward +∞ (−2.5 → −2) and
+ * operates on the binary float, so `4304.36 * 0.125` (= 538.045 in decimal)
+ * is 538.04499999… in float and rounds down, while the DB trigger that
+ * recomputes the same fee from `NUMERIC` rounds it up. `Number.EPSILON`
+ * nudging does not help above ~2.0 because the ULP already exceeds EPSILON.
+ *
+ * `toPrecision(15)` snaps the scaled value back to the decimal the caller
+ * intended (money math never legitimately needs more than 15 significant
+ * digits), after which `Math.round` on the absolute value is exact.
+ */
+export function roundHalfAwayFromZero(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  if (value === 0) return 0;
+  const abs = Number(Math.abs(value).toPrecision(15));
+  const rounded = Math.round(abs);
+  return value < 0 ? -rounded : rounded;
+}
+
+/**
  * Convert major units → integer minor units (currency-aware).
  */
 export function toMinorUnits(amount: number, currency: string = "ZAR"): number {
   const factor = minorUnitFactor(currency);
-  return Math.round(amount * factor);
+  return roundHalfAwayFromZero(amount * factor);
 }
 
 /**
@@ -95,18 +116,25 @@ export function subtractMoney(a: number, b: number, currency: string = "ZAR"): n
 }
 
 export function multiplyMoney(amount: number, factor: number, currency: string = "ZAR"): number {
-  return fromMinorUnits(Math.round(toMinorUnits(amount, currency) * factor), currency);
+  return fromMinorUnits(roundHalfAwayFromZero(toMinorUnits(amount, currency) * factor), currency);
 }
 
+/**
+ * Canonical "round to this currency's minor unit" — the single replacement for
+ * every local `Math.round(x * 100) / 100` / `round2` / `roundMoney` copy.
+ * Matches Postgres `ROUND(numeric, 2)` (half away from zero) for 2dp currencies.
+ */
 export function roundCurrency(amount: number, currency: string = "ZAR"): number {
-  const meta = getCurrencyMeta(currency);
-  const factor = 10 ** meta.minorUnits;
-  return fromMinorUnits(Math.round((amount + Number.EPSILON) * factor), currency);
+  return fromMinorUnits(toMinorUnits(amount, currency), currency);
 }
 
+/**
+ * `amount × percentage / 100` rounded to the currency minor unit, computed in
+ * minor units first so the result is identical to the DB `ROUND(amount * rate, 2)`.
+ */
 export function percentOf(amount: number, percentage: number, currency: string = "ZAR"): number {
   return fromMinorUnits(
-    Math.round((toMinorUnits(amount, currency) * percentage) / 100),
+    roundHalfAwayFromZero((toMinorUnits(amount, currency) * percentage) / 100),
     currency,
   );
 }

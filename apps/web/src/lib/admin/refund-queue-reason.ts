@@ -1,5 +1,6 @@
 import type { BookingRefundSummary } from "@/lib/admin/booking-refund-context";
 import { parseRefundAmount } from "@/lib/admin/booking-refund-context";
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 
 export type QueueReason =
   | "wallet_credit_failed"
@@ -287,7 +288,7 @@ export function computeDisplayRemaining(args: {
     args.queueReason === "awaiting_cash_confirmation" ||
     args.queueReason === "cash_confirm_overdue"
   ) {
-    remaining = Math.max(0, remaining - (args.pendingCashTotal ?? 0));
+    remaining = Math.max(0, subtractMoney(remaining, args.pendingCashTotal ?? 0));
   }
   return remaining;
 }
@@ -310,5 +311,5 @@ export function computeWalletActionRemaining(args: {
 export function sumPendingRefundAmount(refunds: BookingRefundSummary[] | undefined): number {
   return (refunds ?? [])
     .filter((r) => String(r.status ?? "") === "pending")
-    .reduce((sum, r) => sum + parseRefundAmount(r.amount), 0);
+    .reduce((sum, r) => addMoney(sum, parseRefundAmount(r.amount)), 0);
 }

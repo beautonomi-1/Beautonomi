@@ -18,7 +18,7 @@
  * Both environments have sandbox twins (`*.yocosandbox.com`).
  */
 
-import { toCents, fromCents } from "@beautonomi/utils";
+import { toMinorUnits, fromMinorUnits } from "@beautonomi/utils";
 
 export type YocoEnvironment = "sandbox" | "live";
 
@@ -132,17 +132,19 @@ export function verifyYocoConfig(secretKey?: string, publicKey?: string): {
 }
 
 /**
- * Convert amount to cents (Yoco uses cents for ZAR)
+ * Convert amount to minor units (Yoco uses integer cents for ZAR).
+ * F2-36: the only sanctioned rands→cents conversion at the Yoco boundary.
  */
-export function convertToCents(amount: number): number {
-  return toCents(amount);
+export function convertToCents(amount: number, currency: string = "ZAR"): number {
+  return toMinorUnits(amount, currency);
 }
 
 /**
- * Convert from cents to amount
+ * Convert from minor units (cents) to major units.
+ * F2-36: the only sanctioned cents→rands conversion at the Yoco boundary.
  */
-export function convertFromCents(amount: number): number {
-  return fromCents(amount);
+export function convertFromCents(amount: number, currency: string = "ZAR"): number {
+  return fromMinorUnits(amount, currency);
 }
 
 /**

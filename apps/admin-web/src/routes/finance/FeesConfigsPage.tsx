@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -698,9 +699,9 @@ function FeeReconciliationsSection({
   const periodTotals = useMemo(() => {
     return rows.reduce(
       (acc, rec) => {
-        acc.recorded += Number(rec.recorded_fees ?? rec.actual_fees ?? 0);
-        acc.expected += Number(rec.expected_fees ?? 0);
-        acc.actual += Number(rec.actual_fees ?? 0);
+        acc.recorded = addMoney(acc.recorded, Number(rec.recorded_fees ?? rec.actual_fees ?? 0));
+        acc.expected = addMoney(acc.expected, Number(rec.expected_fees ?? 0));
+        acc.actual = addMoney(acc.actual, Number(rec.actual_fees ?? 0));
         return acc;
       },
       { recorded: 0, expected: 0, actual: 0 } as { recorded: number; expected: number; actual: number },

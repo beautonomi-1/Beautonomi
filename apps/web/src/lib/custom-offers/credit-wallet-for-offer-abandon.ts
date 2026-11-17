@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { addMoney, roundCurrency, subtractMoney, toMinorUnits } from "@beautonomi/utils";
 
 /**
  * Reference types that reverse a custom-offer wallet debit.
@@ -50,15 +51,15 @@ export async function getCustomOfferWalletOutstanding(
   }>) {
     const amount = Number(row.amount ?? 0);
     if (row.type === "debit" && String(row.reference_type ?? "") === "custom_offer") {
-      debitTotal += amount;
+      debitTotal = addMoney(debitTotal, amount, currency);
       continue;
     }
     if (row.type === "credit" && isCustomOfferWalletCreditReferenceType(row.reference_type)) {
-      creditTotal += amount;
+      creditTotal = addMoney(creditTotal, amount, currency);
     }
   }
 
-  return { outstanding: Math.round((debitTotal - creditTotal) * 100) / 100, currency };
+  return { outstanding: subtractMoney(debitTotal, creditTotal, currency), currency };
 }
 
 export async function creditWalletForCustomOfferAbandon(
@@ -88,7 +89,7 @@ export async function creditWalletForCustomOfferAbandon(
 
   // Fingerprint outstanding so a later attempt with a new debit can credit again,
   // while an exact replay of this credit remains idempotent.
-  const outstandingCents = Math.round(outstanding * 100);
+  const outstandingCents = toMinorUnits(outstanding, currency);
   const { error: creditError } = await (supabase.rpc as any)("wallet_credit_admin", {
     p_user_id: customerId,
     p_amount: outstanding,
@@ -105,4 +106,59 @@ export async function creditWalletForCustomOfferAbandon(
   }
 
   return { credited: outstanding };
+}
+
+export const CUSTOM_OFFER_WALLET_STILL_DUE = "custom_offer_wallet_refund_still_due";
+
+export async function rememberCustomOfferWalletStillDue(
+  supabase: SupabaseClient,
+  offerId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("custom_offers")
+    .update({
+      payment_reference: CUSTOM_OFFER_WALLET_STILL_DUE,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", offerId);
+  if (error) {
+    console.error("[custom offer] could not mark the wallet return", offerId, error);
+  }
+}
+
+export async function retryCustomOfferWalletStillDue(supabase: SupabaseClient): Promise<number> {
+  const { data, error } = await supabase
+    .from("custom_offers")
+    .select("id, provider_id, request:custom_requests(customer_id)")
+    .eq("payment_reference", CUSTOM_OFFER_WALLET_STILL_DUE)
+    .limit(100);
+  if (error) {
+    console.warn("[custom offer] wallet return query failed", error);
+    return 0;
+  }
+
+  let finished = 0;
+  for (const row of (data ?? []) as Array<{
+    id: string;
+    provider_id?: string | null;
+    request?: { customer_id?: string | null } | null;
+  }>) {
+    const customerId = row.request?.customer_id;
+    if (!customerId) continue;
+    try {
+      await creditWalletForCustomOfferAbandon(supabase, row.id, customerId, row.provider_id ?? null, {
+        reason: "failed",
+      });
+      const { data: cleared } = await supabase
+        .from("custom_offers")
+        .update({ payment_reference: null, updated_at: new Date().toISOString() })
+        .eq("id", row.id)
+        .eq("payment_reference", CUSTOM_OFFER_WALLET_STILL_DUE)
+        .select("id");
+      if ((cleared?.length ?? 0) > 0) finished += 1;
+    } catch (err) {
+      console.warn("[custom offer] wallet return still due", row.id, err);
+    }
+  }
+  return finished;
 }

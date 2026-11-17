@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { XCircle, ShoppingBag, RotateCcw } from "lucide-react";
@@ -10,6 +10,15 @@ function ShopCancelledInner() {
   const sp = useSearchParams();
   const orderId = sp.get("product_order_id") ?? sp.get("order_id") ?? "";
   const orderNumber = sp.get("order_number") ?? "";
+  const reference = sp.get("reference") || sp.get("trxref") || sp.get("tx_ref") || "";
+
+  useEffect(() => {
+    if (!reference) return;
+    void fetch(
+      `/api/paystack/verify?reference=${encodeURIComponent(reference)}&status=cancelled`,
+      { credentials: "include", headers: { Accept: "application/json" } },
+    ).catch(() => undefined);
+  }, [reference]);
 
   return (
     <>

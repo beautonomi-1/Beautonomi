@@ -1,3 +1,4 @@
+import { subtractMoney, addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
@@ -47,10 +48,10 @@ async function glAccountBalance(
   let debits = 0;
   let credits = 0;
   for (const l of (lines ?? []) as Array<{ side: string; reporting_amount: number | string }>) {
-    if (l.side === "debit") debits += num(l.reporting_amount);
-    else credits += num(l.reporting_amount);
+    if (l.side === "debit") debits = addMoney(debits, num(l.reporting_amount));
+    else credits = addMoney(credits, num(l.reporting_amount));
   }
-  const balance = account.normal_side === "debit" ? debits - credits : credits - debits;
+  const balance = account.normal_side === "debit" ? subtractMoney(debits, credits) : subtractMoney(credits, debits);
   return { code, name: account.name, balance, debits, credits, found: true };
 }
 
@@ -94,7 +95,7 @@ async function countUnrecognizedOnlinePayments(
   for (const p of rows) {
     if (attributed.has(p.id) || legacyBookings.has(p.booking_id)) continue;
     count += 1;
-    amount += num(p.amount);
+    amount = addMoney(amount, num(p.amount));
   }
   return { count, amount, scanned: rows.length, capped: rows.length >= ROW_CAP };
 }
@@ -146,8 +147,8 @@ export async function GET(request: NextRequest) {
     for (const r of (deferredRows ?? []) as LedgerRow[]) {
       const cur = byType.get(r.transaction_type) ?? { count: 0, amount: 0, net: 0, net_zero_rows: 0 };
       cur.count += 1;
-      cur.amount += num(r.amount);
-      cur.net += num(r.net);
+      cur.amount = addMoney(cur.amount, num(r.amount));
+      cur.net = addMoney(cur.net, num(r.net));
       if (num(r.net) === 0) cur.net_zero_rows += 1;
       byType.set(r.transaction_type, cur);
     }
@@ -156,7 +157,7 @@ export async function GET(request: NextRequest) {
         (acc, t) => {
           const v = byType.get(t);
           if (!v) return acc;
-          return { rows: acc.rows + v.count, amount: acc.amount + v.amount, non_zero_net_rows: acc.non_zero_net_rows + (v.count - v.net_zero_rows) };
+          return { rows: acc.rows + v.count, amount: addMoney(acc.amount, v.amount), non_zero_net_rows: acc.non_zero_net_rows + (v.count - v.net_zero_rows) };
         },
         { rows: 0, amount: 0, non_zero_net_rows: 0 },
       );
@@ -164,7 +165,7 @@ export async function GET(request: NextRequest) {
         (acc, t) => {
           const v = byType.get(t);
           if (!v) return acc;
-          return { rows: acc.rows + v.count, net: acc.net + v.net };
+          return { rows: acc.rows + v.count, net: addMoney(acc.net, v.net) };
         },
         { rows: 0, net: 0 },
       );
@@ -182,10 +183,48 @@ export async function GET(request: NextRequest) {
     });
 
     // ── Liability balances ───────────────────────────────────────────────────
-    const [giftCardLiability, membershipLiability] = await Promise.all([
+    const [giftCardLiability, membershipLiability, walletLiability] = await Promise.all([
       glAccountBalance(supabase, tenantId, "2400"),
       glAccountBalance(supabase, tenantId, "2600"),
+      glAccountBalance(supabase, tenantId, "2300"),
     ]);
+
+    const WALLET_GL_POSTED_REFERENCE_TYPES = new Set([
+      "booking_refund",
+      "refund",
+      "wallet_topup",
+      "booking",
+      "product_order_refund",
+      "product_order_unpaid_card_refund",
+      "product_return_refund",
+      "custom_offer_refund",
+    ]);
+
+    const { data: walletTxRows } = await supabase
+      .from("wallet_transactions")
+      .select("type, amount, reference_type")
+      .eq("tenant_id", tenantId)
+      .limit(ROW_CAP);
+
+    let walletPostedSubledger = 0;
+    const walletUnpostedByReference: Record<string, number> = {};
+    for (const row of (walletTxRows ?? []) as Array<{
+      type?: string | null;
+      amount?: number | string | null;
+      reference_type?: string | null;
+    }>) {
+      const ref = String(row.reference_type ?? "unknown");
+      const signed =
+        row.type === "debit"
+          ? subtractMoney(0, num(row.amount))
+          : num(row.amount);
+      if (WALLET_GL_POSTED_REFERENCE_TYPES.has(ref)) {
+        walletPostedSubledger = addMoney(walletPostedSubledger, signed);
+      } else {
+        walletUnpostedByReference[ref] = addMoney(walletUnpostedByReference[ref] ?? 0, signed);
+      }
+    }
+    const walletGlVariance = subtractMoney(walletLiability.balance, walletPostedSubledger);
 
     // ── Unrecognized online payments (fleet-wide) ────────────────────────────
     const unrecognized = await countUnrecognizedOnlinePayments(supabase, tenantId, sinceIso);
@@ -213,7 +252,7 @@ export async function GET(request: NextRequest) {
     for (const l of (staffLines ?? []) as Array<{ kind: string; amount: number | string; backfilled?: boolean }>) {
       const cur = staffByKind[l.kind] ?? { rows: 0, amount: 0, backfilled: 0 };
       cur.rows += 1;
-      cur.amount += num(l.amount);
+      cur.amount = addMoney(cur.amount, num(l.amount));
       if (l.backfilled) cur.backfilled += 1;
       staffByKind[l.kind] = cur;
     }
@@ -280,11 +319,19 @@ export async function GET(request: NextRequest) {
       liabilities: {
         gift_cards_2400: giftCardLiability,
         memberships_2600: membershipLiability,
+        wallet_2300: walletLiability,
+        wallet_liability_vs_posted_subledger: {
+          gl_balance: walletLiability.balance,
+          posted_reference_subledger: walletPostedSubledger,
+          variance: walletGlVariance,
+          unposted_by_reference_type: walletUnpostedByReference,
+          status: Math.abs(walletGlVariance) > 0.01 ? "warning" : "ok",
+        },
       },
       staff_earnings_lines: {
         by_kind: staffByKind,
         total_rows: Object.values(staffByKind).reduce((s, v) => s + v.rows, 0),
-        total_amount: Object.values(staffByKind).reduce((s, v) => s + v.amount, 0),
+        total_amount: Object.values(staffByKind).reduce((s, v) => addMoney(s, v.amount), 0),
         capped: (staffLines?.length ?? 0) >= ROW_CAP,
       },
       webhook_signature_rejections: {

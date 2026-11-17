@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
-import { requireAdminSection, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveStaffRates } from "@/lib/payroll/resolve-staff-rates";
+import { commissionRatePatch } from "@/lib/provider/staff-commission-patch-fields";
 
 const ALLOWED_UPDATE_FIELDS = [
   "name",
@@ -12,11 +14,19 @@ const ALLOWED_UPDATE_FIELDS = [
   "role",
   "is_active",
   "commission_percentage",
+  "service_commission_rate",
+  "product_commission_rate",
   "bio",
   "public_title",
   "is_service_provider",
   "enable_in_online_booking",
 ] as const;
+
+function commissionPercent(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+  return n;
+}
 
 /**
  * GET /api/admin/staff/[id]
@@ -35,12 +45,17 @@ export async function GET(
 
     const { data: staff, error } = await supabase
       .from("provider_staff")
-      .select("id, provider_id, user_id, name, email, phone, role, avatar_url, bio, is_active, commission_percentage, public_title, is_service_provider, enable_in_online_booking, created_at, updated_at, provider:providers(id, business_name, slug)")
+      .select("id, provider_id, user_id, name, email, phone, role, avatar_url, bio, is_active, commission_percentage, commission_rate, service_commission_rate, product_commission_rate, public_title, is_service_provider, enable_in_online_booking, created_at, updated_at, provider:providers(id, business_name, slug)")
       .eq("id", id)
       .single();
 
     if (error || !staff) return notFoundResponse("Staff member not found");
-    return successResponse(staff);
+    const rates = resolveStaffRates(staff);
+    return successResponse({
+      ...staff,
+      serviceCommissionRate: rates.serviceRate,
+      productCommissionRate: rates.productRate,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch staff");
   }
@@ -65,6 +80,44 @@ export async function PATCH(
     const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
     for (const key of ALLOWED_UPDATE_FIELDS) {
       if (body[key] !== undefined) updateData[key] = body[key];
+    }
+
+    const sentService = Object.prototype.hasOwnProperty.call(body, "service_commission_rate");
+    const sentProduct = Object.prototype.hasOwnProperty.call(body, "product_commission_rate");
+    if (sentService !== sentProduct) {
+      return errorResponse("Service and product rates differ. Send both rates.", "VALIDATION_ERROR", 400);
+    }
+    if (sentService && sentProduct) {
+      const service = commissionPercent(body.service_commission_rate);
+      const product = commissionPercent(body.product_commission_rate);
+      if (service == null || product == null) {
+        return errorResponse("Commission rates must be between 0 and 100.", "VALIDATION_ERROR", 400);
+      }
+      updateData.service_commission_rate = service;
+      updateData.product_commission_rate = product;
+      updateData.commission_enabled = true;
+      if (service === product) {
+        updateData.commission_rate = service;
+        updateData.commission_percentage = service;
+      } else {
+        delete updateData.commission_percentage;
+      }
+    } else if (body.commission_percentage !== undefined) {
+      const pct = commissionPercent(body.commission_percentage);
+      if (pct == null) {
+        return errorResponse("Commission rates must be between 0 and 100.", "VALIDATION_ERROR", 400);
+      }
+      const { data: existing, error: existingErr } = await supabase
+        .from("provider_staff")
+        .select("service_commission_rate, product_commission_rate, commission_rate, commission_percentage")
+        .eq("id", id)
+        .single();
+      if (existingErr || !existing) return notFoundResponse("Staff member not found");
+      const current = resolveStaffRates(existing);
+      if (current.serviceRate !== current.productRate) {
+        return errorResponse("Service and product rates differ. Send both rates.", "VALIDATION_ERROR", 400);
+      }
+      Object.assign(updateData, commissionRatePatch(pct, existing));
     }
 
     const { error } = await supabase

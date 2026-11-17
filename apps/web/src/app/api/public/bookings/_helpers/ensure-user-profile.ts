@@ -71,7 +71,6 @@ export async function ensureUserProfileForAuthUser(
       } else {
         console.warn("ensureUserProfileForAuthUser: email already in use", {
           userId: user.id,
-          email: user.email,
         });
         throw new Error(
           "An account with this email already exists. Please sign in with that account to continue."

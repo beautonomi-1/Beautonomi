@@ -8,6 +8,7 @@
  * Yoco, PayCloud, EFT, manual. Cancelling those must not create a platform
  * wallet liability for money the platform never received.
  */
+import { subtractMoney, roundCurrency } from "@beautonomi/utils";
 
 export const PLATFORM_HELD_PRODUCT_PAYMENT_METHODS = [
   "paystack",
@@ -29,7 +30,7 @@ const PROVIDER_COLLECTED_PRODUCT_METHODS = new Set([
 ]);
 
 export function roundProductOrderMoney(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  return roundCurrency(n);
 }
 
 function num(v: unknown): number {
@@ -72,10 +73,37 @@ export function productOrderTenderSplit(order: ProductOrderTenderInput): {
   const total = roundProductOrderMoney(Math.max(0, num(order.total_amount)));
   const gift = roundProductOrderMoney(Math.min(total, Math.max(0, num(order.gift_card_amount))));
   const wallet = roundProductOrderMoney(
-    Math.min(Math.max(0, num(order.wallet_amount)), Math.max(0, total - gift)),
+    Math.min(Math.max(0, num(order.wallet_amount)), Math.max(0, subtractMoney(total, gift))),
   );
-  const remainder = roundProductOrderMoney(Math.max(0, total - gift - wallet));
+  const remainder = roundProductOrderMoney(Math.max(0, subtractMoney(subtractMoney(total, gift), wallet)));
   return { total, wallet, gift, remainder };
+}
+
+/**
+ * Cash handed back from the till. Store credit stays in the drawer; the
+ * platform records that as a wallet liability instead.
+ * Only a provider-collected refund method (cash, Yoco, PayCloud, EFT) reduces the till.
+ */
+export function productOrderTillRefundAmount(
+  order: ProductOrderTenderInput & {
+    refunded_amount?: number | string | null;
+    refund_method?: string | null;
+  },
+): number {
+  const refunded = roundProductOrderMoney(Math.max(0, num(order.refunded_amount)));
+  if (refunded <= 0) return 0;
+  if (!isProviderCollectedProductMethod(order.refund_method)) return 0;
+  const remainder = productOrderTenderSplit(order).remainder;
+  return roundProductOrderMoney(Math.min(remainder, refunded));
+}
+
+/** Bill amount still kept after any refund, cash or store credit. */
+export function productOrderKeptAmount(
+  order: ProductOrderTenderInput & { refunded_amount?: number | string | null },
+): number {
+  const total = roundProductOrderMoney(Math.max(0, num(order.total_amount)));
+  const refunded = roundProductOrderMoney(Math.min(total, Math.max(0, num(order.refunded_amount))));
+  return roundProductOrderMoney(Math.max(0, subtractMoney(total, refunded)));
 }
 
 /** Wallet gets the gift only when nothing is left on the card to restore. */
@@ -102,8 +130,8 @@ export function computeProductOrderCancelWalletCredit(
   if (isProviderCollectedProductMethod(productOrderPaymentMethod(order))) {
     return wallet;
   }
-  const afterGift = roundProductOrderMoney(Math.max(0, total - gift));
-  return roundProductOrderMoney(Math.max(0, afterGift - onlineRefunded));
+  const afterGift = roundProductOrderMoney(Math.max(0, subtractMoney(total, gift)));
+  return roundProductOrderMoney(Math.max(0, subtractMoney(afterGift, onlineRefunded)));
 }
 
 /** Cash/terminal still in the provider's till after a platform cancel. */
@@ -147,7 +175,7 @@ export function displayedProductOrderAmountStillDue(
   order: ProductOrderTenderInput & { amount_still_due?: number | null },
 ): number {
   if (typeof order.amount_still_due === "number" && Number.isFinite(order.amount_still_due)) {
-    return Math.max(0, Math.round(order.amount_still_due * 100) / 100);
+    return Math.max(0, roundCurrency(order.amount_still_due));
   }
   if (order.amount_still_due === null) return 0;
   return computeInPersonCollectibleAmount(order);

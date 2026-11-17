@@ -36,36 +36,47 @@ export async function POST(request: NextRequest) {
     const versionKey = `${prefix}_version`;
     const acceptedAtKey = `${prefix}_accepted_at`;
 
-    const { data: existingProfile } = await supabase
-      .from("user_profiles")
-      .select("privacy_settings")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const currentSettings =
-      existingProfile?.privacy_settings && typeof existingProfile.privacy_settings === "object"
-        ? (existingProfile.privacy_settings as Record<string, unknown>)
-        : {};
-
     const acceptedAt = new Date().toISOString();
-    const updatedSettings = {
-      ...currentSettings,
-      [versionKey]: version,
-      [acceptedAtKey]: acceptedAt,
+
+    const readSettings = async () => {
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("privacy_settings")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      const current =
+        data?.privacy_settings && typeof data.privacy_settings === "object"
+          ? (data.privacy_settings as Record<string, unknown>)
+          : {};
+      return {
+        exists: Boolean(data),
+        settings: { ...current, [versionKey]: version, [acceptedAtKey]: acceptedAt },
+      };
     };
 
-    if (existingProfile) {
+    const updateSettings = async (settings: Record<string, unknown>) => {
       const { error } = await supabase
         .from("user_profiles")
-        .update({ privacy_settings: updatedSettings })
+        .update({ privacy_settings: settings })
         .eq("user_id", user.id);
       if (error) throw error;
+    };
+
+    const { exists, settings } = await readSettings();
+    if (exists) {
+      await updateSettings(settings);
     } else {
       const { error } = await supabase.from("user_profiles").insert({
         user_id: user.id,
-        privacy_settings: updatedSettings,
+        privacy_settings: settings,
       });
-      if (error) throw error;
+      if (error) {
+        // Another request created the profile row concurrently; merge into it instead.
+        if (error.code !== "23505") throw error;
+        const retry = await readSettings();
+        await updateSettings(retry.settings);
+      }
     }
 
     return successResponse({

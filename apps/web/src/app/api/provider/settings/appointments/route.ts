@@ -85,6 +85,14 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const { appointmentSettingsTimingError } = await import(
+      "@/lib/provider/appointment-settings-bounds"
+    );
+    const timingErr = appointmentSettingsTimingError(body);
+    if (timingErr) {
+      return handleApiError(new Error(timingErr), "Validation failed", "VALIDATION_ERROR", 400);
+    }
+
     // Validate default_appointment_status if provided
     if (body.defaultAppointmentStatus !== undefined) {
       const validStatuses = Object.values(APPOINTMENT_STATUS);

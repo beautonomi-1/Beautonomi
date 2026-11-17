@@ -21,6 +21,7 @@ import { failPendingProviderSubscriptionOrders } from "@/lib/subscriptions/provi
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { assertTransactionalMarketAllowedForTenantId } from "@/lib/tenant/market-availability";
 import { appendInAppQuery } from "@/lib/payments/append-in-app-query";
+import { pendingSavedCardChargeRefusal } from "@/lib/iap/apple/billing-active";
 
 /**
  * POST /api/provider/subscription/renew
@@ -88,6 +89,11 @@ export async function POST(request: NextRequest) {
       return notFoundResponse('No subscription found');
     }
 
+    const pendingCharge = pendingSavedCardChargeRefusal(subscription);
+    if (pendingCharge) {
+      return errorResponse(pendingCharge, "SUBSCRIPTION_CHARGE_PENDING", 409);
+    }
+
     type SubRow = { billing_period?: string; plan_id?: string };
     type PlanRow = { id: string; name?: string; currency?: string; price_monthly?: number; price_yearly?: number; is_active?: boolean };
     const sub = subscription as SubRow;
@@ -118,6 +124,7 @@ export async function POST(request: NextRequest) {
         .from("provider_subscriptions")
         .update({
           status: "active",
+          past_due_since: null,
           started_at: now.toISOString(),
           expires_at: expiresAt.toISOString(),
           updated_at: now.toISOString(),
@@ -133,7 +140,7 @@ export async function POST(request: NextRequest) {
     await failPendingProviderSubscriptionOrders(
       supabase,
       providerId,
-      "superseded_by_new_checkout",
+      "This checkout was replaced by a newer one.",
     );
 
     const { data: order, error: orderError } = await supabase
@@ -183,10 +190,10 @@ export async function POST(request: NextRequest) {
     const renewCancelAction =
       in_app && isHttpsClientCallback
         ? appendInAppQuery(
-            `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_cancelled=1`,
+            `${callbackFromClient}${callbackFromClient.includes("?") ? "&" : "?"}payment_cancelled=1&order_id=${order.id}&${refQuery}`,
             { inApp: true },
           )
-        : `${baseUrl}/provider/subscription?payment_cancelled=1${inAppParam}`;
+        : `${baseUrl}/provider/subscription?payment_cancelled=1&order_id=${order.id}&${refQuery}${inAppParam}`;
 
     const renewCurrency = planData.currency ?? lastResortCurrency;
     const onlineInit = await initializeOnlinePayment({

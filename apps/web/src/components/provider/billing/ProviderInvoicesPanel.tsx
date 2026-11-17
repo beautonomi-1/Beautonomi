@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "@beautonomi/i18n";
-import { formatMoney } from "@beautonomi/utils";
+import { subtractMoney, formatMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,7 +82,7 @@ function displayStatus(inv: InvoiceRow): string {
 function rowAmountDue(inv: InvoiceRow): number {
   const stored = Number(inv.amount_due ?? NaN);
   if (Number.isFinite(stored)) return Math.max(0, stored);
-  return Math.max(0, Number(inv.total_amount ?? 0) - Number(inv.amount_paid ?? 0));
+  return Math.max(0, subtractMoney(Number(inv.total_amount ?? 0), Number(inv.amount_paid ?? 0)));
 }
 
 export function ProviderInvoicesPanel() {

@@ -1,3 +1,5 @@
+import { addMoney } from "@beautonomi/utils";
+import { productOrderKeptAmount } from "@/lib/orders/product-order-tender";
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -463,6 +465,7 @@ export async function GET(
           created_at,
           status,
           total_amount,
+          refunded_amount,
           payment_status
         `)
         .eq("provider_id", providerId)
@@ -477,8 +480,12 @@ export async function GET(
             type: "product_order",
             date: order.created_at,
             description: `Product order ${order.order_number || order.id}`,
-            amount: order.total_amount || 0,
-            total_paid: order.payment_status === "paid" ? order.total_amount || 0 : 0,
+            amount: ["paid", "partially_refunded", "refunded"].includes(String(order.payment_status ?? ""))
+              ? productOrderKeptAmount(order)
+              : order.total_amount || 0,
+            total_paid: ["paid", "partially_refunded", "refunded"].includes(String(order.payment_status ?? ""))
+              ? productOrderKeptAmount(order)
+              : 0,
             payment_status: order.payment_status,
             status: order.status,
             team_member_name: null,
@@ -497,7 +504,8 @@ export async function GET(
           id, 
           sale_number, 
           created_at, 
-          total_amount, 
+          total_amount,
+          payment_status,
           notes,
           staff_id,
           provider_staff:provider_staff!sales_staff_id_fkey(id, name)
@@ -510,12 +518,15 @@ export async function GET(
       if (sales) {
         sales.forEach((sale: any) => {
           if (isBookingCollectionSale(sale.notes)) return;
+          const refundedSale = String(sale.payment_status ?? "").toLowerCase() === "refunded";
           history.push({
             id: sale.id,
             type: "sale",
             date: sale.created_at,
             description: `Walk-in sale ${sale.sale_number || sale.id}`,
-            amount: sale.total_amount || 0,
+            amount: refundedSale ? 0 : sale.total_amount || 0,
+            status: refundedSale ? "refunded" : null,
+            payment_status: sale.payment_status,
             team_member_name: sale.provider_staff?.name || null,
           });
         });
@@ -533,7 +544,7 @@ export async function GET(
       appointments?.reduce(
         (sum: number, apt: any) =>
           apt.payment_status === "paid" || apt.payment_status === "partially_paid"
-            ? sum + (apt.total_paid || apt.total_amount || 0)
+            ? addMoney(sum, apt.total_paid || apt.total_amount || 0)
             : sum,
         0,
       ) ?? 0;

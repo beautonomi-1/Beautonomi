@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as Sentry from "@sentry/nextjs";
+import { subtractMoney } from "@beautonomi/utils";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
@@ -65,6 +66,105 @@ export async function recordTerminalOrderPayment(
   );
 }
 
+async function completeSavedTerminalPayment(input: {
+  supabase: SupabaseClient;
+  terminalOrderId: string;
+  reference: string;
+  amountMajor: number;
+  feesMajor: number;
+  resolvedModel: TerminalCommercialModel;
+  transactionType: string;
+  source: RecordTerminalOrderPaymentInput["source"];
+  order: {
+    provider_id?: string | null;
+    finance_transaction_id?: string | null;
+  };
+  accountingEnabled: boolean;
+  financeTenantId: string | null;
+  wasAlreadyPaid: boolean;
+}): Promise<{ ok: boolean; duplicate: boolean; financeTransactionId: string | null; transitionedToPaid: boolean }> {
+  const {
+    supabase,
+    terminalOrderId,
+    reference,
+    amountMajor,
+    feesMajor,
+    resolvedModel,
+    transactionType,
+    source,
+    order,
+    accountingEnabled,
+    financeTenantId,
+    wasAlreadyPaid,
+  } = input;
+
+  let financeTransactionId = order.finance_transaction_id ?? null;
+  if (accountingEnabled && !financeTransactionId) {
+    const { data: existingFinance, error: lookupError } = await (supabase.from("finance_transactions") as any)
+      .select("id")
+      .eq("transaction_type", transactionType)
+      .contains("metadata", { terminal_order_id: terminalOrderId })
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    financeTransactionId = (existingFinance as { id?: string } | null)?.id ?? null;
+    if (!financeTransactionId) {
+      const { data: finTx, error: finTxErr } = await (supabase.from("finance_transactions") as any)
+        .insert({
+          provider_id: order.provider_id ?? null,
+          tenant_id: financeTenantId,
+          transaction_type: transactionType,
+          amount: amountMajor,
+          fees: feesMajor,
+          commission: 0,
+          net: subtractMoney(amountMajor, feesMajor),
+          description: `Terminal order ${transactionType} — ${terminalOrderId}`,
+          metadata: {
+            terminal_order_id: terminalOrderId,
+            commercial_model: resolvedModel,
+            reference,
+            source,
+          },
+          created_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      if (finTxErr && finTxErr.code !== "23505") throw finTxErr;
+      financeTransactionId = (finTx as { id?: string } | null)?.id ?? null;
+    }
+  }
+
+  const needsOrderUpdate = !wasAlreadyPaid || Boolean(financeTransactionId && !order.finance_transaction_id);
+  if (needsOrderUpdate) {
+    await (supabase.from("terminal_orders") as any)
+      .update({
+        order_status: "confirmed",
+        invoice_status: "paid",
+        accounting_sync_status: accountingEnabled ? "pending" : "skipped",
+        finance_transaction_id: financeTransactionId,
+        paystack_reference: reference,
+      })
+      .eq("id", terminalOrderId);
+  }
+
+  if (!wasAlreadyPaid) {
+    try {
+      const { finalizeTerminalOrderAfterPayment } = await import(
+        "@/lib/terminal/finalize-terminal-order-after-payment"
+      );
+      await finalizeTerminalOrderAfterPayment({ supabase, terminalOrderId });
+    } catch (finalizeErr) {
+      console.error("[recordTerminalOrderPayment] finalize failed:", finalizeErr);
+    }
+  }
+
+  return {
+    ok: true,
+    duplicate: true,
+    financeTransactionId,
+    transitionedToPaid: !wasAlreadyPaid,
+  };
+}
+
 async function recordTerminalOrderPaymentInner(
   input: RecordTerminalOrderPaymentInput,
 ): Promise<{ ok: boolean; duplicate: boolean; financeTransactionId: string | null; transitionedToPaid: boolean }> {
@@ -102,6 +202,17 @@ async function recordTerminalOrderPaymentInner(
     orderRow.tenant_id ?? null,
   );
 
+  const wasAlreadyPaid = String((order as { invoice_status?: string }).invoice_status ?? "") === "paid";
+  const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: orderRow.tenant_id ?? null,
+    provider_id: orderRow.provider_id ?? null,
+  });
+  const resolvedModel =
+    commercialModel ??
+    (orderRow.commercial_model as TerminalCommercialModel | undefined) ??
+    "once_off_purchase";
+  const transactionType = TRANSACTION_TYPE_MAP[resolvedModel] ?? "terminal_sale";
+
   // Idempotency: check for existing payment_transaction for this reference
   const { data: existingTx } = await (supabase.from("payment_transactions") as any)
     .select("id")
@@ -110,35 +221,28 @@ async function recordTerminalOrderPaymentInner(
     .maybeSingle();
 
   if (existingTx) {
-    return {
-      ok: true,
-      duplicate: true,
-      financeTransactionId: (order as any).finance_transaction_id ?? null,
-      transitionedToPaid: false,
-    };
+    return completeSavedTerminalPayment({
+      supabase,
+      terminalOrderId,
+      reference,
+      amountMajor,
+      feesMajor,
+      resolvedModel,
+      transactionType,
+      source,
+      order: orderRow,
+      accountingEnabled,
+      financeTenantId,
+      wasAlreadyPaid,
+    });
   }
-
-  const wasAlreadyPaid = String((order as any).invoice_status ?? "") === "paid";
-
-  // Resolve finance tenant
-  const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-    tenant_id: (order as any).tenant_id ?? null,
-    provider_id: (order as any).provider_id ?? null,
-  });
-
-  // Map commercial model → GL transaction type
-  const resolvedModel =
-    commercialModel ??
-    (orderRow.commercial_model as TerminalCommercialModel | undefined) ??
-    "once_off_purchase";
-  const transactionType = TRANSACTION_TYPE_MAP[resolvedModel] ?? "terminal_sale";
 
   // Insert payment_transactions audit record
   const { error: payTxErr } = await (supabase.from("payment_transactions") as any).insert({
     reference,
     amount: amountMajor,
     fees: feesMajor,
-    net_amount: amountMajor - feesMajor,
+    net_amount: subtractMoney(amountMajor, feesMajor),
     status: "success",
     provider,
     transaction_type: "charge",
@@ -170,7 +274,7 @@ async function recordTerminalOrderPaymentInner(
         amount: amountMajor,
         fees: feesMajor,
         commission: 0,
-        net: amountMajor - feesMajor,
+        net: subtractMoney(amountMajor, feesMajor),
         description: `Terminal order ${transactionType} — ${terminalOrderId}`,
         metadata: {
           terminal_order_id: terminalOrderId,

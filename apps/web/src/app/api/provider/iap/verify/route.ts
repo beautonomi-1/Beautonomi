@@ -76,13 +76,9 @@ export async function POST(request: NextRequest) {
     }
 
     const eligibility = await resolveIosPurchaseEligibility(supabase, providerId);
-    // Paystack-grandfathering applies to subscription switches only — ads consumables stay allowed on iOS.
-    if (
-      isSubscriptionProduct &&
-      !eligibility.eligible &&
-      (eligibility.billing_provider === "paystack" ||
-        eligibility.billing_provider === "stripe")
-    ) {
+    // Subscription switches follow resolveIosPurchaseEligibility (Paystack, Stripe,
+    // and Flutterwave, including past_due). Ads consumables stay allowed on iOS.
+    if (isSubscriptionProduct && !eligibility.eligible) {
       return errorResponse(
         eligibility.reason ?? "In-app purchase not available for this account",
         "IAP_NOT_ELIGIBLE",
@@ -106,7 +102,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (isSubscriptionProduct && result.kind === "subscription") {
-      await failPendingProviderSubscriptionOrders(supabase, providerId, "apple_verified");
+      await failPendingProviderSubscriptionOrders(
+        supabase,
+        providerId,
+        "This checkout was replaced by an App Store subscription.",
+      );
     }
 
     const { data: subscription } = await supabase

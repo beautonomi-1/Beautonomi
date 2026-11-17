@@ -3,6 +3,8 @@
  * Product IDs are permanent — must match App Store Connect exactly.
  */
 
+import { LAST_RESORT_CURRENCY, multiplyMoney } from "@beautonomi/utils";
+
 export const APPLE_BUNDLE_ID = "com.beautonomi.partner";
 export const APPLE_SUBSCRIPTION_GROUP_REF = "Beautonomi Partner Plans";
 export const APPLE_SUBSCRIPTION_GROUP_DISPLAY = "Beautonomi Partner";
@@ -52,7 +54,7 @@ export function computeAppleTargetPriceZar(
 ): number {
   if (webPriceZar <= 0) return 0;
   const rate = Math.min(Math.max(commissionRate, 0), 0.99);
-  return Math.round((webPriceZar / (1 - rate)) * 100) / 100;
+  return multiplyMoney(webPriceZar, 1 / (1 - rate), LAST_RESORT_CURRENCY);
 }
 
 /** Nearest Apple ZAR tier at or above target (common App Store price ladder). */

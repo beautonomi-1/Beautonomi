@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
       const id = b.customer_id;
       if (!bookingsByCustomer[id]) bookingsByCustomer[id] = { count: 0, total_amount: 0 };
       bookingsByCustomer[id].count += 1;
-      if (b.total_amount) bookingsByCustomer[id].total_amount += Number(b.total_amount);
+      if (b.total_amount) bookingsByCustomer[id].total_amount = addMoney(bookingsByCustomer[id].total_amount, Number(b.total_amount));
       if (b.scheduled_at) {
         const prev = bookingsByCustomer[id].last_booking_at;
         if (!prev || new Date(b.scheduled_at) > new Date(prev)) {

@@ -42,7 +42,6 @@ export async function initializeHostedBookingPayment(
   input: HostedBookingPaymentInitInput,
 ): Promise<HostedBookingPaymentInitResult | Response> {
   const {
-    supabase,
     supabaseAdmin,
     draft,
     validatedDraft,
@@ -63,6 +62,37 @@ export async function initializeHostedBookingPayment(
     recurringSubscribeEligible,
     loyaltyPointsRedeemed,
   } = input;
+
+  const { data: liveBooking } = await supabaseAdmin
+    .from("bookings")
+    .select("id, status, cancelled_at, cancellation_reason")
+    .eq("id", booking.id)
+    .maybeSingle();
+  const live = liveBooking as {
+    status?: string | null;
+    cancelled_at?: string | null;
+    cancellation_reason?: string | null;
+  } | null;
+  if (live?.status === "cancelled" && live.cancellation_reason === "Payment failed") {
+    await supabaseAdmin
+      .from("bookings")
+      .update({
+        status: "pending_payment",
+        payment_status: "pending",
+        cancelled_at: null,
+        cancelled_by: null,
+        cancellation_reason: null,
+      })
+      .eq("id", booking.id)
+      .eq("status", "cancelled")
+      .eq("cancellation_reason", "Payment failed");
+  } else if (live?.cancelled_at || live?.status === "cancelled") {
+    return errorResponse(
+      "This booking was cancelled and cannot be paid.",
+      "BOOKING_CANCELLED",
+      409,
+    );
+  }
 
   const slotOk = await revalidateBookingSlotBeforePayment(supabaseAdmin, booking.id);
   if (slotOk.ok === false) {
@@ -123,7 +153,7 @@ export async function initializeHostedBookingPayment(
     );
   }
 
-  await (supabaseAdmin.from("bookings") as any)
+  const { error: bookingRefError } = await (supabaseAdmin.from("bookings") as any)
     .update({
       payment_reference: reference,
       payment_provider: onlineInit.provider,
@@ -132,8 +162,22 @@ export async function initializeHostedBookingPayment(
     })
     .eq("id", booking.id)
     .eq("customer_id", v.customerId);
+  if (bookingRefError) {
+    console.error(
+      "[initialize-hosted-booking-payment] failed to store payment reference",
+      bookingRefError,
+    );
+    return errorResponse(
+      "We could not start card checkout. Please try again.",
+      "PAYMENT_REFERENCE_NOT_RECORDED",
+      500,
+    );
+  }
 
-  await (supabase.from("payments") as any).insert({
+  // `payments` has no customer INSERT policy. The user-scoped client drops this
+  // row, and capture then refuses the Paystack success (`no_pending_payment`),
+  // leaving checkout on "Still confirming".
+  const { error: pendingPaymentError } = await (supabaseAdmin.from("payments") as any).insert({
     booking_id: booking.id,
     user_id: v.customerId,
     provider_id: draft.provider_id,
@@ -153,6 +197,17 @@ export async function initializeHostedBookingPayment(
       save_card: saveCard,
     },
   });
+  if (pendingPaymentError) {
+    console.error(
+      "[initialize-hosted-booking-payment] failed to store pending payment",
+      pendingPaymentError,
+    );
+    return errorResponse(
+      "We could not start card checkout. Please try again.",
+      "PENDING_PAYMENT_NOT_RECORDED",
+      500,
+    );
+  }
 
   return {
     paymentUrl: onlineInit.authorizationUrl || null,

@@ -2312,6 +2312,13 @@
           "anyAvailableStaff": "Any available",
           "loadingTeam": "Loading team…",
           "staffRetryInline": "Could not load team. Tap to retry",
+          "loadingServices": "Loading services…",
+          "servicesRetryInline": "Could not load services. Tap to retry",
+          "noServicesForGroup": "No active services yet. Add a service to your catalogue before creating a group booking.",
+          "addServiceCta": "Add a service",
+          "staffFilteredForService": "Showing team members assigned to this service.",
+          "createUncertainTitle": "Still confirming",
+          "createUncertainBody": "The server took too long to respond, so the group may already have been created. Check the group bookings list before trying again.",
           "staffFallback": "Staff",
           "participantNotesPlaceholder": "e.g. wants gel removal, allergy, prefers quiet service",
           "capacityReachedHint": "Capacity reached ({{cap}}). Increase to add more.",
@@ -3512,6 +3519,7 @@
           "billingSubtitle": "Plan, invoices, bills & VAT",
           "teamPayLabel": "Team & pay",
           "teamPaySubtitle": "Payroll, team totals & your earnings",
+          "teamPaySubtitleOwn": "Your payslips",
           "paymentSetupLabel": "Payment setup",
           "paymentSetupSubtitle": "Payout accounts, terminals & gift cards",
           "reportsLabel": "Reports",
@@ -3757,6 +3765,7 @@
         "teamSettings": {
           "title": "Team Settings",
           "subtitle": "Roles, permissions & commission",
+          "splitRates": "Service {{service}}% · Product {{product}}%",
           "loadFailed": "Failed to load team settings",
           "validationError": "Validation Error",
           "roleNameRequired": "Role name is required",
@@ -4100,6 +4109,7 @@
           "tapToUpdate": " · tap to update",
           "total": "Total",
           "totalWithAmount": "Total {{amount}}",
+          "refunded": "Refunded",
           "subtotal": "Subtotal",
           "tax": "Tax",
           "delivery": "Delivery",
@@ -6079,6 +6089,7 @@
           "phone": "Phone",
           "commission": "Commission",
           "commissionValue": "{{rate}}%",
+          "splitRates": "Service {{service}}% · Product {{product}}%",
           "mobile": "Mobile",
           "mobileReady": "Ready",
           "mobileNotReady": "Not marked ready",
@@ -6746,7 +6757,9 @@
           "withdraw": "Withdraw",
           "withdrawFailed": "Could not withdraw the offer.",
           "withdrawOffer": "Withdraw offer",
-          "emDash": "—"
+          "emDash": "—",
+          "statusDeclined": "Declined",
+          "statusFinalizeFailed": "Needs support"
         },
         "bookingLink": {
           "title": "Booking Link",
@@ -6884,7 +6897,9 @@
           "clawback": "Clawback {{amount}}",
           "carryForwardIn": "Carry in {{amount}}",
           "carryForwardOut": "Carry out {{amount}}",
-          "complianceWarningsTitle": "Compliance warnings"
+          "complianceWarningsTitle": "Compliance warnings",
+          "emp201": "EMP201",
+          "payslip": "Payslip"
         },
         "recurringAppointments": {
           "title": "Recurring Appointments",
@@ -9164,7 +9179,7 @@
           "emptyMatches": "No matches",
           "emptyTitle": "No time off types",
           "emptyMatchesHint": "Try different filters",
-          "emptyHint": "Add categories like Annual Leave, Sick Leave, etc.",
+          "emptyHint": "Types appear here from staff time-off records. They cannot be created as a separate catalog.",
           "paid": "Paid",
           "unpaid": "Unpaid",
           "inactive": "Inactive",
@@ -9626,7 +9641,9 @@
           "atHome": "At home",
           "atSalon": "At salon",
           "viewBooking": "View booking",
-          "withdrawOffer": "Withdraw offer"
+          "withdrawOffer": "Withdraw offer",
+          "statusChangesRequested": "Changes requested",
+          "statusDeclined": "Declined"
         },
         "moneyHub": {
           "title": "Money",
@@ -9641,6 +9658,9 @@
           "periodToday": "Today",
           "periodWeek": "Week",
           "periodMonth": "Month",
+          "commissionTips": "Commission {{commission}} · Tips {{tips}}",
+          "liveBasis": "Commission and tips count on the day the client pays, not the appointment day. A refund, a returned product, or a returned tip in that period comes off.",
+          "adjustments": "Adjustments {{amount}}",
           "emptyTitle": "No pay stubs yet",
           "emptyDesc": "When your employer runs payroll, your pay stubs will appear here.",
           "net": "Net: {{amount}}",
@@ -9656,7 +9676,9 @@
           "netPay": "Net pay",
           "clawback": "Commission clawback",
           "carryForwardIn": "Carry-forward (in)",
-          "carryForwardOut": "Carry-forward (out)"
+          "carryForwardOut": "Carry-forward (out)",
+          "payslip": "Payslip",
+          "totalDeductions": "Total deductions"
         },
         "notifications": {
           "filterAll": "All",
@@ -9698,10 +9720,12 @@
           "markPaid": "Mark paid",
           "sectionTitle": "Pay runs",
           "ownerHint": "Create a run for a period, then tap a draft run to adjust per-staff PAYE, UIF, and manual deductions. Approve and mark paid when ready.",
-          "staffHint": "View pay runs for your workplace. Only the business owner can create runs, approve, or mark them paid.",
+          "basisHint": "Commission and tips count on the day the client pays, not the appointment day. A refund, a returned product, or a returned tip in that period comes off.",
+          "howPeopleArePaid": "How people are paid",
+          "staffHint": "You only see your own payslip. The owner, or someone granted payroll access, creates the pay run, approves it, and marks it paid.",
           "emptyTitle": "No pay runs yet",
           "emptyOwner": "Create a pay run for a weekly or monthly period. Then approve and mark it paid here.",
-          "emptyStaff": "Your owner hasn’t created a pay run yet. Ask them to start one from this screen.",
+          "emptyStaff": "No pay run yet. The owner, or someone granted payroll access, creates it. Your payslip appears in My earnings after approval.",
           "createPayRun": "Create pay run",
           "openPayRunA11y": "Open pay run for {{start}} through {{end}}, status {{status}}",
           "statusDraft": "Draft",
@@ -9820,8 +9844,11 @@
           "errorTitle": "Error",
           "title": "Team Commissions",
           "subtitle": "Commission rates per staff member",
+          "payPlanSubtitle": "Salary, hourly pay, commission, and tax. Payroll uses this. Commission and tips count on the day the client pays, not the appointment day.",
+          "payPlanSubtitleReadOnly": "How you are paid. Only the owner, or someone granted payroll access, can change it. Commission and tips count on the day the client pays.",
           "statAverage": "Average",
           "percentValue": "{{value}}%",
+          "splitPercent": "{{service}}% services · {{product}}% products",
           "statHighest": "Highest",
           "statTiered": "Tiered",
           "searchPlaceholder": "Search staff...",
@@ -9857,8 +9884,8 @@
           "tierMode": "Tier mode",
           "tierModeRetroactive": "Retroactive",
           "tierModeMarginal": "Marginal",
-          "tierModeRetroactiveHint": "When revenue crosses a tier, the higher rate applies to all revenue in the period.",
-          "tierModeMarginalHint": "Each tier rate applies only to revenue within that band.",
+          "tierModeRetroactiveHint": "Service and product sales share one ladder. When they cross a tier, that rate applies to all of those sales. A service or product with its own percentage stays off the ladder.",
+          "tierModeMarginalHint": "Service and product sales share one ladder. Sales below the first tier use the service and product percentages. Each tier rate applies only to the sales inside that band. A service or product with its own percentage stays off the ladder.",
           "statutory_auto": "Auto",
           "statutory_manual": "Manual",
           "statutory_none": "None",
@@ -11691,7 +11718,7 @@
           "title": "Team & pay",
           "subtitleOwner": "Payroll & staff performance",
           "subtitleStaff": "Your pay stubs",
-          "freelancerUnavailable": "Upgrade to a salon account to run payroll and team pay."
+          "freelancerUnavailable": "A freelancer account is paid through payouts, not payslips. Upgrade to a salon account to pay staff."
         },
         "terminalPaymentReturn": {
           "confirmingTitle": "Confirming payment",
@@ -14096,7 +14123,8 @@
       "requestChangesTitle": "Request changes",
       "requestChangesBody": "Tell the provider what you'd like adjusted.",
       "requestChangesEmpty": "Please describe the changes you want.",
-      "requestChangesFailed": "Failed to request changes"
+      "requestChangesFailed": "Failed to request changes",
+      "offerStatusNeedsSupport": "Needs support"
     },
     "bankAccounts": {
       "screenTitle": "Bank accounts",
@@ -15887,6 +15915,7 @@
           "promotion": "Promotion",
           "calculatedTotal": "Calculated total",
           "chargedTotal": "Charged total",
+          "refunded": "Refunded",
           "totalDifferenceHint": "Small differences can come from rounding or promotions applied at checkout.",
           "soldBy": "Sold by",
           "messageProvider": "Message provider",
@@ -16008,6 +16037,12 @@
           "walletGiftCardReduceTotal": "Wallet and gift card reduce your total; pay the remainder securely by card.",
           "additionalDetails": "Additional details",
           "providerForms": "Provider forms",
+          "formDatePlaceholder": "YYYY-MM-DD",
+          "signPlaceholder": "Type your name to sign",
+          "resourcesTitle": "Rooms and equipment",
+          "resourcesRequired": "Required",
+          "resourcesUnavailable": "Not available at this time",
+          "resourcesBlocked": "A required room or piece of equipment is already booked for this time. Choose another time.",
           "yes": "Yes",
           "repeatThisBooking": "Repeat this booking",
           "turnOnRepeatingVisits": "Turn on repeating visits"
@@ -18642,7 +18677,7 @@
     "bookingSuccessTitlePending": "Booking received!",
     "bookingSuccessTitlePendingPayment": "Payment processing...",
     "bookingSuccessPendingPaymentBody": "Your payment is being confirmed. You'll receive a notification shortly.",
-    "bookingSuccessPendingBody": "Awaiting provider confirmation — usually within 8 hours",
+    "bookingSuccessPendingBody": "Awaiting provider confirmation — we'll notify you as soon as they respond",
     "bookingSuccessFooter": "Taking you to your booking…",
     "totalPaidPrefix": "Total paid",
     "platformFeeInclusive": " (incl. booking protection {{amount}})",
@@ -21209,7 +21244,8 @@
         "createOfferFailed": "Failed to create custom offer",
         "offerUpdated": "Offer updated successfully!",
         "offerCreated": "Offer created successfully!",
-        "createOfferFailedShort": "Failed to create offer"
+        "createOfferFailedShort": "Failed to create offer",
+        "continuePayment": "Continue payment"
       },
       "privacyAndSharing": {
         "tabAccount": "Account",
@@ -29014,7 +29050,7 @@
             "productCommissionRate": "Product Commission Rate (%)",
             "productCommissionRateHint": "Percentage of product price paid as commission",
             "tieredCommission": "Tiered Commission (Optional)",
-            "tieredCommissionHint": "When period revenue reaches a threshold, the higher rate applies to all revenue. Add tiers in ascending order of min revenue.",
+            "tieredCommissionHint": "Optional. Service and product sales share one ladder. Sales below the first tier use the service and product percentages. A service or product with its own percentage stays off the ladder.",
             "minRevenue": "Min Revenue (R)",
             "ratePct": "Rate (%)",
             "addTier": "Add tier",
@@ -29043,8 +29079,8 @@
             "tierMode": "Tier mode",
             "tierModeRetroactive": "Retroactive (whole period at tier reached)",
             "tierModeMarginal": "Marginal (rate applies per band only)",
-            "tierModeRetroactiveHint": "When revenue crosses a tier, the higher rate applies to all revenue in the period.",
-            "tierModeMarginalHint": "Each tier rate applies only to revenue within that band.",
+            "tierModeRetroactiveHint": "Service and product sales share one ladder. When they cross a tier, that rate applies to all of those sales. A service or product with its own percentage stays off the ladder.",
+            "tierModeMarginalHint": "Service and product sales share one ladder. Sales below the first tier use the service and product percentages. Each tier rate applies only to the sales inside that band. A service or product with its own percentage stays off the ladder.",
             "commissionThreshold": "Commission threshold (R)",
             "payPlanSection": "Pay plan (payroll)",
             "payPlanReadOnly": "Only users with Manage payroll can change pay models and rates.",
@@ -29060,7 +29096,28 @@
             "statutoryManual": "Manual (enter on pay run)",
             "statutoryNone": "None (skip statutory)",
             "statutoryModeHint": "Controls whether PAYE and UIF are calculated automatically, entered manually, or skipped for this team member.",
-            "legacyCompensationReadOnly": "Commission, hourly, and salary tabs are read-only without Manage payroll."
+            "legacyCompensationReadOnly": "Commission, hourly, and salary tabs are read-only without Manage payroll.",
+            "modelCommissionOnly": "A percentage of the services and products they sell. No salary. For an employee, PAYE and UIF are calculated on that commission.",
+            "modelBasePlus": "A monthly salary plus a percentage of what they sell. The salary is reduced when employment dates cover only part of the pay period. Commission is what they earned in the period.",
+            "modelBaseOr": "They receive the monthly salary or the commission, whichever is higher that period.",
+            "modelThreshold": "Service and product percentages apply only to the sales above the target. Sales up to the target are not commissioned.",
+            "modelHourly": "Paid for the hours they work. Often used for assistants and juniors.",
+            "modelHourlyPlus": "Paid for hours worked, plus a percentage of what they sell.",
+            "modelSalary": "A monthly salary only. Commission is not added. A partial employment period reduces the salary.",
+            "boothRenterPayRun": "Booth renters are not included on a pay run or a payslip. They keep their own takings.",
+            "contractorTax": "Contractors stay on the pay run. PAYE and UIF are not calculated.",
+            "employeeTax": "Employees and apprentices are taxed on what the pay run pays them, including commission. PAYE is an estimate and UIF is the employee contribution. Apprentices use the same calculation, without a learnership allowance.",
+            "employmentStart": "Employment start",
+            "employmentEnd": "Employment end",
+            "contractorDates": "Leave the end date empty for an ongoing contract. A date inside a pay period limits pay. Contractors still get a payslip, without calculated PAYE or UIF.",
+            "employeeDates": "Leave the end date empty for an ongoing role. A date inside a pay period reduces a monthly salary. Commission is still what they earned in that period.",
+            "taxCalculate": "Calculate PAYE and UIF",
+            "taxEnter": "I'll enter PAYE and UIF",
+            "taxSkip": "Don't calculate PAYE or UIF",
+            "payPlanIntro": "This is where you set salary, hourly pay, commission, employment type, and tax. A pay run uses these settings. Commission and tips count on the day the client pays, not the appointment day. Payslips open after the run is approved.",
+            "payPlanIntroReadOnly": "This shows how pay is set. Only the owner, or someone granted payroll access, can change it. Commission and tips count on the day the client pays, not the appointment day. A manager does not get that access unless it is turned on.",
+            "payPlanOwnsRates": "Salary, hourly pay, and commission rates are set on the pay plan above. A pay run and a payslip use that plan. Tiers below are saved with it.",
+            "payPlanOwnsRatesNoLadder": "Salary, hourly pay, and commission rates are set on the pay plan above. A pay run and a payslip use that plan. This pay model does not use a commission ladder."
           },
           "team/notifications": {
             "staffNotifications": "Staff Notifications",
@@ -29270,7 +29327,7 @@
           },
           "team/time-off-types": {
             "timeOffTypes": "Time Off Types",
-            "manageTimeOffCategoriesForYour": "Manage time off categories for your team",
+            "manageTimeOffCategoriesForYour": "Labels used on staff time-off records",
             "noTimeOffTypesYet": "No time off types yet",
             "loadingTimeOffTypes": "Loading time off types...",
             "failedToLoadTimeOffTypes": "Failed to load time off types",
@@ -29285,7 +29342,7 @@
             "deleteConfirm": "Are you sure you want to delete this time off type?",
             "failedToDelete": "Failed to delete time off type",
             "failedToSave": "Failed to save time off type",
-            "createHint": "Create time off types like Vacation, Sick Leave, Personal Day, etc.",
+            "createHint": "These labels come from staff time-off records. Add or change a type when you book time off for a team member.",
             "editTitle": "Edit Time Off Type",
             "updateHint": "Update time off type information",
             "createTitleHint": "Create a new time off type for your team",
@@ -29570,13 +29627,20 @@
           "periodWeek": "week",
           "periodMonth": "month",
           "commissionTips": "Commission {{commission}} · Tips {{tips}}",
+          "liveBasis": "Commission and tips count on the day the client pays, not the appointment day. A refund, a returned product, or a returned tip in that period comes off.",
+          "adjustments": "Adjustments {{amount}}",
           "noPayStubs": "No pay stubs yet",
           "noPayStubsHint": "When your employer runs payroll, your pay stubs will appear here.",
           "netLabel": "Net: {{amount}}",
           "deductions": "Deductions (Tax, UIF, Other)",
           "clawback": "Commission clawback",
           "carryForwardIn": "Carry-forward (in)",
-          "carryForwardOut": "Carry-forward (out)"
+          "carryForwardOut": "Carry-forward (out)",
+          "freelancerSubtitle": "Payouts, not payslips",
+          "freelancerBody": "A freelancer account is paid through payouts. Payslips are for employees, apprentices, and contractors a salon pays. Upgrade to a salon account to run payroll.",
+          "totalDeductions": "Total deductions",
+          "payslipUnavailable": "Payslip is available after this pay run is approved.",
+          "payslip": "Payslip"
         },
         "team/payroll": {
           "failedToLoad": "Failed to load pay runs",
@@ -29586,7 +29650,7 @@
           "newPayRun": "New Pay Run",
           "emptyTitle": "No pay runs yet",
           "emptyOwner": "Create your first pay run to get started",
-          "emptyStaff": "No pay runs yet. Your business owner can create one from Payroll.",
+          "emptyStaff": "No pay runs yet. The owner, or someone granted payroll access, creates one from Payroll.",
           "createPayRun": "Create Pay Run",
           "createdOn": "Created {{date}}",
           "periodStart": "Period Start",
@@ -29597,7 +29661,13 @@
           "semiMonthly": "Semi-monthly",
           "monthly": "Monthly",
           "custom": "Custom range",
-          "creating": "Creating..."
+          "creating": "Creating...",
+          "howPeopleArePaid": "How people are paid",
+          "myPayslips": "My payslips",
+          "howItWorks": "Set how each person is paid, then create a pay run. Approve it before payslips can be opened. Mark it paid when the money has gone out. Commission and tips count on the day the client pays, not the appointment day. A refund, a returned product, or a returned tip in that period comes off. The owner and anyone granted payroll access can do this. Other staff only see their own payslip.",
+          "staffHowItWorks": "Your payslips are in My earnings. Commission and tips count on the day the client pays, not the appointment day. A refund, a returned product, or a returned tip in that period comes off. The owner, or a teammate granted payroll access, creates the pay run and approves it. You only see your own line.",
+          "freelancerTitle": "Payroll is for salon staff",
+          "freelancerBody": "A freelancer account is paid through payouts, not payslips. Employees, apprentices, and contractors get payslips after a salon pay run is approved. Upgrade to a salon account to run payroll."
         },
         "join": {
           "loading": "Loading…",
@@ -29773,7 +29843,15 @@
           "suggestedTopUp": "Suggested top-up {{amount}}",
           "csvClawback": "Commission clawback",
           "csvCarryForwardIn": "Carry-forward (in)",
-          "csvCarryForwardOut": "Carry-forward (out)"
+          "csvCarryForwardOut": "Carry-forward (out)",
+          "emp201Unavailable": "EMP201 is available after this pay run is approved.",
+          "emp201": "EMP201",
+          "draftNext": "Check each line, save, then approve. Payslips open after approval.",
+          "approvedNext": "Payslips are available. Mark paid when you have paid these amounts.",
+          "paidNext": "This pay run is paid. Each person can open their payslip from My earnings.",
+          "ownLineOnly": "You only see your own line. Your payslip opens after this pay run is approved.",
+          "payslipUnavailable": "Payslip is available after this pay run is approved.",
+          "payslip": "Payslip"
         },
         "team/time-clock": {
           "failedToLoadData": "Failed to load data",
@@ -30105,7 +30183,10 @@
           "withdrawOffer": "Withdraw Offer",
           "couldNotLoadDetails": "Could not load offer details.",
           "duration": "Duration",
-          "priceLabel": "Price"
+          "priceLabel": "Price",
+          "statusNeedsSupport": "Needs support",
+          "statusDeclined": "Declined",
+          "statusPaymentInProgress": "Payment in progress"
         },
         "packages/[id]/edit": {
           "packageNotFound": "Package not found",
@@ -30229,6 +30310,7 @@
           "confirmShip": "Confirm & Ship",
           "refundOrder": "Refund order",
           "refundOrderMeta": "Order {{number}} · Paid {{amount}}",
+          "refundedKept": "Refunded {{amount}}",
           "refundAmount": "Refund amount",
           "refundMethod": "Refund method",
           "inPersonCash": "In person (cash)",
@@ -33496,6 +33578,7 @@
         "fulfilmentA11y": "Fulfilment for {{name}}",
         "totals": "Totals",
         "total": "Total",
+        "refunded": "Refunded",
         "paidFromGiftCard": "Paid from gift card",
         "promotion": "Promotion",
         "yourEarnings": "Your earnings",
@@ -34125,6 +34208,7 @@
         "desktopNotificationsHint": "Show browser desktop notifications for appointments and updates",
         "compensationSettings": "Compensation Settings",
         "compensationHint": "Configure how this staff member is compensated",
+        "payPlanOwnsPay": "Salary, hourly pay, and commission rates are set on the pay plan above. A pay run and a payslip use that plan.",
         "serviceProductCommission": "Service and Product Commission",
         "commissionHint": "Enable commission-based compensation for services and products sold",
         "commissionRate": "Commission Rate (%)",
@@ -35858,7 +35942,9 @@
         "editOffer": "Edit offer",
         "withdrawOfferConfirm": "Are you sure you want to withdraw this offer?",
         "withdrawOffer": "Withdraw Offer",
-        "couldNotLoadOfferDetails": "Could not load offer details."
+        "couldNotLoadOfferDetails": "Could not load offer details.",
+        "resumePayment": "Resume payment",
+        "statusNeedsSupport": "Needs support"
       },
       "customOfferModal": {
         "loadOfferFailed": "Could not load offer",
@@ -36769,7 +36855,13 @@
         "waitingBody": "We are confirming your payment. Refresh your custom requests in a moment.",
         "backToRequests": "Back to custom requests",
         "changesRequestedTitle": "Offer being revised",
-        "changesRequestedBody": "Your provider is updating this offer after your change request."
+        "changesRequestedBody": "Your provider is updating this offer after your change request.",
+        "needsSupportBody": "We received the payment but could not create the booking. Contact support with your payment reference.",
+        "needsSupportTitle": "Payment needs support",
+        "resumePayment": "Resume payment",
+        "unavailableBody": "Ask the provider for a new quote if you still want this service.",
+        "unavailableTitle": "This offer is no longer payable",
+        "viewBooking": "View booking"
       }
     },
     "groupInvite": {

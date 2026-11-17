@@ -1,5 +1,7 @@
 "use client";
 
+import { addMoney } from "@beautonomi/utils";
+
 import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -11,10 +13,15 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { openPayRunPayslip } from "@/lib/payroll/open-payslip";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 
-type LiveTotals = { total: number; commission: number; tips: number };
+type LiveTotals = { total: number; commission: number; tips: number; adjustments?: number };
 
 interface PayStub {
+  item_id?: string;
   pay_run_id: string;
   pay_period_start: string;
   pay_period_end: string;
@@ -37,6 +44,8 @@ interface PayStub {
 
 export default function MyEarningsPage() {
   const { t } = useTranslation();
+  const { provider, isLoading: portalLoading } = useProviderPortal();
+  const isFreelancer = provider?.business_type === "freelancer";
   const { format: fmtMoney } = useProviderMoneyFormat();
   const [payStubs, setPayStubs] = useState<PayStub[]>([]);
   const [live, setLive] = useState<Record<string, LiveTotals> | null>(null);
@@ -44,8 +53,13 @@ export default function MyEarningsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadEarnings();
-  }, []);
+    if (portalLoading) return;
+    if (isFreelancer) {
+      setIsLoading(false);
+      return;
+    }
+    void loadEarnings();
+  }, [portalLoading, isFreelancer]);
 
   const loadEarnings = async () => {
     try {
@@ -74,6 +88,25 @@ export default function MyEarningsPage() {
     if (s === "paid") return "bg-green-100 text-green-800";
     return "bg-gray-100 text-gray-800";
   };
+
+  if (isFreelancer) {
+    return (
+      <div className="w-full max-w-full space-y-4 sm:space-y-6">
+        <PageHeader
+          title={t("web.provider.sidebar.items.myEarnings")}
+          subtitle={t("web.provider.pages.team/my-earnings.freelancerSubtitle")}
+        />
+        <SectionCard className="p-8">
+          <p className="text-sm text-gray-600 mb-4">
+            {t("web.provider.pages.team/my-earnings.freelancerBody")}
+          </p>
+          <Link href="/provider/settings/upgrade-to-salon" className="text-sm font-medium text-primary hover:underline">
+            {t("web.provider.teamMembers.upgradeToSalonLink")}
+          </Link>
+        </SectionCard>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -107,10 +140,16 @@ export default function MyEarningsPage() {
                 <p className="font-medium">{fmtMoney(Number(live[key]?.total ?? 0))}</p>
                 <p className="text-xs text-gray-500">
                   {t("web.provider.pages.team/my-earnings.commissionTips", { commission: fmtMoney(Number(live[key]?.commission ?? 0)), tips: fmtMoney(Number(live[key]?.tips ?? 0)) })}
+                  {Number(live[key]?.adjustments ?? 0) !== 0
+                    ? ` · ${t("web.provider.pages.team/my-earnings.adjustments", { amount: fmtMoney(Number(live[key]?.adjustments ?? 0))})}`
+                    : ""}
                 </p>
               </div>
             ))}
           </div>
+          <p className="mt-3 text-xs text-gray-500">
+            {t("web.provider.pages.team/my-earnings.liveBasis")}
+          </p>
         </SectionCard>
       ) : null}
 
@@ -173,25 +212,20 @@ export default function MyEarningsPage() {
                         <span>{fmtMoney(Number(stub.commission_clawback))}</span>
                       </div>
                     ) : null}
-                    {Number(stub.carry_forward_in) !== 0 ? (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">{t("web.provider.pages.team/my-earnings.carryForwardIn")}</span>
-                        <span>{fmtMoney(Number(stub.carry_forward_in))}</span>
-                      </div>
-                    ) : null}
                     {Number(stub.carry_forward_out) !== 0 ? (
                       <div className="flex justify-between">
                         <span className="text-gray-600">{t("web.provider.pages.team/my-earnings.carryForwardOut")}</span>
-                        <span>{fmtMoney(Number(stub.carry_forward_out))}</span>
+                        <span>{fmtMoney(Math.abs(Number(stub.carry_forward_out)))}</span>
                       </div>
                     ) : null}
                     <div className="flex justify-between text-red-600">
-                      <span>{t("web.provider.pages.team/my-earnings.deductions")}</span>
+                      <span>{t("web.provider.pages.team/my-earnings.totalDeductions")}</span>
                       <span>
                         -{fmtMoney(
-                          Number(stub.manual_deductions) +
-                          Number(stub.tax_deduction) +
-                          Number(stub.uif_contribution)
+                          [stub.manual_deductions, stub.tax_deduction, stub.uif_contribution, stub.carry_forward_in].reduce(
+                            (sum, amount) => addMoney(sum, Number(amount || 0)),
+                            0,
+                          ),
                         )}
                       </span>
                     </div>
@@ -199,6 +233,23 @@ export default function MyEarningsPage() {
                       <span>{t("web.provider.pages.team/payroll/[id].csvNetPay")}</span>
                       <span>{fmtMoney(Number(stub.net_pay))}</span>
                     </div>
+                    {stub.notes ? <p className="text-xs text-gray-500">{stub.notes}</p> : null}
+                    {stub.item_id && stub.status !== "draft" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          void openPayRunPayslip(stub.item_id!).catch(() => {
+                            toast.error(
+                              t("web.provider.pages.team/my-earnings.payslipUnavailable"),
+                            );
+                          });
+                        }}
+                      >
+                        {t("web.provider.pages.team/my-earnings.payslip")}
+                      </Button>
+                    ) : null}
                   </div>
                 )}
               </SectionCard>

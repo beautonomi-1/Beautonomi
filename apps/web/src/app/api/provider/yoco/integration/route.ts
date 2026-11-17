@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
@@ -28,10 +29,9 @@ const updateIntegrationSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"], request);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    const permissionCheck = await requireAnyPermission(["process_payments", "edit_settings"], request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
+    const auth = { user: permissionCheck.user };
 
     const supabase = await getSupabaseServer(request);
 
@@ -55,7 +55,8 @@ export async function GET(request: NextRequest) {
     // Check subscription allows Yoco integration (for viewing, allow but show upgrade prompt)
     const yocoAccess = await checkYocoFeatureAccess(providerId, supabase);
 
-    const { data: integration, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: integration, error } = await admin
       .from("provider_yoco_integrations")
       .select("*")
       .eq("provider_id", providerId)
@@ -371,7 +372,7 @@ export async function PUT(request: Request) {
 
     // Upsert integration
     const { data: integration, error: upsertError } = await (
-      supabase.from("provider_yoco_integrations") as any
+      adminClient.from("provider_yoco_integrations") as any
     )
       .upsert(
         {

@@ -17,6 +17,7 @@ import {
 } from "@/lib/http/csrf-fetch-guard";
 import { dispatchSecurityChallenge } from "@beautonomi/auth-security";
 import { getStoredDeviceKey } from "@/lib/auth/device-key";
+import { sanitizeStoredApiMessage } from "@/lib/errors/user-messages";
 
 export { setInMemoryCsrfToken };
 export { registerSecurityChallengeHandler } from "@beautonomi/auth-security";
@@ -543,7 +544,11 @@ export async function fetchJson<T = unknown>(
       }
 
       throw new FetchError(
-        errorData.message,
+        sanitizeStoredApiMessage(
+          errorData.code,
+          errorData.message,
+          `HTTP ${response.status}: ${response.statusText}`,
+        ),
         response.status,
         errorData.code,
         errorData.details

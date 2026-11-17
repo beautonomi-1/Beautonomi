@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) {
       return handleApiError(new Error("Provider not found"), "NOT_FOUND", 404);
     }
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     const supabaseAdmin = getSupabaseAdmin();
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const providerId = await getProviderIdForUser(user.id, supabaseAdmin, { request });
     if (!providerId) {
       return handleApiError(new Error("Provider not found"), "NOT_FOUND", 404);
     }

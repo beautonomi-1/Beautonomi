@@ -30,7 +30,7 @@ import {
 } from "@/lib/payments/providerPaystackReturn";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { fromMinorUnits, getDefaultMoneyLocale, subtractMoney } from "@beautonomi/utils";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -46,7 +46,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { getApiErrorMessage } from "@/lib/api-error";
+import { getApiErrorCode, getApiErrorMessage } from "@/lib/api-error";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { shouldUseAppleIap } from "@/lib/iap/platform";
 import {
@@ -117,6 +117,7 @@ type AdsCampaignCreateData = Campaign | {
   requires_payment?: boolean;
   payment_url?: string | null;
   order_id?: string;
+  reference?: string | null;
 };
 
 function pickCampaignFromAdsCreate(data: AdsCampaignCreateData | undefined): Campaign | undefined {
@@ -132,6 +133,12 @@ function adsCreatePaymentUrl(data: AdsCampaignCreateData | undefined): string | 
   }
   const url = "payment_url" in data ? data.payment_url : null;
   return typeof url === "string" && url.trim() ? url : null;
+}
+
+function adsCreateReference(data: AdsCampaignCreateData | undefined): string | undefined {
+  if (!data || typeof data !== "object" || !("reference" in data)) return undefined;
+  const reference = data.reference;
+  return typeof reference === "string" && reference.trim() ? reference.trim() : undefined;
 }
 
 function adsCreateOrderId(data: AdsCampaignCreateData | undefined): string | undefined {
@@ -233,9 +240,9 @@ type TimePack = {
   apple_product_id?: string | null;
 };
 
-function adPackAmountMajor(pack: { price_zar: number; price_minor?: number | null }): number {
+function adPackAmountMajor(pack: { price_zar: number; price_minor?: number | null; currency?: string | null }): number {
   if (pack.price_minor != null && Number.isFinite(Number(pack.price_minor))) {
-    return Number(pack.price_minor) / 100;
+    return fromMinorUnits(Number(pack.price_minor), pack.currency || "ZAR");
   }
   return Number(pack.price_zar);
 }
@@ -490,7 +497,7 @@ function remainingLine(
   if (budget > 0 && Number(c.spent ?? 0) >= budget) {
     return tr("budgetFullyUsed");
   }
-  return tr("budgetRemaining", { amount: formatMoney(Math.max(0, budget - Number(c.spent || 0)), currency) });
+  return tr("budgetRemaining", { amount: formatMoney(Math.max(0, subtractMoney(budget, Number(c.spent || 0))), currency) });
 }
 
 export default function AdsSettingsScreen() {
@@ -616,7 +623,16 @@ export default function AdsSettingsScreen() {
       ]);
       const anyError = campRes.error || perfRes.error || packsRes.error;
       if (anyError) {
-        Alert.alert(ads("errorTitle"), ads("loadPartialError"));
+        const forbidden =
+          getApiErrorCode(campRes.error) === "FORBIDDEN" ||
+          getApiErrorCode(perfRes.error) === "FORBIDDEN" ||
+          getApiErrorCode(packsRes.error) === "FORBIDDEN";
+        Alert.alert(
+          ads("errorTitle"),
+          forbidden
+            ? getApiErrorMessage(anyError, ads("loadPartialError"))
+            : ads("loadPartialError"),
+        );
       }
       setCampaigns(Array.isArray(campRes.data) ? campRes.data : []);
       setPerformance(perfRes.data?.summary ?? null);
@@ -671,6 +687,7 @@ export default function AdsSettingsScreen() {
       opts?: {
         campaignId?: string;
         orderId?: string;
+        reference?: string;
         amount?: number;
         currency?: string;
         productLabel?: string;
@@ -696,14 +713,18 @@ export default function AdsSettingsScreen() {
         return;
       }
 
-      if (result?.outcome === "cancel" || result?.outcome === "closed") {
+      if (result?.outcome === "cancel") {
+        if (opts?.reference) {
+          void verifyPaystackWithRetry(opts.reference, { redirectStatus: "cancelled", maxAttempts: 1 });
+        }
         const failed = adsFailedCopy(ads("paymentNotCompleted"));
         setPaymentOutcome({ phase: "failed", campaignId, ...failed });
         await loadAll();
         return;
       }
 
-      if (result?.outcome !== "success") {
+      const sheetClosed = result?.outcome === "closed";
+      if (result?.outcome !== "success" && !sheetClosed) {
         await loadAll();
         return;
       }
@@ -712,23 +733,39 @@ export default function AdsSettingsScreen() {
       setProcessingMessage(ads("confirmingPayment"));
       setProcessingHint(ads("verifyingPaystackHint"));
       try {
-        const parsed = parseOnlineCheckoutReturnUrl(result.url);
-        if (parsed.status === "failed" || parsed.status === "cancelled") {
-          const failed = adsFailedCopy(ads("paymentNotCompleted"));
-          setPaymentOutcome({ phase: "failed", campaignId, ...failed });
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          await loadAll();
-          return;
+        let reference = opts?.reference?.trim() || null;
+        let checkoutSessionId: string | null = null;
+        let checkoutTransactionId: string | null = null;
+        if (result?.outcome === "success" && result.url) {
+          const parsed = parseOnlineCheckoutReturnUrl(result.url);
+          if (parsed.status === "failed" || parsed.status === "cancelled") {
+            const failRef = parsed.reference || opts?.reference;
+            if (failRef) {
+              void verifyPaystackWithRetry(failRef, {
+                redirectStatus: parsed.status,
+                sessionId: parsed.sessionId,
+                transactionId: parsed.transactionId,
+                maxAttempts: 1,
+              });
+            }
+            const failed = adsFailedCopy(ads("paymentNotCompleted"));
+            setPaymentOutcome({ phase: "failed", campaignId, ...failed });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            await loadAll();
+            return;
+          }
+          if (parsed.reference) reference = parsed.reference;
+          checkoutSessionId = parsed.sessionId;
+          checkoutTransactionId = parsed.transactionId;
         }
-        const reference = parsed.reference;
         const verifyResult = reference
           ? await verifyPaystackWithRetry<{
               adsBudgetOrderId?: string;
               campaignId?: string;
               type?: string;
             }>(reference, {
-              sessionId: parsed.sessionId,
-              transactionId: parsed.transactionId,
+              sessionId: checkoutSessionId,
+              transactionId: checkoutTransactionId,
             })
           : null;
 
@@ -968,6 +1005,7 @@ export default function AdsSettingsScreen() {
         await openAdsPaystack(payUrl, {
           campaignId: campaign?.id,
           orderId: adsCreateOrderId(data),
+          reference: adsCreateReference(data),
           amount: budgetNum,
           currency: tenantCurrency,
           productLabel: ads("cpcBudget"),
@@ -1054,6 +1092,7 @@ export default function AdsSettingsScreen() {
           await openAdsPaystack(payUrl, {
             campaignId: campaign?.id,
             orderId: adsCreateOrderId(data),
+            reference: adsCreateReference(data),
             amount: adPackAmountMajor(pack),
             currency:
               typeof pack.currency === "string" && pack.currency.trim()
@@ -1181,6 +1220,7 @@ export default function AdsSettingsScreen() {
           payment_url?: string | null;
           order_id?: string;
           campaign_id?: string;
+          reference?: string | null;
         }>(
           `/api/provider/ads/campaigns/${campaign.id}/checkout`,
           ADS_NATIVE_PAYMENT,
@@ -1201,6 +1241,7 @@ export default function AdsSettingsScreen() {
         await openAdsPaystack(payUrl, {
           campaignId: campaign.id,
           orderId,
+          reference: res.data?.reference ?? undefined,
           amount,
           currency: campaign.latest_budget_order?.currency ?? tenantCurrency,
           productLabel: campaignModelLabel(campaign, ads),
@@ -1690,6 +1731,7 @@ export default function AdsSettingsScreen() {
                           await openAdsPaystack(payUrl, {
                             campaignId: campaign?.id,
                             orderId: adsCreateOrderId(data),
+                            reference: adsCreateReference(data),
                             amount: adPackAmountMajor(tp),
                             currency:
                               typeof tp.currency === "string" && tp.currency.trim()

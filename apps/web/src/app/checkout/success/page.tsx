@@ -3,7 +3,26 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, Calendar, Plus, MapPin, Clock, Download, ExternalLink, Smartphone, XCircle, Share2 } from "lucide-react";
+import {
+  AlertCircle,
+  Bell,
+  Calendar,
+  Check,
+  Copy,
+  CreditCard,
+  Download,
+  ExternalLink,
+  Home,
+  MapPin,
+  Navigation,
+  Plus,
+  Scissors,
+  Smartphone,
+  Store,
+  Clock,
+  XCircle,
+  Share2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
@@ -20,9 +39,13 @@ import { isBookingEmbedEnabled } from "@beautonomi/utils";
 import { formatMoney as formatMoneyUtil } from "@beautonomi/utils";
 import { verifyEmbedReturnUrl } from "@/lib/booking/embed-return-url";
 import { NativeAppCheckoutBounce } from "@/components/payments/NativeAppCheckoutBounce";
+import { NATIVE_STORE } from "@/lib/store/native-app-store";
 
-/** Beautonomi primary (use CSS var in styles for single source) */
-const ACCENT = "var(--primary, #FF0077)";
+/** `--primary` is stored as bare HSL components (`330 100% 50%`), so it must be wrapped in `hsl()`. */
+const ACCENT = "hsl(var(--primary, 330 100% 50%))";
+function accentAlpha(alpha: number): string {
+  return `hsl(var(--primary, 330 100% 50%) / ${alpha})`;
+}
 const BG = "#F3F4F6";
 const TEXT_PRIMARY = "#111827";
 const TEXT_SECONDARY = "#6B7280";
@@ -30,11 +53,31 @@ const TEXT_SECONDARY = "#6B7280";
 const POLL_INTERVAL_MS = 1500;
 const POLL_MAX_ATTEMPTS = 20;
 
+function customOfferCheckoutOutcome(data: { status?: string | null; booking_id?: string | null } | null | undefined): "booked" | "support" | "pending" {
+  const status = String(data?.status ?? "").toLowerCase();
+  const bookingId = typeof data?.booking_id === "string" ? data.booking_id.trim() : "";
+  if (status === "finalize_failed" || (status === "paid" && !bookingId)) return "support";
+  if ((status === "paid" || status === "accepted") && bookingId) return "booked";
+  return "pending";
+}
+
 function formatMoney(amount: number, currency: string | undefined): string {
   const cur = (currency || "").trim();
   const value = Number.isFinite(amount) ? amount : 0;
   if (!cur) return value.toFixed(2);
   return formatMoneyUtil(value, cur);
+}
+
+/** Formats in the provider's timezone so the slot matches the salon clock; falls back to the browser zone on bad IANA ids. */
+function formatInTimeZone(date: Date, options: Intl.DateTimeFormatOptions, timeZone?: string | null): string {
+  if (timeZone) {
+    try {
+      return date.toLocaleString(undefined, { ...options, timeZone });
+    } catch {
+      // invalid timezone id
+    }
+  }
+  return date.toLocaleString(undefined, options);
 }
 
 /** Deep link scheme for customer mobile app (opens app to a specific screen when installed) */
@@ -110,8 +153,11 @@ function CheckoutSuccessContent() {
   const embedBookedPosted = useRef(false);
   const embedReturnRedirectStarted = useRef(false);
   const [embedReturnCountdown, setEmbedReturnCountdown] = useState<number | null>(null);
+  const [bookingNumberCopied, setBookingNumberCopied] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const [customOfferBookingId, setCustomOfferBookingId] = useState<string | null>(null);
+  const [customOfferNeedsSupport, setCustomOfferNeedsSupport] = useState(false);
   const [customOfferPollingComplete, setCustomOfferPollingComplete] = useState(false);
   const [providerBranch, setProviderBranch] = useState<ProviderPaymentBranch | null>(null);
 
@@ -165,21 +211,17 @@ function CheckoutSuccessContent() {
         }
       }
       if (!ref) return;
-      if (hostedCheckoutStatus === "failed" || hostedCheckoutStatus === "cancelled") {
-        setVerifyStatus("failed");
-        setVerifyMessage("Payment was not completed.");
-        return;
-      }
       paystackVerifyStarted.current = true;
       setVerifyStatus("verifying");
       try {
         const verifyResult = await verifyWithRetry<{ type?: string; ads_budget_order_id?: string; order_id?: string }>(
           ref,
           {
-            maxAttempts: 5,
+            maxAttempts: hostedCheckoutStatus === "failed" || hostedCheckoutStatus === "cancelled" ? 1 : 5,
             delayMs: 1500,
             sessionId: stripeCheckoutSessionId,
             transactionId: flutterwaveTransactionId,
+            redirectStatus: hostedCheckoutStatus,
           },
         );
         const verifyType = typeof verifyResult.data?.type === "string" ? verifyResult.data.type : null;
@@ -248,10 +290,11 @@ function CheckoutSuccessContent() {
     const run = async () => {
       try {
         await verifyWithRetry(ref, {
-          maxAttempts: 5,
+          maxAttempts: hostedCheckoutStatus === "failed" || hostedCheckoutStatus === "cancelled" ? 1 : 5,
           delayMs: 1500,
           sessionId: stripeCheckoutSessionId,
           transactionId: flutterwaveTransactionId,
+          redirectStatus: hostedCheckoutStatus,
         });
         // Immediately probe offer after verify — the inline finalize means
         // booking_id may already be set by the time the fetch resolves.
@@ -261,9 +304,13 @@ function CheckoutSuccessContent() {
         });
         if (offerRes.ok) {
           const json = await offerRes.json();
-          const bid = (json?.data ?? json)?.booking_id;
-          if (typeof bid === "string" && bid.length > 0) {
-            setCustomOfferBookingId(bid);
+          const row = (json?.data ?? json) as { status?: string | null; booking_id?: string | null };
+          const outcome = customOfferCheckoutOutcome(row);
+          if (outcome === "booked") {
+            setCustomOfferBookingId(row.booking_id ?? null);
+            setCustomOfferPollingComplete(true);
+          } else if (outcome === "support") {
+            setCustomOfferNeedsSupport(true);
             setCustomOfferPollingComplete(true);
           }
         }
@@ -272,7 +319,14 @@ function CheckoutSuccessContent() {
       }
     };
     void run();
-  }, [isCustomOffer, offerId, paystackReference, stripeCheckoutSessionId]);
+  }, [
+    isCustomOffer,
+    offerId,
+    paystackReference,
+    stripeCheckoutSessionId,
+    flutterwaveTransactionId,
+    hostedCheckoutStatus,
+  ]);
 
   /** Realtime: booking_id appears as soon as the webhook / verify path finishes. */
   useEffect(() => {
@@ -289,9 +343,13 @@ function CheckoutSuccessContent() {
           filter: `id=eq.${offerId}`,
         },
         (payload) => {
-          const bid = (payload.new as { booking_id?: string | null })?.booking_id;
-          if (typeof bid === "string" && bid.length > 0) {
-            setCustomOfferBookingId(bid);
+          const row = payload.new as { status?: string | null; booking_id?: string | null };
+          const outcome = customOfferCheckoutOutcome(row);
+          if (outcome === "booked") {
+            setCustomOfferBookingId(row.booking_id ?? null);
+            setCustomOfferPollingComplete(true);
+          } else if (outcome === "support") {
+            setCustomOfferNeedsSupport(true);
             setCustomOfferPollingComplete(true);
           }
         },
@@ -318,10 +376,16 @@ function CheckoutSuccessContent() {
         });
         if (!res.ok) return;
         const json = await res.json();
-        const data = json?.data ?? json;
-        const bid = data?.booking_id;
-        if (bid) {
-          setCustomOfferBookingId(bid);
+        const data = (json?.data ?? json) as { status?: string | null; booking_id?: string | null };
+        const outcome = customOfferCheckoutOutcome(data);
+        if (outcome === "booked") {
+          setCustomOfferBookingId(data.booking_id ?? null);
+          setCustomOfferPollingComplete(true);
+          clearInterval(interval);
+          return;
+        }
+        if (outcome === "support") {
+          setCustomOfferNeedsSupport(true);
           setCustomOfferPollingComplete(true);
           clearInterval(interval);
           return;
@@ -343,7 +407,7 @@ function CheckoutSuccessContent() {
   const showBookingLink = !!(resolvedBookingId || bookingNumber);
   const paymentType = searchParams?.get("payment_type");
   const customOfferTimedOut =
-    isCustomOffer && !!offerId && customOfferPollingComplete && !resolvedBookingId;
+    isCustomOffer && !!offerId && customOfferPollingComplete && !resolvedBookingId && !customOfferNeedsSupport;
 
   const [bookingData, setBookingData] = useState<{
     selected_datetime: string;
@@ -494,6 +558,44 @@ function CheckoutSuccessContent() {
           end: calendarEnd,
         }
       : null;
+
+  const providerTimeZone = bookingForCalendar?.provider?.timezone ?? null;
+  const appointmentDateLabel = calendarStart
+    ? formatInTimeZone(calendarStart, { weekday: "long", month: "long", day: "numeric", year: "numeric" }, providerTimeZone)
+    : "";
+  const timeOptions: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit" };
+  const appointmentTimeLabel =
+    calendarStart && calendarEnd
+      ? totalDurationMinutes > 0
+        ? `${formatInTimeZone(calendarStart, timeOptions, providerTimeZone)} – ${formatInTimeZone(calendarEnd, timeOptions, providerTimeZone)}`
+        : formatInTimeZone(calendarStart, timeOptions, providerTimeZone)
+      : "";
+  const isAtHomeBooking = bookingForCalendar?.location_type === "at_home";
+  const directionsUrl =
+    locationStr && !isAtHomeBooking
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationStr)}`
+      : null;
+  const showNextSteps =
+    !!bookingForCalendar &&
+    !isWaitlist &&
+    !verifyFailed &&
+    !isFinalizingPayment &&
+    !isStillConfirming &&
+    !customOfferNeedsSupport;
+  const bookingPaymentStatus = String(bookingForCalendar?.payment_status ?? "").toLowerCase();
+  const paymentReceived = bookingPaymentStatus === "paid" || bookingPaymentStatus === "partially_paid";
+  const calendarOptionCount = resolvedBookingId ? 3 : 2;
+
+  const copyBookingNumber = async () => {
+    if (!bookingNumber) return;
+    try {
+      await navigator.clipboard.writeText(bookingNumber);
+      setBookingNumberCopied(true);
+      window.setTimeout(() => setBookingNumberCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy booking number");
+    }
+  };
 
   const isWalletTopup = paymentType === "wallet_topup";
   const openInAppUrl =
@@ -657,13 +759,13 @@ function CheckoutSuccessContent() {
     const providerDeepLink = isAds ? "provider://settings/ads" : "provider://settings/subscription";
     return (
       <div
-        className="min-h-screen flex items-start justify-center px-4 py-10"
+        className="relative overflow-hidden min-h-screen flex items-start justify-center px-4 py-10"
         style={{ backgroundColor: BG }}
       >
         <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
           <div
             className="absolute -top-24 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full opacity-30 blur-3xl"
-            style={{ background: `radial-gradient(ellipse, ${ACCENT}40 0%, transparent 70%)` }}
+            style={{ background: `radial-gradient(ellipse, ${accentAlpha(0.25)} 0%, transparent 70%)` }}
           />
         </div>
         <div className="relative w-full max-w-[430px] space-y-4">
@@ -683,8 +785,8 @@ function CheckoutSuccessContent() {
               <div
                 className="relative w-24 h-24 rounded-full flex items-center justify-center shadow-lg"
                 style={{
-                  background: `linear-gradient(135deg, ${ACCENT}25 0%, ${ACCENT}10 100%)`,
-                  border: `2px solid ${ACCENT}30`,
+                  background: `linear-gradient(135deg, ${accentAlpha(0.15)} 0%, ${accentAlpha(0.06)} 100%)`,
+                  border: `2px solid ${accentAlpha(0.2)}`,
                 }}
               >
                 <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -709,7 +811,7 @@ function CheckoutSuccessContent() {
             <Link
               href={providerHref}
               className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] text-sm"
-              style={{ backgroundColor: ACCENT, boxShadow: `0 8px 20px ${ACCENT}40` }}
+              style={{ backgroundColor: ACCENT, boxShadow: `0 8px 20px ${accentAlpha(0.25)}` }}
             >
               {providerHomeLabel}
             </Link>
@@ -729,18 +831,18 @@ function CheckoutSuccessContent() {
 
   return (
     <div
-      className="min-h-screen flex items-start justify-center px-4 py-10"
+      className="relative overflow-hidden min-h-screen flex items-start justify-center px-4 py-10 sm:py-14"
       style={{ backgroundColor: BG }}
     >
       {/* Confetti-style radial gradient behind the card */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
         <div
           className="absolute -top-24 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full opacity-30 blur-3xl"
-          style={{ background: `radial-gradient(ellipse, ${ACCENT}40 0%, transparent 70%)` }}
+          style={{ background: `radial-gradient(ellipse, ${accentAlpha(0.25)} 0%, transparent 70%)` }}
         />
       </div>
 
-      <div className="relative w-full max-w-[430px] space-y-4">
+      <div className="relative w-full max-w-[480px] space-y-4">
 
         {/* ── SUCCESS HERO CARD ── */}
         <div
@@ -767,7 +869,7 @@ function CheckoutSuccessContent() {
                   ? { background: "linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%)", border: "2px solid #FCA5A5" }
                   : isStillConfirming
                     ? { background: "linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)", border: "2px solid #FCD34D" }
-                    : { background: `linear-gradient(135deg, ${ACCENT}25 0%, ${ACCENT}10 100%)`, border: `2px solid ${ACCENT}30` }
+                    : { background: `linear-gradient(135deg, ${accentAlpha(0.15)} 0%, ${accentAlpha(0.06)} 100%)`, border: `2px solid ${accentAlpha(0.2)}` }
               }
             >
               {verifyFailed ? (
@@ -812,7 +914,7 @@ function CheckoutSuccessContent() {
           ) : isCustomOffer ? (
             <>
               <h1 className="text-2xl font-bold mb-2" style={{ color: TEXT_PRIMARY }}>
-                {showBookingLink ? "You&apos;re all set!" : "Payment received"}
+                {showBookingLink ? "You\u2019re all set!" : "Payment received"}
               </h1>
               <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
                 {showBookingLink
@@ -836,13 +938,24 @@ function CheckoutSuccessContent() {
                           : "Payment received"}
               </h1>
               {bookingNumber && (
-                <p className="text-xs font-bold tracking-wider uppercase mb-2" style={{ color: ACCENT }}>
-                  Booking #{bookingNumber}
-                </p>
+                <button
+                  type="button"
+                  onClick={copyBookingNumber}
+                  className="group inline-flex items-center gap-1.5 rounded-full px-3 py-1 mb-3 text-[11px] font-bold tracking-wider uppercase transition-colors hover:opacity-90"
+                  style={{ color: ACCENT, background: accentAlpha(0.08) }}
+                  aria-label={`Copy booking number ${bookingNumber}`}
+                >
+                  <span className="break-all">Booking #{bookingNumber}</span>
+                  {bookingNumberCopied ? (
+                    <Check className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 shrink-0 opacity-60 group-hover:opacity-100" aria-hidden />
+                  )}
+                </button>
               )}
               {embedReturnCountdown != null && embedReturnUrl ? (
                 <p className="text-sm leading-relaxed mb-2" style={{ color: TEXT_SECONDARY }}>
-                  Booking confirmed — returning to the salon in {embedReturnCountdown}s…
+                  {isPendingApproval ? "Booking received" : "Booking confirmed"} — returning to the salon in {embedReturnCountdown}s…
                 </p>
               ) : null}
               {verifyFailed ? (
@@ -897,19 +1010,19 @@ function CheckoutSuccessContent() {
                   {walletAmountUsed > 0 && (
                     <div className="flex justify-between text-xs" style={{ color: "#5B21B6" }}>
                       <span>Wallet credit</span>
-                      <span>{bookingData?.currency ?? ""} {walletAmountUsed.toFixed(2)}</span>
+                      <span>{formatMoney(walletAmountUsed, bookingData?.currency)}</span>
                     </div>
                   )}
                   {giftCardAmountUsed > 0 && (
                     <div className="flex justify-between text-xs" style={{ color: "#5B21B6" }}>
                       <span>Gift card</span>
-                      <span>{bookingData?.currency ?? ""} {giftCardAmountUsed.toFixed(2)}</span>
+                      <span>{formatMoney(giftCardAmountUsed, bookingData?.currency)}</span>
                     </div>
                   )}
                   {Number(bookingData?.total_paid ?? 0) > 0 && (
                     <div className="flex justify-between text-xs" style={{ color: "#5B21B6" }}>
                       <span>Card payment</span>
-                      <span>{bookingData?.currency ?? ""} {Number(bookingData?.total_paid ?? 0).toFixed(2)}</span>
+                      <span>{formatMoney(Number(bookingData?.total_paid ?? 0), bookingData?.currency)}</span>
                     </div>
                   )}
                 </div>
@@ -924,36 +1037,39 @@ function CheckoutSuccessContent() {
             className="rounded-3xl border overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100"
             style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}
           >
-            <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(0,0,0,0.06)", background: `${ACCENT}06` }}>
+            <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(0,0,0,0.06)", background: accentAlpha(0.04) }}>
               <p className="text-xs font-bold uppercase tracking-wider" style={{ color: ACCENT }}>
                 Appointment details
               </p>
             </div>
-            <div className="px-6 py-5 space-y-4">
+            <div className="px-6 py-5 space-y-5">
               {bookingForCalendar.provider?.business_name && (
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${ACCENT}12` }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 7H4a2 2 0 0 0-2 2v6c0 1.1.9 2 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
-                    </svg>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: accentAlpha(0.08) }}>
+                    <Store className="w-[18px] h-[18px]" style={{ color: ACCENT }} aria-hidden />
                   </div>
-                  <p className="text-sm font-semibold" style={{ color: TEXT_PRIMARY }}>
-                    {bookingForCalendar.provider.business_name}
-                  </p>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium uppercase tracking-wider" style={{ color: TEXT_SECONDARY }}>
+                      Provider
+                    </p>
+                    <p className="text-sm font-semibold truncate" style={{ color: TEXT_PRIMARY }}>
+                      {bookingForCalendar.provider.business_name}
+                    </p>
+                  </div>
                 </div>
               )}
 
               {calendarStart && (
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${ACCENT}12` }}>
-                    <Clock className="w-4 h-4" style={{ color: ACCENT }} />
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: accentAlpha(0.08) }}>
+                    <Calendar className="w-[18px] h-[18px]" style={{ color: ACCENT }} aria-hidden />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold" style={{ color: TEXT_PRIMARY }}>
-                      {calendarStart.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                      {appointmentDateLabel}
                     </p>
                     <p className="text-xs mt-0.5" style={{ color: TEXT_SECONDARY }}>
-                      {calendarStart.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                      {appointmentTimeLabel}
                       {totalDurationMinutes > 0 && ` · ${totalDurationMinutes} min`}
                     </p>
                   </div>
@@ -962,33 +1078,150 @@ function CheckoutSuccessContent() {
 
               {(bookingForCalendar.services?.length ?? 0) > 0 && (
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${ACCENT}12` }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-                    </svg>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: accentAlpha(0.08) }}>
+                    <Scissors className="w-[18px] h-[18px]" style={{ color: ACCENT }} aria-hidden />
                   </div>
-                  <div className="space-y-1">
-                    {(bookingForCalendar.services ?? []).map((s, i) => (
-                      <p key={i} className="text-sm" style={{ color: TEXT_PRIMARY }}>
-                        {s.offering_name ?? s.title ?? "Service"}
-                        <span className="ms-1.5 text-xs" style={{ color: TEXT_SECONDARY }}>
-                          {(s.duration_minutes ?? s.duration) != null && `${s.duration_minutes ?? s.duration} min`}
-                        </span>
-                      </p>
-                    ))}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-medium uppercase tracking-wider mb-1" style={{ color: TEXT_SECONDARY }}>
+                      {(bookingForCalendar.services?.length ?? 0) > 1 ? "Services" : "Service"}
+                    </p>
+                    <ul className="space-y-1.5">
+                      {(bookingForCalendar.services ?? []).map((s, i) => {
+                        const minutes = s.duration_minutes ?? s.duration;
+                        return (
+                          <li key={i} className="flex items-baseline justify-between gap-3 text-sm">
+                            <span className="font-medium min-w-0 break-words" style={{ color: TEXT_PRIMARY }}>
+                              {s.offering_name ?? s.title ?? "Service"}
+                            </span>
+                            {minutes != null && minutes > 0 && (
+                              <span className="shrink-0 text-xs tabular-nums" style={{ color: TEXT_SECONDARY }}>
+                                {minutes} min
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </div>
                 </div>
               )}
 
               {locationStr && (
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${ACCENT}12` }}>
-                    <MapPin className="w-4 h-4" style={{ color: ACCENT }} />
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: accentAlpha(0.08) }}>
+                    {isAtHomeBooking ? (
+                      <Home className="w-[18px] h-[18px]" style={{ color: ACCENT }} aria-hidden />
+                    ) : (
+                      <MapPin className="w-[18px] h-[18px]" style={{ color: ACCENT }} aria-hidden />
+                    )}
                   </div>
-                  <p className="text-sm" style={{ color: TEXT_PRIMARY }}>{locationStr}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-medium uppercase tracking-wider" style={{ color: TEXT_SECONDARY }}>
+                      {isAtHomeBooking ? "At your address" : "At the salon"}
+                    </p>
+                    <p className="text-sm break-words" style={{ color: TEXT_PRIMARY }}>{locationStr}</p>
+                    {directionsUrl && (
+                      <a
+                        href={directionsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold hover:underline"
+                        style={{ color: ACCENT }}
+                      >
+                        <Navigation className="w-3.5 h-3.5" aria-hidden />
+                        Get directions
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ── WHAT HAPPENS NEXT ── */}
+        {showNextSteps && (
+          <div
+            className="rounded-3xl border p-5 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100"
+            style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}
+          >
+            <p className="text-sm font-bold mb-4" style={{ color: TEXT_PRIMARY }}>
+              What happens next
+            </p>
+            <ol className="relative space-y-4">
+              {(
+                [
+                  ...(paymentReceived
+                    ? [
+                        {
+                          key: "paid",
+                          icon: CreditCard,
+                          title: "Payment received",
+                          body: "Your payment has been processed successfully.",
+                          state: "done",
+                        } as const,
+                      ]
+                    : []),
+                  isPendingApproval
+                    ? {
+                        key: "confirm",
+                        icon: Clock,
+                        title: `${bookingForCalendar?.provider?.business_name ?? "The provider"} confirms`,
+                        body: "We\u2019ll notify you as soon as your appointment is accepted.",
+                        state: "current",
+                      }
+                    : {
+                        key: "confirm",
+                        icon: Check,
+                        title: "Appointment confirmed",
+                        body: "Your time slot is reserved.",
+                        state: "done",
+                      },
+                  {
+                    key: "remind",
+                    icon: Bell,
+                    title: "Reminder before your visit",
+                    body: "We\u2019ll send a reminder ahead of your appointment.",
+                    state: "upcoming",
+                  },
+                ] as const
+              ).map((step, idx, arr) => {
+                const Icon = step.icon;
+                const isDone = step.state === "done";
+                const isCurrent = step.state === "current";
+                return (
+                  <li key={step.key} className="relative flex gap-3">
+                    {idx < arr.length - 1 && (
+                      <span
+                        className="absolute left-[15px] top-8 bottom-[-16px] w-px"
+                        style={{ background: isDone ? accentAlpha(0.35) : "#E5E7EB" }}
+                        aria-hidden
+                      />
+                    )}
+                    <span
+                      className="relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                      style={
+                        isDone
+                          ? { background: ACCENT, color: "#fff" }
+                          : isCurrent
+                            ? { background: "#FEF3C7", color: "#B45309", boxShadow: "0 0 0 4px #FFFBEB" }
+                            : { background: "#F3F4F6", color: "#9CA3AF" }
+                      }
+                    >
+                      <Icon className="w-4 h-4" aria-hidden />
+                    </span>
+                    <div className="min-w-0 pt-1">
+                      <p className="text-sm font-semibold leading-tight" style={{ color: isDone || isCurrent ? TEXT_PRIMARY : TEXT_SECONDARY }}>
+                        {step.title}
+                      </p>
+                      <p className="text-xs mt-0.5 leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+                        {step.body}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         )}
 
@@ -1038,12 +1271,21 @@ function CheckoutSuccessContent() {
               className="rounded-3xl border overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-125"
               style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}
             >
-              <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(0,0,0,0.06)", background: `${ACCENT}06` }}>
+              <div className="px-6 py-4 border-b flex items-center justify-between gap-3" style={{ borderColor: "rgba(0,0,0,0.06)", background: accentAlpha(0.04) }}>
                 <p className="text-xs font-bold uppercase tracking-wider" style={{ color: ACCENT }}>
                   Payment summary
                 </p>
+                {paymentReceived && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                    style={{ background: "#ECFDF5", color: "#047857" }}
+                  >
+                    <Check className="w-3 h-3" aria-hidden />
+                    {bookingPaymentStatus === "partially_paid" ? "Deposit paid" : "Paid"}
+                  </span>
+                )}
               </div>
-              <div className="px-6 py-5 space-y-1.5 text-sm">
+              <div className="px-6 py-5 space-y-2 text-sm">
                 {showSubtotal && (
                   <div className="flex justify-between" style={{ color: TEXT_SECONDARY }}>
                     <span>Subtotal</span>
@@ -1107,9 +1349,9 @@ function CheckoutSuccessContent() {
                   </div>
                 )}
                 {total > 0 && (
-                  <div className="mt-2 pt-3 flex justify-between font-semibold" style={{ color: TEXT_PRIMARY, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-                    <span>Total</span>
-                    <span>{formatMoney(total, cur)}</span>
+                  <div className="mt-3 pt-3 flex items-baseline justify-between" style={{ color: TEXT_PRIMARY, borderTop: "1px dashed rgba(0,0,0,0.12)" }}>
+                    <span className="font-semibold">Total</span>
+                    <span className="text-lg font-bold tabular-nums">{formatMoney(total, cur)}</span>
                   </div>
                 )}
               </div>
@@ -1129,35 +1371,44 @@ function CheckoutSuccessContent() {
             <p className="text-xs mb-4" style={{ color: TEXT_SECONDARY }}>
               Never miss your appointment — add it now.
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className={`grid gap-2 ${calendarOptionCount === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
               <a
                 href={getGoogleCalendarUrl(calendarEvent)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3.5 border transition-all active:scale-[0.97] hover:shadow-sm"
+                aria-label="Add to Google Calendar"
+                className="flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3.5 border transition-all active:scale-[0.97] hover:shadow-sm hover:bg-[#F9FAFB]"
                 style={{ borderColor: "#E5E7EB", color: TEXT_PRIMARY }}
               >
-                <Plus className="w-4 h-4" style={{ color: "#4285F4" }} />
+                <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#EEF4FF" }}>
+                  <Plus className="w-4 h-4" style={{ color: "#4285F4" }} aria-hidden />
+                </span>
                 <span className="text-xs font-semibold">Google</span>
               </a>
               <a
                 href={getOutlookCalendarUrl(calendarEvent)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3.5 border transition-all active:scale-[0.97] hover:shadow-sm"
+                aria-label="Add to Outlook Calendar"
+                className="flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3.5 border transition-all active:scale-[0.97] hover:shadow-sm hover:bg-[#F9FAFB]"
                 style={{ borderColor: "#E5E7EB", color: TEXT_PRIMARY }}
               >
-                <Calendar className="w-4 h-4" style={{ color: "#0072C6" }} />
+                <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#E8F3FB" }}>
+                  <Calendar className="w-4 h-4" style={{ color: "#0072C6" }} aria-hidden />
+                </span>
                 <span className="text-xs font-semibold">Outlook</span>
               </a>
               {resolvedBookingId && (
                 <a
                   href={`/api/me/bookings/${resolvedBookingId}/calendar.ics`}
                   download
-                  className="flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3.5 border transition-all active:scale-[0.97] hover:shadow-sm"
+                  aria-label="Download for Apple Calendar"
+                  className="flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3.5 border transition-all active:scale-[0.97] hover:shadow-sm hover:bg-[#F9FAFB]"
                   style={{ borderColor: "#E5E7EB", color: TEXT_PRIMARY }}
                 >
-                  <Download className="w-4 h-4" style={{ color: "#6B7280" }} />
+                  <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#F3F4F6" }}>
+                    <Download className="w-4 h-4" style={{ color: "#374151" }} aria-hidden />
+                  </span>
                   <span className="text-xs font-semibold">Apple</span>
                 </a>
               )}
@@ -1205,6 +1456,18 @@ function CheckoutSuccessContent() {
                 bank confirms.
               </span>
             </div>
+          ) : customOfferNeedsSupport ? (
+            <div
+              className="rounded-2xl border px-4 py-3 text-sm leading-relaxed"
+              style={{
+                borderColor: "rgba(220, 38, 38, 0.35)",
+                background: "rgba(254, 226, 226, 0.7)",
+                color: "#991B1B",
+              }}
+              role="alert"
+            >
+              <strong>Payment needs support.</strong> We received the payment but could not create the booking. Contact support with your payment reference. Do not pay this offer again.
+            </div>
           ) : customOfferTimedOut ? (
             <div
               className="rounded-2xl border px-4 py-3 text-sm leading-relaxed"
@@ -1219,27 +1482,38 @@ function CheckoutSuccessContent() {
               <strong>Custom requests</strong> from your account to check status, or pull to refresh in the app.
             </div>
           ) : null}
-          {/* App deep link first — primary CTA for mobile WebView returns after Paystack */}
-          <a
-            href={openInAppUrl}
-            target={embed ? "_top" : undefined}
-            className="flex items-center justify-center gap-2.5 w-full min-h-[52px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] hover:opacity-95 text-sm"
-            style={{ backgroundColor: ACCENT, boxShadow: `0 8px 24px ${ACCENT}40` }}
-          >
-            <Smartphone className="w-5 h-5 shrink-0" strokeWidth={2.25} aria-hidden />
-            Open in Beautonomi app
-          </a>
-          <p className="text-center text-[11px] leading-snug -mt-1 px-1" style={{ color: TEXT_SECONDARY }}>
-            {appCtaSubtext}
-          </p>
+          {/* Desktop: custom-scheme deep links can't open, so the web destination is primary. */}
           <Link
             href={webPrimaryHref}
             target={embed ? "_top" : undefined}
-            className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-semibold border transition-all active:scale-[0.98] hover:bg-[#F9FAFB] text-sm"
-            style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB", background: "#fff" }}
+            className="hidden md:flex items-center justify-center gap-2 w-full min-h-[52px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] hover:opacity-95 text-sm"
+            style={{ backgroundColor: ACCENT, boxShadow: `0 8px 24px ${accentAlpha(0.25)}` }}
           >
             {webPrimaryLabel}
           </Link>
+          {/* Mobile: app deep link first — primary CTA for mobile WebView returns after Paystack */}
+          <div className="md:hidden space-y-3">
+            <a
+              href={openInAppUrl}
+              target={embed ? "_top" : undefined}
+              className="flex items-center justify-center gap-2.5 w-full min-h-[52px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] hover:opacity-95 text-sm"
+              style={{ backgroundColor: ACCENT, boxShadow: `0 8px 24px ${accentAlpha(0.25)}` }}
+            >
+              <Smartphone className="w-5 h-5 shrink-0" strokeWidth={2.25} aria-hidden />
+              Open in Beautonomi app
+            </a>
+            <p className="text-center text-[11px] leading-snug -mt-1 px-1" style={{ color: TEXT_SECONDARY }}>
+              {appCtaSubtext}
+            </p>
+            <Link
+              href={webPrimaryHref}
+              target={embed ? "_top" : undefined}
+              className="flex items-center justify-center gap-2 w-full min-h-[48px] rounded-2xl font-semibold border transition-all active:scale-[0.98] hover:bg-[#F9FAFB] text-sm"
+              style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB", background: "#fff" }}
+            >
+              {webPrimaryLabel}
+            </Link>
+          </div>
           {resolvedBookingId && !isWaitlist && !verifyFailed && (
             <div className="grid grid-cols-2 gap-2 pt-1">
               <Link
@@ -1253,9 +1527,13 @@ function CheckoutSuccessContent() {
               </Link>
               <button
                 type="button"
-                className="flex items-center justify-center gap-2 min-h-[44px] rounded-2xl font-medium border text-sm transition-all active:scale-[0.98] hover:bg-[#F9FAFB]"
+                disabled={sharing}
+                aria-busy={sharing}
+                className="flex items-center justify-center gap-2 min-h-[44px] rounded-2xl font-medium border text-sm transition-all active:scale-[0.98] hover:bg-[#F9FAFB] disabled:opacity-60 disabled:cursor-wait"
                 style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB", background: "#fff" }}
                 onClick={async () => {
+                  if (sharing) return;
+                  setSharing(true);
                   try {
                     const { shareCustomerBookingReceiptWeb } = await import(
                       "@/lib/receipts/share-receipt-client"
@@ -1263,11 +1541,15 @@ function CheckoutSuccessContent() {
                     const result = await shareCustomerBookingReceiptWeb(resolvedBookingId);
                     if (result === "copied") {
                       toast.success(t("web.booking.confirmation.receiptCopied"));
+                    } else if (result === null) {
+                      toast.error(t("web.booking.confirmation.couldNotShare"));
                     }
                   } catch (e) {
                     toast.error(
                       e instanceof Error ? e.message : t("web.booking.confirmation.couldNotShare"),
                     );
+                  } finally {
+                    setSharing(false);
                   }
                 }}
               >
@@ -1289,50 +1571,55 @@ function CheckoutSuccessContent() {
         </div>
 
         {/* ── APP DOWNLOAD BANNER ── */}
+        {!nativeAppContext && (
         <div
           className="rounded-3xl border p-5 text-center animate-in fade-in slide-in-from-bottom-4 duration-500 delay-300"
           style={{
-            background: `linear-gradient(135deg, ${ACCENT}08 0%, transparent 100%)`,
-            borderColor: `${ACCENT}20`,
+            background: `linear-gradient(135deg, ${accentAlpha(0.06)} 0%, #fff 100%)`,
+            borderColor: accentAlpha(0.15),
             boxShadow: "0 2px 12px rgba(0,0,0,0.04)"
           }}
         >
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Smartphone className="w-5 h-5" style={{ color: ACCENT }} />
-            <p className="text-sm font-bold" style={{ color: TEXT_PRIMARY }}>
-              Get the Beautonomi app
-            </p>
+          <div
+            className="mx-auto mb-3 w-11 h-11 rounded-2xl flex items-center justify-center"
+            style={{ background: accentAlpha(0.1) }}
+          >
+            <Smartphone className="w-5 h-5" style={{ color: ACCENT }} aria-hidden />
           </div>
+          <p className="text-sm font-bold mb-1" style={{ color: TEXT_PRIMARY }}>
+            Get the Beautonomi app
+          </p>
           <p className="text-xs mb-4" style={{ color: TEXT_SECONDARY }}>
             Manage bookings, track loyalty points, and book again in seconds.
           </p>
-          <div className="flex gap-2 justify-center">
+          <div className="flex flex-wrap gap-2 justify-center">
             <a
-              href="https://apps.apple.com/app/beautonomi"
+              href={NATIVE_STORE.customer.defaultAppStoreUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border transition-all active:scale-[0.97]"
-              style={{ borderColor: "rgba(0,0,0,0.12)", color: TEXT_PRIMARY, background: "#fff" }}
+              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold text-white transition-all active:scale-[0.97] hover:opacity-90"
+              style={{ background: "#111827" }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ color: TEXT_PRIMARY }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                 <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
               </svg>
               App Store
             </a>
             <a
-              href="https://play.google.com/store/apps/details?id=com.beautonomi"
+              href={NATIVE_STORE.customer.defaultPlayStoreUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border transition-all active:scale-[0.97]"
-              style={{ borderColor: "rgba(0,0,0,0.12)", color: TEXT_PRIMARY, background: "#fff" }}
+              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold text-white transition-all active:scale-[0.97] hover:opacity-90"
+              style={{ background: "#111827" }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#34a853" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#34a853" }} aria-hidden>
                 <path d="m3 20.5v-17c0-.83 1.01-1.31 1.63-.78l14.84 8.5c.57.33.57 1.13 0 1.46L4.63 21.28C4.01 21.81 3 21.33 3 20.5z"/>
               </svg>
               Google Play
             </a>
           </div>
         </div>
+        )}
 
       </div>
     </div>

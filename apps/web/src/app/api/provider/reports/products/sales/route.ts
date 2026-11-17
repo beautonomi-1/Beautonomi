@@ -1,3 +1,5 @@
+import { subtractMoney, multiplyMoney, addMoney } from "@beautonomi/utils";
+import { saleLineKeptAmounts } from "@/lib/payroll/commission-calculator";
 import { NextRequest } from "next/server";
 import {
   requireRoleInApi,
@@ -32,6 +34,15 @@ type AggRow = {
   profit: number;
   prices: number[];
 };
+
+/** A stored line total of 0 is free. Unit price times quantity is used only when no total was stored. */
+function lineCharge(totalPrice: unknown, unitPrice: number, quantity: number): number {
+  if (totalPrice != null && totalPrice !== "") {
+    const n = Number(totalPrice);
+    if (Number.isFinite(n)) return n;
+  }
+  return multiplyMoney(unitPrice, quantity);
+}
 
 /**
  * GET /api/provider/reports/products/sales
@@ -97,6 +108,10 @@ export async function GET(request: NextRequest) {
           fulfillment_type,
           collection_location_id,
           order_source,
+          subtotal,
+          discount_amount,
+          total_amount,
+          refunded_amount,
           product_order_items (
             id,
             product_id,
@@ -113,7 +128,7 @@ export async function GET(request: NextRequest) {
           )
         `)
       .eq("provider_id", providerId)
-      .eq("payment_status", "paid")
+      .in("payment_status", ["paid", "partially_refunded", "refunded"])
       .or("order_source.is.null,order_source.neq.appointment")
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString());
@@ -155,15 +170,14 @@ export async function GET(request: NextRequest) {
       const category = bp.products?.category || "Uncategorized";
       const quantity = Number(bp.quantity || 0);
       const unitPrice = Number(bp.unit_price || 0);
-      const totalPrice = Number(bp.total_price || 0);
-      const revenue = totalPrice > 0 ? totalPrice : quantity * unitPrice;
+      const revenue = lineCharge(bp.total_price, unitPrice, quantity);
       const supplyPrice = Number(bp.products?.supply_price || 0);
-      const cost = quantity * supplyPrice;
-      const profit = revenue - cost;
+      const cost = multiplyMoney(supplyPrice, quantity);
+      const profit = subtractMoney(revenue, cost);
 
       unitsFromBookings += quantity;
-      revenueFromBookings += revenue;
-      costFromBookings += cost;
+      revenueFromBookings = addMoney(revenueFromBookings, revenue);
+      costFromBookings = addMoney(costFromBookings, cost);
 
       const existing = productSalesMap.get(productId) || {
         productId,
@@ -175,10 +189,10 @@ export async function GET(request: NextRequest) {
         prices: [],
       };
       existing.quantitySold += quantity;
-      existing.revenue += revenue;
-      existing.cost += cost;
-      existing.profit += profit;
-      existing.prices.push(unitPrice || (quantity > 0 ? revenue / quantity : 0));
+      existing.revenue = addMoney(existing.revenue, revenue);
+      existing.cost = addMoney(existing.cost, cost);
+      existing.profit = addMoney(existing.profit, profit);
+      existing.prices.push(unitPrice || (quantity > 0 ? multiplyMoney(revenue, 1 / quantity) : 0));
       productSalesMap.set(productId, existing);
 
       const catExisting = categoryMap.get(category) || {
@@ -188,27 +202,25 @@ export async function GET(request: NextRequest) {
         profit: 0,
       };
       catExisting.quantitySold += quantity;
-      catExisting.revenue += revenue;
-      catExisting.cost += cost;
-      catExisting.profit += profit;
+      catExisting.revenue = addMoney(catExisting.revenue, revenue);
+      catExisting.cost = addMoney(catExisting.cost, cost);
+      catExisting.profit = addMoney(catExisting.profit, profit);
       categoryMap.set(category, catExisting);
     };
 
-    const pushOrderLine = (item: any) => {
+    const pushOrderLine = (item: any, revenue: number) => {
       const productId = item.product_id;
       const productName = item.products?.name || item.product_name || "Unknown Product";
       const category = item.products?.category || "Uncategorized";
       const quantity = Number(item.quantity || 0);
       const unitPrice = Number(item.unit_price || 0);
-      const totalPrice = Number(item.total_price || 0);
-      const revenue = totalPrice > 0 ? totalPrice : quantity * unitPrice;
       const supplyPrice = Number(item.products?.supply_price || 0);
-      const cost = quantity * supplyPrice;
-      const profit = revenue - cost;
+      const cost = multiplyMoney(supplyPrice, quantity);
+      const profit = subtractMoney(revenue, cost);
 
       unitsFromOrders += quantity;
-      revenueFromOrders += revenue;
-      costFromOrders += cost;
+      revenueFromOrders = addMoney(revenueFromOrders, revenue);
+      costFromOrders = addMoney(costFromOrders, cost);
 
       const existing = productSalesMap.get(productId) || {
         productId,
@@ -220,10 +232,10 @@ export async function GET(request: NextRequest) {
         prices: [],
       };
       existing.quantitySold += quantity;
-      existing.revenue += revenue;
-      existing.cost += cost;
-      existing.profit += profit;
-      existing.prices.push(unitPrice || (quantity > 0 ? revenue / quantity : 0));
+      existing.revenue = addMoney(existing.revenue, revenue);
+      existing.cost = addMoney(existing.cost, cost);
+      existing.profit = addMoney(existing.profit, profit);
+      existing.prices.push(unitPrice || (quantity > 0 ? multiplyMoney(revenue, 1 / quantity) : 0));
       productSalesMap.set(productId, existing);
 
       const catExisting = categoryMap.get(category) || {
@@ -233,9 +245,9 @@ export async function GET(request: NextRequest) {
         profit: 0,
       };
       catExisting.quantitySold += quantity;
-      catExisting.revenue += revenue;
-      catExisting.cost += cost;
-      catExisting.profit += profit;
+      catExisting.revenue = addMoney(catExisting.revenue, revenue);
+      catExisting.cost = addMoney(catExisting.cost, cost);
+      catExisting.profit = addMoney(catExisting.profit, profit);
       categoryMap.set(category, catExisting);
     };
 
@@ -246,16 +258,32 @@ export async function GET(request: NextRequest) {
 
     (sales || []).forEach((sale) => {
       if (!sale.product_order_items || !Array.isArray(sale.product_order_items)) return;
+      const items = sale.product_order_items as Array<{
+        id?: string;
+        quantity?: number;
+        unit_price?: number;
+        total_price?: number;
+      }>;
+      const kept = saleLineKeptAmounts({
+        lines: items.map((item, index) => ({
+          id: String(item.id ?? index),
+          lineTotal: lineCharge(item.total_price, Number(item.unit_price || 0), Number(item.quantity || 0)),
+        })),
+        subtotal: Number((sale as { subtotal?: number }).subtotal || 0),
+        discountAmount: Number((sale as { discount_amount?: number }).discount_amount || 0),
+        totalAmount: Number((sale as { total_amount?: number }).total_amount || 0),
+        refundedAmount: Number((sale as { refunded_amount?: number }).refunded_amount || 0),
+      });
       let orderUnits = 0;
       let orderRevenue = 0;
-      sale.product_order_items.forEach((item: unknown) => {
-        const quantity = Number((item as { quantity?: number }).quantity || 0);
-        const unitPrice = Number((item as { unit_price?: number }).unit_price || 0);
-        const totalPrice = Number((item as { total_price?: number }).total_price || 0);
-        const lineRevenue = totalPrice > 0 ? totalPrice : quantity * unitPrice;
+      items.forEach((item, index) => {
+        const quantity = Number(item.quantity || 0);
+        const gross = lineCharge(item.total_price, Number(item.unit_price || 0), quantity);
+        const lineRevenue = gross > 0 ? (kept.get(String(item.id ?? index)) ?? 0) : 0;
+        if (gross > 0 && lineRevenue <= 0) return;
         orderUnits += quantity;
-        orderRevenue += lineRevenue;
-        pushOrderLine(item);
+        orderRevenue = addMoney(orderRevenue, lineRevenue);
+        pushOrderLine(item, lineRevenue);
       });
       retailChannelOrders.push({
         order_source: sale.order_source,
@@ -267,10 +295,10 @@ export async function GET(request: NextRequest) {
     const by_channel = computeOrderSourceBreakdown({ orders: retailChannelOrders });
 
     const totalProductsSold = Array.from(productSalesMap.values()).reduce((sum, p) => sum + p.quantitySold, 0);
-    const totalRevenue = Array.from(productSalesMap.values()).reduce((sum, p) => sum + p.revenue, 0);
-    const totalCost = Array.from(productSalesMap.values()).reduce((sum, p) => sum + p.cost, 0);
-    const totalProfit = totalRevenue - totalCost;
-    const averageRevenuePerUnitSold = totalProductsSold > 0 ? totalRevenue / totalProductsSold : 0;
+    const totalRevenue = Array.from(productSalesMap.values()).reduce((sum, p) => addMoney(sum, p.revenue), 0);
+    const totalCost = Array.from(productSalesMap.values()).reduce((sum, p) => addMoney(sum, p.cost), 0);
+    const totalProfit = subtractMoney(totalRevenue, totalCost);
+    const averageRevenuePerUnitSold = totalProductsSold > 0 ? multiplyMoney(totalRevenue, 1 / totalProductsSold) : 0;
 
     const topProducts = Array.from(productSalesMap.values())
       .map((product) => ({
@@ -282,7 +310,7 @@ export async function GET(request: NextRequest) {
         profit: product.profit,
         averagePrice:
           product.prices.length > 0
-            ? product.prices.reduce((sum, pr) => sum + pr, 0) / product.prices.length
+            ? multiplyMoney(product.prices.reduce((sum, pr) => addMoney(sum, pr), 0), 1 / product.prices.length)
             : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue)
@@ -301,9 +329,9 @@ export async function GET(request: NextRequest) {
     const reportBasis =
       `Period ${fromYmd}–${toYmd} (${reportContext.timezone}). Two date bases are combined: ` +
       `appointment add-ons use bookings with scheduled_at in range and status in completed, confirmed, in_progress, checked_in; ` +
-      `standalone retail uses paid product_orders with created_at in range. ` +
+      `standalone retail uses product_orders created in range whose payment is paid, partially refunded, or refunded. ` +
       `Orders with order_source=appointment are excluded here because their lines are represented on booking_products. ` +
-      `Line revenue uses total_price when present, else quantity × unit_price. Cost uses supply_price × quantity when the product has supply_price.`;
+      `A stored line total of 0 stays 0. A walk-in order's discount and refund are shared across its lines, and a line whose kept amount is 0 is left out. Cost uses supply_price × quantity when the product has supply_price.`;
 
     return successResponse({
       timezone: reportContext.timezone,
@@ -314,7 +342,7 @@ export async function GET(request: NextRequest) {
         bookingLines:
           "booking_products on appointments whose scheduled_at falls in the window (location applies to the booking when filtered).",
         orderLines:
-          "product_order_items on paid orders whose created_at falls in the window; appointment-mirror orders excluded.",
+          "product_order_items on paid, partially refunded, or refunded orders whose created_at falls in the window; appointment-mirror orders excluded. Revenue is the amount still kept after the order discount and refund.",
         profit: "Revenue minus Σ (supply_price × qty) where supply_price is stored on the product.",
         topProducts: "Top 10 products by aggregated line revenue in this period.",
         averageRevenuePerUnit:

@@ -39,6 +39,12 @@ export function resolveStaffRates(staff: StaffRateFields): ResolvedStaffRates {
   };
 }
 
+/** The rate that matches this period's commission and sales. No sales shows the plan rate, including 0%. */
+export function shownCommissionRate(commission: number, revenue: number, planRate: number): number {
+  if (revenue === 0) return planRate;
+  return (commission / revenue) * 100;
+}
+
 /** True when DB still has legacy-only rates (migration / audit helper). */
 export function hasStaleLegacyCommissionRates(staff: StaffRateFields): boolean {
   const svc = num(staff.service_commission_rate);

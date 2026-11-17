@@ -69,6 +69,10 @@ export function MessageAlertListener() {
   useEffect(() => {
     void refreshAlertSoundPrefs();
     return subscribeAlertSoundPrefs(() => {
+      if (getAlertSoundPrefs().message_alert_sound === false) {
+        cueRef.current?.stop();
+        cueRef.current = null;
+      }
       void refreshAlertSoundPrefs();
     });
   }, []);

@@ -7,6 +7,7 @@ import {
   snapshotFromJson,
   type CancellationPolicySnapshot,
 } from "@/lib/bookings/effective-cancellation-policy";
+import { subtractMoney } from "@beautonomi/utils";
 import { computeCancellationRefundAmount, roundCurrency2 } from "@/lib/bookings/refund-processing";
 
 export type CancelActor =
@@ -95,7 +96,7 @@ const BLOCKED_STAGES = new Set([
 function feeBasisTotal(booking: ResolveCancellationOutcomeInput["booking"]): number {
   const total = Math.max(0, Number(booking.total_amount ?? 0));
   const tip = Math.max(0, Number(booking.tip_amount ?? 0));
-  return roundCurrency2(Math.max(0, total - tip));
+  return Math.max(0, subtractMoney(total, tip));
 }
 
 function isPendingStatus(status: string): boolean {
@@ -226,13 +227,13 @@ export function resolveCancellationOutcome(
 
   const basis = feeBasisTotal(input.booking);
   const tip = Math.max(0, Number(input.booking.tip_amount ?? 0));
-  const tipPaidOnline = Math.min(tip, Math.max(0, platformCollected - basis));
-  const feeCap = roundCurrency2(Math.max(0, Math.min(basis, platformCollected - tipPaidOnline)));
+  const tipPaidOnline = Math.min(tip, Math.max(0, subtractMoney(platformCollected, basis)));
+  const feeCap = roundCurrency2(Math.max(0, Math.min(basis, subtractMoney(platformCollected, tipPaidOnline))));
 
   if (input.actor === "no_show") {
     let fee = policy.no_show_fee_enabled ? Number(policy.no_show_fee_amount ?? 0) : 0;
     fee = roundCurrency2(Math.min(Math.max(0, fee), feeCap));
-    const walletRefund = roundCurrency2(Math.max(0, platformCollected - fee));
+    const walletRefund = Math.max(0, subtractMoney(platformCollected, fee));
     return {
       allowed: true,
       isLate: false,
@@ -258,7 +259,7 @@ export function resolveCancellationOutcome(
       platformCollected,
       inPersonCollected,
       feeRetained: adminFee,
-      walletRefund: roundCurrency2(Math.max(0, platformCollected - adminFee)),
+      walletRefund: Math.max(0, subtractMoney(platformCollected, adminFee)),
       inPersonRefundDue: inPersonCollected,
       policy,
       noShowAvailableAt: noShowAt.toISOString(),
@@ -268,9 +269,9 @@ export function resolveCancellationOutcome(
   const policyRefund = penaltyWaivedReason
     ? basis
     : computeCancellationRefundAmount(basis, policy, isLate);
-  const theoreticalFee = roundCurrency2(Math.max(0, basis - policyRefund));
+  const theoreticalFee = Math.max(0, subtractMoney(basis, policyRefund));
   const feeRetained = roundCurrency2(Math.min(theoreticalFee, feeCap));
-  const walletRefund = roundCurrency2(Math.max(0, platformCollected - feeRetained));
+  const walletRefund = Math.max(0, subtractMoney(platformCollected, feeRetained));
 
   return {
     allowed: check.allowed,

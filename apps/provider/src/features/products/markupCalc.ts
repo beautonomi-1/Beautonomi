@@ -1,3 +1,5 @@
+import { addMoney, percentOf } from "@beautonomi/utils";
+
 export function computeMarkupFromPrices(supply: number, retail: number): number {
   if (!Number.isFinite(supply) || supply <= 0) return 0;
   if (!Number.isFinite(retail)) return 0;
@@ -7,5 +9,5 @@ export function computeMarkupFromPrices(supply: number, retail: number): number 
 export function computeRetailFromMarkup(supply: number, markup: number): number {
   if (!Number.isFinite(supply) || supply < 0) return 0;
   if (!Number.isFinite(markup)) return supply;
-  return Math.round(supply * (1 + markup / 100) * 100) / 100;
+  return addMoney(supply, percentOf(supply, markup));
 }

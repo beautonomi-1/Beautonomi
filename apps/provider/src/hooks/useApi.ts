@@ -34,6 +34,12 @@ import {
 export { clearApiCache, prefetchApi, MONEY_SURFACE_STALE_TIME_MS, MONEY_SURFACE_TIMEOUT_MS };
 
 const DEFAULT_LOADING_TIMEOUT_MS = 15000;
+/**
+ * `timeoutMs` also drives the "Taking too long?" hint, but aborting the fetch that
+ * early throws away responses the server is about to deliver: under load, reads
+ * routinely land at 20–30s, and an abort + refetch only adds to the congestion.
+ */
+const MIN_REQUEST_TIMEOUT_MS = 30_000;
 /** In-memory reuse — show cached data instantly; silent refresh on resume keeps UI stable. */
 const DEFAULT_STALE_TIME_MS = 5 * 60 * 1000;
 const RESUME_REFETCH_JITTER_BUCKETS = 16;
@@ -199,7 +205,8 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       const requestPromise =
         inflight ??
         (async () => {
-          const timeoutOpt = timeoutMs > 0 ? { timeout: timeoutMs } : undefined;
+          const timeoutOpt =
+            timeoutMs > 0 ? { timeout: Math.max(timeoutMs, MIN_REQUEST_TIMEOUT_MS) } : undefined;
           let result = await api.get<T>(path, timeoutOpt);
           if (
             result.error &&
@@ -409,9 +416,14 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
 }
 
 const MONEY_MUTATION_TIMEOUT_MS = 120_000;
+/** Group create books every participant server-side (route maxDuration 60s). */
+const GROUP_CREATE_TIMEOUT_MS = 75_000;
 
 function timeoutForMutationPath(path: string, explicit?: number): number | undefined {
   if (typeof explicit === "number") return explicit;
+  if (/^\/api\/provider\/group-bookings\/?(\?|$)/.test(path)) {
+    return GROUP_CREATE_TIMEOUT_MS;
+  }
   if (
     /\/api\/provider\/(sales|product-sales|payouts|payments)\b/.test(path) ||
     /\/api\/payments\//.test(path) ||

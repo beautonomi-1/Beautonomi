@@ -68,3 +68,14 @@ export async function markOnlinePaymentCheckoutStatus(
     .update({ status, updated_at: new Date().toISOString() })
     .eq("reference", reference);
 }
+
+/** Marks a pending checkout failed. Returns true only on the first claim. */
+export async function claimOnlinePaymentCheckoutFailed(reference: string): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await (supabase.from("online_payment_checkouts") as any)
+    .update({ status: "failed", updated_at: new Date().toISOString() })
+    .eq("reference", reference)
+    .eq("status", "pending")
+    .select("reference");
+  return (data?.length ?? 0) > 0;
+}

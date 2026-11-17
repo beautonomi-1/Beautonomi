@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
@@ -91,13 +92,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate metrics
-    const totalSales = (salesTransactions || []).reduce((sum, t) => sum + Number(t.amount || 0), 0);
-    const totalSalesNet = (salesTransactions || []).reduce((sum, t) => sum + Number(t.net || 0), 0);
-    const totalRedemptions = (redemptions || []).reduce((sum, r) => sum + Number(r.amount || 0), 0);
+    const totalSales = (salesTransactions || []).reduce((sum, t) => addMoney(sum, Number(t.amount || 0)), 0);
+    const totalSalesNet = (salesTransactions || []).reduce((sum, t) => addMoney(sum, Number(t.net || 0)), 0);
+    const totalRedemptions = (redemptions || []).reduce((sum, r) => addMoney(sum, Number(r.amount || 0)), 0);
     const totalOrders = (orders || []).length;
     const totalRedemptionCount = (redemptions || []).length;
-    const outstandingLiability = (activeGiftCards || []).reduce((sum, g) => sum + Number(g.balance || 0), 0);
-    const totalIssued = (activeGiftCards || []).reduce((sum, g) => sum + Number(g.initial_balance || 0), 0);
+    const outstandingLiability = (activeGiftCards || []).reduce((sum, g) => addMoney(sum, Number(g.balance || 0)), 0);
+    const totalIssued = (activeGiftCards || []).reduce((sum, g) => addMoney(sum, Number(g.initial_balance || 0)), 0);
     
     // Calculate redemption rate
     const redemptionRate = totalOrders > 0 ? (totalRedemptionCount / totalOrders) * 100 : 0;
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
       if (!salesByDay[date]) {
         salesByDay[date] = { sales: 0, count: 0 };
       }
-      salesByDay[date].sales += Number(t.amount || 0);
+      salesByDay[date].sales = addMoney(salesByDay[date].sales, Number(t.amount || 0));
       salesByDay[date].count += 1;
     });
 
@@ -125,7 +126,7 @@ export async function GET(request: NextRequest) {
       if (!redemptionsByDay[date]) {
         redemptionsByDay[date] = { redemptions: 0, count: 0 };
       }
-      redemptionsByDay[date].redemptions += Number(r.amount || 0);
+      redemptionsByDay[date].redemptions = addMoney(redemptionsByDay[date].redemptions, Number(r.amount || 0));
       redemptionsByDay[date].count += 1;
     });
 

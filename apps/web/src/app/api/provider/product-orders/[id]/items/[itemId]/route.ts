@@ -20,6 +20,7 @@ import {
   type FulfilmentLine,
 } from "@/lib/ecommerce/product-order-line-fulfilment";
 import { restockProductOrderLineItems } from "@/lib/orders/product-order-lifecycle";
+import { fulfillWalkInProductOrderDelivery } from "@/lib/provider-sales/fulfill-walk-in-product-order-delivery";
 import {
   dispatchProductOrderStatusNotification,
   type ProductOrderNotifyStatus,
@@ -105,7 +106,7 @@ export async function PATCH(
 
     const from = normalizeLineStatus(target.fulfilment_status);
     const to = parsed.fulfilment_status;
-    if (!isValidLineTransition(from, to)) {
+    if (!isValidLineTransition(from, to, order.fulfillment_type)) {
       return errorResponse(
         `Cannot move line from ${from} to ${to}.`,
         "INVALID_LINE_TRANSITION",
@@ -123,6 +124,36 @@ export async function PATCH(
       fulfilledQty = Math.min(parsed.fulfilled_qty, lineQty);
     }
 
+    const nextLines: FulfilmentLine[] = allLines.map((l) =>
+      l.id === itemId ? { ...l, fulfilment_status: to, fulfilled_qty: fulfilledQty } : l,
+    );
+    const derivedStatus = deriveOrderStatusFromLines({
+      lines: nextLines,
+      currentStatus: String(order.status ?? "pending"),
+      fulfillmentType: order.fulfillment_type,
+    });
+    if (
+      derivedStatus === "delivered" &&
+      String(order.status ?? "") !== "delivered" &&
+      String(order.order_source ?? "") === "walk_in"
+    ) {
+      const delivery = await fulfillWalkInProductOrderDelivery({
+        supabase: getSupabaseAdmin() as never,
+        providerId,
+        orderId: id,
+        actorUserId: user.id,
+      });
+      if (delivery.ok === false) {
+        return errorResponse(
+          delivery.reason === "payment_not_settled"
+            ? "The sale is not paid, so the products were not taken."
+            : delivery.reason,
+          "STOCK_ERROR",
+          409,
+        );
+      }
+    }
+
     const nowIso = new Date().toISOString();
     const { data: updatedLine, error: updErr } = await (supabase.from("product_order_items") as any)
       .update({ fulfilment_status: to, fulfilled_qty: fulfilledQty, fulfilment_updated_at: nowIso })
@@ -133,7 +164,7 @@ export async function PATCH(
     if (updErr) throw updErr;
 
     // Cancelling a single line puts its units back into inventory (with a stock_movements row).
-    if (to === "cancelled" && from !== "cancelled") {
+    if (to === "cancelled") {
       await restockProductOrderLineItems(supabase, id, {
         movementType: "cancel",
         actorUserId: user.id,
@@ -142,15 +173,7 @@ export async function PATCH(
       });
     }
 
-    const nextLines: FulfilmentLine[] = allLines.map((l) =>
-      l.id === itemId ? { ...l, fulfilment_status: to, fulfilled_qty: fulfilledQty } : l,
-    );
     const summary = summarizeLineFulfilment(nextLines);
-    const derivedStatus = deriveOrderStatusFromLines({
-      lines: nextLines,
-      currentStatus: String(order.status ?? "pending"),
-      fulfillmentType: order.fulfillment_type,
-    });
 
     const orderPatch: Record<string, unknown> = { updated_at: nowIso };
     if (parsed.tracking_number) orderPatch.tracking_number = parsed.tracking_number;

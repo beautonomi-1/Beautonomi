@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
+import { publicReviewAuthor } from "@/lib/reviews/public-review-author";
 
 // Public browse endpoint used by both mobile apps; allow extra time before platform 504.
 export const maxDuration = 30;
@@ -59,8 +60,8 @@ export async function GET(
       provider_response?: string | null;
       provider_response_at?: string | null;
       users?:
-        | { id?: string; full_name?: string; avatar_url?: string; email?: string }
-        | Array<{ id?: string; full_name?: string; avatar_url?: string; email?: string }>
+        | { id?: string; full_name?: string; avatar_url?: string }
+        | Array<{ id?: string; full_name?: string; avatar_url?: string }>
         | null;
     }[] | null = null;
     let count: number | null = 0;
@@ -78,8 +79,7 @@ export async function GET(
         users:customer_id (
           id,
           full_name,
-          avatar_url,
-          email
+          avatar_url
         )
       `, { count: "exact" })
       .eq("provider_id", provider.id)
@@ -103,8 +103,7 @@ export async function GET(
           users:customer_id (
             id,
             full_name,
-            avatar_url,
-            email
+            avatar_url
           )
         `, { count: "exact" })
         .eq("provider_id", provider.id)
@@ -127,48 +126,23 @@ export async function GET(
       );
     }
 
-    const displayNameFromEmail = (email?: string | null) => {
-      if (!email) return null;
-      const localPart = email.split("@")[0] ?? "";
-      const cleaned = localPart
-        .replace(/[._-]+/g, " ")
-        .replace(/\d+/g, " ")
-        .trim();
-      if (!cleaned) return null;
-      return cleaned
-        .split(/\s+/)
-        .slice(0, 2)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-        .join(" ");
-    };
-
-    const isAnonymousLabel = (value?: string | null) => {
-      if (!value) return true;
-      return /anon/i.test(value.trim());
-    };
-
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const intlLocale = getTenantLocaleTagFromRegionConfig(tenantRegion);
 
-    const formattedReviews = (reviews || []).map((review: { id: string; rating?: number; comment?: string; created_at: string; provider_response?: string | null; provider_response_at?: string | null; users?: { id?: string; full_name?: string; avatar_url?: string; email?: string } | Array<{ id?: string; full_name?: string; avatar_url?: string; email?: string }> | null }) => {
+    const formattedReviews = (reviews || []).map((review: { id: string; rating?: number; comment?: string; created_at: string; provider_response?: string | null; provider_response_at?: string | null; users?: { id?: string; full_name?: string; avatar_url?: string } | Array<{ id?: string; full_name?: string; avatar_url?: string }> | null }) => {
       const userRaw = review.users;
-      const user = userRaw == null ? {} : (Array.isArray(userRaw) ? userRaw[0] : userRaw) as { id?: string; full_name?: string; avatar_url?: string; email?: string };
-      const fallbackFromEmail = displayNameFromEmail(user.email);
-      const fallbackFromId = user.id ? `Customer ${user.id.slice(0, 4).toUpperCase()}` : null;
-      const reviewerName = !isAnonymousLabel(user.full_name)
-        ? user.full_name!.trim()
-        : fallbackFromEmail ?? fallbackFromId ?? "Verified customer";
-      const reviewerInitial = reviewerName.charAt(0).toUpperCase();
+      const user = userRaw == null ? {} : (Array.isArray(userRaw) ? userRaw[0] : userRaw) as { id?: string; full_name?: string; avatar_url?: string };
+      const author = publicReviewAuthor(user);
+      const reviewerName = author.full_name;
+      const reviewerInitial = author.reviewerInitial;
       
       return {
         id: review.id,
-        // Canonical API fields used by mobile/web clients.
         comment: review.comment ?? "",
         created_at: review.created_at,
         author: {
           full_name: reviewerName,
-          avatar_url: user.avatar_url ?? null,
-          email: user.email ?? null,
+          avatar_url: author.avatar_url,
         },
         reviewerName,
         reviewerInitial,

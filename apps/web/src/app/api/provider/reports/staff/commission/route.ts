@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
@@ -5,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { MAX_REPORT_DAYS } from "@/lib/reports/constants";
 import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/reports/provider-report-utils";
 import { calculateStaffCommission } from "@/lib/payroll/commission-calculator";
+import { resolveStaffRates, shownCommissionRate } from "@/lib/payroll/resolve-staff-rates";
 
 export async function GET(request: NextRequest) {
   try {
@@ -46,6 +48,7 @@ export async function GET(request: NextRequest) {
         service_commission_rate,
         product_commission_rate,
         commission_rate,
+        commission_percentage,
         commission_enabled,
         users (
           full_name
@@ -80,20 +83,22 @@ export async function GET(request: NextRequest) {
           locationId
         );
 
-        const serviceRate = staff.service_commission_rate ?? staff.commission_rate ?? 0;
-        const productRate = staff.product_commission_rate ?? staff.commission_rate ?? 0;
-        const displayRate = serviceRate || productRate || 0;
+        const rates = resolveStaffRates(staff);
 
         return {
           staffId: staff.id,
           staffName: (staff.users as any)?.full_name || "Unknown",
-          commissionRate: displayRate,
+          commissionRate: shownCommissionRate(
+            commission.totalCommission,
+            commission.totalRevenue,
+            rates.serviceRate,
+          ),
           totalBookings: commission.totalBookings,
           totalRevenue: commission.totalRevenue,
           totalCommission: commission.totalCommission,
           averageCommission:
             commission.totalBookings > 0
-              ? commission.totalCommission / commission.totalBookings
+              ? multiplyMoney(commission.totalCommission, 1 / commission.totalBookings)
               : 0,
         };
       })
@@ -101,11 +106,9 @@ export async function GET(request: NextRequest) {
 
     const sorted = commissionData.sort((a, b) => b.totalCommission - a.totalCommission);
 
-    const totalCommission = sorted.reduce((sum, s) => sum + s.totalCommission, 0);
-    const totalRevenue = sorted.reduce((sum, s) => sum + s.totalRevenue, 0);
-    const averageCommissionRate = sorted.length > 0
-      ? sorted.reduce((sum, s) => sum + s.commissionRate, 0) / sorted.length
-      : 0;
+    const totalCommission = sorted.reduce((sum, s) => addMoney(sum, s.totalCommission), 0);
+    const totalRevenue = sorted.reduce((sum, s) => addMoney(sum, s.totalRevenue), 0);
+    const averageCommissionRate = shownCommissionRate(totalCommission, totalRevenue, 0);
 
     const enabledStaff = (staffMembers || []).filter(
       (s: { commission_enabled?: boolean | null }) => s.commission_enabled === true,

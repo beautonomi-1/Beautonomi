@@ -1,3 +1,4 @@
+import { addMoney } from "@beautonomi/utils";
 /**
  * GET /api/cron/recognize-gift-card-breakage
  * Monthly per-tenant recognition of expired unredeemed gift card balances (migration 732).
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
     }
 
     const totalCount = results.reduce((s, r) => s + r.recognized_count, 0);
-    const totalAmount = results.reduce((s, r) => s + r.recognized_amount, 0);
+    const totalAmount = results.reduce((s, r) => addMoney(s, r.recognized_amount), 0);
 
     return {
       ok: true,

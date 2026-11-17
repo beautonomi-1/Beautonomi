@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
-import crypto from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sanitizeWebhookPayload } from "@/lib/payment/webhook-payload-sanitizer";
 import { persistFailedWebhookSignature } from "@/lib/payment/persist-failed-webhook-signature";
+import {
+  acquireWebhookEventLease,
+  markWebhookEventFailed,
+  markWebhookEventProcessed,
+} from "@/lib/payment/webhook-event-lease";
 import { settleFlutterwaveChargeWebhookData } from "@/lib/payments/settle-flutterwave-online-payment";
 import { verifyFlutterwaveWebhookSignature } from "@/lib/payments/flutterwave-webhook-verify";
 import { handleFlutterwaveTransferWebhook } from "@/lib/payments/flutterwave-transfer-webhook";
 import { handleFlutterwaveDisputeWebhook } from "@/lib/payments/flutterwave-dispute-handler";
+import { handleFlutterwaveRefundWebhook } from "@/lib/payments/flutterwave-refund-webhook";
 
 /**
  * POST /api/payments/flutterwave/webhook
@@ -48,63 +53,73 @@ export async function POST(request: Request) {
       : payload;
 
   const supabase = getSupabaseAdmin();
-  const eventId = String(data.id ?? data.tx_ref ?? payload.id ?? crypto.randomUUID());
+  const normalizedEventType = (eventType || "charge.completed").toLowerCase();
+
+  // F2-30: the event id must be deterministic so replays dedupe. Flutterwave
+  // has no top-level event id, so key on event type + data.id (transaction /
+  // transfer / refund id); fall back to tx_ref + status. Never random — and an
+  // event we cannot key is rejected rather than processed unguarded.
+  const eventId = deriveFlutterwaveEventId(normalizedEventType, data, payload);
+  if (!eventId) {
+    return NextResponse.json({ error: "Event has no id or tx_ref" }, { status: 400 });
+  }
   const sanitizedPayload = sanitizeWebhookPayload(payload);
 
-  const { data: existing } = await supabase
-    .from("webhook_events")
-    .select("id, status")
-    .eq("event_id", eventId)
-    .eq("source", "flutterwave")
-    .maybeSingle();
-
-  if (existing && (existing as { status?: string }).status === "processed") {
+  // F-06: shared lease RPC (same as Paystack / Stripe / Apple) replaces the
+  // racy select-then-insert.
+  const lease = await acquireWebhookEventLease(supabase, {
+    eventId,
+    source: WEBHOOK_SOURCE,
+    eventType: normalizedEventType,
+    payload: sanitizedPayload,
+  });
+  if (lease.outcome === "duplicate") {
     return NextResponse.json({ received: true, duplicate: true });
   }
-
-  if (!existing) {
-    await supabase.from("webhook_events").insert({
-      event_id: eventId,
-      source: "flutterwave",
-      event_type: eventType || "charge.completed",
-      payload: sanitizedPayload,
-      status: "processing",
-      processed_at: null,
-    });
+  if (lease.outcome === "in_flight") {
+    return NextResponse.json({ received: true, processing: true }, { status: 503 });
   }
 
   try {
-    const eventLower = (eventType || "charge.completed").toLowerCase();
-    if (eventLower.includes("transfer.")) {
+    if (normalizedEventType.includes("transfer.")) {
       await handleFlutterwaveTransferWebhook(data, supabase);
-    } else if (eventLower.includes("chargeback") || eventLower.includes("dispute")) {
+    } else if (normalizedEventType.includes("chargeback") || normalizedEventType.includes("dispute")) {
       await handleFlutterwaveDisputeWebhook(eventType, data, supabase);
-    } else if (eventLower.includes("charge")) {
+    } else if (normalizedEventType.includes("refund")) {
+      await handleFlutterwaveRefundWebhook(data, supabase);
+    } else if (normalizedEventType.includes("charge")) {
       await settleFlutterwaveChargeWebhookData(data, supabase);
     }
 
-    await supabase
-      .from("webhook_events")
-      .update({
-        status: "processed",
-        processed_at: new Date().toISOString(),
-      })
-      .eq("event_id", eventId)
-      .eq("source", "flutterwave");
-
+    await markWebhookEventProcessed(supabase, { eventId, source: WEBHOOK_SOURCE });
     return NextResponse.json({ received: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[flutterwave/webhook] handler error:", err);
-    await supabase
-      .from("webhook_events")
-      .update({
-        status: "failed",
-        error_message: message,
-        processed_at: new Date().toISOString(),
-      })
-      .eq("event_id", eventId)
-      .eq("source", "flutterwave");
+    await markWebhookEventFailed(supabase, { eventId, source: WEBHOOK_SOURCE, errorMessage: message });
     return NextResponse.json({ error: "Handler failed" }, { status: 500 });
   }
+}
+
+const WEBHOOK_SOURCE = "flutterwave";
+
+function scalarToString(v: unknown): string | null {
+  if (typeof v === "string" && v.trim()) return v.trim();
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return null;
+}
+
+/** Deterministic dedupe key for a Flutterwave webhook; null when none can be built. */
+function deriveFlutterwaveEventId(
+  eventType: string,
+  data: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): string | null {
+  const dataId = scalarToString(data.id) ?? scalarToString(payload.id);
+  if (dataId) return `${eventType}:${dataId}`;
+  const txRef =
+    scalarToString(data.tx_ref) ?? scalarToString(data.reference) ?? scalarToString(data.flw_ref);
+  if (!txRef) return null;
+  const status = scalarToString(data.status) ?? "";
+  return `${eventType}:${txRef}:${status.toLowerCase()}`;
 }

@@ -31,7 +31,7 @@ export interface UsePagedProviderBookingsOptions {
 
 /**
  * Loads the full booking list for a filter by walking server `offset` pages
- * (GET /api/provider/bookings max 1000 rows per request).
+ * (GET /api/provider/bookings, PROVIDER_BOOKINGS_PAGE_SIZE rows per request).
  */
 export function usePagedProviderBookings<T extends { id?: string }>(
   path: string,

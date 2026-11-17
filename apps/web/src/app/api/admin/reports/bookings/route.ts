@@ -1,3 +1,4 @@
+import { addMoney, multiplyMoney } from "@beautonomi/utils";
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
 
       if (!bookingsByDay[date]) bookingsByDay[date] = { count: 0, gmv: 0 };
       bookingsByDay[date].count += 1;
-      if (booking.status === 'completed') bookingsByDay[date].gmv += Number(booking.total_amount ?? 0);
+      if (booking.status === 'completed') bookingsByDay[date].gmv = addMoney(bookingsByDay[date].gmv, Number(booking.total_amount ?? 0));
 
       bookingsByStatus[booking.status ?? 'unknown'] = (bookingsByStatus[booking.status ?? 'unknown'] || 0) + 1;
 
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
       }
 
       totalBookings += 1;
-      if (booking.status === 'completed') { completed += 1; completedGmv += Number(booking.total_amount ?? 0); }
+      if (booking.status === 'completed') { completed += 1; completedGmv = addMoney(completedGmv, Number(booking.total_amount ?? 0)); }
       if (booking.status === 'cancelled') cancelled += 1;
       if (booking.status === 'no_show') noShow += 1;
     });
@@ -130,7 +131,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const avgBookingValue = completed > 0 ? completedGmv / completed : 0;
+    const avgBookingValue = completed > 0 ? multiplyMoney(completedGmv, 1 / completed) : 0;
     const completionRate = totalBookings > 0 ? (completed / totalBookings) * 100 : 0;
     const cancellationRate = totalBookings > 0 ? (cancelled / totalBookings) * 100 : 0;
     const noShowRate = totalBookings > 0 ? (noShow / totalBookings) * 100 : 0;

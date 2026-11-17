@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@beautonomi/i18n";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -74,6 +75,31 @@ function GroupInviteInner() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const reference =
+      searchParams.get("reference") || searchParams.get("trxref") || searchParams.get("tx_ref") || "";
+    if (!reference) return;
+    let ignore = false;
+    const hostedStatus = (searchParams.get("status") ?? "").toLowerCase();
+    void (async () => {
+      const result = await verifyWithRetry(reference, {
+        maxAttempts: hostedStatus === "failed" || hostedStatus === "cancelled" ? 1 : 5,
+        delayMs: 1500,
+        sessionId: searchParams.get("session_id"),
+        transactionId: searchParams.get("transaction_id"),
+        redirectStatus: hostedStatus,
+      });
+      if (ignore) return;
+      if (result.status === "success") setNotice(t("web.groupInvite.sharePaid"));
+      else if (result.status === "failed") setNotice(t("web.groupInvite.payFailed"));
+      else setNotice(t("web.groupInvite.paymentProcessing"));
+      await load();
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [searchParams, load, t]);
 
   const handleError = (e: unknown, fallbackKey: string) => {
     if (e instanceof FetchError && e.status === 401) {

@@ -14,6 +14,7 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/format";
+import { subtractMoney, percentOf, roundCurrency } from "@beautonomi/utils";
 
 type BankAccount = {
   id: string;
@@ -40,10 +41,10 @@ type OpenRequest = {
   currency?: string;
 };
 
-function feeFor(amount: number, s: RefundSettings): number {
+function feeFor(amount: number, s: RefundSettings, currency = "ZAR"): number {
   const value = Math.max(0, Number(s.fee_value ?? 0));
-  const raw = s.fee_type === "percentage" ? (amount * value) / 100 : value;
-  return Math.round(Math.min(raw, amount) * 100) / 100;
+  const raw = s.fee_type === "percentage" ? percentOf(amount, value, currency) : roundCurrency(value, currency);
+  return roundCurrency(Math.min(raw, amount), currency);
 }
 
 export default function WalletBankRefundScreen() {
@@ -107,8 +108,8 @@ export default function WalletBankRefundScreen() {
 
   const parsedAmount = Number(amount.replace(",", "."));
   const fee = useMemo(
-    () => (Number.isFinite(parsedAmount) && parsedAmount > 0 ? feeFor(parsedAmount, settings) : 0),
-    [parsedAmount, settings],
+    () => (Number.isFinite(parsedAmount) && parsedAmount > 0 ? feeFor(parsedAmount, settings, currency) : 0),
+    [parsedAmount, settings, currency],
   );
 
   const submit = async () => {
@@ -222,7 +223,7 @@ export default function WalletBankRefundScreen() {
                   <Text style={secondaryText}>
                     {t("customer.walletBankRefund.feeLine", {
                       fee: formatCurrency(fee, currency),
-                      net: formatCurrency(Math.max(0, parsedAmount - fee), currency),
+                      net: formatCurrency(Math.max(0, subtractMoney(parsedAmount, fee)), currency),
                     })}
                   </Text>
                 ) : null}

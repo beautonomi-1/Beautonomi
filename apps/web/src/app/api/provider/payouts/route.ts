@@ -17,6 +17,7 @@ import { slackNotifyPayoutRequested } from "@/lib/integrations/slack/finance-tri
 import { resolveVerificationPolicy, isProviderVerificationApproved } from "@/lib/verification/verification-policy";
 import { getActiveProviderPayoutHold } from "@/lib/fraud/provider-payout-hold";
 import { loadProviderPayoutRailContext } from "@/lib/payments/payout-rail";
+import { nextDocumentNumber } from "@/lib/finance/document-number";
 
 export const maxDuration = 60;
 
@@ -340,12 +341,26 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // Generate a human-readable payout number: PAY-YYYYMMDD-XXXXX (business calendar date)
+    // Payout number. F2-43: gap-free per-tenant sequence (PAY-YYYY-NNNNNN) via
+    // `next_document_number` when deployed; legacy PAY-YYYYMMDD-XXXXX otherwise.
     const now = new Date();
     const payoutTz = resolveTz((prow as { timezone?: string | null } | null)?.timezone);
-    const dateStamp = formatDateYmd(now, payoutTz).replace(/-/g, "");
-    const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
-    const payoutNumber = `PAY-${dateStamp}-${randomSuffix}`;
+    const businessYmd = formatDateYmd(now, payoutTz);
+    let payoutNumber: string;
+    const sequenced = await nextDocumentNumber(supabaseAdmin, {
+      tenantId: effectiveTenantId ?? null,
+      kind: "payout",
+      prefix: "PAY",
+      year: parseInt(businessYmd.slice(0, 4), 10),
+      fallback: { table: "payouts", column: "payout_number" },
+    });
+    if (sequenced.source === "rpc") {
+      payoutNumber = sequenced.number;
+    } else {
+      const dateStamp = businessYmd.replace(/-/g, "");
+      const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+      payoutNumber = `PAY-${dateStamp}-${randomSuffix}`;
+    }
 
     const maxAvailableBeforeReserve = roundMoney2(
       availableBalance + (guardReservedPayoutsSum ?? breakdown.pendingPayouts) + openDisputeReserve,
@@ -357,7 +372,9 @@ export async function POST(request: NextRequest) {
       currency: payoutCurrency,
       status: "pending",
       payout_method: "bank_transfer",
-      payout_account_details: Object.keys(payoutAccountDetails).length > 0 ? payoutAccountDetails : {},
+      // F2-20: record the requester so admin approve/transfer can enforce
+      // requester ≠ approver ≠ (over threshold) transferrer.
+      payout_account_details: { ...payoutAccountDetails, requested_by: user.id },
       platform_fee_amount: 0,
       platform_fee_percentage: Number(payoutSettings.platform_commission_percentage ?? 0),
       net_amount: numAmount,
@@ -375,7 +392,7 @@ export async function POST(request: NextRequest) {
 
     if (payoutError) {
       const msg = payoutError.message ?? "";
-      if (msg.includes("INSUFFICIENT_BALANCE")) {
+      if (msg.includes("INSUFFICIENT_BALANCE") || msg.includes("INSUFFICIENT")) {
         return errorResponse(
           `Insufficient balance. Available: ${availableRounded}, Requested: ${requestRounded}`,
           "INSUFFICIENT_BALANCE",
@@ -387,6 +404,21 @@ export async function POST(request: NextRequest) {
           "Payouts are temporarily on hold while we review your account. Contact support if you need help.",
           "PAYOUT_HELD",
           409,
+        );
+      }
+      // F2-19: RPC validation failures are client errors, not 500s.
+      if (msg.includes("INVALID_AMOUNT")) {
+        return errorResponse(
+          `Payout amount is invalid. Enter an amount between ${minimumPayout} and ${availableRounded} ${payoutCurrency}.`,
+          "INVALID_AMOUNT",
+          400,
+        );
+      }
+      if (msg.includes("INVALID_STATUS")) {
+        return errorResponse(
+          "This payout cannot be created in that status. New requests must start as pending.",
+          "INVALID_STATUS",
+          400,
         );
       }
       throw payoutError;

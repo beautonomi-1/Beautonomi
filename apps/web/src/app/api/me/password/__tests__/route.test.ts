@@ -5,6 +5,7 @@ const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 const mockResolvePublicAuthPolicyForTenant = vi.fn();
 const mockGetUserAuthSecurityState = vi.fn();
+const mockRequireStepUp = vi.fn(async () => {});
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
@@ -27,6 +28,10 @@ vi.mock("@/lib/config/resolve-public-auth-policy", () => ({
 
 vi.mock("@/lib/auth/user-auth-security-state", () => ({
   getUserAuthSecurityState: (...args: unknown[]) => mockGetUserAuthSecurityState(...args),
+}));
+
+vi.mock("@/lib/auth/provider-security", () => ({
+  requireStepUp: (...args: unknown[]) => mockRequireStepUp(...args),
 }));
 
 function request(body: Record<string, unknown>) {
@@ -181,6 +186,34 @@ describe("PUT /api/me/password", () => {
     expect(res.status).toBe(401);
     const body = await res.json() as { error: string };
     expect(body.error).toContain("incorrect");
+  });
+
+  it("requires the current password even when the tenant policy flag is false (F3-19)", async () => {
+    mockResolvePublicAuthPolicyForTenant.mockResolvedValueOnce({
+      minimum_password_length: 8,
+      password_requirements: "none",
+      require_current_password: false,
+    });
+    const { PUT } = await import("../route");
+    const res = await PUT(request({ mode: "change", newPassword: "new-password" }));
+    expect(res.status).toBe(400);
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it("lets a provider skip the current password only after step-up (F3-19)", async () => {
+    mockRequireRoleInApi.mockResolvedValue({
+      user: { id: "user_1", role: "provider_owner" },
+    });
+    mockResolvePublicAuthPolicyForTenant.mockResolvedValueOnce({
+      minimum_password_length: 8,
+      password_requirements: "none",
+      require_current_password: false,
+    });
+    const { PUT } = await import("../route");
+    const res = await PUT(request({ mode: "change", newPassword: "new-password" }));
+    expect(res.status).toBe(200);
+    expect(mockRequireStepUp).toHaveBeenCalled();
+    expect(updateUser).toHaveBeenCalledWith({ password: "new-password" });
   });
 
   it("returns 401 when Supabase rejects an invalid nonce", async () => {

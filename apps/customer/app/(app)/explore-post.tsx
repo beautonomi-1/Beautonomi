@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { ExpoVideoPreview } from "@/components/ExpoVideoPreview";
+import { ExploreSoundBed } from "@/components/explore/ExploreSoundBed";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
@@ -581,6 +582,7 @@ export default function ExplorePostScreen() {
                         contentFit="cover"
                         nativeControls
                         loop
+                        muted={Boolean(post.sound_url)}
                         paused={mediaIndex !== index}
                         playbackTrim={slideTrim}
                         onPlaybackTimeUpdate={
@@ -615,6 +617,9 @@ export default function ExplorePostScreen() {
                   );
                 }}
               />
+              {post.sound_url && mediaItems[mediaIndex]?.kind === "video" ? (
+                <ExploreSoundBed soundUrl={post.sound_url} active={videoPlaying} muted={false} />
+              ) : null}
 
               {/* Double-tap heart overlay */}
               <Animated.View

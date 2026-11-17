@@ -29,12 +29,13 @@ describe("public booking id validation accepts any Postgres uuid", () => {
     expect(zPublicBookingStaffIdOptional.safeParse("bogus").success).toBe(false);
   });
 
-  it("hold, consume, promotions and waitlist schemas do not use RFC-strict z.string().uuid()", () => {
+  it("hold, consume, promotions, waitlist and booking draft schemas do not use RFC-strict z.string().uuid()", () => {
     for (const rel of [
       "apps/web/src/app/api/public/booking-holds/route.ts",
       "apps/web/src/app/api/public/booking-holds/[id]/consume/route.ts",
       "apps/web/src/app/api/public/promotions/validate/route.ts",
       "apps/web/src/app/api/public/waitlist/route.ts",
+      "apps/web/src/lib/public-booking/booking-draft-schema.ts",
     ]) {
       const src = readFileSync(join(repoRoot, rel), "utf8");
       expect(src, rel).not.toMatch(/z\.string\(\)\.uuid\(/);

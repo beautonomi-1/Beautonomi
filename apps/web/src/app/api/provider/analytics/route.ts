@@ -1,5 +1,7 @@
+import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { NextRequest } from "next/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireProviderReportsAccess } from "@/lib/reports/require-provider-reports-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { fetchNetAfterRefundsLedgerRows } from "@/lib/reports/revenue-helpers";
 import { computeProviderRevenueBreakdown } from "@/lib/reports/provider-revenue-semantics";
@@ -33,8 +35,12 @@ import { buildServiceLedgerPerformance } from "@/lib/reports/service-ledger-perf
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    
+    const permissionCheck = await requireProviderReportsAccess(request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
+
     const supabaseAdmin = getSupabaseAdmin();
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
@@ -138,7 +144,7 @@ export async function GET(request: NextRequest) {
         if (!DASHBOARD_REVENUE_TRANSACTION_TYPES.includes(row.transaction_type as (typeof DASHBOARD_REVENUE_TRANSACTION_TYPES)[number])) {
           return sum;
         }
-        return sum + Number(row.net ?? row.amount ?? 0);
+        return addMoney(sum, Number(row.net ?? row.amount ?? 0));
       }, 0);
 
     // One all-time recognized-revenue scan — period cards and trend buckets reuse it in memory.
@@ -276,7 +282,7 @@ export async function GET(request: NextRequest) {
     if (lastMonthRevenue === 0) {
       revenueGrowth = thisMonthRevenue > 0 ? "New" : "0";
     } else {
-      const growth = ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue * 100);
+      const growth = (subtractMoney(thisMonthRevenue, lastMonthRevenue) / lastMonthRevenue * 100);
       revenueGrowth = growth.toFixed(1);
     }
 

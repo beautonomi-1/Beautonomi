@@ -1,3 +1,4 @@
+import { multiplyMoney, addMoney } from "@beautonomi/utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { calculateProductDeliveryFee, distanceKmBetween } from "@/lib/orders/delivery-fee";
@@ -168,7 +169,7 @@ export async function computeProductOrderDeliveryQuote(params: {
     const price = ci.product_variant
       ? parseFloat(String(ci.product_variant.retail_price))
       : parseFloat(String(ci.product?.retail_price ?? 0));
-    return sum + (Number.isFinite(price) ? price : 0) * ci.quantity;
+    return addMoney(sum, multiplyMoney(Number.isFinite(price) ? price : 0, ci.quantity));
   }, 0);
 
   const delivery = calculateProductDeliveryFee({

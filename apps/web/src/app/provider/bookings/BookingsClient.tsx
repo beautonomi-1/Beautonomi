@@ -89,7 +89,7 @@ import {
 } from "@/lib/provider-booking/action-policy";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useTranslation } from "@beautonomi/i18n";
-import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { addMoney, getDefaultMoneyLocale } from "@beautonomi/utils";
 import { bookingListMatchesQuery } from "@/lib/phone";
 
 type BookingStatus = "all" | "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
@@ -732,7 +732,7 @@ export function BookingsClient({
       if (ts >= rangeStart && ts < rangeEnd) {
         count += 1;
         if (s !== "cancelled" && s !== "canceled" && s !== "no_show") {
-          revenue += Number(b.total_amount || 0);
+          revenue = addMoney(revenue, Number(b.total_amount || 0));
         }
       }
     }
@@ -878,7 +878,7 @@ export function BookingsClient({
     const unpaidAdditional = Array.isArray(b.additional_charges)
       ? b.additional_charges
           .filter((c) => c?.status !== "paid" && c?.status !== "rejected")
-          .reduce((sum, c) => sum + Number(c?.amount || 0), 0)
+          .reduce((sum, c) => addMoney(sum, Number(c?.amount || 0)), 0)
       : 0;
     return computeWalletGiftCoverageOutstanding({
       totalAmount: Number(b.total_amount ?? 0),

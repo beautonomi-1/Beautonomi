@@ -21,7 +21,12 @@ const patchSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "superadmin"], request);
+    // F3-08: GET must not be owner-only while PATCH is `edit_settings`. Staff
+    // (walk-in sale, VAT screen) need to read the rate; writes stay gated below.
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     

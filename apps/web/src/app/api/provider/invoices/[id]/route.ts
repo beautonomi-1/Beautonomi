@@ -11,7 +11,8 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { withEffectiveStatus } from "@/lib/invoices/provider-invoices-query";
 import { isNonPayableInvoiceType } from "@/lib/invoices/provider-invoice-status";
-
+import { rejectedFinancialFieldsForIssuedInvoice } from "@/lib/invoices/issued-invoice-guard";
+import { multiplyMoney, percentOf, roundCurrency, sumMoney } from "@beautonomi/utils";
 
 const invoiceLineItemSchema = z.object({
   line_item_type: z.enum(["platform_fee", "commission", "subscription", "transaction_fee", "adjustment", "other"]).optional().default("other"),
@@ -37,7 +38,7 @@ function calculateInvoiceTotals(lineItems: z.infer<typeof invoiceLineItemSchema>
   const normalizedItems = lineItems.map((item) => {
     const quantity = Number(item.quantity || 0);
     const unitPrice = Number(item.unit_price || 0);
-    const totalPrice = Math.round(quantity * unitPrice * 100) / 100;
+    const totalPrice = multiplyMoney(unitPrice, quantity);
     return {
       line_item_type: item.line_item_type || "other",
       description: item.description,
@@ -46,9 +47,9 @@ function calculateInvoiceTotals(lineItems: z.infer<typeof invoiceLineItemSchema>
       total_price: totalPrice,
     };
   });
-  const subtotal = Math.round(normalizedItems.reduce((sum, item) => sum + item.total_price, 0) * 100) / 100;
-  const taxAmount = Math.round(subtotal * (Number(taxRate || 0) / 100) * 100) / 100;
-  const totalAmount = Math.round((subtotal + taxAmount) * 100) / 100;
+  const subtotal = normalizedItems.length ? sumMoney(...normalizedItems.map((item) => item.total_price)) : 0;
+  const taxAmount = percentOf(subtotal, Number(taxRate || 0));
+  const totalAmount = sumMoney(subtotal, taxAmount);
   return { normalizedItems, subtotal, taxAmount, totalAmount };
 }
 
@@ -155,6 +156,21 @@ export async function PATCH(
 
     const body = await request.json();
     const validated = updateInvoiceSchema.parse(body);
+
+    // F2-44: issued / paid invoices are immutable tax documents. Only status
+    // transitions and notes may change; financial fields need a credit note.
+    const rejectedFields = rejectedFinancialFieldsForIssuedInvoice(
+      (existing as { status?: string | null }).status,
+      validated as Record<string, unknown>,
+    );
+    if (rejectedFields.length > 0) {
+      return handleApiError(
+        new Error("Issued invoice is immutable"),
+        `This invoice has been issued and cannot be edited (${rejectedFields.join(", ")}). Cancel it and issue a new invoice, or add notes.`,
+        "INVOICE_IMMUTABLE",
+        400,
+      );
+    }
 
     const existingType = (existing as { invoice_type?: string | null }).invoice_type;
     if (isNonPayableInvoiceType(existingType)) {

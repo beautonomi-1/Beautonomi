@@ -35,7 +35,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
 import { getTenantLocaleTag } from "@/lib/locale";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { formatMoney, getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold } from "@beautonomi/utils";
+import { formatMoney, getProductOrderSupportPrompt, isUnpaidOnlinePaystackHold, roundCurrency, subtractMoney, toMinorUnits, addMoney } from "@beautonomi/utils";
 import * as Clipboard from "expo-clipboard";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTranslation } from "@beautonomi/i18n";
@@ -336,15 +336,17 @@ export default function ProductOrderDetailScreen() {
   const paymentMethodLabel = formatPaymentMethod(order.payment_method ?? undefined, pod);
   const giftAmt = Number(order.gift_card_amount ?? 0);
   const dueTotal = Math.max(0, Number(order.total_amount ?? 0));
+  const refundedAmt = Math.max(0, Number(order.refunded_amount ?? 0));
+  const chargedTotal = Math.max(0, subtractMoney(dueTotal, Math.min(dueTotal, refundedAmt)));
   const dueGift = Math.min(dueTotal, Math.max(0, giftAmt));
-  const dueWallet = Math.min(Math.max(0, walletAmt), Math.max(0, dueTotal - dueGift));
+  const dueWallet = Math.min(Math.max(0, walletAmt), Math.max(0, subtractMoney(dueTotal, dueGift)));
   const serverDue = order.amount_still_due;
   const onlineAmountDue =
     typeof serverDue === "number" && Number.isFinite(serverDue)
-      ? Math.max(0, Math.round(serverDue * 100) / 100)
+      ? Math.max(0, roundCurrency(serverDue))
       : serverDue === null
         ? 0
-        : Math.round(Math.max(0, dueTotal - dueGift - dueWallet) * 100) / 100;
+        : Math.max(0, subtractMoney(subtractMoney(dueTotal, dueGift), dueWallet));
   const canPayOnline =
     order.status === "pending" &&
     order.payment_status === "pending" &&
@@ -394,7 +396,7 @@ export default function ProductOrderDetailScreen() {
         "/api/paystack/initialize",
         {
           email,
-          amount: Math.round(onlineAmountDue * 100),
+          amount: toMinorUnits(onlineAmountDue, order.currency ?? fb),
           callback_url: paystackCallbackUrl,
           metadata: {
             product_order_id: order.id,
@@ -448,6 +450,12 @@ export default function ProductOrderDetailScreen() {
         return;
       }
       if (pr.outcome === "cancel") {
+        if (paystackRes.data.reference) {
+          void verifyPaystackWithRetry(paystackRes.data.reference, {
+            redirectStatus: "cancelled",
+            maxAttempts: 1,
+          });
+        }
         trackProductOrderPayOutcome({
           order_id: order.id,
           outcome: "cancelled",
@@ -472,6 +480,15 @@ export default function ProductOrderDetailScreen() {
       if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
         const parsed = parseOnlineCheckoutReturnUrl(pr.url);
         if (parsed.status === "failed" || parsed.status === "cancelled") {
+          const failRef = parsed.reference || paystackRes.data.reference;
+          if (failRef) {
+            void verifyPaystackWithRetry(failRef, {
+              redirectStatus: parsed.status,
+              sessionId: parsed.sessionId,
+              transactionId: parsed.transactionId,
+              maxAttempts: 1,
+            });
+          }
           trackProductOrderPayOutcome({
             order_id: order.id,
             outcome: "cancelled",
@@ -853,7 +870,7 @@ export default function ProductOrderDetailScreen() {
           )}
 
           {/* When the provider sets tracking_url, the row opens the carrier page; otherwise number-only. */}
-          {order.tracking_number || order.tracking_url ? (
+          {order.fulfillment_type === "delivery" && (order.tracking_number || order.tracking_url) ? (
             (() => {
               const label = [
                 order.carrier,
@@ -1242,26 +1259,24 @@ export default function ProductOrderDetailScreen() {
               {fmt(
                 Math.max(
                   0,
-                  Number(order.subtotal ?? 0) -
-                    Number(order.discount_amount ?? 0) +
-                    Number(order.delivery_fee ?? 0) +
-                    Number(order.tax_amount ?? 0) +
-                    platformFee,
+                  addMoney(addMoney(addMoney(subtractMoney(Number(order.subtotal ?? 0), Number(order.discount_amount ?? 0)), Number(order.delivery_fee ?? 0)), Number(order.tax_amount ?? 0)), platformFee),
                 ),
               )}
             </Text>
           </View>
+          {refundedAmt > 0 ? (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={{ fontSize: 14, color: "#6B7280" }}>{pod("refunded")}</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(refundedAmt)}</Text>
+            </View>
+          ) : null}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{pod("chargedTotal")}</Text>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>{fmt(Number(order.total_amount ?? 0))}</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>{fmt(chargedTotal)}</Text>
           </View>
           {Math.abs(
             Number(order.total_amount ?? 0) -
-              (Number(order.subtotal ?? 0) -
-                Number(order.discount_amount ?? 0) +
-                Number(order.delivery_fee ?? 0) +
-                Number(order.tax_amount ?? 0) +
-                platformFee),
+              addMoney(addMoney(addMoney(subtractMoney(Number(order.subtotal ?? 0), Number(order.discount_amount ?? 0)), Number(order.delivery_fee ?? 0)), Number(order.tax_amount ?? 0)), platformFee),
           ) > 0.02 && (
             <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 8 }}>
               {pod("totalDifferenceHint")}

@@ -21,9 +21,10 @@ import {
   computeEffectiveRemainingRefundable,
 } from "@/lib/admin/booking-refund-context";
 import { z } from "zod";
+import { clientMajorAmountSchema } from "@/lib/payments/client-amount-bounds";
 
 const processRefundSchema = z.object({
-  refund_amount: z.number().positive(),
+  refund_amount: clientMajorAmountSchema,
   refund_reason: z.string().min(1),
   notes: z.string().optional().nullable(),
 });

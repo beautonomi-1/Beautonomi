@@ -22,7 +22,7 @@ import { TERMINAL_MERCHANT_VENDOR } from "@/lib/terminal-merchant/types";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const { user } = await requireRoleInApi(["provider_owner", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
 

@@ -61,7 +61,12 @@ const mockHandleRefundEvent = vi.fn(async () =>
   NextResponse.json({ received: true, handled: "refund" }),
 );
 
-vi.mock("../_handlers/subscription-events", () => ({ handleSubscriptionEvent: vi.fn() }));
+const mockHandleSubscriptionEvent = vi.fn(async () =>
+  NextResponse.json({ received: true, handled: "subscription" }),
+);
+vi.mock("../_handlers/subscription-events", () => ({
+  handleSubscriptionEvent: (...args: unknown[]) => mockHandleSubscriptionEvent(...(args as [])),
+}));
 vi.mock("../_handlers/transfer-events", () => ({
   handleTransferEvent: (...args: unknown[]) => mockHandleTransferEvent(...(args as [])),
 }));
@@ -256,6 +261,44 @@ describe("POST /api/payments/webhook — signature & idempotency (money path)", 
     const res = await POST(makeRequest(body, sign(body)));
     expect(res.status).toBe(200);
     expect(mockHandleTransferEvent).toHaveBeenCalledTimes(1);
+  });
+
+  describe("F2-47: subscription.* / invoice.* handler errors are retryable", () => {
+    function subscriptionBody(eventType: string, id: string): string {
+      return JSON.stringify({
+        event: eventType,
+        id,
+        data: { subscription_code: "SUB_1", customer: { email: "p@example.test" } },
+      });
+    }
+
+    it("returns 500 when invoice.payment_failed handler throws a transient error", async () => {
+      mockHandleSubscriptionEvent.mockRejectedValueOnce(new Error("ECONNRESET upstream"));
+      const { POST } = await import("../route");
+      const body = subscriptionBody("invoice.payment_failed", "evt_inv_fail");
+      const res = await POST(makeRequest(body, sign(body)));
+      expect(res.status).toBe(500);
+      expect(mockHandleSubscriptionEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns 500 when subscription.disable handler throws", async () => {
+      mockHandleSubscriptionEvent.mockRejectedValueOnce(new Error("db timeout"));
+      const { POST } = await import("../route");
+      const body = subscriptionBody("subscription.disable", "evt_sub_disable");
+      const res = await POST(makeRequest(body, sign(body)));
+      expect(res.status).toBe(500);
+    });
+
+    it("still returns 200 for a known permanent error (nothing to retry)", async () => {
+      const permanent = Object.assign(new Error("subscription not found"), {
+        permanent: true,
+      });
+      mockHandleSubscriptionEvent.mockRejectedValueOnce(permanent);
+      const { POST } = await import("../route");
+      const body = subscriptionBody("subscription.not_renew", "evt_sub_perm");
+      const res = await POST(makeRequest(body, sign(body)));
+      expect(res.status).toBe(200);
+    });
   });
 
   it("does not re-dispatch while another live worker holds the lease", async () => {

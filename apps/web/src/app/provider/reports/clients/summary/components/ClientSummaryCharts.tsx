@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslation } from "@beautonomi/i18n";
+import { roundCurrency } from "@beautonomi/utils";
 import React, { useMemo } from "react";
 import {
   BarChart,
@@ -24,7 +25,7 @@ export function ClientSpendBarChart({ rows, formatMoney }: { rows: Row[]; format
       rows.map((r) => ({
         label: r.clientName.length > 22 ? `${r.clientName.slice(0, 20)}…` : r.clientName,
         fullName: r.clientName,
-        spent: Math.round(r.totalSpent * 100) / 100,
+        spent: roundCurrency(r.totalSpent),
       })),
     [rows],
   );

@@ -11,6 +11,10 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { evaluateGroupCompletion } from "@/lib/bookings/completion-guards";
+import {
+  deductBookingRetailStock,
+  lineUpBookingStockWithSavedStatus,
+} from "@/lib/bookings/deduct-booking-retail-stock";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -100,6 +104,19 @@ export async function POST(
       });
     }
 
+    let stockTaken: Awaited<ReturnType<typeof deductBookingRetailStock>> = [];
+    if (existing.booking_id) {
+      try {
+        stockTaken = await deductBookingRetailStock(admin, existing.booking_id);
+      } catch (stockErr) {
+        return errorResponse(
+          stockErr instanceof Error ? stockErr.message : "Product stock could not be deducted",
+          "STOCK_ERROR",
+          409,
+        );
+      }
+    }
+
     const now = new Date().toISOString();
     const { data: participant, error } = await admin
       .from("booking_participants")
@@ -114,6 +131,18 @@ export async function POST(
       .maybeSingle();
 
     if (error || !participant) {
+      if (existing.booking_id) {
+        try {
+          await lineUpBookingStockWithSavedStatus(admin, existing.booking_id, stockTaken, []);
+        } catch (undoErr) {
+          console.error("[group check-out] stock could not be lined up:", undoErr);
+          return errorResponse(
+            "This check-out was not saved, and the product stock could not be put back in line with the visit.",
+            "STOCK_ERROR",
+            409,
+          );
+        }
+      }
       return notFoundResponse("Participant not found");
     }
 
@@ -122,7 +151,7 @@ export async function POST(
     // fail; previously a transient bookings/RLS error reverted the check-out
     // entirely.
     if (participant.booking_id) {
-      const { error: bookingError } = await admin
+      const { data: completedRows, error: bookingError } = await admin
         .from("bookings")
         .update({
           status: "completed",
@@ -132,12 +161,20 @@ export async function POST(
         .eq("id", participant.booking_id)
         .eq("group_booking_id", id)
         .eq("provider_id", group.provider_id)
-        .not("status", "in", "(cancelled,no_show)");
-      if (bookingError) {
-        console.warn(
-          "[provider group check-out] linked booking update failed (continuing):",
-          bookingError
-        );
+        .not("status", "in", "(cancelled,no_show)")
+        .select("id");
+      if (bookingError || !completedRows?.length) {
+        try {
+          await lineUpBookingStockWithSavedStatus(admin, participant.booking_id, stockTaken, []);
+        } catch (undoErr) {
+          console.error("[group check-out] stock could not be lined up:", undoErr);
+        }
+        if (bookingError) {
+          console.warn(
+            "[provider group check-out] linked booking update failed (continuing):",
+            bookingError
+          );
+        }
       }
     }
 

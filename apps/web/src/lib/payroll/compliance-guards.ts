@@ -1,4 +1,5 @@
 import type { PayrollRuleSetRow } from "./jurisdictions/types";
+import { multiplyMoney, subtractMoney } from "@beautonomi/utils";
 
 export type ComplianceWarning = {
   code: string;
@@ -21,12 +22,12 @@ export function checkMinimumWage(
   const data = (minWageRule?.data ?? {}) as MinWageData;
   const rate = Number(data.hourlyRate ?? 0);
   if (rate <= 0) return null;
-  const required = rate * hoursWorked;
+  const required = multiplyMoney(rate, hoursWorked);
   if (grossPay + 0.01 >= required) return null;
   return {
     code: "minimum_wage_top_up",
     message: `Pay is below the minimum wage for ${hoursWorked.toFixed(1)} hours worked.`,
-    suggestedTopUp: Math.round((required - grossPay) * 100) / 100,
+    suggestedTopUp: subtractMoney(required, grossPay),
   };
 }
 

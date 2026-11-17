@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { addMoney, roundCurrency, subtractMoney } from "@beautonomi/utils";
 
 /**
  * GET /api/admin/finance/wallet-booking-debit-audit
@@ -51,6 +52,7 @@ type BookingRow = {
   payment_status?: string | null;
   created_at?: string | null;
   wallet_amount?: number | null;
+  currency?: string | null;
 };
 
 type UserRow = { id: string; email?: string | null; full_name?: string | null };
@@ -71,7 +73,7 @@ export async function GET(request: NextRequest) {
     let bookingsQuery = supabase
       .from("bookings")
       .select(
-        "id, booking_number, customer_id, tenant_id, provider_id, payment_status, created_at, wallet_amount"
+        "id, booking_number, customer_id, tenant_id, provider_id, payment_status, created_at, wallet_amount, currency"
       )
       .gt("wallet_amount", 0)
       .order("created_at", { ascending: false })
@@ -116,10 +118,10 @@ export async function GET(request: NextRequest) {
       }[]) {
         if (!tx.reference_id) continue;
         const amt = Number(tx.amount ?? 0);
-        const signed = tx.type === "debit" ? amt : -amt;
+        const prev = netDebitByBooking.get(tx.reference_id) ?? 0;
         netDebitByBooking.set(
           tx.reference_id,
-          (netDebitByBooking.get(tx.reference_id) ?? 0) + signed
+          tx.type === "debit" ? addMoney(prev, amt) : subtractMoney(prev, amt),
         );
       }
     }
@@ -150,12 +152,13 @@ export async function GET(request: NextRequest) {
     let totalShortfall = 0;
 
     for (const b of bookings) {
-      const expected = Number(b.wallet_amount ?? 0);
-      const actual = Number((netDebitByBooking.get(b.id) ?? 0).toFixed(2));
-      const shortfall = Number((expected - actual).toFixed(2));
+      const currency = b.currency ?? "ZAR";
+      const expected = roundCurrency(Number(b.wallet_amount ?? 0), currency);
+      const actual = roundCurrency(netDebitByBooking.get(b.id) ?? 0, currency);
+      const shortfall = subtractMoney(expected, actual, currency);
       if (shortfall > TOLERANCE) {
         const u = userMap.get(b.customer_id);
-        totalShortfall += shortfall;
+        totalShortfall = addMoney(totalShortfall, shortfall, currency);
         mismatches.push({
           booking_id: b.id,
           booking_number: b.booking_number ?? null,
@@ -166,7 +169,7 @@ export async function GET(request: NextRequest) {
           provider_id: b.provider_id ?? null,
           payment_status: b.payment_status ?? null,
           created_at: b.created_at ?? null,
-          expected_wallet_debit: Number(expected.toFixed(2)),
+          expected_wallet_debit: expected,
           actual_wallet_debit: actual,
           shortfall,
           wallet_exists: walletUserIds.has(b.customer_id),
@@ -180,7 +183,7 @@ export async function GET(request: NextRequest) {
       mismatches: mismatches.slice(0, 200),
       checked: bookings.length,
       total_mismatches: mismatches.length,
-      total_shortfall: Number(totalShortfall.toFixed(2)),
+      total_shortfall: totalShortfall,
     });
   } catch (error) {
     return handleApiError(error, "Failed to run wallet booking debit audit");

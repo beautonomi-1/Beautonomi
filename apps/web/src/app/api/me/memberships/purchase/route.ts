@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import { handleApiError, successResponse, errorResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { createMembershipPurchase } from "@/app/api/me/membership/_helpers/purchase-membership";
 
@@ -22,13 +22,12 @@ const schema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    const { user } = await requireRoleInApi(
+      ["customer", "provider_owner", "provider_staff", "superadmin"],
+      request,
+    );
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveTenantIdWithZaFallback(request);
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-    if (userError || !user) return errorResponse("Authentication required", "AUTH_REQUIRED", 401);
 
     const body = await request.json();
     const parsed = schema.safeParse(body);
