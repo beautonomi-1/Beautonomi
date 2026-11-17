@@ -51,17 +51,18 @@ const updateOrderSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user: adminUser } = await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
     const tenantId = await resolveAdminApiTenantId(request);
     const supabase = getSupabaseAdmin();
+    const { id: orderId } = await params;
 
     const { data: existing, error: loadErr } = await supabase
       .from("terminal_orders")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", orderId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
 
@@ -86,7 +87,7 @@ export async function PATCH(
     if (record_payment && !financeTransactionId) {
       const reference =
         payment_reference?.trim() ||
-        `terminal_order_manual_${params.id}_${Date.now()}`;
+        `terminal_order_manual_${orderId}_${Date.now()}`;
       const amountMajor = Number((existing as { total_amount?: number }).total_amount ?? 0);
       const commercialModel = (existing as { commercial_model?: string }).commercial_model as
         | "once_off_purchase"
@@ -99,7 +100,7 @@ export async function PATCH(
       try {
         const paymentResult = await recordTerminalOrderPayment({
           supabase,
-          terminalOrderId: params.id,
+          terminalOrderId: orderId,
           reference,
           amountMajor,
           commercialModel,
@@ -111,7 +112,7 @@ export async function PATCH(
           const { notifyTerminalOrderPaidIfTransitioned } = await import(
             "@/lib/terminal/notify-terminal-order-paid"
           );
-          await notifyTerminalOrderPaidIfTransitioned(supabase, params.id, {
+          await notifyTerminalOrderPaidIfTransitioned(supabase, orderId, {
             transitionedToPaid: true,
           });
         }
@@ -144,7 +145,7 @@ export async function PATCH(
     const { data, error } = await supabase
       .from("terminal_orders")
       .update(updates)
-      .eq("id", params.id)
+      .eq("id", orderId)
       .eq("tenant_id", tenantId)
       .select(
         `*,
@@ -168,7 +169,7 @@ export async function PATCH(
       const { data: assets, error: assetLoadErr } = await supabase
         .from("terminal_assets")
         .select("id, serial_number")
-        .eq("order_id", params.id)
+        .eq("order_id", orderId)
         .order("created_at", { ascending: true });
       if (assetLoadErr) {
         console.error("[terminal-orders] load assets for serial update failed:", assetLoadErr);
@@ -185,7 +186,7 @@ export async function PATCH(
           serialNumberWritten = true;
         }
       } else {
-        console.warn("[terminal-orders] no terminal_assets row for order, serial not written:", params.id);
+        console.warn("[terminal-orders] no terminal_assets row for order, serial not written:", orderId);
       }
     }
 
@@ -198,7 +199,7 @@ export async function PATCH(
         const { finalizeTerminalOrderAfterPayment } = await import(
           "@/lib/terminal/finalize-terminal-order-after-payment"
         );
-        await finalizeTerminalOrderAfterPayment({ supabase, terminalOrderId: params.id });
+        await finalizeTerminalOrderAfterPayment({ supabase, terminalOrderId: orderId });
       } catch (finalizeErr) {
         console.error("[terminal-orders] finalize on manual paid failed:", finalizeErr);
       }
@@ -213,14 +214,14 @@ export async function PATCH(
       !["cancelled", "refunded", "failed"].includes(String(prevStatus ?? ""))
     ) {
       try {
-        await ensureTerminalAssetsForOrder(supabase, params.id);
+        await ensureTerminalAssetsForOrder(supabase, orderId);
       } catch (assetErr) {
         console.error("[terminal-orders] asset creation failed:", assetErr);
       }
     }
     if (validation.data.order_status) {
       try {
-        await syncTerminalAssetStatusForOrder(supabase, params.id, validation.data.order_status);
+        await syncTerminalAssetStatusForOrder(supabase, orderId, validation.data.order_status);
       } catch (syncErr) {
         console.error("[terminal-orders] asset sync failed:", syncErr);
       }
@@ -240,7 +241,7 @@ export async function PATCH(
         const { notifyTerminalOrderDispatched } = await import(
           "@/lib/terminal/notify-terminal-order-fulfillment"
         );
-        await notifyTerminalOrderDispatched(supabase, params.id);
+        await notifyTerminalOrderDispatched(supabase, orderId);
       } catch (notifyErr) {
         console.error("[terminal-orders] dispatch notify failed:", notifyErr);
       }
@@ -259,7 +260,7 @@ export async function PATCH(
           .terminal_collection_locations;
         await notifyTerminalOrderReadyForCollection(
           supabase,
-          params.id,
+          orderId,
           loc?.name ?? "collection point",
         );
       } catch (notifyErr) {
@@ -273,7 +274,7 @@ export async function PATCH(
       actor_role: adminUser.role ?? "superadmin",
       action: record_payment ? "admin.terminal_order.payment_recorded" : "admin.terminal_order.updated",
       entity_type: "terminal_orders",
-      entity_id: params.id,
+      entity_id: orderId,
       module: "terminal_commerce",
       before_json: existing,
       after_json: data,

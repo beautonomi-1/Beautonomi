@@ -18,12 +18,12 @@ import { ADMIN_SECTION_COMMERCIAL } from "@/lib/admin-sections";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
     const supabase = getSupabaseAdmin();
-    const providerId = params.id;
+    const { id: providerId } = await params;
 
     const { data: integrations, error } = await supabase
       .from("provider_terminal_integrations")

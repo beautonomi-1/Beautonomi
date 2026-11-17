@@ -2,7 +2,7 @@
 /**
  * Read applied migration versions on staging. Does not print the access token.
  */
-const projectRef = "byfzhyqvtbasxptxdupf";
+const projectRef = process.argv[2] || "byfzhyqvtbasxptxdupf";
 const token = process.env.SUPABASE_ACCESS_TOKEN;
 if (!token) {
   console.error("SUPABASE_ACCESS_TOKEN is not set");

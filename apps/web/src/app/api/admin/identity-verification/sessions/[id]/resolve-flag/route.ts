@@ -10,7 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user } = await requireRoleInApi(["superadmin"], request);
@@ -23,11 +23,12 @@ export async function POST(
     }
 
     const supabase = getSupabaseAdmin();
+    const { id: sessionId } = await params;
 
     const { data: session, error } = await supabase
       .from("identity_verification_sessions")
       .select("user_id")
-      .eq("id", params.id)
+      .eq("id", sessionId)
       .maybeSingle();
 
     if (error || !session) return errorResponse("Session not found", "NOT_FOUND", 404);
@@ -51,7 +52,7 @@ export async function POST(
       userUpdate.under_age_flag = false;
     }
 
-    await supabase.from("identity_verification_sessions").update(sessionUpdate).eq("id", params.id);
+    await supabase.from("identity_verification_sessions").update(sessionUpdate).eq("id", sessionId);
     const userId = (session as Record<string, unknown>).user_id as string;
     if (Object.keys(userUpdate).length > 0) {
       await supabase.from("users").update(userUpdate).eq("id", userId);
@@ -62,8 +63,8 @@ export async function POST(
       actor_user_id: user.id,
       action:        "identity_verification.resolve_flag",
       resource_type: "identity_verification_session",
-      resource_id:   params.id,
-      metadata:      { flag, rationale, session_id: params.id },
+      resource_id:   sessionId,
+      metadata:      { flag, rationale, session_id: sessionId },
     });
 
     return successResponse({ ok: true, flag, resolved: true });

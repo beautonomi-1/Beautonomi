@@ -23,16 +23,17 @@ const createNoteSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
     const supabase = getSupabaseAdmin();
+    const { id: providerId } = await params;
 
     const { data, error } = await supabase
       .from("terminal_admin_notes")
       .select("id, body, created_at, updated_at, author_id, users(full_name, email)")
-      .eq("provider_id", params.id)
+      .eq("provider_id", providerId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -47,12 +48,12 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user: adminUser } = await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
     const supabase = getSupabaseAdmin();
-    const providerId = params.id;
+    const { id: providerId } = await params;
 
     const body = await request.json();
     const validation = createNoteSchema.safeParse(body);

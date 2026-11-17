@@ -80,21 +80,8 @@ async function uploadProductImage(file: File): Promise<string> {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("folder", "products");
-  const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
-  const json = (await res.json().catch(() => ({}))) as {
-    data?: { url?: string };
-    error?: string | { message?: string };
-  };
-  if (!res.ok) {
-    const msg =
-      typeof json.error === "string"
-        ? json.error
-        : json.error && typeof json.error === "object" && typeof json.error.message === "string"
-          ? json.error.message
-          : `Upload failed (${res.status})`;
-    throw new Error(msg);
-  }
-  const url = json.data?.url;
+  const data = await adminApi.postForm<{ url?: string }>("/api/upload", fd);
+  const url = data.url;
   if (!url) throw new Error("No image URL returned");
   return url;
 }

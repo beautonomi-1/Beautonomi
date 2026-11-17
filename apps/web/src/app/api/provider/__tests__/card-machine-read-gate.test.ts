@@ -84,7 +84,7 @@ describe("card-machine reads", () => {
   it("does not load one terminal integration", async () => {
     const { GET } = await import("../terminal-integrations/[vendor]/route");
     const res = await GET(new NextRequest("http://localhost/api/provider/terminal-integrations/yoco"), {
-      params: { vendor: "yoco" },
+      params: Promise.resolve({ vendor: "yoco" }),
     });
     expect(res.status).toBe(403);
     expect(mockGetSupabaseAdmin).not.toHaveBeenCalled();

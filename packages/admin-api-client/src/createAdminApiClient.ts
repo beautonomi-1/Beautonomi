@@ -6,11 +6,17 @@ import { adminBootstrapSchema, type AdminBootstrap } from "./schemas/bootstrap";
 const CSRF_HEADER = "x-csrf-token";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** Matches `apps/web` src/lib/http/fetcher.ts — same regex and raw cookie substring for the header value */
+/** Matches `getCsrfHeaders` in apps/web: decode the cookie so the header equals the signed token. */
 function csrfHeadersFromCookie(): Record<string, string> {
   if (typeof document === "undefined") return {};
   const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
-  return match?.[1] ? { [CSRF_HEADER]: match[1] } : {};
+  const raw = match?.[1]?.trim();
+  if (!raw) return {};
+  try {
+    return { [CSRF_HEADER]: decodeURIComponent(raw) };
+  } catch {
+    return { [CSRF_HEADER]: raw };
+  }
 }
 
 function attachCsrfForCookieMutations(headers: Headers, method: string, hasBearerAuth: boolean): void {
@@ -236,6 +242,18 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
       init?: RequestInit & { timeoutMs?: number }
     ): Promise<T> {
       return requestJson<T>(path, { ...init, method: init?.method ?? "GET", unwrapData: false });
+    },
+
+    /**
+     * Multipart POST. Leaves `Content-Type` unset so the browser sets the boundary,
+     * and attaches the CSRF header the same way as JSON mutations.
+     */
+    async postForm<T>(path: string, body: FormData, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+      return requestJson<T>(path, {
+        ...init,
+        method: "POST",
+        body,
+      });
     },
 
     async postJson<T>(path: string, body?: unknown, init?: RequestInit & { timeoutMs?: number }): Promise<T> {

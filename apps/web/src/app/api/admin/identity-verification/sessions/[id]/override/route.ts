@@ -36,7 +36,7 @@ function mapOverrideToProviderOutcome(adminStatus: string): ProviderVerification
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user } = await requireRoleInApi(["superadmin"], request);
@@ -48,11 +48,12 @@ export async function POST(
     }
 
     const supabase = getSupabaseAdmin();
+    const { id: sessionId } = await params;
 
     const { data: session, error } = await supabase
       .from("identity_verification_sessions")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", sessionId)
       .maybeSingle();
 
     if (error || !session) return errorResponse("Session not found", "NOT_FOUND", 404);
@@ -70,7 +71,7 @@ export async function POST(
           ? { decision: null, name_mismatch_flag: false, identity_dedupe_flag: false, under_age_flag: false }
           : {}),
       })
-      .eq("id", params.id);
+      .eq("id", sessionId);
 
     const persona = (session as Record<string, unknown>).persona_type as string;
     const providerId = (session as Record<string, unknown>).provider_id as string | null;
@@ -96,7 +97,7 @@ export async function POST(
           userId: ownerUserId,
           status: mapOverrideToProviderOutcome(newStatus),
           source: newStatus === "reset" ? "admin_reset" : "manual_admin",
-          diditSessionId: params.id,
+          diditSessionId: sessionId,
           metadata: { reason, admin_override: true },
         });
       }
@@ -120,13 +121,13 @@ export async function POST(
       actor_user_id: user.id,
       action:        "identity_verification.admin_override",
       resource_type: "identity_verification_session",
-      resource_id:   params.id,
+      resource_id:   sessionId,
       metadata:      {
         new_status: newStatus,
         stored_session_status: storedSessionStatus,
         session_kind: sessionKind,
         reason,
-        session_id: params.id,
+        session_id: sessionId,
       },
     }).throwOnError();
 

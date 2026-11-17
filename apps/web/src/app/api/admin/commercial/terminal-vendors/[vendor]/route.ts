@@ -47,12 +47,13 @@ const updateVendorSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { vendor: string } },
+  { params }: { params: Promise<{ vendor: string }> },
 ) {
   try {
     await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
     const supabase = getSupabaseAdmin();
-    const vendor = params.vendor.toLowerCase();
+    const { vendor: vendorParam } = await params;
+    const vendor = vendorParam.toLowerCase();
 
     const { data, error } = await supabase
       .from("terminal_vendor_configs")
@@ -87,12 +88,13 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { vendor: string } },
+  { params }: { params: Promise<{ vendor: string }> },
 ) {
   try {
     const { user: adminUser } = await requireAdminSection(ADMIN_SECTION_COMMERCIAL, request);
     const supabase = getSupabaseAdmin();
-    const vendor = params.vendor.toLowerCase();
+    const { vendor: vendorParam } = await params;
+    const vendor = vendorParam.toLowerCase();
 
     const { data: existing } = await supabase
       .from("terminal_vendor_configs")

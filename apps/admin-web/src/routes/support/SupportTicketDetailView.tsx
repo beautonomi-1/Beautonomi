@@ -7,7 +7,7 @@ import {
   ADMIN_SECTION_USERS_TRUST,
   canAccessSection,
 } from "@beautonomi/admin-access";
-import { AdminApiError, withAdminScopeUrl } from "@beautonomi/admin-api-client";
+import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { invalidateAdminShellCounts } from "@/lib/invalidateAdminShellCounts";
@@ -549,29 +549,11 @@ export function SupportTicketDetailView({
     try {
       const fd = new FormData();
       for (const f of Array.from(files)) fd.append("files", f);
-      const uploadPath = withAdminScopeUrl(
+      const data = await adminApi.postForm<{ attachments?: AttachmentItem[] }>(
         `/api/admin/support-tickets/${encodeURIComponent(id)}/upload`,
-        "POST",
+        fd,
       );
-      const res = await fetch(uploadPath, {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        data?: { attachments?: AttachmentItem[] };
-        error?: string | { message?: string };
-      };
-      if (!res.ok) {
-        const msg =
-          typeof json.error === "string"
-            ? json.error
-            : json.error && typeof json.error === "object" && json.error.message
-              ? String(json.error.message)
-              : `Upload failed (${res.status})`;
-        throw new Error(msg);
-      }
-      const next = json.data?.attachments ?? [];
+      const next = data.attachments ?? [];
       if (!next.length) throw new Error("No files were uploaded");
       setReplyAttachments((prev) => [...prev, ...next]);
       adminToast.success(next.length === 1 ? "File attached" : `${next.length} files attached`);

@@ -10,16 +10,17 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user } = await requireRoleInApi(["superadmin"], request);
     const supabase = getSupabaseAdmin();
+    const { id: sessionId } = await params;
 
     const { data: session, error } = await supabase
       .from("identity_verification_sessions")
       .select("user_id, persona_type, provider_id")
-      .eq("id", params.id)
+      .eq("id", sessionId)
       .maybeSingle();
 
     if (error || !session) return errorResponse("Session not found", "NOT_FOUND", 404);
@@ -28,15 +29,15 @@ export async function POST(
     await supabase
       .from("identity_verification_sessions")
       .update({ status: "abandoned", completed_at: new Date().toISOString() })
-      .eq("id", params.id);
+      .eq("id", sessionId);
 
     // Audit
     await supabase.from("audit_logs").insert({
       actor_user_id: user.id,
       action:        "identity_verification.admin_resend",
       resource_type: "identity_verification_session",
-      resource_id:   params.id,
-      metadata:      { session_id: params.id },
+      resource_id:   sessionId,
+      metadata:      { session_id: sessionId },
     });
 
     return successResponse({

@@ -1066,13 +1066,23 @@ export function ProviderOpsLeadsPage() {
       setImportDetailsOpen(false);
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("/api/admin/provider-ops/leads/import", { method: "POST", body: formData, credentials: "include" });
-      const json = await res.json();
-      if (!res.ok) {
-        adminToast.error(json?.error?.message ?? json?.message ?? "Import failed — please check your file and try again");
-        return;
-      }
-      const data = json.data;
+      const data = await adminApi.postForm<{
+        imported: number;
+        total_rows_in_file: number;
+        skipped_empty: number;
+        skipped_duplicates_count?: number;
+        recovered_rows?: number;
+        warnings?: { row: number; field: string; message: string }[];
+        skipped_duplicates?: {
+          row: number;
+          field: string;
+          value: string;
+          existing_lead_id: string | null;
+          existing_lead_name: string | null;
+          reason: "in_file" | "existing_lead";
+        }[];
+        error?: string | null;
+      }>("/api/admin/provider-ops/leads/import", formData);
       setImportResult({
         imported: data.imported,
         total_rows_in_file: data.total_rows_in_file,
@@ -1092,6 +1102,8 @@ export function ProviderOpsLeadsPage() {
       adminToast.success(toastParts.join(" · "));
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
       invalidateAdminShellCounts(qc);
+    } catch (e) {
+      adminToast.error(e instanceof Error ? e.message : "Import failed — please check your file and try again");
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -1159,18 +1171,15 @@ export function ProviderOpsLeadsPage() {
       if (contactFilter) p.set("contact", contactFilter);
       if (slaBreached) p.set("sla_breached", "1");
       if (deletedView) p.set("deleted", "only");
-      const res = await fetch(`/api/admin/provider-ops/leads/export?${p}`, { credentials: "include" });
-      if (!res.ok) {
-        adminToast.error("Export failed — please try again");
-        return;
-      }
-      const blob = await res.blob();
+      const blob = await adminApi.downloadBlob(`/api/admin/provider-ops/leads/export?${p}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `provider-leads-export-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+    } catch {
+      adminToast.error("Export failed — please try again");
     } finally {
       setExporting(false);
     }

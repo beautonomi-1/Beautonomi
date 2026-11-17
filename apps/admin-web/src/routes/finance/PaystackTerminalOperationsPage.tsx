@@ -210,31 +210,10 @@ function maskPhone(value?: string | null) {
   return digits.length >= 4 ? `ending ${digits.slice(-4)}` : "Not set";
 }
 
-function csrfHeader(): Record<string, string> {
-  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
-  return match?.[1] ? { "x-csrf-token": match[1] } : {};
-}
-
 async function uploadPoster(id: string, file: File) {
   const form = new FormData();
   form.set("file", file);
-  const res = await fetch(`/api/admin/paystack-terminal/terminals/${id}/poster`, {
-    method: "POST",
-    credentials: "include",
-    headers: csrfHeader(),
-    body: form,
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const message =
-      typeof json?.error?.message === "string"
-        ? json.error.message
-        : typeof json?.message === "string"
-          ? json.message
-          : "Failed to upload poster";
-    throw new Error(message);
-  }
-  return json;
+  await adminApi.postForm(`/api/admin/paystack-terminal/terminals/${encodeURIComponent(id)}/poster`, form);
 }
 
 export function PaystackTerminalOperationsPage() {

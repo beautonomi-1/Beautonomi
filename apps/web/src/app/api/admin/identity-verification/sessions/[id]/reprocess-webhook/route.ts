@@ -12,16 +12,17 @@ import { reconcileSession } from "@/lib/identity-verification/identity-verificat
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { user } = await requireRoleInApi(["superadmin"], request);
     const supabase = getSupabaseAdmin();
+    const { id: sessionId } = await params;
 
     const { data: session, error } = await supabase
       .from("identity_verification_sessions")
       .select("id, provider_session_id")
-      .eq("id", params.id)
+      .eq("id", sessionId)
       .maybeSingle();
 
     if (error || !session) return errorResponse("Session not found", "NOT_FOUND", 404);
@@ -31,15 +32,15 @@ export async function POST(
       return errorResponse("No Didit session id — cannot reprocess", "NO_PROVIDER_SESSION_ID", 400);
     }
 
-    await reconcileSession(params.id, providerSessionId);
+    await reconcileSession(sessionId, providerSessionId);
 
     // Audit
     await supabase.from("audit_logs").insert({
       actor_user_id: user.id,
       action:        "identity_verification.admin_reprocess",
       resource_type: "identity_verification_session",
-      resource_id:   params.id,
-      metadata:      { session_id: params.id, provider_session_id: providerSessionId },
+      resource_id:   sessionId,
+      metadata:      { session_id: sessionId, provider_session_id: providerSessionId },
     });
 
     return successResponse({ ok: true, message: "Decision re-fetched and applied" });
