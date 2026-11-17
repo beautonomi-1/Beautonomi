@@ -13,6 +13,8 @@ export type PlatformCashPositionParams = {
     | "marketing_credit_gross"
     | "payouts_paid_total"
     | "refunds_abs_gross"
+    | "refunds_store_credit"
+    | "refunds_in_person"
     | "refunds_platform_cash_out"
     | "wallet_collected"
     | "gift_card_collected"

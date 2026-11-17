@@ -13,6 +13,8 @@ const baseAgg = {
   marketing_credit_gross: 50,
   payouts_paid_total: 6_000,
   refunds_abs_gross: 300,
+  refunds_store_credit: 0,
+  refunds_in_person: 0,
   refunds_platform_cash_out: 300,
   wallet_collected: 0,
   gift_card_collected: 0,

@@ -161,6 +161,9 @@ type FinanceSummary = {
         collected?: number;
         provider_payouts?: number;
         refunds_gross?: number;
+        refunds_store_credit?: number;
+        refunds_in_person?: number;
+        refunds_platform_cash_out?: number;
         gateway_fees?: number;
         payout_transfer_fees?: number;
         net_platform_cash?: number;

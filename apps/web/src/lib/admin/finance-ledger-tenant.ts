@@ -148,19 +148,28 @@ export function tenantOrphanLedgerScopeAllowed(
   return true;
 }
 
+/**
+ * Shallow filter builder. Casting the PostgREST client back to `typeof q`
+ * instantiates its recursive generics (TS2589) under `tsc` / `next build`.
+ */
+type OrphanLedgerQuery = {
+  eq: (col: string, val: string) => OrphanLedgerQuery;
+  in: (col: string, vals: string[]) => OrphanLedgerQuery;
+  gte: (col: string, val: string) => OrphanLedgerQuery;
+  lte: (col: string, val: string) => OrphanLedgerQuery;
+  order: (col: string, opts: { ascending: boolean }) => OrphanLedgerQuery;
+  range: (from: number, to: number) => PromiseLike<{ data: FinanceLedgerRow[] | null; error: unknown }>;
+};
+
 function applyLedgerTransactionTypeFilters(
-  query: { eq: (col: string, val: string) => unknown; in: (col: string, vals: string[]) => unknown },
+  query: OrphanLedgerQuery,
   options?: Pick<FetchFinanceLedgerOptions, "transactionType" | "transactionTypes"> | null,
-): typeof query {
-  let q = query;
+): OrphanLedgerQuery {
   const tt = options?.transactionType && options.transactionType !== "all" ? options.transactionType : null;
   const tts = options?.transactionTypes?.filter(Boolean) ?? [];
-  if (tt) {
-    q = q.eq("transaction_type", tt) as typeof query;
-  } else if (tts.length > 0) {
-    q = q.in("transaction_type", tts) as typeof query;
-  }
-  return q;
+  if (tt) return query.eq("transaction_type", tt);
+  if (tts.length > 0) return query.in("transaction_type", tts);
+  return query;
 }
 
 async function fetchTenantOrphanLedgerRows(
@@ -176,9 +185,9 @@ async function fetchTenantOrphanLedgerRows(
     .select(LEDGER_SELECT)
     .eq("tenant_id", tenantId)
     .is("provider_id", null)
-    .is("booking_id", null);
+    .is("booking_id", null) as unknown as OrphanLedgerQuery;
 
-  q = applyLedgerTransactionTypeFilters(q, options) as typeof q;
+  q = applyLedgerTransactionTypeFilters(q, options);
 
   if (normalizedRange.start) q = q.gte("created_at", normalizedRange.start);
   if (normalizedRange.end) q = q.lte("created_at", normalizedRange.end);
