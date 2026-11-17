@@ -27,6 +27,7 @@ const getPreviousPeriodRevenueMock = vi.fn();
 const getProviderNetAfterRefundsDetailedMock = vi.fn();
 const getProviderNetAfterRefundsByBookingMock = vi.fn();
 const getPreviousPeriodNetAfterRefundsMock = vi.fn();
+const getProviderNetAfterRefundsTotalMock = vi.fn();
 
 const defaultRevenueResult = () => ({
   totalRevenue: 122,
@@ -83,6 +84,8 @@ vi.mock("@/lib/reports/revenue-helpers", () => ({
     getProviderNetAfterRefundsByBookingMock(...args),
   getPreviousPeriodNetAfterRefunds: (...args: unknown[]) =>
     getPreviousPeriodNetAfterRefundsMock(...args),
+  getProviderNetAfterRefundsTotal: (...args: unknown[]) =>
+    getProviderNetAfterRefundsTotalMock(...args),
 }));
 
 function request(path: string) {
@@ -440,6 +443,7 @@ describe("provider report routes sign-off coverage", () => {
     );
     getPreviousPeriodRevenueMock.mockResolvedValue(50);
     getPreviousPeriodNetAfterRefundsMock.mockResolvedValue(50);
+    getProviderNetAfterRefundsTotalMock.mockResolvedValue(122);
   });
 
   it("bookings report exposes channel_breakdown with recognized revenue", async () => {

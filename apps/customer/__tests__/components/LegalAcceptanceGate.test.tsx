@@ -99,18 +99,21 @@ describe("LegalAcceptanceGate", () => {
     expect(screen.getByText("Checkout shell")).toBeTruthy();
   });
 
-  it("shows the EULA screen when enabled and not yet accepted", async () => {
-    (hasAcceptedCurrentCustomerEula as jest.Mock).mockResolvedValue(false);
+  it("shows the EULA screen when enabled and not yet accepted", () => {
+    // Resolve inside `.then()`, before it returns. A real Promise settles in a
+    // microtask, after render()'s act() scope has closed, and React then paints
+    // on a host callback. On a busy CI runner that callback does not run before
+    // Jest's 5s test timeout.
+    (hasAcceptedCurrentCustomerEula as jest.Mock).mockImplementation(() => ({
+      then(onFulfilled: (value: boolean) => void) {
+        onFulfilled(false);
+      },
+    }));
     const screen = render(
       <LegalAcceptanceGate enabled>
         <Text>App shell</Text>
       </LegalAcceptanceGate>,
     );
-    // The acceptance result renders on the next turn. Do not wrap this wait in
-    // `act()`: React 19 flushes async act through MessageChannel, and on CI that
-    // callback does not run before Jest's 5s test timeout.
-    await new Promise((resolve) => setImmediate(resolve));
-    await new Promise((resolve) => setImmediate(resolve));
     expect(JSON.stringify(screen.toJSON())).toContain(
       "customer.mobile.components.legalAcceptanceGate.title",
     );

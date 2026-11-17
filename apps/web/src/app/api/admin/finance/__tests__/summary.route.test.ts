@@ -68,10 +68,13 @@ function makeSupabaseAdminChain() {
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
+    is: () => chain,
     gt: () => chain,
     gte: () => chain,
     lte: () => chain,
     order: () => chain,
+    limit: () => chain,
+    maybeSingle: () => Promise.resolve({ data: null, error: null }),
     range: () => Promise.resolve({ data: [], error: null }),
     then: (resolve: (v: unknown) => void) => resolve({ data: [], error: null, count: 0 }),
   };

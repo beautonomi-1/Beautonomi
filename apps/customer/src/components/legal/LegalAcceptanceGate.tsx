@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -33,53 +33,53 @@ type Props = {
 type AcceptanceSnapshot = { loading: boolean; accepted: boolean };
 
 /**
- * The acceptance read is async. Publishing it through `useSyncExternalStore`
- * schedules a sync render on the next tick. A normal `setState` after `await`
- * is a normal-priority update, and on a busy CI runner React holds that until
- * its 5s expiration — the same limit Jest gives the test.
+ * A real acceptance promise settles on a later turn. React then paints the
+ * EULA as a normal-priority update, and a busy CI runner can hold that paint
+ * until the 5s scheduler expiration — the same limit Jest gives the test.
+ *
+ * Read the thenable during render. If it calls back before `.then()` returns,
+ * the EULA is part of this paint and nothing waits on the scheduler.
  */
 function useCustomerEulaAcceptance(): AcceptanceSnapshot & { markAccepted: () => void } {
-  const storeRef = useRef<{
-    snapshot: AcceptanceSnapshot;
-    listeners: Set<() => void>;
-  } | null>(null);
-  if (storeRef.current === null) {
-    storeRef.current = {
-      snapshot: { loading: true, accepted: false },
-      listeners: new Set(),
-    };
+  const resolvedRef = useRef<boolean | null>(null);
+  const startedRef = useRef(false);
+  const cancelledRef = useRef(false);
+  const [, rerender] = useState(0);
+
+  if (!startedRef.current) {
+    startedRef.current = true;
+    const promise = hasAcceptedCurrentCustomerEula();
+    let resolvedDuringRender: boolean | null = null;
+    promise.then((accepted) => {
+      resolvedDuringRender = accepted;
+    });
+    if (resolvedDuringRender !== null) {
+      resolvedRef.current = resolvedDuringRender;
+    } else {
+      promise.then((accepted) => {
+        if (cancelledRef.current || resolvedRef.current !== null) return;
+        resolvedRef.current = accepted;
+        rerender((version) => version + 1);
+      });
+    }
   }
-  const store = storeRef.current;
-  const publish = useCallback((next: AcceptanceSnapshot) => {
-    store.snapshot = next;
-    store.listeners.forEach((listener) => listener());
-  }, [store]);
-  const snapshot = useSyncExternalStore(
-    (listener) => {
-      store.listeners.add(listener);
-      return () => {
-        store.listeners.delete(listener);
-      };
-    },
-    () => store.snapshot,
-  );
 
   useEffect(() => {
-    let cancelled = false;
-    void hasAcceptedCurrentCustomerEula().then((accepted) => {
-      if (cancelled) return;
-      publish({ loading: false, accepted });
-    });
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
-  }, [publish, store]);
+  }, []);
 
   const markAccepted = useCallback(() => {
-    publish({ loading: false, accepted: true });
-  }, [publish]);
+    resolvedRef.current = true;
+    rerender((version) => version + 1);
+  }, []);
 
-  return { ...snapshot, markAccepted };
+  const resolved = resolvedRef.current;
+  if (resolved === null) {
+    return { loading: true, accepted: false, markAccepted };
+  }
+  return { loading: false, accepted: resolved, markAccepted };
 }
 
 export function LegalAcceptanceGate({ children, enabled = true }: Props) {
