@@ -1,4 +1,4 @@
-export const FINANCE_METRIC_CONTRACT_VERSION = "2026.11.16.2";
+export const FINANCE_METRIC_CONTRACT_VERSION = "2026.11.17.2";
 
 type MetricContract = {
   key: string;
@@ -121,10 +121,28 @@ const CONTRACTS: Record<string, MetricContract> = {
   contributionMargin: {
     key: "contributionMargin",
     label: "Contribution margin",
-    formula: "platform net − gateway fees − platform refund impact",
+    formula: "platform recognized revenue net − non-booking gateway fees (booking fees already in platform_take_net)",
     source: ["finance_transactions", "aggregateFinanceLedgerRows"],
     timezone: "tenant",
     cadence: "daily",
+  },
+  platformNetCash: {
+    key: "platformNetCash",
+    label: "Net platform cash (estimated)",
+    formula:
+      "collected inflows − wallet/gift tender − payouts − card/original refunds (refunds_platform_cash_out) − gateway fees",
+    source: ["finance_transactions", "wallet_topups", "aggregateFinanceLedgerRows", "platform-cash-position"],
+    timezone: "tenant",
+    cadence: "near_realtime",
+  },
+  refundsByTender: {
+    key: "refundsByTender",
+    label: "Customer refunds by tender",
+    formula:
+      "refunds_store_credit (wallet liability), refunds_platform_cash_out (card/original), refunds_in_person (cash); refunds_gross unchanged (all tenders)",
+    source: ["finance_transactions.metadata.refund_tender", "aggregateFinanceLedgerRows"],
+    timezone: "tenant",
+    cadence: "near_realtime",
   },
 };
 

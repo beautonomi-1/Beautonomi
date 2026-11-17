@@ -6,6 +6,7 @@ import {
   financeTransactionTypesForAdminFilter,
   resolveFinanceLedgerRowCustomerId,
   resolveFinanceLedgerRowProviderId,
+  tenantOrphanLedgerScopeAllowed,
 } from "./finance-ledger-tenant";
 
 describe("mergeLedgerRowsByIdPreferProvider", () => {
@@ -70,6 +71,18 @@ describe("computeAdminFinancePreviousPeriodRange", () => {
     expect(prevEnd.getTime() - prevStart.getTime()).toBe(
       new Date("2026-03-20").getTime() - new Date("2026-03-10").getTime(),
     );
+  });
+});
+
+describe("tenantOrphanLedgerScopeAllowed", () => {
+  it("includes tenant-level rows for unscoped fetches", () => {
+    expect(tenantOrphanLedgerScopeAllowed(null)).toBe(true);
+    expect(tenantOrphanLedgerScopeAllowed({})).toBe(true);
+  });
+
+  it("skips orphan branch when provider or booking filters are set", () => {
+    expect(tenantOrphanLedgerScopeAllowed({ restrictProviderIds: ["p1"] })).toBe(false);
+    expect(tenantOrphanLedgerScopeAllowed({ restrictBookingIds: ["b1"] })).toBe(false);
   });
 });
 

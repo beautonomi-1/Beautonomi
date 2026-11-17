@@ -36,9 +36,13 @@ export function computeTakeRate(agg: FinanceLedgerAggregate): number {
 
 export function computeContributionMargin(agg: FinanceLedgerAggregate): number {
   const platformNet = platformRevenueNetFromAggregate(agg);
-  const gateway = gatewayFeesTotalFromAggregate(agg);
-  const refundImpact = agg.platform_refund_impact ?? agg.platform_refund_contra ?? 0;
-  return subtractMoney(subtractMoney(platformNet, gateway), Math.abs(refundImpact));
+  // platform_take_net already embeds booking gateway fees; only subtract non-booking
+  // gateway costs so subscription/ads terminal fees are not double-counted.
+  const gatewayNonBooking = subtractMoney(
+    gatewayFeesTotalFromAggregate(agg),
+    agg.gateway_fees_services,
+  );
+  return subtractMoney(platformNet, gatewayNonBooking);
 }
 
 /**

@@ -56,6 +56,12 @@ export type FinanceLedgerAggregate = {
   /** Customer cash refunded: abs(net) of cash refund legs, not abs(amount). */
   refunds_abs_gross: number;
   refunds_gross: number;
+  /** Refund value credited to customer wallet (store_credit tender). */
+  refunds_store_credit: number;
+  /** Refunds paid in person by the provider (cash tender). */
+  refunds_in_person: number;
+  /** Card/gateway cash returned to the customer (original tender or legacy rows). */
+  refunds_platform_cash_out: number;
   /** Net provider-side refund impact after removing platform contra allocation. */
   provider_refund_net_impact: number;
   /** Wallet credits applied to bookings (wallet-only or split wallet+card payments). */
@@ -211,6 +217,13 @@ function isCashRefundRow(r: Row): boolean {
 
 function isProviderEarningsRefundRow(r: Row): boolean {
   return r.transaction_type === "refund" && isProviderEarningsRefundComponent(r.refund_component);
+}
+
+function refundTenderFromRow(r: Row): string {
+  const meta = r.metadata as Record<string, unknown> | null | undefined;
+  const tender = meta?.refund_tender;
+  if (typeof tender === "string" && tender.trim()) return tender.trim();
+  return "original";
 }
 
 export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLedgerAggregate {
@@ -385,6 +398,26 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const providerRefundNetImpact = tx
     .filter(isProviderEarningsRefundRow)
     .reduce((s, r) => addMoney(s, Number(r.net ?? 0)), 0);
+
+  const cashRefundRows = tx.filter(isCashRefundRow);
+  const refundsAbsGross = cashRefundRows.reduce(
+    (s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))),
+    0,
+  );
+  let refundsStoreCredit = 0;
+  let refundsInPerson = 0;
+  let refundsPlatformCashOut = 0;
+  for (const r of cashRefundRows) {
+    const absNet = Math.abs(Number(r.net ?? 0));
+    const tender = refundTenderFromRow(r);
+    if (tender === "store_credit") {
+      refundsStoreCredit = addMoney(refundsStoreCredit, absNet);
+    } else if (tender === "cash") {
+      refundsInPerson = addMoney(refundsInPerson, absNet);
+    } else {
+      refundsPlatformCashOut = addMoney(refundsPlatformCashOut, absNet);
+    }
+  }
   // Cancellation fees are provider-retained income (not platform commission).
   // They are tracked separately via `cancellation_fees_retained`.
   const platformCommissionNet = addMoney(platformCommissionGross, platformRefundContra);
@@ -456,8 +489,11 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     // Cash refund legs are not a partition of `amount` (the payment leg stores a
     // negative service base while sibling legs store positive component amounts).
     // Absolute `net` of the cash legs equals the customer cash refunded.
-    refunds_abs_gross: tx.filter(isCashRefundRow).reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))), 0),
-    refunds_gross: tx.filter(isCashRefundRow).reduce((s, r) => addMoney(s, Math.abs(Number(r.net ?? 0))), 0),
+    refunds_abs_gross: refundsAbsGross,
+    refunds_gross: refundsAbsGross,
+    refunds_store_credit: refundsStoreCredit,
+    refunds_in_person: refundsInPerson,
+    refunds_platform_cash_out: refundsPlatformCashOut,
     provider_refund_net_impact: providerRefundNetImpact,
     wallet_collected: walletCollected,
     gift_card_collected: giftCardCollected,

@@ -36,6 +36,43 @@ describe("aggregateFinanceLedgerRows", () => {
     expect(agg.service_collected_gross).toBe(20);
   });
 
+  it("splits store_credit refunds from platform card cash-out for cash position", () => {
+    const rows: FinanceLedgerRow[] = [
+      {
+        id: "r-pe",
+        transaction_type: "refund",
+        refund_component: "provider_earnings",
+        net: -100,
+        metadata: { refund_tender: "store_credit" },
+      },
+      {
+        id: "r-tip",
+        transaction_type: "refund",
+        refund_component: "tip",
+        net: -20,
+        metadata: { refund_tender: "store_credit" },
+      },
+      {
+        id: "r-pf",
+        transaction_type: "refund",
+        refund_component: "platform_fee",
+        net: -15,
+        metadata: { refund_tender: "store_credit" },
+      },
+      {
+        id: "r-card",
+        transaction_type: "refund",
+        refund_component: "provider_earnings",
+        net: -50,
+        metadata: { refund_tender: "original" },
+      },
+    ];
+    const agg = aggregateFinanceLedgerRows(rows);
+    expect(agg.refunds_gross).toBe(185);
+    expect(agg.refunds_store_credit).toBe(135);
+    expect(agg.refunds_platform_cash_out).toBe(50);
+  });
+
   it("splits refund impact between platform contra and provider refund impact", () => {
     const rows: FinanceLedgerRow[] = [
       {

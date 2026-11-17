@@ -482,6 +482,10 @@ export async function GET(request: NextRequest) {
         total_platform_revenue_net: platformRecognizedRevenueNet,
         gateway_fees_total: gatewayFeesTotal,
         provider_earnings_net: ledgerAgg.provider_earnings_net,
+        provider_net_after_refunds: subtractMoney(
+          ledgerAgg.provider_recognized_revenue_gross,
+          Math.abs(ledgerAgg.provider_refund_net_impact),
+        ),
         refunds_gross: ledgerAgg.refunds_gross,
         refunds_abs_gross: ledgerAgg.refunds_abs_gross,
         provider_refund_impact_net: ledgerAgg.provider_refund_net_impact,

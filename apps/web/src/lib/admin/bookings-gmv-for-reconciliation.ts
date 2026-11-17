@@ -9,6 +9,8 @@ export type BookingsGmvReconciliationResult = {
   walkInAddOnDeduction: number;
   /** grossBookingsGmv − walkInAddOnDeduction — comparable to ledger service_collected_gross. */
   alignedBookingsGmv: number;
+  /** False when the bookings query failed (do not treat as zero GMV). */
+  available: boolean;
 };
 
 /** Bookings that collected money, including ones later refunded. Ledger GMV is gross. */
@@ -35,7 +37,51 @@ export function sumAlignedBookingsGmv(
     grossBookingsGmv: roundCurrency(grossBookingsGmv),
     walkInAddOnDeduction: roundCurrency(deduction),
     alignedBookingsGmv: roundCurrency(Math.max(0, subtractMoney(grossBookingsGmv, deduction))),
+    available: true,
   };
+}
+
+type BookingGmvRow = { id?: string; total_amount?: number | null; payment_status?: string | null };
+
+async function fetchAlignedBookingRowsForTenant(
+  supabase: SupabaseClient,
+  tenantId: string,
+  range: { start?: string | null; end?: string | null },
+): Promise<BookingGmvRow[]> {
+  const statuses = [...ALIGNED_BOOKINGS_PAYMENT_STATUSES];
+  const byId = new Map<string, BookingGmvRow>();
+
+  let directQuery = supabase
+    .from("bookings")
+    .select("id, total_amount, payment_status")
+    .eq("tenant_id", tenantId)
+    .in("payment_status", statuses);
+  if (range.start) directQuery = directQuery.gte("created_at", range.start);
+  if (range.end) directQuery = directQuery.lte("created_at", range.end);
+  directQuery = directQuery.order("id", { ascending: true });
+  const { rows: directRows } = await fetchAllPages<BookingGmvRow>(directQuery);
+  for (const row of directRows) {
+    if (row.id) byId.set(String(row.id), row);
+  }
+
+  const { data: providerRows } = await supabase.from("providers").select("id").eq("tenant_id", tenantId);
+  const providerIds = (providerRows ?? []).map((p: { id: string }) => p.id).filter(Boolean);
+  if (providerIds.length > 0) {
+    let viaProviderQuery = supabase
+      .from("bookings")
+      .select("id, total_amount, payment_status")
+      .in("provider_id", providerIds)
+      .in("payment_status", statuses);
+    if (range.start) viaProviderQuery = viaProviderQuery.gte("created_at", range.start);
+    if (range.end) viaProviderQuery = viaProviderQuery.lte("created_at", range.end);
+    viaProviderQuery = viaProviderQuery.order("id", { ascending: true });
+    const { rows: viaRows } = await fetchAllPages<BookingGmvRow>(viaProviderQuery);
+    for (const row of viaRows) {
+      if (row.id) byId.set(String(row.id), row);
+    }
+  }
+
+  return [...byId.values()];
 }
 
 /**
@@ -48,25 +94,13 @@ export async function computeAlignedBookingsGmv(
   range: { start?: string | null; end?: string | null },
   ledgerWalkInCharges = 0,
 ): Promise<BookingsGmvReconciliationResult> {
-  let bookingsQuery = supabase
-    .from("bookings")
-    .select("total_amount")
-    .eq("tenant_id", tenantId)
-    .in("payment_status", [...ALIGNED_BOOKINGS_PAYMENT_STATUSES]);
-
-  if (range.start) bookingsQuery = bookingsQuery.gte("created_at", range.start);
-  if (range.end) bookingsQuery = bookingsQuery.lte("created_at", range.end);
-
-  bookingsQuery = bookingsQuery.order("id", { ascending: true });
-
-  let bookingRows: { total_amount?: number }[] = [];
+  let bookingRows: BookingGmvRow[] = [];
   try {
-    const { rows } = await fetchAllPages<{ total_amount?: number }>(bookingsQuery);
-    bookingRows = rows;
+    bookingRows = await fetchAlignedBookingRowsForTenant(supabase, tenantId, range);
   } catch (bookingErr) {
     const message = bookingErr instanceof Error ? bookingErr.message : String(bookingErr);
     console.warn("computeAlignedBookingsGmv bookings query failed:", message);
-    return { grossBookingsGmv: 0, walkInAddOnDeduction: 0, alignedBookingsGmv: 0 };
+    return { grossBookingsGmv: 0, walkInAddOnDeduction: 0, alignedBookingsGmv: 0, available: false };
   }
 
   const grossBookingsGmv = sumAlignedBookingsGmv(bookingRows, 0).grossBookingsGmv;
@@ -74,30 +108,34 @@ export async function computeAlignedBookingsGmv(
   let walkInAddOnDeduction = Math.max(0, ledgerWalkInCharges);
 
   if (walkInAddOnDeduction <= 0) {
-    let acQuery = supabase
-      .from("booking_payments")
-      .select("amount, payment_provider_data")
-      .eq("tenant_id", tenantId)
-      .in("status", ["completed", "partially_refunded"]);
-    if (range.start) acQuery = acQuery.gte("created_at", range.start);
-    if (range.end) acQuery = acQuery.lte("created_at", range.end);
+    try {
+      let acQuery = supabase
+        .from("booking_payments")
+        .select("amount, payment_provider_data")
+        .eq("tenant_id", tenantId)
+        .in("status", ["completed", "partially_refunded"]);
+      if (range.start) acQuery = acQuery.gte("created_at", range.start);
+      if (range.end) acQuery = acQuery.lte("created_at", range.end);
 
-    acQuery = acQuery.order("id", { ascending: true });
-    const { rows: walkInPayments } = await fetchAllPages<{
-      amount?: number;
-      payment_provider_data?: Record<string, unknown>;
-    }>(acQuery);
-    walkInAddOnDeduction = walkInPayments.reduce((s, row) => {
-      const pd = (row as { payment_provider_data?: Record<string, unknown> }).payment_provider_data;
-      const isWalkIn =
-        pd &&
-        typeof pd === "object" &&
-        pd.source === "walk_in" &&
-        typeof pd.additional_charge_id === "string" &&
-        pd.additional_charge_id.length > 0;
-      if (!isWalkIn) return s;
-      return addMoney(s, Number((row as { amount?: number }).amount ?? 0));
-    }, 0);
+      acQuery = acQuery.order("id", { ascending: true });
+      const { rows: walkInPayments } = await fetchAllPages<{
+        amount?: number;
+        payment_provider_data?: Record<string, unknown>;
+      }>(acQuery);
+      walkInAddOnDeduction = walkInPayments.reduce((s, row) => {
+        const pd = (row as { payment_provider_data?: Record<string, unknown> }).payment_provider_data;
+        const isWalkIn =
+          pd &&
+          typeof pd === "object" &&
+          pd.source === "walk_in" &&
+          typeof pd.additional_charge_id === "string" &&
+          pd.additional_charge_id.length > 0;
+        if (!isWalkIn) return s;
+        return addMoney(s, Number((row as { amount?: number }).amount ?? 0));
+      }, 0);
+    } catch (walkInErr) {
+      console.warn("computeAlignedBookingsGmv walk-in query failed:", walkInErr);
+    }
   }
 
   const alignedBookingsGmv = Math.max(0, subtractMoney(grossBookingsGmv, walkInAddOnDeduction));
@@ -106,5 +144,6 @@ export async function computeAlignedBookingsGmv(
     grossBookingsGmv: roundCurrency(grossBookingsGmv),
     walkInAddOnDeduction: roundCurrency(walkInAddOnDeduction),
     alignedBookingsGmv: roundCurrency(alignedBookingsGmv),
+    available: true,
   };
 }

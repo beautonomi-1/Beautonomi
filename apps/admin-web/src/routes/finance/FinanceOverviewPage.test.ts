@@ -41,6 +41,7 @@ describe("FinanceOverviewPage filter and API wiring", () => {
   it("surfaces settled service GMV with gmv_growth trend", () => {
     expect(pageSource).toContain("Settled service GMV");
     expect(pageSource).toContain("summary.gmv_growth");
+    expect(pageSource).toContain("summary.gmv_growth_kind");
     expect(pageSource).toContain("summary.service_collected_gross");
   });
 

@@ -102,7 +102,11 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
     : [];
 
   const kpis = [
-    { label: "Scheduled gross booked value", value: fmtMoney(data.totalRevenue), sub: "Booking value by report period, not settled cash" },
+    {
+      label: "Gross booked value (completed or confirmed in period)",
+      value: fmtMoney(data.totalRevenue),
+      sub: "Booking value by report period, not settled cash",
+    },
     { label: "Net collected", value: fmtMoney(data.netCollected), sub: "Completed and confirmed bookings in period: collected − refunded" },
     ...(pr
       ? [
@@ -113,9 +117,14 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
           { label: "Subscription net", value: fmtMoney(pr.subscription_net) },
           { label: "Ads net", value: fmtMoney(pr.ads_net) },
           {
-            label: "Provider service earnings",
+            label: "Provider service earnings (gross)",
             value: fmtMoney(pr.provider_earnings_net),
             sub: "provider_earnings ledger rows only — tips/travel/add-ons are separate",
+          },
+          {
+            label: "Provider net (after refunds)",
+            value: fmtMoney(pr.provider_net_after_refunds ?? pr.provider_earnings_net),
+            sub: "Recognized provider earnings net of provider-side refund clawback",
           },
           { label: "Refunds", value: fmtMoney(pr.refunds_abs_gross ?? pr.refunds_gross), sub: "Absolute refunds to customers" },
           { label: "Gateway fees", value: fmtMoney(pr.gateway_fees_total), sub: "Paystack/Yoco processing" },
@@ -130,7 +139,7 @@ function RevenueReport({ data }: { data: Record<string, unknown> }) {
     <div className="space-y-6">
       <AdminPanel>
         <p className="text-xs leading-5 text-gray-600">
-          <strong>Scheduled gross booked value</strong> is booking value in the report period,
+          <strong>Gross booked value</strong> is booking value in the report period (completed or confirmed),
           distinct from Finance&apos;s settled service GMV and from provider payment-summary
           settled ledger amount. <strong>Platform revenue</strong> is what the platform keeps
           after refunds, gateway fees, and provider payouts are recognised on the finance ledger.

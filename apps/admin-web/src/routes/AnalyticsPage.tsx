@@ -548,7 +548,7 @@ export function AnalyticsPage() {
                 <AdminPanel className="mt-6">
                   <h3 className="text-lg font-semibold text-gray-900">Top providers by net earnings</h3>
                   <p className="mt-1 text-xs text-gray-500">
-                    Provider net earnings (earnings, travel, tips, cancellation fees, walk-in charges). Provider report
+                    Provider net earnings after refunds (earnings, travel, tips, cancellation fees, walk-in). Provider report
                     table uses a narrower ledger slice.
                   </p>
                   {top.length === 0 ? (

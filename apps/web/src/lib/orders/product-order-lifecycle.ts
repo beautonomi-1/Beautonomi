@@ -134,6 +134,7 @@ export async function applyProductOrderCancelRefundSideEffects(
         net: -storeCreditClawback,
         currency: order.currency || LAST_RESORT_CURRENCY,
         description,
+        metadata: { refund_tender: "store_credit" },
         created_at: new Date().toISOString(),
       });
     }

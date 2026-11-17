@@ -140,6 +140,54 @@ export function mergeLedgerRowsByIdPreferProvider<T extends { id: string }>(
   return Array.from(byId.values());
 }
 
+export function tenantOrphanLedgerScopeAllowed(
+  options?: Pick<FetchFinanceLedgerOptions, "restrictProviderIds" | "restrictBookingIds"> | null,
+): boolean {
+  if (options?.restrictProviderIds?.length) return false;
+  if (options?.restrictBookingIds?.length) return false;
+  return true;
+}
+
+function applyLedgerTransactionTypeFilters(
+  query: { eq: (col: string, val: string) => unknown; in: (col: string, vals: string[]) => unknown },
+  options?: Pick<FetchFinanceLedgerOptions, "transactionType" | "transactionTypes"> | null,
+): typeof query {
+  let q = query;
+  const tt = options?.transactionType && options.transactionType !== "all" ? options.transactionType : null;
+  const tts = options?.transactionTypes?.filter(Boolean) ?? [];
+  if (tt) {
+    q = q.eq("transaction_type", tt) as typeof query;
+  } else if (tts.length > 0) {
+    q = q.in("transaction_type", tts) as typeof query;
+  }
+  return q;
+}
+
+async function fetchTenantOrphanLedgerRows(
+  supabase: SupabaseClient,
+  tenantId: string,
+  range: FetchFinanceLedgerRange,
+  options?: FetchFinanceLedgerOptions,
+): Promise<FinanceLedgerRow[]> {
+  if (!tenantOrphanLedgerScopeAllowed(options)) return [];
+  const normalizedRange = normalizeAdminLedgerRange(range);
+  let q = supabase
+    .from("finance_transactions")
+    .select(LEDGER_SELECT)
+    .eq("tenant_id", tenantId)
+    .is("provider_id", null)
+    .is("booking_id", null);
+
+  q = applyLedgerTransactionTypeFilters(q, options) as typeof q;
+
+  if (normalizedRange.start) q = q.gte("created_at", normalizedRange.start);
+  if (normalizedRange.end) q = q.lte("created_at", normalizedRange.end);
+  q = q.order("id", { ascending: true });
+
+  const { rows } = await fetchAllPages<FinanceLedgerRow>(q);
+  return rows;
+}
+
 function stripLedgerEmbeds(
   row: FinanceLedgerRow & { providers?: unknown; bookings?: unknown }
 ): FinanceLedgerRow {
@@ -302,7 +350,13 @@ export async function fetchFinanceLedgerExportRowsForTenant(
 
   const a = providerPage.rows.map((row) => normalizeFinanceExportRow(row));
   const b = bookingPage.rows.map((row) => normalizeFinanceExportRow(row));
-  const merged = mergeLedgerRowsByIdPreferProvider(a, b);
+  const orphan = (await fetchTenantOrphanLedgerRows(supabase, tenantId, range, options)).map((row) =>
+    normalizeFinanceExportRow(row as Record<string, unknown>),
+  );
+  const merged = mergeLedgerRowsByIdPreferProvider(
+    mergeLedgerRowsByIdPreferProvider(a, b),
+    orphan,
+  );
   merged.sort((x, y) => {
     const ax = x.created_at ? String(x.created_at) : "";
     const ay = y.created_at ? String(y.created_at) : "";
@@ -356,7 +410,13 @@ export async function fetchMergedFinanceLedgerSliceForTenant(
 
   const a = (r1.data || []).map((row) => normalizeFinanceExportRow(row as Record<string, unknown>));
   const b = (r2.data || []).map((row) => normalizeFinanceExportRow(row as Record<string, unknown>));
-  const merged = mergeLedgerRowsByIdPreferProvider(a, b);
+  const orphan = (await fetchTenantOrphanLedgerRows(supabase, tenantId, range, options)).map((row) =>
+    normalizeFinanceExportRow(row as Record<string, unknown>),
+  );
+  const merged = mergeLedgerRowsByIdPreferProvider(
+    mergeLedgerRowsByIdPreferProvider(a, b),
+    orphan,
+  );
   merged.sort((x, y) => {
     if (sortBy === "amount") {
       const ax = Number(x.amount ?? 0);
@@ -437,5 +497,9 @@ export async function fetchFinanceLedgerRowsForTenant(
   const rows2 = bookingRows.map((row) =>
     stripLedgerEmbeds(row as FinanceLedgerRow & { providers?: unknown; bookings?: unknown })
   );
-  return mergeLedgerRowsByIdPreferProvider(rows1, rows2);
+  const orphanRows = await fetchTenantOrphanLedgerRows(supabase, tenantId, range, options);
+  return mergeLedgerRowsByIdPreferProvider(
+    mergeLedgerRowsByIdPreferProvider(rows1, rows2),
+    orphanRows,
+  );
 }

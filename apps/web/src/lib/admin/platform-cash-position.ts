@@ -13,6 +13,9 @@ export type PlatformCashPositionParams = {
     | "marketing_credit_gross"
     | "payouts_paid_total"
     | "refunds_abs_gross"
+    | "refunds_platform_cash_out"
+    | "wallet_collected"
+    | "gift_card_collected"
     | "payout_transfer_fees"
   >;
   walletTopupCashCollected: number;
@@ -21,7 +24,7 @@ export type PlatformCashPositionParams = {
 
 export function computePlatformCashCollected(params: PlatformCashPositionParams): number {
   const { agg, walletTopupCashCollected } = params;
-  return addMoney(
+  const grossInflows = addMoney(
     addMoney(
       addMoney(
         addMoney(
@@ -34,6 +37,12 @@ export function computePlatformCashCollected(params: PlatformCashPositionParams)
     ),
     agg.marketing_credit_gross,
   );
+  // Booking `payment` amounts already include wallet/gift tender; those tenders were
+  // custodial inflows at top-up / gift sale, so subtract parallel legs from cash held.
+  return subtractMoney(
+    grossInflows,
+    addMoney(agg.wallet_collected, agg.gift_card_collected),
+  );
 }
 
 /**
@@ -45,8 +54,9 @@ export function computeNetPlatformCash(params: PlatformCashPositionParams): numb
   const gatewayFees =
     params.gatewayFeesTotal ?? gatewayFeesTotalFromAggregate(params.agg as FinanceLedgerAggregate);
   const { agg } = params;
+  const cardRefundsOut = agg.refunds_platform_cash_out ?? agg.refunds_abs_gross;
   return subtractMoney(
-    subtractMoney(subtractMoney(collected, agg.payouts_paid_total), agg.refunds_abs_gross),
+    subtractMoney(subtractMoney(collected, agg.payouts_paid_total), cardRefundsOut),
     gatewayFees,
   );
 }
@@ -56,12 +66,19 @@ export function buildPlatformCashPosition(params: PlatformCashPositionParams) {
   const gatewayFees =
     params.gatewayFeesTotal ?? gatewayFeesTotalFromAggregate(params.agg as FinanceLedgerAggregate);
   const { agg } = params;
+  const cardRefundsOut = agg.refunds_platform_cash_out ?? agg.refunds_abs_gross;
   return {
     collected,
     provider_payouts: agg.payouts_paid_total,
     refunds_gross: agg.refunds_abs_gross,
+    refunds_store_credit: agg.refunds_store_credit ?? 0,
+    refunds_in_person: agg.refunds_in_person ?? 0,
+    refunds_platform_cash_out: cardRefundsOut,
     gateway_fees: gatewayFees,
     payout_transfer_fees: agg.payout_transfer_fees,
-    net_platform_cash: subtractMoney(subtractMoney(subtractMoney(collected, agg.payouts_paid_total), agg.refunds_abs_gross), gatewayFees),
+    net_platform_cash: subtractMoney(
+      subtractMoney(subtractMoney(collected, agg.payouts_paid_total), cardRefundsOut),
+      gatewayFees,
+    ),
   };
 }

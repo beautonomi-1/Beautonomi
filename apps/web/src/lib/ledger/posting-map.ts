@@ -4,7 +4,8 @@ import { addMoney, subtractMoney } from "@beautonomi/utils";
  * Documentation-only posting map for a simple booking payment journal.
  *
  * The live shadow writer is `_shadow_replay_finance_tx_row` in migrations
- * 809 / 863 / 870 (plus 880 for `gift_card_refund`). Do not treat this
+ * 809 / 863 / 870 / 10184 (refund tender + wallet-tender GL; plus 880 for
+ * `gift_card_refund`). Do not treat this
  * TypeScript map as the allowlist — `reconciliation-drift.test.ts` pins
  * that. `sum-of-legs.test.ts` uses `isBalanced` / `postBookingPayment` as
  * the app-level journal invariant for the gateway charge fixture.

@@ -726,6 +726,7 @@ SELECT jsonb_build_object(
       'created_at', ft.created_at,
       'vat_source', ft.metadata->>'vat_source',
       'fee_source', ft.metadata->>'fee_source',
+      'refund_tender', ft.metadata->>'refund_tender',
       'reversed_at', ft.metadata->>'reversed_at'
     ) ORDER BY ft.created_at), '[]'::jsonb)
     FROM public.finance_transactions ft

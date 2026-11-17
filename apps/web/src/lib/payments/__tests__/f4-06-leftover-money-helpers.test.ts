@@ -626,7 +626,8 @@ describe("F4-06 leftover money helpers", () => {
     const membership = src("lib/memberships/membership-payment.ts");
     expect(membership).toMatch(/subtractMoney\(grossAmount, feeAmount\)/);
     const cash = src("lib/admin/platform-cash-position.ts");
-    expect(cash).toMatch(/subtractMoney\(subtractMoney\(subtractMoney\(collected, agg.payouts_paid_total\)/);
+    expect(cash).toMatch(/subtractMoney\(subtractMoney\(collected, agg.payouts_paid_total\), cardRefundsOut\)/);
+    expect(cash).toMatch(/addMoney\(agg.wallet_collected, agg.gift_card_collected\)/);
     const yoco = src("app/api/provider/yoco/payments/route.ts");
     expect(yoco).toMatch(/subtractMoney\(amountInRands, tipAmount\)/);
     const alloc = src("app/api/provider/paystack/terminal-payments/[id]/allocation/route.ts");
@@ -751,7 +752,8 @@ describe("F4-06 leftover money helpers", () => {
   it("adds leftover marketplace MRR / contribution / weekly salary-slice money with helpers", () => {
     const health = src("lib/admin/marketplace-health.ts");
     expect(health).toMatch(/addMoney\(agg.platform_take_net, agg.service_fee_revenue\)/);
-    expect(health).toMatch(/subtractMoney\(subtractMoney\(platformNet, gateway\), Math.abs\(refundImpact\)\)/);
+    expect(health).toMatch(/gatewayFeesTotalFromAggregate\(agg\)/);
+    expect(health).toMatch(/subtractMoney\(platformNet, gatewayNonBooking\)/);
     expect(health).toMatch(/multiplyMoney\(Number\(price\), 1 \/ 12\)/);
     const contrib = src("lib/admin/marketplace-health-contribution.ts");
     expect(contrib).toMatch(/addMoney\(agg.platform_take_net, agg.service_fee_revenue\)/);

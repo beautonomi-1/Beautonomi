@@ -183,10 +183,48 @@ export async function GET(request: NextRequest) {
     });
 
     // ── Liability balances ───────────────────────────────────────────────────
-    const [giftCardLiability, membershipLiability] = await Promise.all([
+    const [giftCardLiability, membershipLiability, walletLiability] = await Promise.all([
       glAccountBalance(supabase, tenantId, "2400"),
       glAccountBalance(supabase, tenantId, "2600"),
+      glAccountBalance(supabase, tenantId, "2300"),
     ]);
+
+    const WALLET_GL_POSTED_REFERENCE_TYPES = new Set([
+      "booking_refund",
+      "refund",
+      "wallet_topup",
+      "booking",
+      "product_order_refund",
+      "product_order_unpaid_card_refund",
+      "product_return_refund",
+      "custom_offer_refund",
+    ]);
+
+    const { data: walletTxRows } = await supabase
+      .from("wallet_transactions")
+      .select("type, amount, reference_type")
+      .eq("tenant_id", tenantId)
+      .limit(ROW_CAP);
+
+    let walletPostedSubledger = 0;
+    const walletUnpostedByReference: Record<string, number> = {};
+    for (const row of (walletTxRows ?? []) as Array<{
+      type?: string | null;
+      amount?: number | string | null;
+      reference_type?: string | null;
+    }>) {
+      const ref = String(row.reference_type ?? "unknown");
+      const signed =
+        row.type === "debit"
+          ? subtractMoney(0, num(row.amount))
+          : num(row.amount);
+      if (WALLET_GL_POSTED_REFERENCE_TYPES.has(ref)) {
+        walletPostedSubledger = addMoney(walletPostedSubledger, signed);
+      } else {
+        walletUnpostedByReference[ref] = addMoney(walletUnpostedByReference[ref] ?? 0, signed);
+      }
+    }
+    const walletGlVariance = subtractMoney(walletLiability.balance, walletPostedSubledger);
 
     // ── Unrecognized online payments (fleet-wide) ────────────────────────────
     const unrecognized = await countUnrecognizedOnlinePayments(supabase, tenantId, sinceIso);
@@ -281,6 +319,14 @@ export async function GET(request: NextRequest) {
       liabilities: {
         gift_cards_2400: giftCardLiability,
         memberships_2600: membershipLiability,
+        wallet_2300: walletLiability,
+        wallet_liability_vs_posted_subledger: {
+          gl_balance: walletLiability.balance,
+          posted_reference_subledger: walletPostedSubledger,
+          variance: walletGlVariance,
+          unposted_by_reference_type: walletUnpostedByReference,
+          status: Math.abs(walletGlVariance) > 0.01 ? "warning" : "ok",
+        },
       },
       staff_earnings_lines: {
         by_kind: staffByKind,
