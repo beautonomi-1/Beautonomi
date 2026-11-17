@@ -2983,6 +2983,8 @@
           "dateLabel": "Siku",
           "notifyClient": "Notify muxavi",
           "timeLabel": "Nkarhi",
+          "customerRequestedTime": "Xiklayente xi kombile: {{datetime}}",
+          "emailCustomerA11y": "Rhumela imeyili eka {{name}}",
           "collectPaymentTitle": "Collect xihakelo",
           "fullBalance": "yi tele ntshwa: {{currency}} {{amount}}",
           "thisPayment": "Hakelo leyi: {{currency}} {{amount}}",
@@ -13065,7 +13067,8 @@
           "atHome": "Ekaya",
           "atSalon": "Eka saloni",
           "budgetRange": " · Mali {{min}} – {{max}}",
-          "introHint": "Swikombelo a swi si eka khalendara ya wena. Rhumela nxopaxopo leyi nga ni nxavo na nkarhi; swi bukiwa loko muxavi a hakela."
+          "introHint": "Swikombelo a swi si eka khalendara ya wena. Rhumela nxopaxopo leyi nga ni nxavo na nkarhi; swi bukiwa loko muxavi a hakela.",
+          "preferred": "Lexavantsongo: {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Wait",
@@ -24271,7 +24274,8 @@
             "empty": "No vukorhokeri",
             "customOrder": "Xo tiendlela odara",
             "clientRequest": "muxavi's xikombelo",
-            "yourNotes": "tinotsi ya wena"
+            "yourNotes": "tinotsi ya wena",
+            "customerRequestedTime": "Xiklayente xi kombile: {{datetime}}"
           },
           "products": {
             "title": "Switirhisiwa",
@@ -34637,7 +34641,9 @@
           "noShow": "No kombisa",
           "noShows": "A va fikanga",
           "booked": "Yi bukiwile",
-          "started": "Yi sungurile"
+          "started": "Yi sungurile",
+          "checkedIn": "Nghenisiwe",
+          "waiting": "A yimele"
         },
         "locationType": {
           "houseCall": "House fowunela",

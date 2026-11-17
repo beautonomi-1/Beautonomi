@@ -26,7 +26,10 @@ export function mapAppointmentStatusFromBooking(booking: {
   const out: { status: Appointment["status"]; db_status?: Appointment["db_status"] } = { status };
   if (
     booking.db_status === "pending" ||
+    booking.db_status === "pending_payment" ||
     booking.db_status === "confirmed" ||
+    booking.db_status === "waiting" ||
+    booking.db_status === "checked_in" ||
     booking.db_status === "in_progress" ||
     booking.db_status === "completed" ||
     booking.db_status === "cancelled" ||

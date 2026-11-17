@@ -4,6 +4,11 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { rescheduleGroupBooking, isPrimaryContact, getGroupBooking } from "@/lib/bookings/group-booking";
 import { evaluateProviderSlotAgainstGrid } from "@/lib/provider-booking/compute-provider-slot-grid";
+import {
+  evaluateCustomerReschedule,
+  evaluateCustomerRescheduleWithLivePolicy,
+  messageForCustomerRescheduleBlock,
+} from "@/lib/bookings/reschedule-core";
 import { z } from "zod";
 
 const rescheduleSchema = z.object({
@@ -55,6 +60,50 @@ export async function POST(
 
     const bookings = groupBooking.bookings || [];
     const originalScheduledAt = new Date(groupBooking.scheduled_at);
+
+    const groupStatus = String((groupBooking as { status?: string }).status ?? "").toLowerCase();
+    if (groupStatus === "cancelled" || groupStatus === "completed") {
+      return handleApiError(
+        new Error("Group booking cannot be rescheduled"),
+        "This group session can no longer be rescheduled online.",
+        "RESCHEDULE_BLOCKED",
+        403,
+      );
+    }
+
+    for (const child of bookings) {
+      const childStatus = String((child as { status?: string }).status ?? "").toLowerCase();
+      if (childStatus === "cancelled") continue;
+      const providerId = String(
+        (child as { provider_id?: string }).provider_id ??
+          (groupBooking as { provider_id?: string }).provider_id ??
+          "",
+      );
+      const locationType =
+        ((child as { location_type?: string }).location_type as "at_salon" | "at_home") || "at_salon";
+      const childInput = {
+        id: (child as { id: string }).id,
+        status: childStatus,
+        payment_status: (child as { payment_status?: string }).payment_status,
+        current_stage: (child as { current_stage?: string }).current_stage,
+        created_at: (child as { created_at: string }).created_at,
+        scheduled_at: (child as { scheduled_at: string }).scheduled_at,
+        location_type: locationType,
+        cancellation_policy_snapshot: (child as { cancellation_policy_snapshot?: unknown })
+          .cancellation_policy_snapshot,
+      };
+      const gate = providerId
+        ? await evaluateCustomerRescheduleWithLivePolicy(supabase, providerId, childInput)
+        : evaluateCustomerReschedule(childInput, null);
+      if (!gate.allowed) {
+        return handleApiError(
+          new Error(messageForCustomerRescheduleBlock(gate as { allowed: false })),
+          messageForCustomerRescheduleBlock(gate as { allowed: false }),
+          "RESCHEDULE_BLOCKED",
+          403,
+        );
+      }
+    }
 
     // §Cross-app audit 2026-04: route through the shared engine that the
     // provider new-booking / single-booking reschedule surfaces already use.

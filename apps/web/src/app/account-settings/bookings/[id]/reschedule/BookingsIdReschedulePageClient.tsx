@@ -15,6 +15,7 @@ type RescheduleBookingView = {
   location_id?: string | null;
   location_type?: string | null;
   provider?: { slug?: string | null } | null;
+  customer_reschedule?: { allowed?: boolean; code?: string; hours_before?: number };
   services?: Array<{
     offering_id?: string | null;
     staff_id?: string | null;
@@ -41,8 +42,6 @@ export default function RescheduleBookingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [policyHoursBefore, setPolicyHoursBefore] = useState<number | null>(null);
-
   useEffect(() => {
     const loadBooking = async () => {
       try {
@@ -60,17 +59,6 @@ export default function RescheduleBookingPage() {
         }
         if (response.data.scheduled_at) {
           setSelectedDateTime(new Date(response.data.scheduled_at));
-        }
-        if (response.data.provider_id) {
-          try {
-            const policyRes = await fetcher.get<{ data?: Array<{ hours_before_cutoff?: number }> }>(
-              `/api/public/cancellation-policy?provider_id=${response.data.provider_id}&location_type=${response.data.location_type || "at_salon"}`,
-            );
-            const hours = policyRes.data?.[0]?.hours_before_cutoff;
-            if (hours != null) setPolicyHoursBefore(Number(hours));
-          } catch {
-            setPolicyHoursBefore(24);
-          }
         }
       } catch (err) {
         const errorMessage =
@@ -140,6 +128,31 @@ export default function RescheduleBookingPage() {
       </div>
     );
   }
+
+  const rescheduleBlocked = booking.customer_reschedule?.allowed === false;
+
+  if (rescheduleBlocked) {
+    const description =
+      booking.customer_reschedule?.code === "CUSTOMER_RESCHEDULE_CUTOFF"
+        ? t("customer.mobile.screens.bookingDetail.reschedulePolicyNote", {
+            hours: booking.customer_reschedule?.hours_before ?? 24,
+          })
+        : t("web.accountSettings.reschedule.failed");
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <EmptyState
+          title={t("web.accountSettings.reschedule.title")}
+          description={description}
+          action={{
+            label: t("web.accountSettings.reschedule.backToBooking"),
+            onClick: () => router.push(`/account-settings/bookings/${bookingId}`),
+          }}
+        />
+      </div>
+    );
+  }
+
+  const policyHoursBefore = booking.customer_reschedule?.hours_before ?? null;
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:px-8 py-4 md:py-6 lg:py-8">
@@ -261,7 +274,7 @@ export default function RescheduleBookingPage() {
         </Button>
         <Button
           onClick={handleReschedule}
-          disabled={!selectedDateTime || isSubmitting}
+          disabled={!selectedDateTime || isSubmitting || rescheduleBlocked}
           className="w-full sm:flex-1 bg-gray-900 text-white hover:bg-gray-800"
         >
           {isSubmitting ? t("web.accountSettings.reschedule.rescheduling") : t("web.accountSettings.reschedule.confirmReschedule")}

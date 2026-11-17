@@ -36,6 +36,20 @@ function formatDateSafe(value: unknown): string {
   return parsed.toLocaleDateString();
 }
 
+function formatPreferredDateTime(value: unknown, timeZone?: string): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  });
+}
+
 export default function CustomRequestsListScreen() {
   const { t } = useTranslation();
   const cr = useCallback(
@@ -44,7 +58,8 @@ export default function CustomRequestsListScreen() {
     [t],
   );
   const router = useRouter();
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId, provider } = useProvider();
+  const providerTimezone = provider?.timezone ?? undefined;
   const [refreshing, setRefreshing] = useState(false);
   const customRequestsUrl = selectedLocationId
     ? `/api/provider/custom-requests?location_id=${encodeURIComponent(selectedLocationId)}`
@@ -155,6 +170,11 @@ export default function CustomRequestsListScreen() {
                   {r.description ? (
                     <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }} numberOfLines={2}>
                       {r.description}
+                    </Text>
+                  ) : null}
+                  {r.preferred_start_at ? (
+                    <Text style={{ marginTop: 4, fontSize: 13, fontWeight: "500", color: Colors.gray[800] }}>
+                      {cr("preferred", { datetime: formatPreferredDateTime(r.preferred_start_at, providerTimezone) })}
                     </Text>
                   ) : null}
                   <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>

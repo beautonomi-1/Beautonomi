@@ -21,6 +21,17 @@ describe("buildProviderBookingActionModel", () => {
     });
 
     expect(checkedIn.primaryAction?.id).toBe("start_service");
+    expect(checkedIn.activeStepIndex).toBe(2);
+    expect(confirmed.activeStepIndex).toBe(1);
+
+    const waiting = buildProviderBookingActionModel({
+      id: "booking-1",
+      status: "waiting",
+      location_type: "at_salon",
+      scheduled_at: new Date().toISOString(),
+    });
+    expect(waiting.primaryAction?.id).toBe("check_in");
+    expect(waiting.activeStepIndex).toBe(1);
   });
 
   it("uses journey actions before status actions for house calls", () => {

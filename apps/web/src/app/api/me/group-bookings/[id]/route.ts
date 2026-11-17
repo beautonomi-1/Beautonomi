@@ -4,6 +4,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { errorResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { ME_GROUP_DETAIL_SELECT } from "@/lib/bookings/group-booking-postgrest";
 import { computeGroupPaymentRollupFields } from "@/lib/bookings/group-booking-payment-rollup";
+import {
+  evaluateGroupCustomerReschedule,
+  toCustomerRescheduleApiField,
+} from "@/lib/bookings/reschedule-core";
 
 function normalizeGroupBookingId(rawId: string): string {
   return rawId.startsWith("group:") ? rawId.slice("group:".length) : rawId;
@@ -157,6 +161,29 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       bookings.find((b: any) => typeof b?.currency === "string" && b.currency.trim())?.currency?.trim() ||
       "ZAR";
 
+    const groupProviderId = String((group as { provider_id?: string }).provider_id ?? "");
+    const childrenForReschedule = bookings.map((b: any) => {
+      const locationType = (b.location_type as "at_salon" | "at_home") || "at_salon";
+      return {
+        id: String(b.id),
+        provider_id: String(b.provider_id ?? groupProviderId),
+        status: String(b.status ?? ""),
+        payment_status: b.payment_status,
+        current_stage: b.current_stage ?? null,
+        created_at: String(b.created_at ?? ""),
+        scheduled_at: String(b.scheduled_at ?? (group as { scheduled_at?: string }).scheduled_at ?? ""),
+        location_type: locationType,
+        cancellation_policy_snapshot: b.cancellation_policy_snapshot,
+      };
+    });
+    const customerReschedule = toCustomerRescheduleApiField(
+      await evaluateGroupCustomerReschedule(
+        admin,
+        String((group as { status?: string }).status ?? ""),
+        childrenForReschedule,
+      ),
+    );
+
     return NextResponse.json({
       data: {
         id: (group as any).id,
@@ -193,6 +220,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         is_primary_payer: isPrimaryPayer,
         lead_booking_id: isPrimaryPayer ? ((group as any).primary_contact_booking_id ?? null) : null,
         notes: (group as any).notes ?? null,
+        customer_reschedule: customerReschedule,
       },
     });
   } catch (error) {

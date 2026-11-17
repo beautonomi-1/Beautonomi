@@ -1,6 +1,12 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useFocusEffect } from "expo-router";
 import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Keyboard, Platform, Alert, Modal, Pressable, Linking, InteractionManager } from "react-native";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import {
+  KeyboardAwareScrollView,
+  useKeyboardState,
+  useReanimatedKeyboardAnimation,
+} from "react-native-keyboard-controller";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
@@ -302,6 +308,17 @@ export default function ChatScreen() {
   const isNearBottomRef = useRef(true);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reportMessageId, setReportMessageId] = useState<string | null>(null);
+  const [requestChangesOfferId, setRequestChangesOfferId] = useState<string | null>(null);
+  const [requestChangesNote, setRequestChangesNote] = useState("");
+  const [requestChangesSubmitting, setRequestChangesSubmitting] = useState(false);
+  const keyboardVisible = useKeyboardState((s) => s.isVisible);
+  const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
+  const composerBottomStyle = useAnimatedStyle(() => ({
+    paddingBottom: 8 + insets.bottom * (1 - keyboardProgress.value),
+  }));
+  const safetyFooterBottomStyle = useAnimatedStyle(() => ({
+    paddingBottom: 12 + insets.bottom * (1 - keyboardProgress.value),
+  }));
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
   const { t } = useTranslation();
   const directMessaging = useSocialCapability("direct_message");
@@ -1102,47 +1119,50 @@ export default function ChatScreen() {
     [loadMessages, t],
   );
 
-  const requestChangesCustomOffer = useCallback(
-    (offerId: string) => {
-      Alert.prompt?.(
-        t("customer.chatScreen.requestChangesTitle"),
-        t("customer.chatScreen.requestChangesBody"),
-        [
-          { text: t("common.cancel"), style: "cancel" },
-          {
-            text: t("common.send"),
-            onPress: async (note?: string) => {
-              if (!note?.trim()) {
-                Alert.alert(
-                  t("customer.chatScreen.offerActionFailedTitle"),
-                  t("customer.chatScreen.requestChangesEmpty"),
-                );
-                return;
-              }
-              try {
-                const res = await api.post(`/api/me/custom-offers/${offerId}/request-changes`, { note: note.trim() });
-                if (res.error) {
-                  Alert.alert(
-                    t("customer.chatScreen.offerActionFailedTitle"),
-                    getApiErrorMessage(res.error, t("customer.chatScreen.requestChangesFailed")),
-                  );
-                  return;
-                }
-                await loadMessages();
-              } catch {
-                Alert.alert(
-                  t("customer.chatScreen.offerActionFailedTitle"),
-                  t("customer.chatScreen.requestChangesFailed"),
-                );
-              }
-            },
-          },
-        ],
-        "plain-text",
+  const requestChangesCustomOffer = useCallback((offerId: string) => {
+    setRequestChangesNote("");
+    setRequestChangesOfferId(offerId);
+  }, []);
+
+  const closeRequestChangesModal = useCallback(() => {
+    if (requestChangesSubmitting) return;
+    setRequestChangesOfferId(null);
+    setRequestChangesNote("");
+  }, [requestChangesSubmitting]);
+
+  const submitRequestChanges = useCallback(async () => {
+    const offerId = requestChangesOfferId;
+    const note = requestChangesNote.trim();
+    if (!offerId) return;
+    if (!note) {
+      Alert.alert(
+        t("customer.chatScreen.offerActionFailedTitle"),
+        t("customer.chatScreen.requestChangesEmpty"),
       );
-    },
-    [loadMessages, t],
-  );
+      return;
+    }
+    setRequestChangesSubmitting(true);
+    try {
+      const res = await api.post(`/api/me/custom-offers/${offerId}/request-changes`, { note });
+      if (res.error) {
+        Alert.alert(
+          t("customer.chatScreen.offerActionFailedTitle"),
+          getApiErrorMessage(res.error, t("customer.chatScreen.requestChangesFailed")),
+        );
+        return;
+      }
+      setRequestChangesOfferId(null);
+      setRequestChangesNote("");
+      await loadMessages();
+    } catch {
+      Alert.alert(
+        t("customer.chatScreen.offerActionFailedTitle"),
+        t("customer.chatScreen.requestChangesFailed"),
+      );
+    } finally {
+      setRequestChangesSubmitting(false);
+    }
+  }, [requestChangesOfferId, requestChangesNote, loadMessages, t]);
 
   const openOfferDetail = useCallback(async (offerId: string) => {
     setOfferDetailData(null);
@@ -1411,12 +1431,7 @@ export default function ChatScreen() {
       />
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: Colors.white }}
-        // Android 15+ (targetSdk 35) forces edge-to-edge, which disables the
-        // legacy `adjustResize` window-resize the chat used to rely on — so the
-        // OS no longer lifts content and the keyboard covers the input bar. Drive
-        // the layout ourselves with `behavior="padding"` on both platforms; the
-        // input bar's bottom inset is 0 under the open keyboard, so this doesn't
-        // double-count. iOS keeps a header-height offset; Android needs none.
+        autoOffset
         behavior="padding"
         keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
       >
@@ -1430,7 +1445,7 @@ export default function ChatScreen() {
           </View>
         ) : (
           <>
-            {(resolvedProviderId || resolvedProviderSlug) && (
+            {(resolvedProviderId || resolvedProviderSlug) && !keyboardVisible && (
               <View
                 style={{
                   marginHorizontal: contentPadding,
@@ -1482,6 +1497,7 @@ export default function ChatScreen() {
                 </View>
               </View>
             )}
+            <View style={{ flex: 1, minHeight: 0 }}>
             <FlatList
               {...chatFlatListPerf}
               key={id ?? "none"}
@@ -1861,7 +1877,7 @@ export default function ChatScreen() {
                 onPress={() => flatListRef.current?.scrollToEnd({ animated: true })}
                 style={{
                   position: "absolute",
-                  bottom: 76 + insets.bottom,
+                  bottom: 12,
                   right: 16,
                   width: 44,
                   height: 44,
@@ -1882,6 +1898,7 @@ export default function ChatScreen() {
                 <Ionicons name="chevron-down" size={24} color={Colors.gray[600]} />
               </TouchableOpacity>
             )}
+            </View>
 
             {replyingTo ? (
               <View
@@ -1926,16 +1943,18 @@ export default function ChatScreen() {
 
             {/* Input bar — respects the iOS home indicator via `insets.bottom`. */}
             {canSendMessages ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "flex-end",
-                borderTopWidth: 1,
-                borderTopColor: Colors.gray[100],
-                paddingHorizontal: 12,
-                paddingTop: 8,
-                paddingBottom: 8 + insets.bottom,
-              }}
+            <Animated.View
+              style={[
+                {
+                  flexDirection: "row",
+                  alignItems: "flex-end",
+                  borderTopWidth: 1,
+                  borderTopColor: Colors.gray[100],
+                  paddingHorizontal: 12,
+                  paddingTop: 8,
+                },
+                composerBottomStyle,
+              ]}
             >
               <TouchableOpacity
                 onPress={chooseAttachmentSource}
@@ -1982,17 +2001,19 @@ export default function ChatScreen() {
                   />
                 )}
               </TouchableOpacity>
-            </View>
+            </Animated.View>
             ) : (
-              <View
-                style={{
-                  borderTopWidth: 1,
-                  borderTopColor: Colors.gray[100],
-                  paddingHorizontal: 16,
-                  paddingTop: 12,
-                  paddingBottom: 12 + insets.bottom,
-                  backgroundColor: Colors.gray[50],
-                }}
+              <Animated.View
+                style={[
+                  {
+                    borderTopWidth: 1,
+                    borderTopColor: Colors.gray[100],
+                    paddingHorizontal: 16,
+                    paddingTop: 12,
+                    backgroundColor: Colors.gray[50],
+                  },
+                  safetyFooterBottomStyle,
+                ]}
               >
                 <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center", lineHeight: 20 }}>
                   {t("customer.chatScreen.safetyMessagingOff")}
@@ -2006,11 +2027,102 @@ export default function ChatScreen() {
                     {t("customer.safety.socialRestricted.openControls")}
                   </Text>
                 </TouchableOpacity>
-              </View>
+              </Animated.View>
             )}
           </>
         )}
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={requestChangesOfferId != null}
+        transparent
+        animationType="fade"
+        onRequestClose={closeRequestChangesModal}
+      >
+        <KeyboardAwareScrollView
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)" }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={24}
+        >
+          <Pressable
+            onPress={closeRequestChangesModal}
+            style={{ flexGrow: 1, justifyContent: "center", padding: 24 }}
+          >
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
+              style={{
+                backgroundColor: Colors.white,
+                borderRadius: 16,
+                padding: 20,
+                width: "100%",
+                maxWidth: 360,
+                alignSelf: "center",
+              }}
+            >
+              <Text style={{ fontSize: 17, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>
+                {t("customer.chatScreen.requestChangesTitle")}
+              </Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 16, lineHeight: 20 }}>
+                {t("customer.chatScreen.requestChangesBody")}
+              </Text>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: Colors.gray[200],
+                  borderRadius: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontSize: 15,
+                  minHeight: 96,
+                  textAlignVertical: "top",
+                  color: Colors.gray[900],
+                }}
+                placeholder={t("customer.chatScreen.requestChangesBody")}
+                placeholderTextColor="#9ca3af"
+                value={requestChangesNote}
+                onChangeText={setRequestChangesNote}
+                multiline
+                maxLength={1000}
+                editable={!requestChangesSubmitting}
+              />
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+                <TouchableOpacity
+                  onPress={closeRequestChangesModal}
+                  disabled={requestChangesSubmitting}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("common.cancel")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void submitRequestChanges()}
+                  disabled={requestChangesSubmitting}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: requestChangesSubmitting ? Colors.gray[300] : Colors.primary,
+                    alignItems: "center",
+                  }}
+                >
+                  {requestChangesSubmitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{ fontWeight: "600", color: Colors.white }}>{t("common.send")}</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAwareScrollView>
+      </Modal>
 
       {/* Image preview modal (attachments) */}
       <Modal

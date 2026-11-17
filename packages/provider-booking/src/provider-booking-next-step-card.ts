@@ -16,16 +16,24 @@ export type BookingNextStepIcon =
 /** Minimal fields for next-step card copy (house-call stages must match DB). */
 export type BookingNextStepCardInput = {
   status?: string | null;
+  db_status?: string | null;
   current_stage?: string | null;
   arrival_otp_verified?: boolean | null;
   qr_code_verified?: boolean | null;
 };
 
+function resolveBookingLifecycle(booking: BookingNextStepCardInput): string {
+  const raw = (booking.db_status || booking.status || "").toLowerCase();
+  if (raw === "booked") return "confirmed";
+  if (raw === "started") return "in_progress";
+  return raw;
+}
+
 export function getBookingNextStepCard(
   booking: BookingNextStepCardInput,
   options: { outstanding: number; isAtHome: boolean; isAtSalon: boolean },
 ): { title: string; description: string; icon: BookingNextStepIcon; color: string } {
-  const status = (booking.status || "").toLowerCase();
+  const status = resolveBookingLifecycle(booking);
   if (status === "pending" || status === "pending_payment") {
     return {
       title: "Review and confirm",
@@ -69,6 +77,14 @@ export function getBookingNextStepCard(
     };
   }
   if (status === "waiting") {
+    if (options.isAtHome) {
+      return {
+        title: "House call in salon status",
+        description: "Reset to confirmed in Booking actions to restart the journey.",
+        icon: "alert-circle-outline",
+        color: "#dc2626",
+      };
+    }
     return {
       title: "Client is waiting",
       description: "The client has arrived and is in the waiting area. Check them in when you are ready.",
@@ -77,11 +93,17 @@ export function getBookingNextStepCard(
     };
   }
   if (status === "checked_in") {
+    if (options.isAtHome) {
+      return {
+        title: "House call in salon status",
+        description: "Reset to confirmed in Booking actions to restart the journey.",
+        icon: "alert-circle-outline",
+        color: "#dc2626",
+      };
+    }
     return {
       title: "Client checked in",
-      description: options.isAtHome
-        ? "Client arrival confirmed. Start the service when ready."
-        : "Client is at your station. Start the service when ready.",
+      description: "Client is at your station. Start the service when ready.",
       icon: "person-circle-outline",
       color: "#2563eb",
     };

@@ -187,6 +187,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
     ? getBookingNextStepCard(
         {
           status: appt.status,
+          db_status: appt.db_status ?? (raw?.db_status as string | undefined),
           current_stage: raw?.current_stage as string | undefined,
           arrival_otp_verified: raw?.arrival_otp_verified as boolean | undefined,
           qr_code_verified: raw?.qr_code_verified as boolean | undefined,

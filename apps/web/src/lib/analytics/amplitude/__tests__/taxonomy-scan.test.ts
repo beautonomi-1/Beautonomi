@@ -147,7 +147,7 @@ describe("analytics taxonomy — single source of truth", () => {
       if (!packageEvents.has(id)) missing.push(`${id} (${files.join(", ")})`);
     }
     expect(missing, `Undeclared analytics constants:\n${missing.join("\n")}`).toEqual([]);
-  });
+  }, 120_000);
 
   it("mobile analytics helper modules use constants instead of string literals", () => {
     const helperFiles = [

@@ -251,7 +251,16 @@ export interface Appointment {
     | "waiting"
     | "checked_in";
   /** Raw DB booking.status when returned by provider APIs (pending = awaiting provider confirmation). */
-  db_status?: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
+  db_status?:
+    | "pending"
+    | "pending_payment"
+    | "confirmed"
+    | "waiting"
+    | "checked_in"
+    | "in_progress"
+    | "completed"
+    | "cancelled"
+    | "no_show";
   // Updated tracking (for booking details timeline)
   updated_date?: string;
   // Group booking fields

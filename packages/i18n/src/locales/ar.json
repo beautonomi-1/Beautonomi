@@ -2983,6 +2983,8 @@
           "dateLabel": "التاريخ",
           "notifyClient": "لاtify client",
           "timeLabel": "الوقت",
+          "customerRequestedTime": "طلب العميل: {{datetime}}",
+          "emailCustomerA11y": "مراسلة {{name}} بالبريد",
           "collectPaymentTitle": "Collect دفع",
           "fullBalance": "Full رصيد: {{currency}} {{amount}}",
           "thisPayment": "This دفع: {{currency}} {{amount}}",
@@ -13065,7 +13067,8 @@
           "atHome": "في المنزل",
           "atSalon": "في الصالون",
           "budgetRange": " · Budget {{min}} – {{max}}",
-          "introHint": "الطلبات ليست على تقويمك بعد. أرسل عرضاً بسعر ووقت؛ يُحجز فور دفع العميل."
+          "introHint": "الطلبات ليست على تقويمك بعد. أرسل عرضاً بسعر ووقت؛ يُحجز فور دفع العميل.",
+          "preferred": "المفضل: {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "يرجى الانتظار",
@@ -24271,7 +24274,8 @@
             "empty": "لا خدمةs",
             "customOrder": "Custom طلب",
             "clientRequest": "طلب العميل",
-            "yourNotes": "ملاحظاتك"
+            "yourNotes": "ملاحظاتك",
+            "customerRequestedTime": "طلب العميل: {{datetime}}"
           },
           "products": {
             "title": "المنتجات",
@@ -34637,7 +34641,9 @@
           "noShow": "لا Show",
           "noShows": "لا Shows",
           "booked": "محجوز",
-          "started": "بدأ"
+          "started": "بدأ",
+          "checkedIn": "تم تسجيل الوصول",
+          "waiting": "في الانتظار"
         },
         "locationType": {
           "houseCall": "زيارة منزلية",

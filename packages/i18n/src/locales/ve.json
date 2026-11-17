@@ -2983,6 +2983,8 @@
           "dateLabel": "Ḓuvha",
           "notifyClient": "Notify mushumi",
           "timeLabel": "Tshifhinga",
+          "customerRequestedTime": "Mushatai o kombela: {{datetime}}",
+          "emailCustomerA11y": "Rumela imeili kha {{name}}",
           "collectPaymentTitle": "Collect mbadedzo",
           "fullBalance": "yo ḓala tsalelo: {{currency}} {{amount}}",
           "thisPayment": "Mali iyi: {{currency}} {{amount}}",
@@ -13065,7 +13067,8 @@
           "atHome": "Hayani",
           "atSalon": "Kha saloni",
           "budgetRange": " · Mali {{min}} – {{max}}",
-          "introHint": "Khumbelo a dzo ngo kha khalendara yau. Ruma nyikedzo ine ya vha na mutengo na tshifhinga; zwi bukiwa musi mushumi a tshi badela."
+          "introHint": "Khumbelo a dzo ngo kha khalendara yau. Ruma nyikedzo ine ya vha na mutengo na tshifhinga; zwi bukiwa musi mushumi a tshi badela.",
+          "preferred": "Zwi takadzaho: {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Wait",
@@ -24271,7 +24274,8 @@
             "empty": "No tshumelo",
             "customOrder": "Zwo itelwa odara",
             "clientRequest": "mushumi's khumbelo",
-            "yourNotes": "noṱe yau"
+            "yourNotes": "noṱe yau",
+            "customerRequestedTime": "Mushatai o kombela: {{datetime}}"
           },
           "products": {
             "title": "Zwithu",
@@ -34637,7 +34641,9 @@
           "noShow": "No sumbedza",
           "noShows": "A vha fikanga",
           "booked": "Yo bukiwa",
-          "started": "Yo thoma"
+          "started": "Yo thoma",
+          "checkedIn": "Ṱanḓa",
+          "waiting": "A tshi lindela"
         },
         "locationType": {
           "houseCall": "House fonela",

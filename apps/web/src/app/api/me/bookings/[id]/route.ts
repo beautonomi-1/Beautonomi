@@ -15,6 +15,10 @@ import { canCustomerReportRunningLate } from "@/lib/bookings/lifecycle-running-l
 import { loadLocationWorkingHours } from "@/lib/bookings/lifecycle-pending-expiry";
 import type { WorkingHoursJson } from "@/lib/bookings/lifecycle-deadlines";
 import { addMoney, multiplyMoney, sumMoney } from "@beautonomi/utils";
+import {
+  evaluateCustomerRescheduleWithLivePolicy,
+  toCustomerRescheduleApiField,
+} from "@/lib/bookings/reschedule-core";
 /**
  * GET /api/me/bookings/[id]
  *
@@ -286,6 +290,22 @@ export async function GET(
         }>,
       },
       mapProviderSettingsFromRow(providerLifecycleRow ?? undefined),
+    );
+
+    const locationType =
+      (bookingData.location_type as "at_salon" | "at_home") || "at_salon";
+    const customerReschedule = toCustomerRescheduleApiField(
+      await evaluateCustomerRescheduleWithLivePolicy(supabase, providerId, {
+        id: bookingData.id,
+        status: String(bookingData.status ?? ""),
+        payment_status: rawPaymentStatus,
+        current_stage: bookingData.current_stage ?? null,
+        created_at: String(bookingData.created_at ?? ""),
+        scheduled_at: String(bookingData.scheduled_at ?? ""),
+        location_type: locationType,
+        cancellation_policy_snapshot: (bookingData as Record<string, unknown>)
+          .cancellation_policy_snapshot,
+      }),
     );
 
     const joinedWorkingHours = ((bookingData.location as { working_hours?: WorkingHoursJson | null } | undefined)
@@ -627,6 +647,7 @@ export async function GET(
         qr_code_expires_at: bookingData.qr_code_expires_at ?? undefined,
       }),
       pending_cash_refunds: pendingCashRefunds,
+      customer_reschedule: customerReschedule,
     };
 
     return NextResponse.json({

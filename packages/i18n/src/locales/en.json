@@ -3065,6 +3065,8 @@
           "dateLabel": "Date",
           "notifyClient": "Notify client",
           "timeLabel": "Time",
+          "customerRequestedTime": "Customer requested: {{datetime}}",
+          "emailCustomerA11y": "Email {{name}}",
           "collectPaymentTitle": "Collect payment",
           "fullBalance": "Full balance: {{currency}} {{amount}}",
           "thisPayment": "This payment: {{currency}} {{amount}}",
@@ -13309,7 +13311,8 @@
           "atHome": "At home",
           "atSalon": "At salon",
           "budgetRange": " · Budget {{min}} – {{max}}",
-          "introHint": "Requests aren't on your calendar yet. Send an offer with a price and time; it's booked once the client pays."
+          "introHint": "Requests aren't on your calendar yet. Send an offer with a price and time; it's booked once the client pays.",
+          "preferred": "Preferred: {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Please wait",
@@ -24577,7 +24580,8 @@
             "empty": "No services",
             "customOrder": "Custom Order",
             "clientRequest": "Client's request",
-            "yourNotes": "Your notes"
+            "yourNotes": "Your notes",
+            "customerRequestedTime": "Customer requested: {{datetime}}"
           },
           "products": {
             "title": "Products",
@@ -35117,7 +35121,9 @@
           "noShow": "No Show",
           "noShows": "No Shows",
           "booked": "Booked",
-          "started": "Started"
+          "started": "Started",
+          "checkedIn": "Checked in",
+          "waiting": "Waiting"
         },
         "locationType": {
           "houseCall": "House call",

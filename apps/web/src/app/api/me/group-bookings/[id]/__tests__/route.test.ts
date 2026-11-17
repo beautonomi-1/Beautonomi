@@ -38,6 +38,29 @@ function buildSupabaseMock(groupDetail: Record<string, unknown> | null) {
         }),
       };
     }
+    if (table === "cancellation_policies") {
+      const policyQuery: {
+        select: ReturnType<typeof vi.fn>;
+        eq: ReturnType<typeof vi.fn>;
+        is: ReturnType<typeof vi.fn>;
+        order: ReturnType<typeof vi.fn>;
+        limit: ReturnType<typeof vi.fn>;
+        then: (resolve: (value: unknown) => void, reject?: (reason: unknown) => void) => Promise<unknown>;
+      } = {
+        select: vi.fn(),
+        eq: vi.fn(),
+        is: vi.fn(),
+        order: vi.fn(),
+        limit: vi.fn(),
+        then: (resolve, reject) => Promise.resolve({ data: [], error: null }).then(resolve, reject),
+      };
+      policyQuery.select.mockReturnValue(policyQuery);
+      policyQuery.eq.mockReturnValue(policyQuery);
+      policyQuery.is.mockReturnValue(policyQuery);
+      policyQuery.order.mockReturnValue(policyQuery);
+      policyQuery.limit.mockReturnValue(policyQuery);
+      return policyQuery;
+    }
     if (table !== "group_bookings") throw new Error(`unexpected table ${table}`);
     return {
       select: vi.fn().mockImplementation((selectArg: string) => {

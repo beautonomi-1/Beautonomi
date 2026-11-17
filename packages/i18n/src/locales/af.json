@@ -2993,6 +2993,8 @@
           "dateLabel": "Datum",
           "notifyClient": "Notify kliënt",
           "timeLabel": "Tyd",
+          "customerRequestedTime": "Kliënt het versoek: {{datetime}}",
+          "emailCustomerA11y": "E-pos {{name}}",
           "collectPaymentTitle": "Collect betaling",
           "fullBalance": "vol saldo: {{currency}} {{amount}}",
           "thisPayment": "Hierdie betaling: {{currency}} {{amount}}",
@@ -13076,7 +13078,8 @@
           "atHome": "By die huis",
           "atSalon": "By die salon",
           "budgetRange": " · Begroting {{min}} – {{max}}",
-          "introHint": "Versoeke is nog nie op jou kalender nie. Stuur ’n aanbod met ’n prys en tyd; dit word bespreek sodra die kliënt betaal."
+          "introHint": "Versoeke is nog nie op jou kalender nie. Stuur ’n aanbod met ’n prys en tyd; dit word bespreek sodra die kliënt betaal.",
+          "preferred": "Voorkeur: {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Wait asseblief",
@@ -24284,7 +24287,8 @@
             "empty": "No dienste",
             "customOrder": "Pasgemaak bestelling",
             "clientRequest": "kliënt's versoek",
-            "yourNotes": "Jou notas"
+            "yourNotes": "Jou notas",
+            "customerRequestedTime": "Kliënt het versoek: {{datetime}}"
           },
           "products": {
             "title": "Produkte",
@@ -34683,7 +34687,9 @@
           "noShow": "No wys",
           "noShows": "Geen opdaag",
           "booked": "Bespreek",
-          "started": "Begin"
+          "started": "Begin",
+          "checkedIn": "Ingeboek",
+          "waiting": "Wag"
         },
         "locationType": {
           "houseCall": "House bel",

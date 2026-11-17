@@ -1669,10 +1669,37 @@ export default function ProviderBookingDetail() {
   // "confirmed" means provider has actually confirmed the booking (not just pending/awaiting).
   const isConfirmedOrLater = ["booked", "confirmed", "waiting", "checked_in", "started", "in_progress"].includes(bookingLifecycleStatus);
   const isAtHome = b.location_type === "at_home";
+  const bookingDbStatus = ((b as { db_status?: string | null }).db_status ?? "").toLowerCase();
+  const customOfferPreferredDiffers = (() => {
+    const offer = (b as { custom_offer?: { request?: { preferred_start_at?: string | null } | null } | null })
+      .custom_offer;
+    const preferred = offer?.request?.preferred_start_at;
+    if (!preferred || !b.scheduled_at) return false;
+    const a = new Date(preferred).getTime();
+    const scheduledMs = new Date(b.scheduled_at).getTime();
+    return Number.isFinite(a) && Number.isFinite(scheduledMs) && Math.abs(a - scheduledMs) > 60_000;
+  })();
+  const customOfferPreferredLabel =
+    customOfferPreferredDiffers &&
+    (b as { custom_offer?: { request?: { preferred_start_at?: string | null } | null } | null }).custom_offer
+      ?.request?.preferred_start_at
+      ? t("web.provider.bookings.detail.services.customerRequestedTime", {
+          datetime: `${formatBookingDateInTimeZone(
+            (b as { custom_offer?: { request?: { preferred_start_at?: string } | null } | null }).custom_offer!
+              .request!.preferred_start_at!,
+            b.display_time_zone,
+          )} ${formatBookingTimeInTimeZone(
+            (b as { custom_offer?: { request?: { preferred_start_at?: string } | null } | null }).custom_offer!
+              .request!.preferred_start_at!,
+            b.display_time_zone,
+          )}`,
+        })
+      : null;
   const canStartJourney =
     canEditAppointments &&
     isAtHome &&
-    (bookingLifecycleStatus === "confirmed" || bookingLifecycleStatus === "booked") &&
+    (bookingDbStatus === "confirmed" ||
+      (!bookingDbStatus && (bookingLifecycleStatus === "confirmed" || bookingLifecycleStatus === "booked"))) &&
     (b.current_stage == null || b.current_stage === "confirmed");
   const canMarkArrived =
     canEditAppointments && isAtHome && b.current_stage === "provider_on_way";
@@ -1902,7 +1929,11 @@ export default function ProviderBookingDetail() {
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                  booking.status === "confirmed" || booking.status === "booked"
+                  bookingDbStatus === "checked_in"
+                    ? "bg-indigo-100 text-indigo-800"
+                    : bookingDbStatus === "waiting"
+                    ? "bg-amber-100 text-amber-800"
+                    : booking.status === "confirmed" || booking.status === "booked"
                     ? "bg-green-100 text-green-800"
                     : booking.status === "pending"
                     ? "bg-yellow-100 text-yellow-800"
@@ -1917,7 +1948,11 @@ export default function ProviderBookingDetail() {
                     : "bg-gray-100 text-gray-800"
                 }`}
               >
-                {booking.status === "booked"
+                {bookingDbStatus === "checked_in"
+                  ? t("web.provider.common.status.checkedIn")
+                  : bookingDbStatus === "waiting"
+                  ? t("web.provider.common.status.waiting")
+                  : booking.status === "booked"
                   ? t("web.provider.common.status.confirmed")
                   : booking.status === "started"
                   ? t("web.provider.common.status.inProgress")
@@ -2425,8 +2460,19 @@ export default function ProviderBookingDetail() {
               >
                 <div>
                   <p className="font-medium">{service.offering_name || t("web.provider.bookings.detail.services.fallback")}</p>
-                  {service.duration_minutes != null && (
-                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.services.durationMins", { minutes: service.duration_minutes })}</p>
+                  {(service.duration_minutes != null || service.scheduled_start_at) && (
+                    <p className="text-sm text-gray-600">
+                      {[
+                        service.scheduled_start_at
+                          ? formatBookingTimeInTimeZone(service.scheduled_start_at, booking.display_time_zone)
+                          : null,
+                        service.duration_minutes != null
+                          ? t("web.provider.bookings.detail.services.durationMins", { minutes: service.duration_minutes })
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
                   )}
                 </div>
                 {service.price != null && (
@@ -2441,7 +2487,7 @@ export default function ProviderBookingDetail() {
             )}
           </div>
           {(booking as ProviderBookingDetail & { custom_offer?: { notes?: string | null; request?: { description?: string | null } | null } | null }).custom_offer &&
-           ((booking as any).custom_offer?.request?.description || (booking as any).custom_offer?.notes) ? (
+           ((booking as any).custom_offer?.request?.description || (booking as any).custom_offer?.notes || customOfferPreferredLabel) ? (
             <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-4">
               <p className="text-xs font-bold text-violet-700 uppercase tracking-wider mb-2 flex items-center gap-1">
                 ✦ Custom Order
@@ -2451,6 +2497,9 @@ export default function ProviderBookingDetail() {
                   <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-1">{t("web.provider.bookings.detail.services.clientRequest")}</p>
                   <p className="text-sm text-violet-900 leading-relaxed">{(booking as any).custom_offer.request.description}</p>
                 </div>
+              ) : null}
+              {customOfferPreferredLabel ? (
+                <p className="text-sm text-violet-800 mb-2">{customOfferPreferredLabel}</p>
               ) : null}
               {(booking as any).custom_offer?.notes ? (
                 <div>

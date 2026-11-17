@@ -14,6 +14,7 @@ type RescheduleBooking = {
   location_id?: string | null;
   provider?: { slug?: string; timezone?: string | null };
   services?: Array<{ offering_id?: string; staff_id?: string | null }>;
+  customer_reschedule?: { allowed?: boolean; code?: string; hours_before?: number };
 };
 
 type AvailabilitySlot = { start: string; end?: string; is_available?: boolean };
@@ -52,6 +53,13 @@ export default function BookingRescheduleScreen() {
   const { t } = useTranslation();
   const br = useCallback(
     (key: string) => t(`customer.mobile.screens.bookingReschedule.${key}`) as string,
+    [t],
+  );
+  const bd = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      (opts != null
+        ? t(`customer.mobile.screens.bookingDetail.${key}`, opts as never)
+        : t(`customer.mobile.screens.bookingDetail.${key}`)) as string,
     [t],
   );
   const router = useRouter();
@@ -174,6 +182,19 @@ export default function BookingRescheduleScreen() {
         <Text style={{ textAlign: "center", color: Colors.gray[600] }}>
           {loadError ?? br("failedTitle")}
         </Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (booking.customer_reschedule?.allowed === false) {
+    const cr = booking.customer_reschedule;
+    const message =
+      cr.code === "CUSTOMER_RESCHEDULE_CUTOFF"
+        ? bd("reschedulePolicyNote", { hours: cr.hours_before ?? 24 })
+        : br("failedTitle");
+    return (
+      <SafeAreaView style={{ flex: 1, padding: 16, justifyContent: "center" }}>
+        <Text style={{ textAlign: "center", color: Colors.gray[600] }}>{message}</Text>
       </SafeAreaView>
     );
   }

@@ -389,7 +389,7 @@ type BookingDetail = {
   custom_offer?: {
     id?: string;
     notes?: string | null;
-    request?: { id?: string; description?: string | null } | null;
+    request?: { id?: string; description?: string | null; preferred_start_at?: string | null } | null;
   } | null;
   needs_close_out?: boolean | null;
   suggested_close_out_action?: "complete" | "review" | "provider_cancel" | null;
@@ -918,6 +918,7 @@ export default function BookingDetailScreen() {
   const locationPermissionDeniedRef = useRef(false);
   const mainScrollRef = useRef<ScrollView>(null);
   const nextStepCardYRef = useRef(0);
+  const notesBlockYRef = useRef(0);
   const highlightConfirmHandledRef = useRef(false);
   const [highlightNextStep, setHighlightNextStep] = useState(false);
   const [pendingHighlightScroll, setPendingHighlightScroll] = useState(false);
@@ -2047,7 +2048,7 @@ export default function BookingDetailScreen() {
   const canStartJourney =
     canEditAppointments &&
     isAtHome &&
-    (b.status === "confirmed" || b.status === "booked") &&
+    currentDbStatus === "confirmed" &&
     (b.current_stage == null || b.current_stage === "confirmed");
   const canMarkArrived = canEditAppointments && isAtHome && b.current_stage === "provider_on_way";
   const isEnRoute = b.current_stage === "provider_on_way";
@@ -2573,11 +2574,11 @@ export default function BookingDetailScreen() {
     if (ok) setUnpaidCompleteOpen(false);
   };
 
-  const applyDbStatusTransition = async (dbTarget: string) => {
-    if (!id) return;
+  const applyDbStatusTransition = async (dbTarget: string): Promise<boolean> => {
+    if (!id) return false;
     if (dbTarget === "cancelled" ? !canCancelAppointments : !canEditAppointments) {
       Alert.alert(bk("permissionTitle"), bk("noStatusPermission"));
-      return;
+      return false;
     }
     setShowStatusPicker(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2588,11 +2589,11 @@ export default function BookingDetailScreen() {
       if (err) {
         setOptimisticBookingStatus(null);
         Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
-        return;
+        return false;
       }
       setOptimisticBookingStatus(null);
       await refresh();
-      return;
+      return true;
     }
 
     if (dbTarget === "completed") {
@@ -2605,7 +2606,7 @@ export default function BookingDetailScreen() {
             { text: bk("dismissCta"), style: "cancel" },
           ],
         );
-        return;
+        return false;
       }
 
       if (!completionChecklist.allDone) {
@@ -2632,7 +2633,7 @@ export default function BookingDetailScreen() {
             { text: bk("cancelCta"), style: "cancel" },
           ],
         );
-        return;
+        return false;
       }
 
       // Gate on unpaid balance: prompt provider to capture payment first.
@@ -2656,23 +2657,23 @@ export default function BookingDetailScreen() {
             { text: bk("cancelCta"), style: "cancel" },
           ],
         );
-        return;
+        return false;
       }
 
       await submitCompleteService({});
       // The useEffect will automatically show the completion modal if it hasn't been seen yet.
-      return;
+      return true;
     }
 
     if (dbTarget === "cancelled") {
       setCancelReason("");
       setShowCancelModal(true);
-      return;
+      return false;
     }
 
     if (dbTarget === "no_show") {
       setShowNoShowModal(true);
-      return;
+      return false;
     }
 
     markOptimisticStatus(dbTarget);
@@ -2693,10 +2694,18 @@ export default function BookingDetailScreen() {
       } else {
         Alert.alert(bk("statusNotChanged"), mapProviderBookingActionError(err, errorCode));
       }
-      return;
+      return false;
     }
     setOptimisticBookingStatus(null);
     await refresh();
+    if (dbTarget === "checked_in") {
+      setHighlightNextStep(true);
+      if (nextStepCardYRef.current > 0) {
+        scrollToNextStepCard(nextStepCardYRef.current);
+      }
+      setTimeout(() => setHighlightNextStep(false), 6000);
+    }
+    return true;
   };
 
   const handleMarkProductCollected = async (orderId: string) => {
@@ -3509,7 +3518,33 @@ export default function BookingDetailScreen() {
     currentDbStatus !== "cancelled" &&
     currentDbStatus !== "no_show" &&
     b.status !== "completed";
-  const nextStep = getBookingNextStepCard(b, { outstanding, isAtHome, isAtSalon });
+  const nextStep = getBookingNextStepCard(
+    { ...b, db_status: currentDbStatus },
+    { outstanding, isAtHome, isAtSalon },
+  );
+  const detailPrimaryAction = (() => {
+    if (!isAtSalon || b.is_group_booking || !canEditAppointments) return null;
+    const primary = actionModel?.primaryListAction;
+    if (!primary) return null;
+    const allowedIds = new Set(["confirm", "check_in", "start_service", "complete_service"]);
+    return allowedIds.has(primary.id) ? primary : null;
+  })();
+  const customOfferPreferredDiffers = (() => {
+    const preferred = b.custom_offer?.request?.preferred_start_at;
+    if (!preferred || !b.scheduled_at) return false;
+    const a = new Date(preferred).getTime();
+    const bMs = new Date(b.scheduled_at).getTime();
+    return Number.isFinite(a) && Number.isFinite(bMs) && Math.abs(a - bMs) > 60_000;
+  })();
+  const customOfferPreferredLabel = (() => {
+    if (!customOfferPreferredDiffers || !b.custom_offer?.request?.preferred_start_at) return null;
+    const tz = b.display_time_zone ?? providerTimezone;
+    const dt = `${formatDateTimeSafe(b.custom_offer.request.preferred_start_at, tz)} ${formatTimeSafe(
+      b.custom_offer.request.preferred_start_at,
+      tz,
+    )}`;
+    return bk("customerRequestedTime", { datetime: dt });
+  })();
   const primaryServiceName = services[0]?.offering_name ?? bk("appointmentFallback");
   const serviceCountLabel =
     services.length > 1 ? bk("serviceCountMore", { primary: primaryServiceName, count: services.length - 1 }) : primaryServiceName;
@@ -3767,6 +3802,16 @@ export default function BookingDetailScreen() {
                   <Ionicons name="call-outline" size={20} color="#4b5563" />
                 </TouchableOpacity>
               ) : null}
+              {b.customers?.email ? (
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(`mailto:${b.customers!.email}`).catch(() => {})}
+                  style={twStyle("ms-2 p-1.5 rounded-full bg-gray-100")}
+                  accessibilityRole="button"
+                  accessibilityLabel={bk("emailCustomerA11y", { name: customerName })}
+                >
+                  <Ionicons name="mail-outline" size={20} color="#4b5563" />
+                </TouchableOpacity>
+              ) : null}
               {customerId ? (
                 <TouchableOpacity
                   onPress={async () => {
@@ -3861,6 +3906,28 @@ export default function BookingDetailScreen() {
           <Text style={twStyle("text-sm text-gray-600")}>
             {formatDateTimeSafe(b.scheduled_at, b.display_time_zone ?? providerTimezone)}
           </Text>
+          {b.scheduled_at ? (
+            <Text style={twStyle("mt-1 text-sm font-medium text-gray-800")}>
+              {bk("timeLabel")}: {formatTimeSafe(b.scheduled_at, b.display_time_zone ?? providerTimezone)}
+            </Text>
+          ) : null}
+          {b.special_requests?.trim() ? (
+            <TouchableOpacity
+              onPress={() => {
+                if (notesBlockYRef.current > 0) {
+                  mainScrollRef.current?.scrollTo({ y: notesBlockYRef.current, animated: true });
+                }
+              }}
+              activeOpacity={0.7}
+              style={twStyle("mt-2 rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2")}
+              accessibilityRole="button"
+            >
+              <Text style={twStyle("text-xs font-semibold text-amber-900")}>{bk("notesSpecialRequests")}</Text>
+              <Text style={twStyle("mt-0.5 text-sm text-amber-950")} numberOfLines={2}>
+                {b.special_requests.trim()}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           {addressLine ? (
             <Text style={twStyle("mt-2 text-sm text-gray-500")}>{addressLine}</Text>
           ) : null}
@@ -3974,6 +4041,17 @@ export default function BookingDetailScreen() {
                 >
                   <Text style={twStyle("text-sm font-semibold text-gray-800")}>{bk("couldntReachClient")}</Text>
                 </TouchableOpacity>
+              ) : null}
+              {detailPrimaryAction && !(b.customer_running_late_at && !b.provider_late_ack_at) ? (
+                <View style={twStyle("mt-3")}>
+                  <ActionButton
+                    label={detailPrimaryAction.label}
+                    onPress={() => void applyDbStatusTransition(detailPrimaryAction.dbTarget)}
+                    loading={mutating || patchLoading}
+                    disabled={mutating || patchLoading}
+                    fullWidth
+                  />
+                </View>
               ) : null}
               {!completionChecklist.allDone && (isActive || isStarted) ? (
                 <View style={twStyle("mt-3")}>
@@ -4497,7 +4575,8 @@ export default function BookingDetailScreen() {
           </View>
         ) : null}
 
-        {b.custom_offer && (b.custom_offer.request?.description || b.custom_offer.notes) ? (
+        {b.custom_offer &&
+        (b.custom_offer.request?.description || b.custom_offer.notes || customOfferPreferredLabel) ? (
           <View style={twStyle("rounded-xl border border-violet-200 bg-violet-50 p-4 mb-3")}>
             <View style={twStyle("flex-row items-center mb-2")}>
               <Ionicons name="sparkles-outline" size={16} color="#7C3AED" style={{ marginEnd: 6 }} />
@@ -4512,6 +4591,9 @@ export default function BookingDetailScreen() {
                   {b.custom_offer.request.description}
                 </Text>
               </View>
+            ) : null}
+            {customOfferPreferredLabel ? (
+              <Text style={twStyle("text-sm text-violet-800 mb-2")}>{customOfferPreferredLabel}</Text>
             ) : null}
             {b.custom_offer.notes ? (
               <View>
@@ -5207,12 +5289,18 @@ export default function BookingDetailScreen() {
                     <Text style={twStyle("text-sm text-teal-700")}>{bk("assignStaff")}</Text>
                   </TouchableOpacity>
                 )}
-                {s.scheduled_start_at && (
-                  <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-                    {formatTimeSafe(s.scheduled_start_at, b.display_time_zone ?? providerTimezone)}
-                    {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
-                  </Text>
-                )}
+                {(() => {
+                  const tz = b.display_time_zone ?? providerTimezone;
+                  const startAt = s.scheduled_start_at ?? (i === 0 ? b.scheduled_at : null);
+                  const timeLabel = startAt ? formatTimeSafe(startAt, tz) : null;
+                  const durLabel = s.duration_minutes ? `${s.duration_minutes} min` : null;
+                  if (!timeLabel && !durLabel) return null;
+                  return (
+                    <Text style={twStyle("text-xs text-gray-500 mt-1")}>
+                      {[timeLabel, durLabel].filter(Boolean).join(" · ")}
+                    </Text>
+                  );
+                })()}
                 {typeof s.price === "number" && (
                   <Text style={twStyle("text-sm text-gray-600 mt-1")}>
                     {b.currency ?? getTenantDefaultCurrency()} {s.price.toLocaleString()}
@@ -5228,6 +5316,9 @@ export default function BookingDetailScreen() {
                     <Text style={twStyle("font-medium text-gray-800")}>{bk("requestLabel")}</Text> {b.custom_offer.request.description}
                   </Text>
                 )}
+                {customOfferPreferredLabel ? (
+                  <Text style={twStyle("text-sm text-gray-700 mb-1")}>{customOfferPreferredLabel}</Text>
+                ) : null}
                 {b.custom_offer.notes && (
                   <Text style={twStyle("text-sm text-gray-600")}>
                     <Text style={twStyle("font-medium text-gray-800")}>{bk("notesLabel")}</Text> {b.custom_offer.notes}
@@ -5450,7 +5541,12 @@ export default function BookingDetailScreen() {
         )}
 
         {/* Notes / Special requests (editable) */}
-        <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-3 mb-3")}>
+        <View
+          onLayout={(e) => {
+            notesBlockYRef.current = e.nativeEvent.layout.y;
+          }}
+          style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-3 mb-3")}
+        >
           <View style={twStyle("flex-row items-center justify-between mb-2")}>
             <Text style={twStyle("text-sm font-medium text-gray-700")}>{bk("notesSpecialRequests")}</Text>
             {!editingNotes && canEditAppointments ? (

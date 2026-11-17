@@ -172,8 +172,11 @@ export function mapStatus(
 ): AppointmentStatus {
   if (typeof statusOrAppointment === "object" && statusOrAppointment !== null) {
     const db = (statusOrAppointment as Appointment).db_status;
-    if (db === "pending") {
+    if (db === "pending" || db === "pending_payment") {
       return AppointmentStatus.UNCONFIRMED;
+    }
+    if (db === "waiting" || db === "checked_in") {
+      return AppointmentStatus.WAITING;
     }
   }
 

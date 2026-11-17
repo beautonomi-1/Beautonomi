@@ -11,6 +11,11 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { multiplyMoney } from "@beautonomi/utils";
+import { getCancellationPolicy, type CancellationPolicy } from "@/lib/bookings/cancellation-policy";
+import {
+  evaluateCustomerReschedule,
+  toCustomerRescheduleApiField,
+} from "@/lib/bookings/reschedule-core";
 
 /**
  * GET /api/me/bookings
@@ -174,6 +179,21 @@ export async function GET(request: NextRequest) {
 
     const totalCount = count || 0;
 
+    const cancellationPolicyCache = new Map<string, CancellationPolicy | null>();
+  const policyKeys = new Set<string>();
+  for (const b of filteredBookings) {
+    const lt = (b.location_type as "at_salon" | "at_home") || "at_salon";
+    if (b.provider_id) policyKeys.add(`${b.provider_id}:${lt}`);
+  }
+  await Promise.all(
+    [...policyKeys].map(async (key) => {
+      const sep = key.indexOf(":");
+      const pid = key.slice(0, sep);
+      const lt = key.slice(sep + 1) as "at_salon" | "at_home";
+      cancellationPolicyCache.set(key, await getCancellationPolicy(supabase, pid, lt));
+    }),
+  );
+
     // Transform bookings to match Booking interface
     let transformedBookings = (filteredBookings || []).map((booking: any) => {
       // Coherence: a row stuck at `status = 'pending_payment'` while
@@ -250,6 +270,25 @@ export async function GET(request: NextRequest) {
         longitude: booking.address_longitude || undefined,
       } : null;
 
+      const locationType = (booking.location_type as "at_salon" | "at_home") || "at_salon";
+      const policyKey = booking.provider_id ? `${booking.provider_id}:${locationType}` : "";
+      const livePolicy = policyKey ? cancellationPolicyCache.get(policyKey) ?? null : null;
+      const customerReschedule = toCustomerRescheduleApiField(
+        evaluateCustomerReschedule(
+          {
+            id: booking.id,
+            status: booking.status,
+            payment_status: booking.payment_status,
+            current_stage: booking.current_stage,
+            created_at: booking.created_at,
+            scheduled_at: booking.scheduled_at,
+            location_type: locationType,
+            cancellation_policy_snapshot: booking.cancellation_policy_snapshot,
+          },
+          livePolicy,
+        ),
+      );
+
       return {
         ...booking,
         // Keep database status for consistency, add customer status for display
@@ -277,6 +316,7 @@ export async function GET(request: NextRequest) {
         payment_status: booking.payment_status || "pending",
         loyalty_points_earned: booking.loyalty_points_earned || 0,
         loyalty_points_used: booking.loyalty_points_used || 0,
+        customer_reschedule: customerReschedule,
       };
     });
 

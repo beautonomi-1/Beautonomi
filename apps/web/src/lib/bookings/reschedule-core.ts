@@ -28,7 +28,20 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatInTimeZone } from "date-fns-tz";
-import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
+import {
+  getCancellationPolicy,
+  canCancelBooking,
+  type CancellationPolicy,
+} from "@/lib/bookings/cancellation-policy";
+import {
+  mergeEffectiveCancellationPolicy,
+  snapshotFromJson,
+} from "@/lib/bookings/effective-cancellation-policy";
+import {
+  BLOCKED_STAGES,
+  SELF_CANCEL_BLOCKED_STATUSES,
+} from "@/lib/bookings/resolve-cancellation-outcome";
+import { resolveEffectiveBookingLifecycleStatus } from "@beautonomi/utils";
 import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
@@ -47,10 +60,40 @@ export interface RescheduleCoreInput {
   actorUserId: string | null;
 }
 
+export type CustomerRescheduleCode =
+  | "CUSTOMER_RESCHEDULE_STATUS"
+  | "CUSTOMER_RESCHEDULE_UNPAID"
+  | "CUSTOMER_RESCHEDULE_JOURNEY"
+  | "CUSTOMER_RESCHEDULE_STARTED"
+  | "CUSTOMER_RESCHEDULE_CUTOFF";
+
+export type CustomerReschedulePayload = {
+  allowed: boolean;
+  code?: CustomerRescheduleCode;
+  hours_before?: number;
+  /** Server message for cutoff denials (from `canCancelBooking`). */
+  block_message?: string;
+};
+
+export type EvaluateCustomerRescheduleInput = {
+  status: string;
+  payment_status?: string | null;
+  current_stage?: string | null;
+  created_at: string;
+  scheduled_at: string;
+  location_type: "at_salon" | "at_home";
+  cancellation_policy_snapshot?: unknown;
+  id?: string;
+};
+
 export type RescheduleCoreError =
   | { kind: "NOT_FOUND"; message: string }
   | { kind: "INVALID_STATUS"; message: string }
-  | { kind: "RESCHEDULE_BLOCKED"; message: string }
+  | {
+      kind: "RESCHEDULE_BLOCKED";
+      message: string;
+      code?: CustomerRescheduleCode;
+    }
   | { kind: "VALIDATION_ERROR"; message: string }
   | { kind: "SLOT_UNAVAILABLE"; message: string }
   | { kind: "SLOT_CHECK_UNAVAILABLE"; message: string }
@@ -113,6 +156,9 @@ type BookingRow = {
   scheduled_at: string;
   created_at: string;
   status: string;
+  payment_status?: string | null;
+  current_stage?: string | null;
+  cancellation_policy_snapshot?: unknown;
   customer_id?: string;
   booking_services: Array<{
     id: string;
@@ -141,6 +187,145 @@ export const PROVIDER_PATCH_NON_RESCHEDULABLE_STATUSES = new Set([
 /** Terminal/closed statuses where service line edits are blocked. */
 export const BOOKING_SERVICE_EDIT_LOCKED_STATUSES = new Set(["completed", "cancelled", "no_show"]);
 
+export function messageForCustomerRescheduleBlock(
+  result: Exclude<CustomerReschedulePayload, { allowed: true }> & { allowed: false },
+): string {
+  switch (result.code) {
+    case "CUSTOMER_RESCHEDULE_STATUS":
+      return "Your appointment can no longer be rescheduled online — contact the provider or support.";
+    case "CUSTOMER_RESCHEDULE_UNPAID":
+      return "Complete payment for this booking before rescheduling.";
+    case "CUSTOMER_RESCHEDULE_JOURNEY":
+      return "Your provider is already on the way or the service has started — contact them to change the time.";
+    case "CUSTOMER_RESCHEDULE_STARTED":
+      return "Your appointment has started or passed — contact the provider or support.";
+    case "CUSTOMER_RESCHEDULE_CUTOFF":
+      return (
+        result.block_message ??
+        `Changes must be made at least ${result.hours_before ?? 24} hours before the appointment. Please contact the provider.`
+      );
+    default:
+      return "Rescheduling not allowed. Please contact the provider.";
+  }
+}
+
+/** Shared customer / portal reschedule eligibility (same statuses, stages, and policy merge as cancel). */
+export function evaluateCustomerReschedule(
+  booking: EvaluateCustomerRescheduleInput,
+  livePolicy: CancellationPolicy | null,
+  now: Date = new Date(),
+): CustomerReschedulePayload {
+  const rawStatus = String(booking.status ?? "").toLowerCase();
+  const status = rawStatus === "started" ? "in_progress" : rawStatus;
+
+  if (SELF_CANCEL_BLOCKED_STATUSES.has(status)) {
+    return { allowed: false, code: "CUSTOMER_RESCHEDULE_STATUS" };
+  }
+
+  const effectiveStatus = resolveEffectiveBookingLifecycleStatus({
+    status: booking.status,
+    paymentStatus: booking.payment_status,
+  });
+  if (effectiveStatus === "pending_payment") {
+    return { allowed: false, code: "CUSTOMER_RESCHEDULE_UNPAID" };
+  }
+
+  const stage = (booking.current_stage ?? "").toLowerCase();
+  if (stage && BLOCKED_STAGES.has(stage)) {
+    return { allowed: false, code: "CUSTOMER_RESCHEDULE_JOURNEY" };
+  }
+
+  const scheduledAt = new Date(booking.scheduled_at);
+  if (now >= scheduledAt) {
+    return { allowed: false, code: "CUSTOMER_RESCHEDULE_STARTED" };
+  }
+
+  const snapshot = snapshotFromJson(booking.cancellation_policy_snapshot);
+  const hasPolicySource = livePolicy != null || snapshot != null;
+  if (!hasPolicySource) {
+    return { allowed: true };
+  }
+
+  const merged = mergeEffectiveCancellationPolicy(snapshot, livePolicy);
+  const check = canCancelBooking(
+    {
+      id: booking.id ?? "",
+      created_at: booking.created_at,
+      scheduled_at: booking.scheduled_at,
+      location_type: booking.location_type,
+    },
+    merged,
+    now,
+  );
+  if (!check.allowed) {
+    return {
+      allowed: false,
+      code: "CUSTOMER_RESCHEDULE_CUTOFF",
+      hours_before: merged.hours_before_cutoff,
+      block_message: check.reason,
+    };
+  }
+
+  return { allowed: true, hours_before: merged.hours_before_cutoff };
+}
+
+export async function evaluateCustomerRescheduleWithLivePolicy(
+  supabase: SupabaseClient,
+  providerId: string,
+  booking: EvaluateCustomerRescheduleInput,
+  now?: Date,
+): Promise<CustomerReschedulePayload> {
+  const live = await getCancellationPolicy(supabase, providerId, booking.location_type);
+  return evaluateCustomerReschedule(booking, live, now);
+}
+
+export function toCustomerRescheduleApiField(result: CustomerReschedulePayload): {
+  allowed: boolean;
+  code?: CustomerRescheduleCode;
+  hours_before?: number;
+} {
+  return {
+    allowed: result.allowed,
+    ...(result.code ? { code: result.code } : {}),
+    ...(result.hours_before != null ? { hours_before: result.hours_before } : {}),
+  };
+}
+
+type GroupChildForReschedule = EvaluateCustomerRescheduleInput & {
+  provider_id: string;
+  status: string;
+};
+
+export async function evaluateGroupCustomerReschedule(
+  supabase: SupabaseClient,
+  groupStatus: string,
+  children: GroupChildForReschedule[],
+  now?: Date,
+): Promise<CustomerReschedulePayload> {
+  const gs = String(groupStatus ?? "").toLowerCase();
+  if (gs === "cancelled" || gs === "completed") {
+    return { allowed: false, code: "CUSTOMER_RESCHEDULE_STATUS" };
+  }
+
+  const policyCache = new Map<string, CancellationPolicy | null>();
+  for (const child of children) {
+    const childStatus = String(child.status ?? "").toLowerCase();
+    if (childStatus === "cancelled") continue;
+
+    const cacheKey = `${child.provider_id}:${child.location_type}`;
+    let live = policyCache.get(cacheKey);
+    if (live === undefined) {
+      live = await getCancellationPolicy(supabase, child.provider_id, child.location_type);
+      policyCache.set(cacheKey, live);
+    }
+
+    const result = evaluateCustomerReschedule(child, live, now);
+    if (!result.allowed) return result;
+  }
+
+  return { allowed: true };
+}
+
 /**
  * Canonical reschedule flow. Returns a tagged result so callers can map
  * errors to their surface's preferred response shape (RESTful JSON,
@@ -162,6 +347,9 @@ export async function executeReschedule(
         scheduled_at,
         created_at,
         status,
+        payment_status,
+        current_stage,
+        cancellation_policy_snapshot,
         customer_id,
         booking_services (
           id,
@@ -182,36 +370,67 @@ export async function executeReschedule(
   }
   const booking = bookingRaw as unknown as BookingRow;
 
-  if (NON_RESCHEDULABLE_STATUSES.has(booking.status)) {
-    return {
-      ok: false,
-      error: {
-        kind: "INVALID_STATUS",
-        message: `Cannot reschedule a ${booking.status} booking`,
-      },
-    };
-  }
-
-  // ── 2. Cancellation / reschedule policy gate.
-  const policy = await getCancellationPolicy(supabase, booking.provider_id, booking.location_type);
-  if (policy) {
-    const check = canCancelBooking(
+  if (actor === "customer" || actor === "portal") {
+    const livePolicy = await getCancellationPolicy(
+      supabase,
+      booking.provider_id,
+      booking.location_type,
+    );
+    const eligibility = evaluateCustomerReschedule(
       {
         id: booking.id,
+        status: booking.status,
+        payment_status: booking.payment_status,
+        current_stage: booking.current_stage,
         created_at: booking.created_at,
         scheduled_at: booking.scheduled_at,
         location_type: booking.location_type,
+        cancellation_policy_snapshot: booking.cancellation_policy_snapshot,
       },
-      policy,
+      livePolicy,
     );
-    if (!check.allowed) {
+    if (!eligibility.allowed) {
+      const blocked = eligibility as CustomerReschedulePayload & { allowed: false };
       return {
         ok: false,
         error: {
           kind: "RESCHEDULE_BLOCKED",
-          message: check.reason || "Rescheduling not allowed",
+          message: messageForCustomerRescheduleBlock(blocked),
+          code: blocked.code,
         },
       };
+    }
+  } else {
+    if (NON_RESCHEDULABLE_STATUSES.has(booking.status)) {
+      return {
+        ok: false,
+        error: {
+          kind: "INVALID_STATUS",
+          message: `Cannot reschedule a ${booking.status} booking`,
+        },
+      };
+    }
+
+    const policy = await getCancellationPolicy(supabase, booking.provider_id, booking.location_type);
+    if (policy) {
+      const check = canCancelBooking(
+        {
+          id: booking.id,
+          created_at: booking.created_at,
+          scheduled_at: booking.scheduled_at,
+          location_type: booking.location_type,
+        },
+        policy,
+      );
+      if (!check.allowed) {
+        return {
+          ok: false,
+          error: {
+            kind: "RESCHEDULE_BLOCKED",
+            message: check.reason || "Rescheduling not allowed",
+          },
+        };
+      }
     }
   }
 

@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Platform,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -120,11 +121,19 @@ function timeKey(date: Date): string {
 }
 
 
-function formatDateTimeSafe(value: unknown): string {
+function formatDateTimeSafe(value: unknown, timeZone?: string | null): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
-  return parsed.toLocaleString();
+  return parsed.toLocaleString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  });
 }
 
 export default function CustomRequestDetailScreen() {
@@ -430,52 +439,58 @@ export default function CustomRequestDetailScreen() {
 
   const declineRequest = useCallback(() => {
     if (!requestId) return;
-    Alert.prompt?.(
-      cr("declineRequest"),
-      cr("declineRequestPrompt"),
-      [
+    const declineWithoutReason = async () => {
+      try {
+        const res = await api.post(`/api/provider/custom-requests/${requestId}/decline`, {});
+        if (res.error) {
+          Alert.alert(cr("errorTitle"), (res.error as { message?: string }).message ?? cr("declineFailed"));
+          return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.back();
+      } catch (e) {
+        Alert.alert(cr("errorTitle"), e instanceof Error ? e.message : cr("declineFailed"));
+      }
+    };
+    const declineWithReason = async (reason?: string) => {
+      try {
+        const res = await api.post(`/api/provider/custom-requests/${requestId}/decline`, {
+          reason: reason?.trim() || null,
+        });
+        if (res.error) {
+          Alert.alert(cr("errorTitle"), (res.error as { message?: string }).message ?? cr("declineFailed"));
+          return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.back();
+      } catch (e) {
+        Alert.alert(cr("errorTitle"), e instanceof Error ? e.message : cr("declineFailed"));
+      }
+    };
+    if (Platform.OS === "ios") {
+      Alert.prompt(
+        cr("declineRequest"),
+        cr("declineRequestPrompt"),
+        [
+          { text: cr("cancel"), style: "cancel" },
+          {
+            text: cr("decline"),
+            style: "destructive",
+            onPress: (reason?: string) => void declineWithReason(reason),
+          },
+        ],
+        "plain-text",
+      );
+    } else {
+      Alert.alert(cr("declineRequest"), cr("declineConfirmBody"), [
         { text: cr("cancel"), style: "cancel" },
         {
           text: cr("decline"),
           style: "destructive",
-          onPress: async (reason?: string) => {
-            try {
-              const res = await api.post(`/api/provider/custom-requests/${requestId}/decline`, {
-                reason: reason?.trim() || null,
-              });
-              if (res.error) {
-                Alert.alert(cr("errorTitle"), (res.error as { message?: string }).message ?? cr("declineFailed"));
-                return;
-              }
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              router.back();
-            } catch (e) {
-              Alert.alert(cr("errorTitle"), e instanceof Error ? e.message : cr("declineFailed"));
-            }
-          },
+          onPress: () => void declineWithoutReason(),
         },
-      ],
-      "plain-text",
-    ) ?? Alert.alert(cr("declineRequest"), cr("declineConfirmBody"), [
-      { text: cr("cancel"), style: "cancel" },
-      {
-        text: cr("decline"),
-        style: "destructive",
-        onPress: async () => {
-          try {
-            const res = await api.post(`/api/provider/custom-requests/${requestId}/decline`, {});
-            if (res.error) {
-              Alert.alert(cr("errorTitle"), (res.error as { message?: string }).message ?? cr("declineFailed"));
-              return;
-            }
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            router.back();
-          } catch (e) {
-            Alert.alert(cr("errorTitle"), e instanceof Error ? e.message : cr("declineFailed"));
-          }
-        },
-      },
-    ]);
+      ]);
+    }
   }, [requestId, router, cr]);
 
   const openOfferDetail = useCallback(async (offerId: string) => {
@@ -603,7 +618,7 @@ export default function CustomRequestDetailScreen() {
           </View>
             {request.preferred_start_at && (
               <Text style={twStyle("mt-1 text-sm text-gray-600")}>
-                {cr("preferred", { datetime: formatDateTimeSafe(request.preferred_start_at) })}
+                {cr("preferred", { datetime: formatDateTimeSafe(request.preferred_start_at, providerTz) })}
               </Text>
             )}
             {request.location_type === "at_home" && (request.address_line1 || request.address_city) && (
@@ -964,7 +979,7 @@ export default function CustomRequestDetailScreen() {
 
               const fmtDate = (iso: string | null | undefined) => {
                 if (!iso) return "—";
-                return new Date(iso).toLocaleString("en-ZA", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                return formatDateTimeSafe(iso, providerTz);
               };
 
               const statusBadge = isWithdrawn

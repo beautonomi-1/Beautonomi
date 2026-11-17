@@ -406,7 +406,8 @@ export async function GET(
           notes,
           request:custom_requests(
             id,
-            description
+            description,
+            preferred_start_at
           )
         )
       `
@@ -1972,7 +1973,8 @@ export async function PATCH(
             notes,
             request:custom_requests(
               id,
-              description
+              description,
+              preferred_start_at
             )
           ),
           additional_charges(amount,status),
@@ -2123,7 +2125,8 @@ export async function PATCH(
             notes,
             request:custom_requests(
               id,
-              description
+              description,
+              preferred_start_at
             )
           ),
           additional_charges(amount,status),
