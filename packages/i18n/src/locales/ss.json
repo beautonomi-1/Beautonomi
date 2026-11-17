@@ -2983,6 +2983,8 @@
           "dateLabel": "Lilanga",
           "notifyClient": "Notify liklayenti",
           "timeLabel": "Sikhatsi",
+          "customerRequestedTime": "Sikhasimende sicelile: {{datetime}}",
+          "emailCustomerA11y": "Thumela i-imeyili ku-{{name}}",
           "collectPaymentTitle": "Collect inkokhelo",
           "fullBalance": "kugcwele libhalansi: {{currency}} {{amount}}",
           "thisPayment": "Lokhu inkhokho: {{currency}} {{amount}}",
@@ -13065,7 +13067,8 @@
           "atHome": "Ekhaya",
           "atSalon": "Esaloni",
           "budgetRange": " · Ibhajethi {{min}} – {{max}}",
-          "introHint": "Ticelo atikabi khona ekhalendeni lakho. Tfumela sipho nentengo nesikhatsi; kuyabhukwa uma liklayenti likhokha."
+          "introHint": "Ticelo atikabi khona ekhalendeni lakho. Tfumela sipho nentengo nesikhatsi; kuyabhukwa uma liklayenti likhokha.",
+          "preferred": "Lokukhetsiwe: {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Sicela wait",
@@ -24271,7 +24274,8 @@
             "empty": "No tinsita",
             "customOrder": "Lwekhefiso i-oda",
             "clientRequest": "liklayenti's sicelo",
-            "yourNotes": "emanothi yakho"
+            "yourNotes": "emanothi yakho",
+            "customerRequestedTime": "Sikhasimende sicelile: {{datetime}}"
           },
           "products": {
             "title": "Imikhicito",
@@ -34637,7 +34641,9 @@
           "noShow": "No khombisa",
           "noShows": "Ababengafiki",
           "booked": "Kubhukiwe",
-          "started": "Kucalile"
+          "started": "Kucalile",
+          "checkedIn": "Ubhalisiwe",
+          "waiting": "Ulinde"
         },
         "locationType": {
           "houseCall": "House shayela",

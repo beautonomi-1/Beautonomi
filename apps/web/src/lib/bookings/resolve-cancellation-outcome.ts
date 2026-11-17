@@ -75,7 +75,7 @@ export interface CancellationOutcome {
   noShowAvailableAt?: string;
 }
 
-const SELF_CANCEL_BLOCKED_STATUSES = new Set([
+export const SELF_CANCEL_BLOCKED_STATUSES = new Set([
   "cancelled",
   "completed",
   "no_show",
@@ -85,7 +85,7 @@ const SELF_CANCEL_BLOCKED_STATUSES = new Set([
   "checked_in",
 ]);
 
-const BLOCKED_STAGES = new Set([
+export const BLOCKED_STAGES = new Set([
   "client_arrived",
   "provider_on_way",
   "provider_arrived",

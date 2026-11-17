@@ -2993,6 +2993,8 @@
           "dateLabel": "Usuku",
           "notifyClient": "Notify iklayenti",
           "timeLabel": "Isikhathi",
+          "customerRequestedTime": "Ikhasimende licelile: {{datetime}}",
+          "emailCustomerA11y": "Thumela i-imeyili ku-{{name}}",
           "collectPaymentTitle": "Collect inkokhelo",
           "fullBalance": "kugcwele ibhalansi: {{currency}} {{amount}}",
           "thisPayment": "Lokhu ukukhokha: {{currency}} {{amount}}",
@@ -13076,7 +13078,8 @@
           "atHome": "Ekhaya",
           "atSalon": "Esaloni",
           "budgetRange": " · Isabelomali {{min}} – {{max}}",
-          "introHint": "Izicelo azikabi khona ekhalendeni lakho. Thumela isipho nentengo nesikhathi; kuyabhukwa uma iklayenti likhokha."
+          "introHint": "Izicelo azikabi khona ekhalendeni lakho. Thumela isipho nentengo nesikhathi; kuyabhukwa uma iklayenti likhokha.",
+          "preferred": "Okuncamelayo: {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Sicela wait",
@@ -24284,7 +24287,8 @@
             "empty": "No izinsizakalo",
             "customOrder": "Okwezifiso i-oda",
             "clientRequest": "iklayenti's isicelo",
-            "yourNotes": "amanothi yakho"
+            "yourNotes": "amanothi yakho",
+            "customerRequestedTime": "Ikhasimende licelile: {{datetime}}"
           },
           "products": {
             "title": "Imikhiqizo",
@@ -34683,7 +34687,9 @@
           "noShow": "No bonisa",
           "noShows": "Ababengafiki",
           "booked": "Kubhukiwe",
-          "started": "Kuqalile"
+          "started": "Kuqalile",
+          "checkedIn": "Ubhalisiwe",
+          "waiting": "Ulinde"
         },
         "locationType": {
           "houseCall": "House shayela",

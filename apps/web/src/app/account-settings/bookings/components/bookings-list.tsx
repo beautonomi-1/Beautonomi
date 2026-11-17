@@ -386,16 +386,19 @@ export default function BookingsList({
               </Link>
               {booking.status === "confirmed" && (
                 <>
-                  <Button
-                    className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-semibold shadow-md hover:shadow-lg transition-all"
-                    onClick={() => {
-                      router.push(
-                        `/account-settings/bookings/${booking.id}/reschedule`
-                      );
-                    }}
-                  >
-                    {t("web.accountSettings.bookings.list.reschedule")}
-                  </Button>
+                  {(booking as { customer_reschedule?: { allowed?: boolean } }).customer_reschedule
+                    ?.allowed !== false && (
+                    <Button
+                      className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-semibold shadow-md hover:shadow-lg transition-all"
+                      onClick={() => {
+                        router.push(
+                          `/account-settings/bookings/${booking.id}/reschedule`
+                        );
+                      }}
+                    >
+                      {t("web.accountSettings.bookings.list.reschedule")}
+                    </Button>
+                  )}
                   <Link href={`/account-settings/bookings/${booking.id}`} className="w-full block">
                     <Button
                       variant="outline"

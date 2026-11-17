@@ -20,6 +20,7 @@ import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { isMoreTabNestedScreen } from "@/lib/provider-tab-navigation";
 import { emitProviderBookingsRefresh } from "@/lib/provider-bookings-events";
 import { TabLabel } from "@/components/ui/TabLabel";
+import { isProviderChatThreadPath } from "@/lib/provider-chat-routes";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -254,12 +255,13 @@ export default function TabsLayout() {
   const safeBottom = tabBarBottomInset(insets.bottom);
   const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);
   const sideInset = Math.max(insets.left, insets.right);
+  const isChatThread = isProviderChatThreadPath(pathname);
   const screenOptions = useMemo(
     () => ({
       freezeOnBlur: true,
       sceneStyle: {
         backgroundColor: "#ffffff",
-        ...(Platform.OS === "web" ? { paddingBottom: TAB_BAR_HEIGHT } : {}),
+        ...(Platform.OS === "web" && !isChatThread ? { paddingBottom: TAB_BAR_HEIGHT } : {}),
       },
       headerShown: false,
       tabBarActiveTintColor: Colors.primary,
@@ -271,37 +273,39 @@ export default function TabsLayout() {
         alignItems: "center" as const,
         paddingVertical: 2,
       },
-      tabBarStyle: {
-        backgroundColor: "#ffffff",
-        borderTopWidth: 1,
-        borderTopColor: "#f3f4f6",
-        height: TAB_BAR_HEIGHT,
-        minHeight: TAB_BAR_HEIGHT,
-        flexShrink: 0,
-        paddingTop: 8,
-        paddingBottom: safeBottom,
-        paddingStart: sideInset,
-        paddingEnd: sideInset,
-        elevation: 8,
-        ...(Platform.OS === "web"
-          ? { boxShadow: "0 -2px 6px rgba(0,0,0,0.06)" }
-          : {
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: -2 },
-              shadowOpacity: 0.06,
-              shadowRadius: 6,
-            }),
-        ...(isTablet ? { paddingHorizontal: 40 + sideInset } : {}),
-        ...(Platform.OS === "web"
-          ? ({
-              position: "fixed",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              zIndex: 999,
-            } as unknown as ViewStyle)
-          : {}),
-      },
+      tabBarStyle: isChatThread
+        ? { display: "none" as const }
+        : {
+            backgroundColor: "#ffffff",
+            borderTopWidth: 1,
+            borderTopColor: "#f3f4f6",
+            height: TAB_BAR_HEIGHT,
+            minHeight: TAB_BAR_HEIGHT,
+            flexShrink: 0,
+            paddingTop: 8,
+            paddingBottom: safeBottom,
+            paddingStart: sideInset,
+            paddingEnd: sideInset,
+            elevation: 8,
+            ...(Platform.OS === "web"
+              ? { boxShadow: "0 -2px 6px rgba(0,0,0,0.06)" }
+              : {
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: -2 },
+                  shadowOpacity: 0.06,
+                  shadowRadius: 6,
+                }),
+            ...(isTablet ? { paddingHorizontal: 40 + sideInset } : {}),
+            ...(Platform.OS === "web"
+              ? ({
+                  position: "fixed",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  zIndex: 999,
+                } as unknown as ViewStyle)
+              : {}),
+          },
       tabBarLabel: ({
         color,
         children,
@@ -330,7 +334,7 @@ export default function TabsLayout() {
         fontWeight: "700" as const,
       },
     }),
-    [TAB_BAR_HEIGHT, isTablet, safeBottom, sideInset],
+    [TAB_BAR_HEIGHT, isTablet, safeBottom, sideInset, isChatThread],
   );
 
   return (

@@ -13,6 +13,7 @@ const mockIsPrimaryContact = vi.fn();
 const mockRescheduleGroupBooking = vi.fn();
 const mockEvaluateProviderSlotAgainstGrid = vi.fn();
 const mockSendRescheduleNotification = vi.fn();
+const mockEvaluateCustomerRescheduleWithLivePolicy = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -45,6 +46,16 @@ vi.mock("@/lib/bookings/notifications", () => ({
   sendRescheduleNotification: (...args: unknown[]) => mockSendRescheduleNotification(...args),
 }));
 
+vi.mock("@/lib/bookings/reschedule-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/bookings/reschedule-core")>();
+  return {
+    ...actual,
+    evaluateCustomerRescheduleWithLivePolicy: (...args: unknown[]) =>
+      mockEvaluateCustomerRescheduleWithLivePolicy(...args),
+    messageForCustomerRescheduleBlock: () => "blocked",
+  };
+});
+
 describe("POST /api/me/group-bookings/[id]/reschedule", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,6 +75,7 @@ describe("POST /api/me/group-bookings/[id]/reschedule", () => {
     mockRescheduleGroupBooking.mockResolvedValue(undefined);
     mockSendRescheduleNotification.mockResolvedValue(undefined);
     mockEvaluateProviderSlotAgainstGrid.mockResolvedValue({ ok: true, conflicts: [] });
+    mockEvaluateCustomerRescheduleWithLivePolicy.mockResolvedValue({ allowed: true });
   });
 
   it("returns 403 when caller is not the primary contact", async () => {
@@ -93,9 +105,13 @@ describe("POST /api/me/group-bookings/[id]/reschedule", () => {
       id: GROUP_ID,
       scheduled_at: "2026-06-01T10:00:00.000Z",
       provider_id: "prov-1",
+      status: "confirmed",
       bookings: [
         {
           id: BOOKING_ID,
+          provider_id: "prov-1",
+          status: "confirmed",
+          created_at: "2026-01-01T10:00:00.000Z",
           scheduled_at: "2026-06-01T10:00:00.000Z",
           location_type: "at_salon",
           location_id: "loc-1",
@@ -125,5 +141,42 @@ describe("POST /api/me/group-bookings/[id]/reschedule", () => {
       expect.any(Date),
       expect.any(Date)
     );
+  });
+
+  it("returns 403 when a child booking fails customer reschedule gate", async () => {
+    mockGetGroupBooking.mockResolvedValue({
+      id: GROUP_ID,
+      scheduled_at: "2026-06-01T10:00:00.000Z",
+      provider_id: "prov-1",
+      status: "confirmed",
+      bookings: [
+        {
+          id: BOOKING_ID,
+          provider_id: "prov-1",
+          status: "checked_in",
+          created_at: "2026-01-01T10:00:00.000Z",
+          scheduled_at: "2026-06-01T10:00:00.000Z",
+          location_type: "at_salon",
+        },
+      ],
+    });
+    mockIsPrimaryContact.mockResolvedValue(true);
+    mockEvaluateCustomerRescheduleWithLivePolicy.mockResolvedValue({
+      allowed: false,
+      code: "CUSTOMER_RESCHEDULE_STATUS",
+    });
+
+    const { POST } = await import("../route");
+    const res = await POST(
+      new NextRequest(`http://localhost/api/me/group-bookings/${GROUP_ID}/reschedule`, {
+        method: "POST",
+        body: JSON.stringify({ new_datetime: "2026-06-02T10:00:00.000Z" }),
+      }),
+      { params: Promise.resolve({ id: GROUP_ID }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(mockRescheduleGroupBooking).not.toHaveBeenCalled();
+    expect(mockSendRescheduleNotification).not.toHaveBeenCalled();
   });
 });

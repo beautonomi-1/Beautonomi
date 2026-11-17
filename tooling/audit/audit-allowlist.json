@@ -10,5 +10,11 @@
     "reason": "No upstream fix (latest 4.2.0 still advisory); transitive dev via got/cacheable-request only.",
     "paths": ["got", "cacheable-request"],
     "expires": "2026-12-03"
+  },
+  {
+    "package": "picomatch",
+    "reason": "No upstream fix (GHSA-fc5q-39xc-vjpf / CVE-2026-112366; latest 4.0.7 still advisory, patched versions none). Installed 2.3.2 and 3.0.2 are the newest releases on those lines. Transitive via micromatch, anymatch, vite, vitest, and Expo/Metro.",
+    "paths": ["micromatch", "anymatch", "vite", "vitest", "tinyglobby", "@expo/cli", "@expo/metro-config"],
+    "expires": "2026-12-03"
   }
 ]

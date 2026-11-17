@@ -461,6 +461,13 @@ export default function BookingDetailPage() {
   const canCancel =
     _detailEffectiveStatus === "confirmed" || _detailEffectiveStatus === "pending";
   const canReschedule = _detailEffectiveStatus === "confirmed" || _detailEffectiveStatus === "pending";
+  const customerReschedule = (booking as {
+    customer_reschedule?: { allowed?: boolean; code?: string; hours_before?: number };
+  }).customer_reschedule;
+  const rescheduleAllowed = customerReschedule?.allowed !== false;
+  const rescheduleCutoffNote =
+    customerReschedule?.allowed === false &&
+    customerReschedule?.code === "CUSTOMER_RESCHEDULE_CUTOFF";
   const isActive = ["pending", "confirmed", "started", "in_progress"].includes(_detailEffectiveStatus);
   const isCashBooking =
     (booking as unknown as Record<string, unknown>).payment_provider === "cash";
@@ -1261,7 +1268,14 @@ export default function BookingDetailPage() {
       <div className="flex flex-col sm:flex-row gap-3 md:gap-4 flex-wrap">
         <SafetyPanicButton bookingId={bookingId} />
         <ShareReceiptButton kind="customer-booking" subjectId={bookingId} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:flex-none" />
-        {canReschedule && (
+        {rescheduleCutoffNote && (
+          <p className="w-full text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-md p-3">
+            {t("customer.mobile.screens.bookingDetail.reschedulePolicyNote", {
+              hours: customerReschedule?.hours_before ?? 24,
+            })}
+          </p>
+        )}
+        {canReschedule && rescheduleAllowed && (
           <Button
             variant="outline"
             onClick={() => router.push(`/account-settings/bookings/${bookingId}/reschedule`)}

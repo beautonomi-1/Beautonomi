@@ -176,8 +176,9 @@ export function buildProviderBookingActionModel(booking: BookingActionInput): Pr
       if (effectiveDbStatus === "confirmed") return 1;
       return 0;
     }
-    if (effectiveDbStatus === "checked_in" || effectiveDbStatus === "waiting") return 1;
-    if (effectiveDbStatus === "confirmed") return 0;
+    // Chips use `idx <= activeStepIndex`, so the index is the current step, not only completed ones.
+    if (effectiveDbStatus === "checked_in") return 2;
+    if (effectiveDbStatus === "waiting" || effectiveDbStatus === "confirmed") return 1;
     return 0;
   })();
 

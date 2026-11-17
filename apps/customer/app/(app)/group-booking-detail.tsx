@@ -87,6 +87,7 @@ type GroupBookingDetail = {
   is_primary_payer?: boolean;
   lead_booking_id?: string | null;
   notes?: string | null;
+  customer_reschedule?: { allowed?: boolean; code?: string; hours_before?: number };
 };
 
 /** Mirrors resendGroupGuestInvite: any open split share with money still owed. */
@@ -210,11 +211,13 @@ export default function GroupBookingDetailScreen() {
   const currentUserParticipant = data?.participants.find((p) => p.is_current_user) ?? null;
   const currentUserBookingStatus = (currentUserParticipant?.booking_status ?? "").toLowerCase();
   const isPrimaryContact = Boolean(data?.participants.some((p) => p.is_current_user && p.is_primary_contact));
-  const canRescheduleGroup =
+  const groupSessionOpen =
     isPrimaryContact &&
     data != null &&
     !["completed", "cancelled", "started"].includes(data.status) &&
     !["cancelled", "no_show"].includes(currentUserBookingStatus);
+  const canRescheduleGroup =
+    groupSessionOpen && data?.customer_reschedule?.allowed !== false;
   const bd = useCallback(
     (key: string, opts?: Record<string, string | number>) =>
       String(t(`customer.mobile.screens.bookingDetail.${key}`, opts as never)),
@@ -381,7 +384,7 @@ export default function GroupBookingDetailScreen() {
                     <Text style={{ color: Colors.white, fontWeight: "700", fontSize: 13 }}>{gbd("rescheduleSession")}</Text>
                   </TouchableOpacity>
                 ) : null}
-                {canRescheduleGroup && data.lead_booking_id ? (
+                {groupSessionOpen && data.lead_booking_id ? (
                   <>
                     <TouchableOpacity
                       onPress={() =>

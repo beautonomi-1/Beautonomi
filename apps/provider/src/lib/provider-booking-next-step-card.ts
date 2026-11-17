@@ -3,6 +3,7 @@ import type { Ionicons } from "@expo/vector-icons";
 /** Minimal fields for next-step card copy (house-call stages must match DB). */
 export type BookingNextStepCardInput = {
   status?: string | null;
+  db_status?: string | null;
   current_stage?: string | null;
   arrival_otp_verified?: boolean | null;
   qr_code_verified?: boolean | null;
@@ -13,6 +14,13 @@ export type BookingNextStepCardInput = {
   provider_late_ack_at?: string | null;
 };
 
+function resolveBookingLifecycle(booking: BookingNextStepCardInput): string {
+  const raw = (booking.db_status || booking.status || "").toLowerCase();
+  if (raw === "booked") return "confirmed";
+  if (raw === "started") return "in_progress";
+  return raw;
+}
+
 export function getBookingNextStepCard(
   booking: BookingNextStepCardInput,
   options: {
@@ -22,7 +30,7 @@ export function getBookingNextStepCard(
     needsCloseOut?: boolean;
   },
 ): { title: string; description: string; icon: keyof typeof Ionicons.glyphMap; color: string } {
-  const status = (booking.status || "").toLowerCase();
+  const status = resolveBookingLifecycle(booking);
   const needsCloseOut = options.needsCloseOut === true || booking.needs_close_out === true;
   if (needsCloseOut) {
     const action = booking.suggested_close_out_action ?? "review";
@@ -104,6 +112,14 @@ export function getBookingNextStepCard(
     };
   }
   if (status === "waiting") {
+    if (options.isAtHome) {
+      return {
+        title: "House call in salon status",
+        description: "Reset to confirmed in Booking actions to restart the journey.",
+        icon: "home-outline",
+        color: "#dc2626",
+      };
+    }
     return {
       title: "Client is waiting",
       description: "The client has arrived and is in the waiting area. Check them in when you are ready.",
@@ -112,11 +128,17 @@ export function getBookingNextStepCard(
     };
   }
   if (status === "checked_in") {
+    if (options.isAtHome) {
+      return {
+        title: "House call in salon status",
+        description: "Reset to confirmed in Booking actions to restart the journey.",
+        icon: "home-outline",
+        color: "#dc2626",
+      };
+    }
     return {
       title: "Client checked in",
-      description: options.isAtHome
-        ? "Client arrival confirmed. Start the service when ready."
-        : "Client is at your station. Start the service when ready.",
+      description: "Client is at your station. Start the service when ready.",
       icon: "person-circle-outline",
       color: "#2563eb",
     };

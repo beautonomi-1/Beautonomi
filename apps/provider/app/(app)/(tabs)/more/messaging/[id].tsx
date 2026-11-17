@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity, FlatList, Keyboard, Platform, ActivityIndicator, Alert, ActionSheetIOS, Linking, Modal, Pressable, ScrollView, InteractionManager, type LayoutChangeEvent, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, FlatList, Keyboard, Platform, ActivityIndicator, Alert, ActionSheetIOS, Linking, Modal, Pressable, ScrollView, InteractionManager, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -172,22 +174,10 @@ export default function ChatScreen() {
   // messages / keyboard-open only auto-scroll when the user is already at the
   // bottom (WhatsApp-style) instead of yanking them out of older history.
   const isNearBottomRef = useRef(true);
-  // Measured distance from the top of the window to the top of the chat body,
-  // used as the iOS `keyboardVerticalOffset`. Deriving it from a real layout
-  // measurement is device-accurate (vs. a hardcoded header guess that breaks
-  // on non-notched phones / tablets).
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
-  const onChatBodyLayout = useCallback((e: LayoutChangeEvent) => {
-    if (Platform.OS !== "ios") return;
-    // `currentTarget` can be null when the layout event fires after the node
-    // detaches (e.g. navigating away mid-render). Guard before measuring to
-    // avoid "Cannot read property 'measureInWindow' of null".
-    const target = e?.currentTarget;
-    if (!target || typeof target.measureInWindow !== "function") return;
-    target.measureInWindow((_x, y) => {
-      if (Number.isFinite(y)) setKeyboardOffset(Math.round(y));
-    });
-  }, []);
+  const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
+  const composerBottomStyle = useAnimatedStyle(() => ({
+    paddingBottom: 8 + insets.bottom * (1 - keyboardProgress.value),
+  }));
   // §UI-audit 2026-04: `initialScrollDone` used to be a module-level
   // mutable object shared across every mount, so switching between two
   // threads with the same message count never re-ran scroll-to-bottom.
@@ -984,15 +974,9 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={[twStyle("flex-1"), { flex: 1 }]}
-        onLayout={onChatBodyLayout}
-        // Android 15+ (targetSdk 35) forces edge-to-edge, which disables the
-        // legacy `adjustResize` window-resize this screen used to rely on — so the
-        // OS no longer lifts content and the keyboard covers the input bar. Drive
-        // the layout ourselves with `behavior="padding"` on both platforms; the
-        // input bar's bottom inset is 0 under the open keyboard, so this doesn't
-        // double-count. iOS keeps a measured offset; Android needs none.
+        autoOffset
         behavior="padding"
-        keyboardVerticalOffset={Platform.OS === "ios" ? keyboardOffset : 0}
+        keyboardVerticalOffset={0}
       >
         {loading && !conversation ? (
           <View style={twStyle("flex-1 justify-center py-8")}>
@@ -1000,6 +984,7 @@ export default function ChatScreen() {
           </View>
         ) : (
           <>
+            <View style={{ flex: 1, minHeight: 0 }}>
             <FlatList
               {...chatFlatListPerf}
               key={conversationId ?? "none"}
@@ -1011,7 +996,7 @@ export default function ChatScreen() {
                 flexGrow: 1,
                 paddingHorizontal: screenPadding,
                 paddingTop: 12,
-                paddingBottom: 220,
+                paddingBottom: 16,
               }}
               onContentSizeChange={() => {
                 bumpScrollToLatestForOpenThread();
@@ -1307,7 +1292,7 @@ export default function ChatScreen() {
                 onPress={() => flatListRef.current?.scrollToEnd({ animated: true })}
                 style={{
                   position: "absolute",
-                  bottom: (replyingTo ? 132 : 76) + insets.bottom,
+                  bottom: 12,
                   right: 16,
                   width: 44,
                   height: 44,
@@ -1328,6 +1313,7 @@ export default function ChatScreen() {
                 <Ionicons name="chevron-down" size={24} color={Colors.gray[600]} />
               </TouchableOpacity>
             )}
+            </View>
 
             {/* §UI-audit 2026-04: bottom safe-area is now part of the
                 input row itself (inside KeyboardAvoidingView) so the
@@ -1363,10 +1349,11 @@ export default function ChatScreen() {
               </View>
             ) : null}
 
-            <View
+            <Animated.View
               style={[
                 twStyle("border-t border-gray-100 px-3 flex-row items-end"),
-                { paddingTop: 8, paddingBottom: 8 + insets.bottom },
+                { paddingTop: 8 },
+                composerBottomStyle,
               ]}
             >
               {canSendMessages ? (
@@ -1435,7 +1422,7 @@ export default function ChatScreen() {
                   </TouchableOpacity>
                 </View>
               )}
-            </View>
+            </Animated.View>
           </>
         )}
       </KeyboardAvoidingView>

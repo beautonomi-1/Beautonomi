@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { View, Text, TextInput, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator, Platform, Alert, Linking, Image, AppState } from "react-native";
-import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
+import { View, Text, TextInput, RefreshControl, TouchableOpacity, ActivityIndicator, Platform, Alert, Linking, Image, AppState } from "react-native";
+import {
+  KeyboardAwareScrollView,
+  type KeyboardAwareScrollViewRef,
+} from "react-native-keyboard-controller";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -144,7 +147,7 @@ export default function SupportTicketDetailScreen() {
   const [csatComment, setCsatComment] = useState("");
   const [submittingCsat, setSubmittingCsat] = useState(false);
   const [csatExpanded, setCsatExpanded] = useState(true);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<KeyboardAwareScrollViewRef>(null);
   const assistantStreamingRef = useRef(false);
   const initialAssistantStreamRef = useRef(false);
   const csatHydratedTicketIdRef = useRef<string | null>(null);
@@ -546,22 +549,18 @@ export default function SupportTicketDetailScreen() {
   const canReply = ticket.status !== "closed" && ticket.status !== "resolved";
 
   return (
-    <ScreenContainer keyboardAvoiding={false}>
+    <ScreenContainer keyboardAvoiding={false} scrollable={false}>
       <ScreenHeader title={ticket.ticket_number} onBack={() => router.back()} />
-      <KeyboardAvoidingView
-        behavior="padding"
+      <KeyboardAwareScrollView
+        ref={scrollViewRef}
         style={twStyle("flex-1")}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
+        contentContainerStyle={{ paddingBottom: 24 }}
+        bottomOffset={16}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <ScrollView
-          ref={scrollViewRef}
-          style={twStyle("flex-1")}
-          contentContainerStyle={{ paddingBottom: 220 }}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
           <View style={twStyle("px-2 pt-2")}>
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
               <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(ticket.status)}`)}>
@@ -881,8 +880,7 @@ export default function SupportTicketDetailScreen() {
               </View>
             )}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </ScreenContainer>
   );
 }

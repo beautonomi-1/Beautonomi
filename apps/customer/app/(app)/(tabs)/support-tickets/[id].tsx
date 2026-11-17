@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
-import { View, Text, TextInput, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator, Platform, Alert, StyleSheet, Linking, AppState } from "react-native";
-import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
+import { View, Text, TextInput, RefreshControl, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, Linking, AppState } from "react-native";
+import {
+  KeyboardAwareScrollView,
+  type KeyboardAwareScrollViewRef,
+} from "react-native-keyboard-controller";
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
@@ -157,7 +160,7 @@ export default function SupportTicketDetailScreen() {
   const [csatEditing, setCsatEditing] = useState(false);
   /** True once the user touches the rating, so background refreshes don't wipe an unsaved selection. */
   const csatDirtyRef = useRef(false);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<KeyboardAwareScrollViewRef>(null);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedOnceRef = useRef(false);
   const assistantStreamingRef = useRef(false);
@@ -567,20 +570,16 @@ export default function SupportTicketDetailScreen() {
   const canReply = ticket.status !== "closed" && ticket.status !== "resolved";
 
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
+    <KeyboardAwareScrollView
+      ref={scrollViewRef}
       style={styles.root}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+      contentContainerStyle={styles.scrollContent}
+      bottomOffset={16}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
         <View style={styles.inner}>
           <View style={styles.headerRow}>
             <View style={[styles.statusPill, { backgroundColor: statusBg(ticket.status) }]}>
@@ -851,15 +850,13 @@ export default function SupportTicketDetailScreen() {
             </View>
           )}
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#fff" },
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 220 },
+  scrollContent: { paddingBottom: 24 },
   inner: { paddingHorizontal: 12, paddingTop: 12 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
   errorColumn: { flex: 1, justifyContent: "center", paddingHorizontal: 16, backgroundColor: "#fff" },

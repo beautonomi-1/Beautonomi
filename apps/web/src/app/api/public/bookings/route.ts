@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { normalizePublicStaffIdForDatabase, getMissingRequiredProviderFormField } from "@beautonomi/utils";
-import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
+import {
+  evaluateCustomerRescheduleWithLivePolicy,
+  messageForCustomerRescheduleBlock,
+} from "@/lib/bookings/reschedule-core";
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
 import {
   bookingDraftSchema,
@@ -264,7 +267,9 @@ export async function POST(request: NextRequest) {
         if (rescheduleBookingId) {
           const { data: oldBooking, error: oldBookingError } = await supabaseAdmin
             .from("bookings")
-            .select("id, provider_id, location_type, scheduled_at, created_at, status, customer_id, tenant_id")
+            .select(
+              "id, provider_id, location_type, scheduled_at, created_at, status, customer_id, tenant_id, current_stage, payment_status, cancellation_policy_snapshot",
+            )
             .eq("id", rescheduleBookingId)
             .eq("tenant_id", marketTenantId)
             .single();
@@ -296,31 +301,31 @@ export async function POST(request: NextRequest) {
             );
           }
 
-          const policy = await getCancellationPolicy(
+          const locationType =
+            (oldBooking.location_type as "at_salon" | "at_home") || "at_salon";
+          const rescheduleGate = await evaluateCustomerRescheduleWithLivePolicy(
             supabase,
             oldBooking.provider_id,
-            (oldBooking.location_type as "at_salon" | "at_home") || "at_salon"
+            {
+              id: oldBooking.id,
+              status: oldBooking.status,
+              payment_status: (oldBooking as { payment_status?: string }).payment_status,
+              current_stage: (oldBooking as { current_stage?: string }).current_stage,
+              created_at: oldBooking.created_at,
+              scheduled_at: oldBooking.scheduled_at,
+              location_type: locationType,
+              cancellation_policy_snapshot: (oldBooking as { cancellation_policy_snapshot?: unknown })
+                .cancellation_policy_snapshot,
+            },
           );
-
-          if (policy) {
-            const checkResult = canCancelBooking(
-              {
-                id: oldBooking.id,
-                created_at: oldBooking.created_at,
-                scheduled_at: oldBooking.scheduled_at,
-                location_type: (oldBooking.location_type as "at_salon" | "at_home") || "at_salon",
-              },
-              policy
+          if (!rescheduleGate.allowed) {
+            const blocked = rescheduleGate as { allowed: false };
+            return handleApiError(
+              new Error(messageForCustomerRescheduleBlock(blocked)),
+              messageForCustomerRescheduleBlock(blocked),
+              "RESCHEDULE_BLOCKED",
+              403,
             );
-
-            if (!checkResult.allowed) {
-              return handleApiError(
-                new Error(checkResult.reason ?? "Rescheduling not allowed"),
-                checkResult.reason ?? "Rescheduling not allowed. Please contact the provider.",
-                "RESCHEDULE_BLOCKED",
-                403
-              );
-            }
           }
 
           const carry = await loadRescheduleCarryOver(supabaseAdmin, rescheduleBookingId, user.id);

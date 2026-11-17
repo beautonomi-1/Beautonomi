@@ -58,6 +58,7 @@ function chainableQuery(resolved: { data: unknown; error: unknown }) {
   } = {
     select: vi.fn(),
     eq: vi.fn(),
+    is: vi.fn(),
     order: vi.fn(),
     limit: vi.fn(),
     single: vi.fn().mockResolvedValue(resolved),
@@ -66,6 +67,7 @@ function chainableQuery(resolved: { data: unknown; error: unknown }) {
   };
   query.select.mockReturnValue(query);
   query.eq.mockReturnValue(query);
+  query.is.mockReturnValue(query);
   query.order.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   return query;

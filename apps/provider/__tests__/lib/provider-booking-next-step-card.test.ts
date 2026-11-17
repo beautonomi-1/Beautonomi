@@ -32,4 +32,37 @@ describe("getBookingNextStepCard", () => {
     );
     expect(card.title).toBe("Needs close-out");
   });
+
+  it("uses db_status checked_in when portal status is booked", () => {
+    const card = getBookingNextStepCard(
+      { status: "booked", db_status: "checked_in" },
+      { outstanding: 0, isAtHome: false, isAtSalon: true },
+    );
+    expect(card.title).toBe("Client checked in");
+  });
+
+  it("salon confirmed still shows ready for check-in", () => {
+    const card = getBookingNextStepCard(
+      { status: "booked", db_status: "confirmed" },
+      { outstanding: 0, isAtHome: false, isAtSalon: true },
+    );
+    expect(card.title).toBe("Ready for check-in");
+  });
+
+  it("at-home checked_in shows reset copy", () => {
+    const card = getBookingNextStepCard(
+      { status: "booked", db_status: "checked_in" },
+      { outstanding: 0, isAtHome: true, isAtSalon: false },
+    );
+    expect(card.title).toBe("House call in salon status");
+    expect(card.description).toMatch(/Reset to confirmed/);
+  });
+
+  it("close-out still takes precedence over db_status", () => {
+    const card = getBookingNextStepCard(
+      { status: "booked", db_status: "checked_in", needs_close_out: true },
+      { outstanding: 0, isAtHome: false, isAtSalon: true, needsCloseOut: true },
+    );
+    expect(card.title).toBe("Needs close-out");
+  });
 });

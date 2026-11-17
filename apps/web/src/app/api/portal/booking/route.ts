@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import {
+  evaluateCustomerRescheduleWithLivePolicy,
+  toCustomerRescheduleApiField,
+} from "@/lib/bookings/reschedule-core";
 import { validatePortalToken } from "@/lib/portal/token";
 import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
 import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
@@ -70,7 +74,10 @@ export async function GET(request: NextRequest) {
         id,
         booking_number,
         scheduled_at,
+        created_at,
         status,
+        payment_status,
+        cancellation_policy_snapshot,
         location_type,
         address_line1,
         address_city,
@@ -231,6 +238,25 @@ export async function GET(request: NextRequest) {
       bookingData.qr_code_data != null
     ) {
       bookingPayload.qr_code_data = bookingData.qr_code_data;
+    }
+
+    const locationType =
+      (bookingData.location_type as "at_salon" | "at_home") || "at_salon";
+    const providerIdForPolicy = String(bookingData.provider_id ?? "");
+    if (providerIdForPolicy) {
+      bookingPayload.customer_reschedule = toCustomerRescheduleApiField(
+        await evaluateCustomerRescheduleWithLivePolicy(supabaseAdmin, providerIdForPolicy, {
+          id: String(booking.id),
+          status: String(booking.status ?? ""),
+          payment_status: (bookingData as { payment_status?: string }).payment_status,
+          current_stage: (bookingData as { current_stage?: string | null }).current_stage ?? null,
+          created_at: String((bookingData as { created_at?: string }).created_at ?? ""),
+          scheduled_at: String(booking.scheduled_at),
+          location_type: locationType,
+          cancellation_policy_snapshot: (bookingData as { cancellation_policy_snapshot?: unknown })
+            .cancellation_policy_snapshot,
+        }),
+      );
     }
 
     return successResponse(bookingPayload);

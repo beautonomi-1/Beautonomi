@@ -2993,6 +2993,8 @@
           "dateLabel": "Letsatsi",
           "notifyClient": "Notify moreki",
           "timeLabel": "Nako",
+          "customerRequestedTime": "Moreki o kopile: {{datetime}}",
+          "emailCustomerA11y": "Romella imeile ho {{name}}",
           "collectPaymentTitle": "Collect tefo",
           "fullBalance": "e tletse chelete e setseng: {{currency}} {{amount}}",
           "thisPayment": "Tefo ena: {{currency}} {{amount}}",
@@ -13076,7 +13078,8 @@
           "atHome": "Lapeng",
           "atSalon": "Ho salon",
           "budgetRange": " · Chelete {{min}} – {{max}}",
-          "introHint": "Likopo ha li so be khalendareng ea hau. Romela tlhahiso e nang le theko le nako; e a buka hang ha moreki a lefa."
+          "introHint": "Likopo ha li so be khalendareng ea hau. Romela tlhahiso e nang le theko le nako; e a buka hang ha moreki a lefa.",
+          "preferred": "E kgethilweng: {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Ka kopo wait",
@@ -24284,7 +24287,8 @@
             "empty": "No litšebeletso",
             "customOrder": "Ea khethehileng odara",
             "clientRequest": "moreki's kopo",
-            "yourNotes": "lintlha ya hau"
+            "yourNotes": "lintlha ya hau",
+            "customerRequestedTime": "Moreki o kopile: {{datetime}}"
           },
           "products": {
             "title": "Lihlahisoa",
@@ -34683,7 +34687,9 @@
           "noShow": "No bontša",
           "noShows": "Ba sa fihlang",
           "booked": "E bukiloe",
-          "started": "E qadile"
+          "started": "E qadile",
+          "checkedIn": "Ngolisitswe",
+          "waiting": "Emeng"
         },
         "locationType": {
           "houseCall": "House letsa",

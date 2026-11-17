@@ -545,6 +545,9 @@ export interface BookingServiceDetail {
   duration_minutes: number;
   price: number;
   guest_name?: string;
+  /** ISO start of this service line when the API returns per-service times. */
+  scheduled_start_at?: string | null;
+  scheduled_end_at?: string | null;
 }
 
 export interface BookingAddon {

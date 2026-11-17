@@ -21,6 +21,7 @@ interface Booking {
   booking_number: string;
   scheduled_at: string;
   location_type: 'at_salon' | 'at_home';
+  customer_reschedule?: { allowed?: boolean; code?: string; hours_before?: number };
 }
 
 export default function PortalReschedulePage() {
@@ -153,6 +154,31 @@ export default function PortalReschedulePage() {
               </Button>
             )}
             <Button onClick={() => router.push("/")}>Go to Homepage</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (booking.customer_reschedule?.allowed === false) {
+    const hours = booking.customer_reschedule.hours_before ?? 24;
+    const blockedMessage =
+      booking.customer_reschedule.code === "CUSTOMER_RESCHEDULE_CUTOFF"
+        ? `Changes must be made at least ${hours} hours before your appointment. Please contact the provider.`
+        : "This appointment can no longer be rescheduled online. Please contact the provider.";
+    return (
+      <div className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="max-w-2xl mx-auto">
+          <Button
+            variant="ghost"
+            onClick={() => router.push(`/portal/booking?token=${token}`)}
+            className="mb-4"
+          >
+            <ArrowLeft className="h-4 w-4 me-2" />
+            Back to Booking
+          </Button>
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <p className="text-gray-800">{blockedMessage}</p>
           </div>
         </div>
       </div>

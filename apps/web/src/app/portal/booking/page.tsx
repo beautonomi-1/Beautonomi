@@ -70,6 +70,7 @@ interface Booking {
   qr_code_data?: Record<string, unknown>;
   qr_code_expires_at?: string | null;
   qr_code_verified?: boolean;
+  customer_reschedule?: { allowed?: boolean; code?: string; hours_before?: number };
 }
 
 export default function PortalBookingPage() {
@@ -226,6 +227,10 @@ export default function PortalBookingPage() {
 
   const isCancelled = booking.status === 'cancelled';
   const isPast = new Date(booking.scheduled_at) < new Date();
+  const rescheduleAllowed = booking.customer_reschedule?.allowed !== false;
+  const rescheduleCutoffNote =
+    booking.customer_reschedule?.allowed === false &&
+    booking.customer_reschedule?.code === "CUSTOMER_RESCHEDULE_CUTOFF";
   const printRef = useRef<HTMLDivElement>(null);
 
   const totalDuration = booking.total_duration_minutes ?? booking.services.reduce((s, svc) => s + svc.duration_minutes, 0);
@@ -455,15 +460,22 @@ export default function PortalBookingPage() {
           </div>
 
           {/* Actions */}
+          {!isCancelled && !isPast && rescheduleCutoffNote && (
+            <p className="border-t pt-4 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-md p-3">
+              {`Changes must be made at least ${booking.customer_reschedule?.hours_before ?? 24} hours before your appointment. Please contact the provider.`}
+            </p>
+          )}
           {!isCancelled && !isPast && (
             <div className="border-t pt-4 flex gap-3">
-              <Button
-                variant="outline"
-                onClick={handleReschedule}
-                className="flex-1"
-              >
-                Reschedule
-              </Button>
+              {rescheduleAllowed && (
+                <Button
+                  variant="outline"
+                  onClick={handleReschedule}
+                  className="flex-1"
+                >
+                  Reschedule
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={openCancelDialog}

@@ -11,6 +11,7 @@ import { ProviderOrgSwitcher } from "@/components/ProviderOrgSwitcher";
 import { ProviderNotificationsDropdown } from "@/components/ProviderNotificationsDropdown";
 import { useProvider } from "@/providers/ProviderContext";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
+import { isProviderChatThreadPath } from "@/lib/provider-chat-routes";
 
 const QUICK_ACTION_ITEMS: { label: string; route: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: "New Appointment", route: "/(app)/(tabs)/bookings/new", icon: "calendar-outline" },
@@ -34,13 +35,8 @@ export function AppHeader() {
   // uses the unified total.
   const { notificationUnread: unreadCount } = useNotificationsCount();
 
-  // Hide global brand chrome on chat threads (Chats tab or More → Messages)
-  // so the conversation header and composer get full vertical space.
-  const isMessagingThread =
-    pathname?.includes("/more/messaging/") && !pathname.endsWith("/messaging");
-  const isChatsThread = Boolean(pathname?.match(/\/chats\/[^/?#]+/));
-  const isFocusFlow = isMessagingThread || isChatsThread;
-  if (isFocusFlow) return null;
+  // Hide global brand chrome on chat threads so the composer gets full vertical space.
+  if (isProviderChatThreadPath(pathname)) return null;
   const showNotificationBadge = unreadCount > 0;
 
   const iconSize = 22;

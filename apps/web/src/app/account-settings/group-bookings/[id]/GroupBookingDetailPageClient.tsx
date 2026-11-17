@@ -85,6 +85,7 @@ type GroupBookingDetail = {
   is_primary_payer?: boolean;
   lead_booking_id?: string | null;
   package_name?: string | null;
+  customer_reschedule?: { allowed?: boolean; code?: string; hours_before?: number };
 };
 
 /** Mirrors resendGroupGuestInvite: any open split share with money still owed. */
@@ -222,10 +223,12 @@ export default function GroupBookingDetailPageClient() {
   const currentUserBookingStatus = String(currentUserParticipant?.booking_status ?? "").toLowerCase();
   const sessionStatusLabel = humanGroupSessionStatus(detail.status, (k) => gbd(k));
   const groupOpen = !["completed", "cancelled", "started", "in_progress"].includes(detail.status);
-  const canRescheduleGroup =
+  const groupSessionOpen =
     Boolean(detail.is_primary_payer) &&
     !["completed", "cancelled", "started"].includes(detail.status) &&
     !["cancelled", "no_show"].includes(currentUserBookingStatus);
+  const canRescheduleGroup =
+    groupSessionOpen && detail.customer_reschedule?.allowed !== false;
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-8">
@@ -269,11 +272,13 @@ export default function GroupBookingDetailPageClient() {
           </div>
         </div>
 
-        {canRescheduleGroup ? (
+        {groupSessionOpen ? (
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => setRescheduleOpen(true)}>
-              {gbd("rescheduleSession")}
-            </Button>
+            {canRescheduleGroup ? (
+              <Button type="button" variant="outline" onClick={() => setRescheduleOpen(true)}>
+                {gbd("rescheduleSession")}
+              </Button>
+            ) : null}
             {detail.lead_booking_id ? (
               <Button type="button" variant="outline" asChild>
                 <Link href={`/account-settings/bookings/${detail.lead_booking_id}`}>
@@ -283,7 +288,7 @@ export default function GroupBookingDetailPageClient() {
             ) : null}
           </div>
         ) : null}
-        {canRescheduleGroup && detail.lead_booking_id ? (
+        {groupSessionOpen && detail.lead_booking_id ? (
           <p className="text-xs text-gray-500 -mt-3">{gbd("cancelGroupSessionHint")}</p>
         ) : null}
 

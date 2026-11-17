@@ -350,6 +350,10 @@ describe("Status Mapping", () => {
     it("should map no_show to NO_SHOW", () => {
       expect(mapStatus("no_show")).toBe(AppointmentStatus.NO_SHOW);
     });
+
+    it("should map appointment db_status checked_in to WAITING", () => {
+      expect(mapStatus({ status: "booked", db_status: "checked_in" })).toBe(AppointmentStatus.WAITING);
+    });
   });
 
   describe("unmapStatus", () => {

@@ -2983,6 +2983,8 @@
           "dateLabel": "Date",
           "notifyClient": "Nontify client",
           "timeLabel": "Heure",
+          "customerRequestedTime": "Demande du client : {{datetime}}",
+          "emailCustomerA11y": "Envoyer un e-mail à {{name}}",
           "collectPaymentTitle": "Collect paiement",
           "fullBalance": "Full solde: {{currency}} {{amount}}",
           "thisPayment": "This paiement: {{currency}} {{amount}}",
@@ -13065,7 +13067,8 @@
           "atHome": "À domicile",
           "atSalon": "Au salon",
           "budgetRange": " · Budget {{min}} – {{max}}",
-          "introHint": "Les demandes ne sont pas encore sur votre calendrier. Envoyez une offre avec un prix et un horaire ; la réservation est confirmée dès que le client paie."
+          "introHint": "Les demandes ne sont pas encore sur votre calendrier. Envoyez une offre avec un prix et un horaire ; la réservation est confirmée dès que le client paie.",
+          "preferred": "Préféré : {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Veuillez patienter",
@@ -24271,7 +24274,8 @@
             "empty": "Non services",
             "customOrder": "Custom Commande",
             "clientRequest": "Demande du client",
-            "yourNotes": "Vos notes"
+            "yourNotes": "Vos notes",
+            "customerRequestedTime": "Demande du client : {{datetime}}"
           },
           "products": {
             "title": "Produits",
@@ -34637,7 +34641,9 @@
           "noShow": "Non Show",
           "noShows": "Non Shows",
           "booked": "Réservé",
-          "started": "Commencé"
+          "started": "Commencé",
+          "checkedIn": "Enregistré",
+          "waiting": "En salle d'attente"
         },
         "locationType": {
           "houseCall": "Visite à domicile",

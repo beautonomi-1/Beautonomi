@@ -2983,6 +2983,8 @@
           "dateLabel": "Letšatši",
           "notifyClient": "Notify moreki",
           "timeLabel": "Nako",
+          "customerRequestedTime": "Moreki o kopile: {{datetime}}",
+          "emailCustomerA11y": "Romela imeile go {{name}}",
           "collectPaymentTitle": "Collect tefo",
           "fullBalance": "e tletše masaledi: {{currency}} {{amount}}",
           "thisPayment": "Tefo ye: {{currency}} {{amount}}",
@@ -13065,7 +13067,8 @@
           "atHome": "Gaegabo",
           "atSalon": "Saloneng",
           "budgetRange": " · Tšhelete {{min}} – {{max}}",
-          "introHint": "Dikgopelo ga di so be khalentareng ya gago. Romela neelano ye nago le theko le nako; e a buka ge moreki a lefa."
+          "introHint": "Dikgopelo ga di so be khalentareng ya gago. Romela neelano ye nago le theko le nako; e a buka ge moreki a lefa.",
+          "preferred": "E kgethilwego: {{datetime}}"
         },
         "deleteAccount": {
           "pleaseWaitTitle": "Hle wait",
@@ -24271,7 +24274,8 @@
             "empty": "No ditirelo",
             "customOrder": "Ya tlwaelo odara",
             "clientRequest": "moreki's kgopelo",
-            "yourNotes": "dintlha ya gago"
+            "yourNotes": "dintlha ya gago",
+            "customerRequestedTime": "Moreki o kopile: {{datetime}}"
           },
           "products": {
             "title": "Ditšweletšwa",
@@ -34637,7 +34641,9 @@
           "noShow": "No bontšha",
           "noShows": "Ba sa fihlang",
           "booked": "E bukilwe",
-          "started": "E thomile"
+          "started": "E thomile",
+          "checkedIn": "Ngolisitswe",
+          "waiting": "Emeng"
         },
         "locationType": {
           "houseCall": "House letša",

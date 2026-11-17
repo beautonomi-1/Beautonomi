@@ -1085,6 +1085,8 @@ export default function BookingDetailScreen() {
 
   const handleReschedule = useCallback(() => {
     if (!booking) return;
+    const cr = (booking as { customer_reschedule?: { allowed?: boolean } }).customer_reschedule;
+    if (cr?.allowed === false) return;
     haptic.light();
     const lines = (booking.services ?? []) as Array<{ staff_id?: string | null }>;
     if (booking.group_booking_id) {
@@ -1757,6 +1759,14 @@ export default function BookingDetailScreen() {
       : false;
   const isExpiredPending = isExpiredPendingBooking(booking);
   const canCancel = isActive && !["started", "in_progress", "waiting", "checked_in"].includes(_effectiveStatus);
+  const customerReschedule = (booking as {
+    customer_reschedule?: { allowed?: boolean; code?: string; hours_before?: number };
+  }).customer_reschedule;
+  const rescheduleAllowed = customerReschedule?.allowed !== false;
+  const rescheduleCutoffNote =
+    customerReschedule?.allowed === false &&
+    customerReschedule?.code === "CUSTOMER_RESCHEDULE_CUTOFF";
+  const canShowReschedule = canCancel && rescheduleAllowed;
   const bookingNumberFull =
     typeof booking.booking_number === "string" ? booking.booking_number.trim() : "";
   const bookingRef = bookingNumberFull || (booking.id ? booking.id.slice(0, 8).toUpperCase() : "");
@@ -4006,34 +4016,44 @@ export default function BookingDetailScreen() {
 
         <SafetyPanicButton bookingId={id ?? null} />
 
-        {canCancel && (
+        {(canShowReschedule || rescheduleCutoffNote || canCancel) && (
           <View style={{ flexDirection: "row", marginBottom: 12 }}>
-            <TouchableOpacity
-              onPress={handleReschedule}
-              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginEnd: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel={bd("rescheduleA11y")}
-            >
-              <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} />
-              <Text style={{ marginStart: 8, fontWeight: "500", color: Colors.gray[700] }}>{bd("rescheduleCta")}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleCancel}
-              disabled={cancelling}
-              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA" }}
-              accessibilityRole="button"
-              accessibilityLabel={bd("cancelBookingA11y")}
-              accessibilityHint={bd("cancelBookingHint")}
-            >
-              {cancelling ? (
-                <ActivityIndicator size="small" color="#ef4444" />
-              ) : (
-                <>
-                  <Ionicons name="close-circle-outline" size={16} color="#ef4444" style={{ marginEnd: 8 }} />
-                  <Text style={{ fontWeight: "500", color: "#B91C1C" }}>{bd("cancel")}</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            {canShowReschedule ? (
+              <TouchableOpacity
+                onPress={handleReschedule}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginEnd: canCancel ? 12 : 0 }}
+                accessibilityRole="button"
+                accessibilityLabel={bd("rescheduleA11y")}
+              >
+                <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} />
+                <Text style={{ marginStart: 8, fontWeight: "500", color: Colors.gray[700] }}>{bd("rescheduleCta")}</Text>
+              </TouchableOpacity>
+            ) : rescheduleCutoffNote ? (
+              <View style={{ flex: 1, marginEnd: canCancel ? 12 : 0, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: "#FDE68A", backgroundColor: "#FFFBEB" }}>
+                <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 18 }}>
+                  {bd("reschedulePolicyNote", { hours: customerReschedule?.hours_before ?? 24 })}
+                </Text>
+              </View>
+            ) : null}
+            {canCancel ? (
+              <TouchableOpacity
+                onPress={handleCancel}
+                disabled={cancelling}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA" }}
+                accessibilityRole="button"
+                accessibilityLabel={bd("cancelBookingA11y")}
+                accessibilityHint={bd("cancelBookingHint")}
+              >
+                {cancelling ? (
+                  <ActivityIndicator size="small" color="#ef4444" />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle-outline" size={16} color="#ef4444" style={{ marginEnd: 8 }} />
+                    <Text style={{ fontWeight: "500", color: "#B91C1C" }}>{bd("cancel")}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
 
