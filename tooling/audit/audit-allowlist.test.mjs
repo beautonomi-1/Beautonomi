@@ -6,10 +6,11 @@ import {
   loadAllowlist,
 } from "./audit-allowlist.mjs";
 
-test("loadAllowlist returns braces and http-cache-semantics", () => {
+test("loadAllowlist returns braces, http-cache-semantics, and picomatch", () => {
   const entries = loadAllowlist();
   assert.ok(isPackageAllowlisted(entries, "braces"));
   assert.ok(isPackageAllowlisted(entries, "http-cache-semantics"));
+  assert.ok(isPackageAllowlisted(entries, "picomatch"));
 });
 
 test("findExpiredAllowlistEntries flags past dates", () => {
