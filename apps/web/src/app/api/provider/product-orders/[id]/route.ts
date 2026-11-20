@@ -76,6 +76,7 @@ const updateSchema = z.object({
   refund_method: z.enum(["cash", "store_credit"]).optional(),
   refund_amount: z.number().min(0).optional(),
   refund_reason: z.string().max(500).optional(),
+  fulfillment_type: z.enum(["collection", "pickup", "delivery"]).optional(),
 });
 
 const TERMINAL_STATUSES = new Set(["cancelled", "refunded"]);
@@ -418,6 +419,30 @@ export async function PATCH(
     }
     if (parsed.estimated_delivery_date)
       updatePayload.estimated_delivery_date = parsed.estimated_delivery_date;
+    if (parsed.fulfillment_type) {
+      const terminalOrder =
+        TERMINAL_STATUSES.has(order.status) || String(order.status).toLowerCase() === "delivered";
+      if (terminalOrder) {
+        return errorResponse(
+          "Cannot change fulfillment type on a completed order.",
+          "INVALID_TRANSITION",
+          400,
+        );
+      }
+      updatePayload.fulfillment_type = parsed.fulfillment_type;
+      if (
+        !productOrderStatusFitsFulfillment(
+          String(parsed.status ?? order.status),
+          parsed.fulfillment_type,
+        )
+      ) {
+        return errorResponse(
+          "This order's current status does not match that fulfillment type.",
+          "FULFILLMENT_STATUS_MISMATCH",
+          400,
+        );
+      }
+    }
 
     let updateQuery = (supabase.from("product_orders") as any).update(updatePayload).eq("id", id);
     if (movingRefundMoney) {

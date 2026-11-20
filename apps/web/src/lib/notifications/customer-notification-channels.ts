@@ -24,6 +24,7 @@ const INSPIRATION_SECTION_KEYS = new Set([
   "abandoned_cart_reminder",
   "abandoned_booking_reminder",
   "rebook_reminder",
+  "rebook_offer",
   "membership_win_back",
   "automation_promo",
   "welcome_message",

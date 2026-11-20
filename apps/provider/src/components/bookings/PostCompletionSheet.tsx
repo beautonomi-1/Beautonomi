@@ -14,11 +14,9 @@ import {
   View,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import {
-  buildShareBookingLinkPayload,
-  providerLockNextShareSms,
-  providerPostCashCompleteShareLine,
-} from "@beautonomi/utils";
+import { buildShareBookingLinkPayload, ensureSingleLinkInMessage } from "@beautonomi/utils";
+import { api } from "@/lib/api-client";
+import * as Linking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -91,7 +89,24 @@ export function PostCompletionSheet({
   const [submittingRate, setSubmittingRate] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
   const [storeReviewOpen, setStoreReviewOpen] = useState(false);
+  const [rebookLoading, setRebookLoading] = useState(false);
+  const [rebookPreview, setRebookPreview] = useState<{
+    clientFirstName: string;
+    providerHint: string;
+    messageBody: string;
+    link: string;
+    channel: string;
+    channelReason: string | null;
+    maskedDestination: string | null;
+    canWhatsAppHandoff: boolean;
+    canEditClientPhone: boolean;
+    existingOffer?: { status: string } | null;
+  } | null>(null);
+  const [rebookMessage, setRebookMessage] = useState("");
+  const [rebookStatus, setRebookStatus] = useState<string | null>(null);
+  const [clientPhoneDraft, setClientPhoneDraft] = useState("");
   const seenRef = useRef(false);
+  const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const submittedStarsRef = useRef(0);
 
   const wasVisibleRef = useRef(false);
@@ -112,7 +127,94 @@ export function PostCompletionSheet({
     }
   }, [visible, hasExistingRating, initialStep, hideAddPhoto, draftPostId]);
 
+  useEffect(() => {
+    if (!visible || !bookingId) return;
+    setRebookLoading(true);
+    void api
+      .get<Record<string, unknown>>(`/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`)
+      .then((res) => {
+        const row = ((res as { data?: Record<string, unknown> }).data ?? res) as Record<string, unknown>;
+        setRebookPreview(row as typeof rebookPreview);
+        setRebookMessage(String(row.messageBody ?? ""));
+      })
+      .catch(() => setRebookPreview(null))
+      .finally(() => setRebookLoading(false));
+  }, [visible, bookingId]);
+
+  const shareRebookYourself = async () => {
+    if (!rebookPreview?.link) return;
+    setRebookLoading(true);
+    let msg = ensureSingleLinkInMessage(rebookMessage, rebookPreview.link);
+    try {
+      const res = await api.post<{
+        message_body?: string;
+        link?: string;
+        data?: { message_body?: string; link?: string };
+      }>(`/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`, {
+        message: rebookMessage,
+        deliver: "self",
+        ...(clientPhoneDraft.trim() ? { client_phone: clientPhoneDraft.trim() } : {}),
+      });
+      const data = (res.data ?? res) as { message_body?: string; link?: string };
+      const link = data.link || rebookPreview.link;
+      msg = data.message_body || ensureSingleLinkInMessage(rebookMessage, link);
+      setRebookMessage(msg);
+      const payload = buildShareBookingLinkPayload(Platform.OS, link, msg);
+      await Share.share(payload);
+    } catch {
+      await Clipboard.setStringAsync(msg);
+    } finally {
+      setRebookLoading(false);
+    }
+  };
+
+  const sendRebook = async () => {
+    if (!rebookPreview) return;
+    setRebookLoading(true);
+    try {
+      const res = await api.post<{
+        whatsapp_url?: string | null;
+        channel?: string;
+        data?: { whatsapp_url?: string | null; channel?: string };
+      }>(`/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`, {
+        message: rebookMessage,
+        ...(clientPhoneDraft.trim() ? { client_phone: clientPhoneDraft.trim() } : {}),
+      });
+      const data = res.data ?? res;
+      const wa = (data as { whatsapp_url?: string | null }).whatsapp_url;
+      const channel = String((data as { channel?: string }).channel ?? "");
+      if (wa) {
+        await Linking.openURL(wa);
+        setRebookStatus(
+          rebookPreview.maskedDestination
+            ? `Opened WhatsApp to ${rebookPreview.maskedDestination}`
+            : pc("rebookOpenedWhatsAppDevice"),
+        );
+      } else if (channel === "sms" || channel === "email" || channel === "push") {
+        setRebookStatus(pc("rebookStatusSent"));
+      }
+    } catch {
+      setRebookStatus(null);
+    } finally {
+      setRebookLoading(false);
+    }
+  };
+
+  const primaryChannelLabel = () => {
+    if (!rebookPreview) return pc("lockNextVisit");
+    const name = rebookPreview.clientFirstName || clientDisplayName || "";
+    if (rebookPreview.canWhatsAppHandoff) return `WhatsApp ${name}`;
+    if (rebookPreview.channel === "sms") return `Text ${name}`;
+    if (rebookPreview.channel === "email") return `Email ${name}`;
+    if (rebookPreview.channel === "push") return `Notify ${name}`;
+    return pc("lockNextVisit");
+  };
+
   const markSeen = useCallback(() => {
+    if (followUpTimerRef.current) {
+      clearTimeout(followUpTimerRef.current);
+      followUpTimerRef.current = null;
+    }
     seenRef.current = true;
     void AsyncStorage.setItem(STORAGE_PREFIX + bookingId, "1").catch(() => {});
     onDismiss(true);
@@ -158,14 +260,16 @@ export function PostCompletionSheet({
           isEdit: false,
         });
         if (prompt) {
-          setTimeout(() => {
+          followUpTimerRef.current = setTimeout(() => {
+            followUpTimerRef.current = null;
             trackStoreReviewEvent("store_review_prompt_shown", "client_rating", { rating: rateStars });
             setStoreReviewOpen(true);
           }, 800);
           return;
         }
       } else if (rateStars >= 1) {
-        setTimeout(() => {
+        followUpTimerRef.current = setTimeout(() => {
+          followUpTimerRef.current = null;
           trackStoreReviewEvent("low_score_feedback", "client_rating", { rating: rateStars });
           Alert.alert(
             t("common.storeReview.lowScoreTitle"),
@@ -187,7 +291,10 @@ export function PostCompletionSheet({
         }, 800);
         return;
       }
-      setTimeout(() => markSeen(), 800);
+      followUpTimerRef.current = setTimeout(() => {
+        followUpTimerRef.current = null;
+        markSeen();
+      }, 800);
     } catch (e: unknown) {
       setRateError(e instanceof Error ? e.message : pc("submitFailed"));
     } finally {
@@ -216,30 +323,45 @@ export function PostCompletionSheet({
                   {pc("pointsEarned", { count: providerPointsEarned })}
                 </Text>
               ) : null}
-              {providerPublicBookUrl ? (
+              {rebookPreview ? (
                 <>
-                  <Text style={{ color: Colors.gray[600], fontSize: 13, marginBottom: 10, textAlign: "center" }}>
-                    {walkInOrUnpaidComplete
-                      ? providerPostCashCompleteShareLine(clientDisplayName ?? "")
-                      : pc("lockNextHintPrepaid")}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const msg = providerLockNextShareSms(providerPublicBookUrl, !walkInOrUnpaidComplete);
-                      const payload = buildShareBookingLinkPayload(Platform.OS, providerPublicBookUrl, msg);
-                      void Share.share(payload).catch(() => void Clipboard.setStringAsync(msg));
-                    }}
-                    style={{
-                      backgroundColor: Colors.primary,
-                      paddingVertical: 14,
-                      borderRadius: 14,
-                      alignItems: "center",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("lockNextVisit")}</Text>
+                  <Text style={{ color: Colors.gray[600], fontSize: 13, marginBottom: 8 }}>{rebookPreview.providerHint}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[800], marginBottom: 8 }}>{rebookMessage}</Text>
+                  {(rebookPreview.channel !== "none" || rebookPreview.canWhatsAppHandoff) && (
+                    <TouchableOpacity
+                      disabled={rebookLoading}
+                      onPress={() => void sendRebook()}
+                      style={{
+                        backgroundColor: Colors.primary,
+                        paddingVertical: 14,
+                        borderRadius: 14,
+                        alignItems: "center",
+                        marginBottom: 8,
+                      }}
+                    >
+                      {rebookLoading ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={{ color: "#fff", fontWeight: "700" }}>{primaryChannelLabel()}</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {rebookPreview.maskedDestination ? (
+                    <Text style={{ fontSize: 11, color: Colors.gray[500], textAlign: "center", marginBottom: 6 }}>
+                      {rebookPreview.maskedDestination}
+                    </Text>
+                  ) : null}
+                  {rebookStatus ? (
+                    <Text style={{ fontSize: 12, color: Colors.primary, marginBottom: 6, textAlign: "center" }}>
+                      {rebookStatus}
+                    </Text>
+                  ) : null}
+                  <TouchableOpacity onPress={() => void shareRebookYourself()} style={{ paddingVertical: 10, alignItems: "center", marginBottom: 6 }}>
+                    <Text style={{ color: Colors.primary, fontWeight: "600" }}>{pc("shareRebookYourself")}</Text>
                   </TouchableOpacity>
                 </>
+              ) : rebookLoading ? (
+                <ActivityIndicator style={{ marginBottom: 12 }} color={Colors.primary} />
               ) : null}
               {!hideAddPhoto ? (
                 <TouchableOpacity
@@ -354,9 +476,29 @@ export function PostCompletionSheet({
           ) : null}
 
           {step === "done" ? (
-            <View style={{ alignItems: "center", paddingVertical: 16 }}>
+            <View style={{ alignItems: "center", paddingVertical: 8 }}>
               <Ionicons name="checkmark-circle" size={48} color={Colors.primary} />
               <Text style={{ marginTop: 12, fontSize: 16, fontWeight: "600" }}>{pc("thanks")}</Text>
+              <Text style={{ marginTop: 6, fontSize: 13, color: Colors.gray[600], textAlign: "center" }}>
+                {pc("ratingSavedBody")}
+              </Text>
+              {!storeReviewOpen ? (
+                <TouchableOpacity
+                  onPress={markSeen}
+                  style={{
+                    marginTop: 20,
+                    backgroundColor: Colors.primary,
+                    paddingVertical: 14,
+                    paddingHorizontal: 24,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    alignSelf: "stretch",
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("doneForNow")}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
         </Pressable>

@@ -75,6 +75,7 @@ import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
 import ProviderLocationTracker from "@/components/provider/ProviderLocationTracker";
 import { QRCodeDisplay } from "@/components/provider-portal/QRCodeDisplay";
 import ResourceAssignmentPanel from "@/components/provider-portal/ResourceAssignmentPanel";
+import { BookingDetailProductOrders } from "@/components/provider/booking/BookingDetailProductOrders";
 import { ArrivalQrScanDialog } from "@/components/provider/ArrivalQrScanDialog";
 import type { QRCodeData } from "@/lib/qr/generator";
 import {
@@ -93,6 +94,7 @@ import {
 } from "@beautonomi/utils";
 import CustomerRatingButton from "@/components/reviews/customer-rating-button";
 import { PostCompletionSheet } from "@/components/provider/booking/PostCompletionSheet";
+import { RebookOfferCard } from "@/components/provider/booking/RebookOfferCard";
 import {
   BookingCompleteConfirmDialog,
   type BookingCompleteConfirmReason,
@@ -2074,6 +2076,9 @@ export default function ProviderBookingDetail() {
                   onUpdated={() => loadBooking()}
                 />
               ) : null}
+              {booking.status === "completed" && bookingId ? (
+                <RebookOfferCard bookingId={String(bookingId)} />
+              ) : null}
               {(booking.status === "completed" || booking.status === "no_show") && bookingId && (
                 <div className="pt-2 border-t">
                   <CustomerRatingButton
@@ -2513,8 +2518,14 @@ export default function ProviderBookingDetail() {
 
         {/* Products */}
         {booking.products && booking.products.length > 0 && (
-          <div className="bg-white border rounded-lg p-6 mb-6">
+          <div
+            id={`booking-product-orders-${bookingId}`}
+            className="bg-white border rounded-lg p-6 mb-6"
+          >
             <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.products.title")}</h2>
+            <div className="mb-4">
+              <BookingDetailProductOrders bookingId={bookingId} hasLineItems />
+            </div>
             <div className="space-y-3">
               {booking.products.map((product, index: number) => (
                 <div
@@ -2654,6 +2665,7 @@ export default function ProviderBookingDetail() {
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
             <ResourceAssignmentPanel
               bookingId={bookingId}
+              bookingStatus={booking.status}
               bookingDate={booking.scheduled_at ? new Date(booking.scheduled_at) : new Date()}
               bookingTime={booking.scheduled_at ? new Date(booking.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
               onUpdate={loadBooking}

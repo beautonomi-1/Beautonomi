@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
 import EmptyState from "@/components/ui/empty-state";
 import { ProviderGalleryImage } from "@beautonomi/ui/web";
@@ -9,11 +9,19 @@ interface PartnerPhotosProps {
   gallery?: string[];
   businessName?: string;
   slug?: string;
+  onOpenPhoto?: (index: number) => void;
+  onOpenAllPhotos?: () => void;
 }
 
-const PartnerPhotos: React.FC<PartnerPhotosProps> = ({ gallery = [], businessName, slug }) => {
+const PartnerPhotos: React.FC<PartnerPhotosProps> = ({
+  gallery = [],
+  businessName,
+  slug,
+  onOpenPhoto,
+  onOpenAllPhotos,
+}) => {
   const { pp } = usePartnerProfileT();
-  const [_selectedImage, _setSelectedImage] = useState<number | null>(null);
+  const useDialog = Boolean(onOpenPhoto);
 
   const displayImages = React.useMemo(() => {
     if (!gallery || gallery.length === 0) return [];
@@ -26,68 +34,94 @@ const PartnerPhotos: React.FC<PartnerPhotosProps> = ({ gallery = [], businessNam
       }));
   }, [gallery, businessName]);
 
+  const galleryHref = slug
+    ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}`
+    : "/partner-profile/gallery";
+
+  const TileWrapper = ({
+    index,
+    className,
+    children,
+  }: {
+    index: number;
+    className?: string;
+    children: React.ReactNode;
+  }) => {
+    if (useDialog && onOpenPhoto) {
+      return (
+        <button
+          type="button"
+          className={`block w-full cursor-pointer hover:opacity-90 transition-opacity overflow-hidden text-left ${className ?? ""}`}
+          onClick={() => onOpenPhoto(index)}
+          aria-label={pp("viewPhotoA11y", { index: index + 1, total: displayImages.length })}
+        >
+          {children}
+        </button>
+      );
+    }
+    return (
+      <Link href={galleryHref} className={`block cursor-pointer hover:opacity-90 transition-opacity overflow-hidden ${className ?? ""}`}>
+        {children}
+      </Link>
+    );
+  };
+
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
       <h2 className="text-2xl font-semibold mb-6">{pp("tabPhotos")}</h2>
-      
+
       {displayImages.length > 0 ? (
         <>
-          {/* Desktop Grid */}
           <div className="hidden md:grid grid-cols-2 gap-2">
             <div className="row-span-2">
-              <Link
-                href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
-                className="block cursor-pointer hover:opacity-90 transition-opacity overflow-hidden rounded-l-xl"
-              >
+              <TileWrapper index={0} className="rounded-l-xl">
                 <ProviderGalleryImage
                   src={displayImages[0].src}
                   alt={displayImages[0].alt}
                   priority
                 />
-              </Link>
+              </TileWrapper>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {displayImages.slice(1, 5).map((image, index) => (
-                <Link
+                <TileWrapper
                   key={index}
-                  href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
-                  className={`block cursor-pointer hover:opacity-90 transition-opacity overflow-hidden ${
-                    index === 1 ? "rounded-tr-xl" : ""
-                  } ${index === 3 ? "rounded-br-xl" : ""}`}
+                  index={index + 1}
+                  className={`${index === 1 ? "rounded-tr-xl" : ""} ${index === 3 ? "rounded-br-xl" : ""}`}
                 >
                   <ProviderGalleryImage src={image.src} alt={image.alt} />
-                </Link>
+                </TileWrapper>
               ))}
             </div>
           </div>
 
-          {/* Mobile Grid */}
           <div className="md:hidden grid grid-cols-2 gap-2">
             {displayImages.map((image, index) => (
-              <Link
-                key={index}
-                href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}
-                className="block cursor-pointer hover:opacity-90 transition-opacity overflow-hidden rounded-lg"
-              >
+              <TileWrapper key={index} index={index} className="rounded-lg">
                 <ProviderGalleryImage src={image.src} alt={image.alt} />
-              </Link>
+              </TileWrapper>
             ))}
           </div>
         </>
       ) : (
-        <EmptyState
-          title={pp("noPhotosAvailable")}
-          description={pp("noPhotosHint")}
-        />
+        <EmptyState title={pp("noPhotosAvailable")} description={pp("noPhotosHint")} />
       )}
 
       {displayImages.length > 0 && (
         <div className="mt-6">
-          <Link href={slug ? `/partner-profile/gallery?slug=${encodeURIComponent(slug)}` : "/partner-profile/gallery"}>
-            <button className="text-gray-600 hover:text-gray-900 underline text-sm">
+          {useDialog && onOpenAllPhotos ? (
+            <button
+              type="button"
+              className="text-gray-600 hover:text-gray-900 underline text-sm"
+              onClick={onOpenAllPhotos}
+            >
               {pp("seeAllImages")}
             </button>
-          </Link>
+          ) : (
+            <Link href={galleryHref}>
+              <span className="text-gray-600 hover:text-gray-900 underline text-sm">{pp("seeAllImages")}</span>
+            </Link>
+          )}
         </div>
       )}
     </div>

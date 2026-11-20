@@ -19,7 +19,11 @@ export type CloseOutBookingRow = Record<string, unknown> & {
   }> | null;
 };
 
+/** Statuses safe for one-tap "Complete all" in waiting room / EOD (already in chair or checked in). */
 export const BULK_COMPLETE_ELIGIBLE_STATUSES = ["in_progress", "checked_in"] as const;
+
+/** Statuses the close-out bulk-complete API may chain start → complete for. */
+export const BULK_CLOSE_OUT_COMPLETE_STATUSES = ["in_progress", "checked_in", "waiting", "confirmed"] as const;
 
 /** Canonical provider portal / email deep link into the close-out queue. */
 export const CLOSE_OUT_BOOKINGS_QUERY_VALUE = "close_out";
@@ -43,6 +47,10 @@ export function closeOutReminderTitle(ownerOnly: boolean): string {
 
 export function isBulkCompleteEligibleStatus(status: string | null | undefined): boolean {
   return (BULK_COMPLETE_ELIGIBLE_STATUSES as readonly string[]).includes(String(status ?? ""));
+}
+
+export function isBulkCloseOutCompleteStatus(status: string | null | undefined): boolean {
+  return (BULK_CLOSE_OUT_COMPLETE_STATUSES as readonly string[]).includes(String(status ?? ""));
 }
 
 export async function loadProviderLifecycleRow(

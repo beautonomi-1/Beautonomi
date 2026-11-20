@@ -13,6 +13,7 @@ import {
   Linking,
   Modal,
   Pressable,
+  findNodeHandle,
   RefreshControl,
   Share,
   Switch,
@@ -34,6 +35,11 @@ import {
   multiplyMoney,
   roundCurrency,
   subtractMoney,
+  countOpenAppointmentProductOrders,
+  isBookingResourceLocked,
+  isCollectionFulfillment,
+  isDeliveryFulfillment,
+  isTerminalProductOrderStatus,
 } from "@beautonomi/utils";
 import {
   usePaycloudCollectAvailability,
@@ -413,11 +419,6 @@ type AppointmentProductOrderResponse = {
   orders?: AppointmentProductOrder[];
 };
 
-function isCollectionFulfillment(fulfillmentType?: string | null): boolean {
-  const ft = (fulfillmentType ?? "").toLowerCase();
-  return ft === "collection" || ft === "pickup" || ft === "";
-}
-
 function appointmentProductFulfillmentLabel(
   status: string | null | undefined,
   bk: (key: string, opts?: Record<string, unknown>) => string,
@@ -429,10 +430,6 @@ function appointmentProductFulfillmentLabel(
   return bk("fulfillmentAwaitingCollection");
 }
 
-function isTerminalProductOrderStatus(status?: string | null): boolean {
-  const s = (status ?? "").toLowerCase();
-  return s === "delivered" || s === "cancelled" || s === "refunded";
-}
 
 type ProviderPermissionsResponse = {
   isOwner?: boolean;
@@ -725,6 +722,11 @@ export default function BookingDetailScreen() {
       t(`provider.mobile.screens.bookingDetail.${key}`, opts) as string,
     [t],
   );
+  const bn = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.bookingNextStep.${key}`, opts) as string,
+    [t],
+  );
 
   const router = useRouter();
   const { afterRatingSubmitted, sheetProps: storeReviewSheetProps } = useStoreReviewAfterRating("client_rating");
@@ -789,6 +791,7 @@ export default function BookingDetailScreen() {
     refresh: refreshProductOrders,
   } = useApi<AppointmentProductOrderResponse>(appointmentProductOrdersUrl);
   const appointmentProductOrders = appointmentProductOrdersData?.orders ?? [];
+  const openProductOrderCount = countOpenAppointmentProductOrders(appointmentProductOrders);
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
   const [resourceAssignLoading, setResourceAssignLoading] = useState(false);
@@ -917,6 +920,8 @@ export default function BookingDetailScreen() {
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationPermissionDeniedRef = useRef(false);
   const mainScrollRef = useRef<ScrollView>(null);
+  const productsBlockYRef = useRef(0);
+  const productsBlockRef = useRef<View>(null);
   const nextStepCardYRef = useRef(0);
   const notesBlockYRef = useRef(0);
   const highlightConfirmHandledRef = useRef(false);
@@ -2708,6 +2713,22 @@ export default function BookingDetailScreen() {
     return true;
   };
 
+  const handleSetProductFulfillmentType = async (
+    orderId: string,
+    fulfillmentType: "collection" | "pickup" | "delivery",
+  ) => {
+    setCollectingProductOrderId(orderId);
+    const { error, errorCode } = await patchMutation(`/api/provider/product-orders/${orderId}`, {
+      fulfillment_type: fulfillmentType,
+    });
+    setCollectingProductOrderId(null);
+    if (error) {
+      Alert.alert(bk("couldNotUpdateFulfillment"), mapProviderBookingActionError(error, errorCode));
+      return;
+    }
+    await refreshProductOrders();
+  };
+
   const handleMarkProductCollected = async (orderId: string) => {
     setCollectingProductOrderId(orderId);
     const { error, errorCode } = await patchMutation(`/api/provider/product-orders/${orderId}`, {
@@ -3518,9 +3539,11 @@ export default function BookingDetailScreen() {
     currentDbStatus !== "cancelled" &&
     currentDbStatus !== "no_show" &&
     b.status !== "completed";
+  const bookingResourcesLocked = isBookingResourceLocked(currentDbStatus);
   const nextStep = getBookingNextStepCard(
     { ...b, db_status: currentDbStatus },
-    { outstanding, isAtHome, isAtSalon },
+    { outstanding, isAtHome, isAtSalon, needsCloseOut: b.needs_close_out === true, openProductCount: openProductOrderCount },
+    bn,
   );
   const detailPrimaryAction = (() => {
     if (!isAtSalon || b.is_group_booking || !canEditAppointments) return null;
@@ -3975,6 +3998,40 @@ export default function BookingDetailScreen() {
             </Text>
           ) : null}
         </View>
+
+        {openProductOrderCount > 0 ? (
+          <TouchableOpacity
+            onPress={() => {
+              const scrollNode = findNodeHandle(mainScrollRef.current);
+              const block = productsBlockRef.current;
+              if (scrollNode && block) {
+                block.measureLayout(
+                  scrollNode,
+                  (_x, y) => {
+                    mainScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+                  },
+                  () => {
+                    if (productsBlockYRef.current > 0) {
+                      mainScrollRef.current?.scrollTo({ y: productsBlockYRef.current - 12, animated: true });
+                    }
+                  },
+                );
+                return;
+              }
+              if (productsBlockYRef.current > 0) {
+                mainScrollRef.current?.scrollTo({ y: productsBlockYRef.current - 12, animated: true });
+              }
+            }}
+            style={twStyle("mb-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3")}
+            accessibilityRole="button"
+            accessibilityLabel={bk("productHandoverBannerA11y", { count: openProductOrderCount })}
+          >
+            <Text style={twStyle("text-sm font-semibold text-amber-950")}>
+              {bk("productHandoverBannerTitle", { count: openProductOrderCount })}
+            </Text>
+            <Text style={twStyle("mt-1 text-xs text-amber-800")}>{bk("productHandoverBannerBody")}</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <View
           onLayout={(e) => {
@@ -5330,7 +5387,13 @@ export default function BookingDetailScreen() {
         )}
 
         {(b.products?.length ?? 0) > 0 && (
-          <View style={twStyle("mb-3")}>
+          <View
+            ref={productsBlockRef}
+            style={twStyle("mb-3")}
+            onLayout={(e) => {
+              productsBlockYRef.current = e.nativeEvent.layout.y;
+            }}
+          >
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("products")}</Text>
             {(b.products ?? []).map((p, i) => {
               const vLabel = formatProductVariantLabel(p.product_variant);
@@ -5339,7 +5402,7 @@ export default function BookingDetailScreen() {
                   <Text style={twStyle("font-medium text-gray-900")}>{p.product_name ?? bk("productFallback")}</Text>
                   {vLabel ? <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>{vLabel}</Text> : null}
                   <Text style={twStyle("text-sm text-gray-600 mt-1")}>
-                    Qty {p.quantity ?? 1}
+                    {bk("productQtyLine", { count: p.quantity ?? 1 })}
                     {typeof p.unit_price === "number"
                       ? ` · ${b.currency ?? getTenantDefaultCurrency()} ${p.unit_price.toLocaleString()} ea`
                       : ""}
@@ -5354,15 +5417,17 @@ export default function BookingDetailScreen() {
             })}
             {b.payment_status ? (
               <Text style={twStyle("text-xs text-gray-500 mt-1 mb-2")}>
-                Appointment payment: {(b.payment_status ?? "pending").replace(/_/g, " ")}
-                {b.payment_status === "paid" ? " — product payment is on this booking" : ""}
+                {bk("appointmentPaymentLine", {
+                  status: (b.payment_status ?? "pending").replace(/_/g, " "),
+                })}
+                {b.payment_status === "paid" ? ` ${bk("appointmentPaymentPaidNote")}` : ""}
               </Text>
             ) : null}
             {appointmentProductOrders.length > 0 ? (
               <>
                 {appointmentProductOrders.length > 1 ? (
                   <Text style={twStyle("text-xs font-medium text-amber-900 mt-1 mb-1")}>
-                    {appointmentProductOrders.length} product orders linked to this visit
+                    {bk("productOrdersLinked", { count: appointmentProductOrders.length })}
                   </Text>
                 ) : null}
                 {appointmentProductOrders.map((ord) => {
@@ -5378,7 +5443,11 @@ export default function BookingDetailScreen() {
                       <View style={twStyle("flex-row items-start justify-between")}>
                         <View style={twStyle("flex-1 pe-3")}>
                           <Text style={twStyle("text-sm font-semibold text-amber-950")}>
-                            {isCollection ? "Product pickup" : "Product delivery"}
+                            {isCollection
+                              ? bk("productPickupLabel")
+                              : isDeliveryFulfillment(ord.fulfillment_type)
+                                ? bk("productDeliveryLabel")
+                                : bk("productFulfillmentUnknownLabel")}
                           </Text>
                           <Text style={twStyle("text-xs text-amber-800 mt-0.5")}>
                             {ord.order_number ?? "Product order"} · {fulfillmentLabel}
@@ -5405,7 +5474,7 @@ export default function BookingDetailScreen() {
                               <Text style={twStyle("text-sm font-semibold text-white")}>{bk("markCollected")}</Text>
                             )}
                           </TouchableOpacity>
-                        ) : (
+                        ) : isDeliveryFulfillment(ord.fulfillment_type) ? (
                           <TouchableOpacity
                             onPress={() =>
                               router.push(
@@ -5414,10 +5483,37 @@ export default function BookingDetailScreen() {
                             }
                             style={twStyle("mt-2 flex-row items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2")}
                             accessibilityRole="button"
-                            accessibilityLabel="Manage delivery and tracking"
+                            accessibilityLabel={bk("manageDeliveryA11y")}
                           >
                             <Text style={twStyle("text-sm font-semibold text-amber-900")}>{bk("manageDeliveryTracking")}</Text>
                           </TouchableOpacity>
+                        ) : (
+                          <View style={twStyle("mt-2 gap-2")}>
+                            <TouchableOpacity
+                              onPress={() => void handleSetProductFulfillmentType(ord.id, "collection")}
+                              disabled={isCollecting || patchLoading}
+                              style={twStyle("flex-row items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2")}
+                            >
+                              <Text style={twStyle("text-sm font-semibold text-amber-900")}>{bk("setPickupFulfillment")}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => void handleSetProductFulfillmentType(ord.id, "delivery")}
+                              disabled={isCollecting || patchLoading}
+                              style={twStyle("flex-row items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2")}
+                            >
+                              <Text style={twStyle("text-sm font-semibold text-amber-900")}>{bk("setDeliveryFulfillment")}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() =>
+                                router.push(
+                                  `/(app)/(tabs)/more/product-orders?order=${encodeURIComponent(ord.id)}` as never,
+                                )
+                              }
+                              style={twStyle("flex-row items-center justify-center rounded-lg border border-dashed border-amber-200 px-3 py-2")}
+                            >
+                              <Text style={twStyle("text-xs font-medium text-amber-800")}>{bk("manageInProductOrders")}</Text>
+                            </TouchableOpacity>
+                          </View>
                         )
                       ) : null}
                     </View>
@@ -5449,7 +5545,7 @@ export default function BookingDetailScreen() {
           <View style={twStyle("mb-3")}>
             <View style={twStyle("flex-row items-center justify-between mb-2")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>{bk("resources")}</Text>
-              {canEditAppointments && (
+              {!bookingResourcesLocked && canEditAppointments && (
                 <TouchableOpacity
                   onPress={() => {
                     loadAvailableResources();
@@ -5471,7 +5567,7 @@ export default function BookingDetailScreen() {
                       <Text style={twStyle("text-xs text-gray-500")}>{r.resource_group_name}</Text>
                     ) : null}
                   </View>
-                  {canEditAppointments && (
+                  {!bookingResourcesLocked && canEditAppointments && (
                     <TouchableOpacity
                       onPress={() => handleRemoveResource(r.resource_id)}
                       disabled={resourceAssignLoading}
@@ -6592,10 +6688,7 @@ export default function BookingDetailScreen() {
         snapHeight="full"
       >
         <View style={twStyle("p-4")}>
-          <Text style={twStyle("text-sm text-gray-600 mb-3")}>
-            How was your experience with this client? You can submit a rating as soon as the booking is completed or marked
-            no-show — the customer does not need to leave a review first.
-          </Text>
+          <Text style={twStyle("text-sm text-gray-600 mb-3")}>{bk("rateClientIntro")}</Text>
           <View style={twStyle("flex-row justify-center gap-2 mb-4")}>
             {[1, 2, 3, 4, 5].map((star) => (
               <TouchableOpacity

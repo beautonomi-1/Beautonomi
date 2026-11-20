@@ -355,6 +355,7 @@ export const getPublicProviderDetail = cache(
         distance_km: distance_km ?? undefined,
         seo_indexable: includeInSearchEngines,
         profile_promotions,
+        timezone: typeof providerData.timezone === "string" ? providerData.timezone : null,
       };
 
       return {

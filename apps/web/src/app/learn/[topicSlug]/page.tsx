@@ -7,14 +7,55 @@ import { ChevronRight } from "lucide-react";
 import { BeautonomiLoadingIcon } from "@/components/BeautonomiLoadingIcon";
 import { LearnBreadcrumb } from "../components/learn-breadcrumb";
 
+type HubCategory = {
+  id: string;
+  title: string;
+  slug: string;
+  icon?: string | null;
+  sort_order?: number;
+  audience?: string;
+};
+
 interface TopicData {
-  category: { id: string; title: string; slug: string };
+  category?: { id: string; title: string; slug: string };
+  hub?: { slug: string; title: string };
+  categories?: HubCategory[];
   parents?: string[];
   parent_slugs?: string[];
-  articles: Array<{ id: string; title: string; slug: string; summary: string | null; published_at: string | null }>;
-  total: number;
-  page: number;
-  limit: number;
+  articles?: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    summary: string | null;
+    published_at: string | null;
+  }>;
+  total?: number;
+  page?: number;
+  limit?: number;
+}
+
+function TopicNotFound() {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-zinc-600">
+        We couldn&apos;t find that topic. Try the Learning Center home or site home.
+      </p>
+      <div className="flex flex-wrap gap-3">
+        <Link
+          href="/"
+          className="inline-flex min-h-[44px] items-center rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:border-[#ff0077]/40 hover:text-[#ff0077]"
+        >
+          Beautonomi home
+        </Link>
+        <Link
+          href="/learn"
+          className="inline-flex min-h-[44px] items-center rounded-full bg-[#ff0077] px-4 text-sm font-medium text-white hover:bg-[#ff0077]/90"
+        >
+          Learning Center topics
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 export default function LearnTopicPage() {
@@ -50,34 +91,47 @@ export default function LearnTopicPage() {
     );
   }
 
-  if (!data?.category) {
+  if (data?.hub) {
+    const hubCategories = data.categories ?? [];
+    if (hubCategories.length === 0) {
+      return <TopicNotFound />;
+    }
+
     return (
-      <div className="space-y-3">
-        <p className="text-sm text-zinc-600">We couldn&apos;t find that topic. Try the Learning Center home or site home.</p>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href="/"
-            className="inline-flex min-h-[44px] items-center rounded-full border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:border-[#ff0077]/40 hover:text-[#ff0077]"
-          >
-            Beautonomi home
-          </Link>
-          <Link
-            href="/learn"
-            className="inline-flex min-h-[44px] items-center rounded-full bg-[#ff0077] px-4 text-sm font-medium text-white hover:bg-[#ff0077]/90"
-          >
-            Learning Center topics
-          </Link>
-        </div>
+      <div className="space-y-6">
+        <LearnBreadcrumb current={data.hub.title} currentHref={`/learn/${data.hub.slug}`} />
+        <section>
+          <h1 className="text-2xl font-bold tracking-tight text-black">{data.hub.title}</h1>
+          <p className="text-sm text-zinc-600 mt-2">Browse topics curated for {data.hub.slug} accounts.</p>
+        </section>
+        <ul className="space-y-2">
+          {hubCategories.map((c) => (
+            <li key={c.id}>
+              <Link
+                href={`/learn/${c.slug}`}
+                className="flex min-h-[56px] items-center gap-3 rounded-2xl border border-zinc-200/50 bg-white px-4 py-3 shadow-sm transition-all duration-200 ease-in-out hover:shadow-[0_0_20px_-5px_rgba(255,0,119,0.15)] hover:border-[#ff0077]/30 hover:-translate-y-0.5 active:scale-[0.99]"
+              >
+                <span className="flex-1 font-medium text-black text-sm">{c.title}</span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
     );
+  }
+
+  if (!data?.category) {
+    return <TopicNotFound />;
   }
 
   const articles = data.articles ?? [];
   const parents = data.parents ?? [];
   const parentSlugs = data.parent_slugs ?? [];
-  const ancestorTitles = parents.length > 0 && parents[parents.length - 1] === data.category.title
-    ? parents.slice(0, -1)
-    : parents;
+  const ancestorTitles =
+    parents.length > 0 && parents[parents.length - 1] === data.category.title
+      ? parents.slice(0, -1)
+      : parents;
   const ancestorSlugs = parentSlugs.length > ancestorTitles.length ? parentSlugs.slice(0, -1) : parentSlugs;
 
   return (
@@ -90,7 +144,9 @@ export default function LearnTopicPage() {
       />
       <section>
         <h1 className="text-2xl font-bold tracking-tight text-black">{data.category.title}</h1>
-        <p className="text-xs font-mono text-zinc-500 mt-1 tabular-nums">{articles.length} article{articles.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs font-mono text-zinc-500 mt-1 tabular-nums">
+          {articles.length} article{articles.length !== 1 ? "s" : ""}
+        </p>
       </section>
 
       <ul className="space-y-2">
@@ -101,16 +157,16 @@ export default function LearnTopicPage() {
               className="flex min-h-[56px] items-center gap-3 rounded-2xl border border-zinc-200/50 bg-white px-4 py-3 shadow-sm transition-all duration-200 ease-in-out hover:shadow-[0_0_20px_-5px_rgba(255,0,119,0.15)] hover:border-[#ff0077]/30 hover:-translate-y-0.5 active:scale-[0.99]"
             >
               <span className="flex-1 font-medium text-black text-sm">{a.title}</span>
-              {a.summary && <span className="hidden sm:block text-xs text-zinc-500 truncate max-w-xs">{a.summary}</span>}
+              {a.summary && (
+                <span className="hidden sm:block text-xs text-zinc-500 truncate max-w-xs">{a.summary}</span>
+              )}
               <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />
             </Link>
           </li>
         ))}
       </ul>
 
-      {articles.length === 0 && (
-        <p className="text-sm text-zinc-600">No articles in this topic yet.</p>
-      )}
+      {articles.length === 0 && <p className="text-sm text-zinc-600">No articles in this topic yet.</p>}
     </div>
   );
 }

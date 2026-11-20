@@ -9,7 +9,11 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import LoadingTimeout from "@/components/ui/loading-timeout";
-import { buildProviderPublicBookUrl, providerShareBookingLinkSms } from "@beautonomi/utils";
+import {
+  buildProviderPublicBookUrl,
+  buildWebNavigatorSharePayload,
+  providerShareBookingLinkSms,
+} from "@beautonomi/utils";
 
 interface SetupStep {
   id: string;
@@ -216,7 +220,7 @@ export default function GetStartedPage() {
     const message = providerShareBookingLinkSms(bookingUrl);
     try {
       if (navigator.share) {
-        await navigator.share({ text: message, url: bookingUrl });
+        await navigator.share(buildWebNavigatorSharePayload(bookingUrl, message));
         return;
       }
       await navigator.clipboard.writeText(message);

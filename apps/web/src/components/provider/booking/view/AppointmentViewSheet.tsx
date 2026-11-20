@@ -8,7 +8,7 @@ import type { Appointment } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { useAppointmentSidebar } from "@/stores/appointment-sidebar-store";
 import { getBookingNextStepCard, buildBookingCompletionChecklist } from "@beautonomi/provider-booking";
-import { subtractMoney, multiplyMoney } from "@beautonomi/utils";
+import { isBookingResourceLocked, subtractMoney, multiplyMoney } from "@beautonomi/utils";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -425,7 +425,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
                     {t(`${prefix}.addProduct`)}
                   </BookingActionButton>
                 ) : null}
-                {canEditAppointments ? (
+                {canEditAppointments && !isBookingResourceLocked(appt.db_status ?? appt.status) ? (
                   <BookingActionButton
                     size="sm"
                     fullWidth={false}

@@ -94,14 +94,32 @@ export function statusFilterForStatsTile(tile: BookingsStatsTileKey): string {
   }
 }
 
-export function buildStatsReconciliationLine(stats: {
-  pending_count: number;
-  confirmed_count: number;
-  in_progress_count: number;
-  completed_count: number;
-  cancelled_count: number;
-  no_show_count: number;
-}): string {
+type BookingsListTranslate = (key: string, opts?: Record<string, unknown>) => string;
+
+export function buildStatsReconciliationLine(
+  stats: {
+    pending_count: number;
+    confirmed_count: number;
+    in_progress_count: number;
+    completed_count: number;
+    cancelled_count: number;
+    no_show_count: number;
+  },
+  bl?: BookingsListTranslate,
+): string {
+  if (bl) {
+    const parts = [
+      bl("statsLinePending", { count: stats.pending_count }),
+      bl("statsLineConfirmed", { count: stats.confirmed_count }),
+      bl("statsLineActive", { count: stats.in_progress_count }),
+      bl("statsLineCompleted", { count: stats.completed_count }),
+    ];
+    const excluded = stats.cancelled_count + stats.no_show_count;
+    if (excluded > 0) {
+      parts.push(bl("statsLineExcludes", { count: excluded }));
+    }
+    return parts.join(" · ");
+  }
   const parts = [
     `${stats.pending_count} pending`,
     `${stats.confirmed_count} confirmed`,
@@ -248,19 +266,27 @@ export function buildOverviewDateParams(
 export function buildOverviewDateRangeLabel(
   range: BookingsDateRange,
   providerTimezone?: string | null,
+  opts?: { bl?: BookingsListTranslate; locale?: string },
 ): string {
   const businessToday = startOfBusinessDayLocalDate(providerTimezone);
+  const locale = opts?.locale;
+  const bl = opts?.bl;
+  const fmt = (date: Date, options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat(locale, options).format(date);
   switch (range) {
     case "today":
-      return format(businessToday, "EEE, MMM d");
-    case "week":
-      return `Week of ${format(startOfWeek(businessToday, { weekStartsOn: 1 }), "MMM d")}`;
+      return fmt(businessToday, { weekday: "short", month: "short", day: "numeric" });
+    case "week": {
+      const weekStart = startOfWeek(businessToday, { weekStartsOn: 1 });
+      const weekLabel = fmt(weekStart, { month: "short", day: "numeric" });
+      return bl ? bl("rangeWeekOf", { date: weekLabel }) : `Week of ${format(weekStart, "MMM d")}`;
+    }
     case "month":
-      return format(businessToday, "MMMM yyyy");
+      return fmt(businessToday, { month: "long", year: "numeric" });
     case "upcoming":
-      return "Upcoming";
+      return bl ? bl("rangeUpcoming") : "Upcoming";
     case "all":
-      return "All time";
+      return bl ? bl("rangeAllTime") : "All time";
   }
 }
 

@@ -41,10 +41,11 @@ export function normalizeLineStatus(raw: string | null | undefined): LineFulfilm
   return (LINE_FULFILMENT_STATUSES as readonly string[]).includes(s) ? (s as LineFulfilmentStatus) : "pending";
 }
 
+import { isCollectionFulfillment as isCollectionFulfillmentShared } from "@beautonomi/utils";
+
 /** Collection and in-store pickup share one path. Delivery uses the courier path. */
 export function isCollectionFulfillment(type: string | null | undefined): boolean {
-  const ft = String(type ?? "").toLowerCase();
-  return ft === "collection" || ft === "pickup";
+  return isCollectionFulfillmentShared(type);
 }
 
 /**

@@ -28,7 +28,7 @@ export function providerLockNextShareSms(link: string, prepaidVisit: boolean): s
 /** Post cash/walk-in complete — peak-end nudge (one screen, dismissible). */
 export function providerPostCashCompleteShareLine(clientName: string): string {
   const who = clientName.trim() || "your client";
-  return `Lock ${who}'s next visit by sending your booking link.`;
+  return `Send ${who} your booking link for their next visit.`;
 }
 
 /** After cash no-show / late cancel with no platform payment. */

@@ -235,6 +235,17 @@ export {
   type RebookContext,
   type RebookServiceLine,
 } from "./booking/rebook-from-booking";
+export {
+  buildAbsoluteRebookLink,
+  buildRebookOfferClientMessage,
+  buildRebookOfferProviderHint,
+  ensureSingleLinkInMessage,
+  firstNameFromDisplayName,
+  resolveBookWithLabel,
+  staffDisplayNameForRebook,
+  teamMemberFirstName,
+  type RebookOfferCopyInput,
+} from "./booking/rebook-offer-message";
 export { defaultRebookReminderForNewOffering } from "./booking/rebook-offering-defaults";
 export {
   TILL_PAYMENT_LABEL_EN,
@@ -246,7 +257,10 @@ export {
   type TillPaymentRow,
 } from "./booking/till-payment-label";
 export { buildProviderPublicBookUrl } from "./booking/build-provider-public-book-url";
-export { buildShareBookingLinkPayload } from "./booking/share-booking-link-payload";
+export {
+  buildShareBookingLinkPayload,
+  buildWebNavigatorSharePayload,
+} from "./booking/share-booking-link-payload";
 export { mapBookingQueryToNativeBookPath } from "./booking/map-booking-url-to-native-book";
 export { buildWebBookingHref } from "./booking/web-booking-href";
 export {
@@ -396,6 +410,14 @@ export {
   type BookingScheduleLine,
   type BookingScheduleRow,
 } from "./booking/scheduleDisplay";
+export { isBookingResourceLocked } from "./booking/resource-lock";
+export {
+  countOpenAppointmentProductOrders,
+  isCollectionFulfillment,
+  isDeliveryFulfillment,
+  isOpenProductOrderStatus,
+  isTerminalProductOrderStatus,
+} from "./ecommerce/appointment-product-orders";
 export {
   getHoldTimeRemaining,
   serverNowToClockOffsetMs,

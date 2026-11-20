@@ -56,6 +56,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { addMoney, computeAtHomeLinePrice, computeVat, multiplyMoney, percentOf, subtractMoney, sumMoney } from "@beautonomi/utils";
 import { repriceLegacySelectedServices } from "../lib/legacy-at-home-pricing";
 import {
+  deepLinkSkipsToCalendar,
   parseBookingDeepLink,
 } from "@/lib/booking/parse-booking-deep-link";
 import {
@@ -68,6 +69,7 @@ import { completeCustomerOnboardingQuietly } from "@/lib/booking/complete-custom
 import { BookingEmbedBridge } from "@/components/booking/BookingEmbedBridge";
 import { isBookingEmbedEnabled } from "@beautonomi/utils";
 import { isCompleteE164 } from "@/lib/phone";
+import { formatInTimeZone } from "date-fns-tz";
 
 /** Same pattern as step-your-info (Continue gating must match that step). */
 const BOOKING_CLIENT_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -373,6 +375,7 @@ export default function BookingFlow() {
     searchParams.get("provider_id")?.trim() ||
     null;
   const bookingStartTrackedRef = useRef(false);
+  const deepLinkCartFilledRef = useRef<string | null>(null);
 
   const checkoutTrackedRef = useRef(false);
   const [gateOpen, setGateOpen] = useState(false);
@@ -1046,7 +1049,29 @@ export default function BookingFlow() {
       bookingState.selectedServices.length === 0
     ) return null;
 
-    // Previous hold is cancelled server-side via `previous_hold_id` — do not release early.
+    if (bookingState.holdId && bookingState.selectedSlotStart) {
+      try {
+        const existing = await fetcher.get<{
+          data?: { hold_status?: string; start_at?: string; expires_at?: string | null };
+        }>(`/api/public/booking-holds/${encodeURIComponent(bookingState.holdId)}`);
+        const row = (existing.data ?? existing) as {
+          hold_status?: string;
+          start_at?: string;
+          expires_at?: string | null;
+        };
+        const sameSlot =
+          Boolean(row.start_at) &&
+          Math.abs(new Date(row.start_at!).getTime() - new Date(bookingState.selectedSlotStart).getTime()) < 60_000;
+        if ((row.hold_status === "active" || row.hold_status === "consuming") && sameSlot) {
+          return {
+            holdId: bookingState.holdId,
+            expiresAt: row.expires_at ?? bookingState.holdExpiresAt ?? null,
+          };
+        }
+      } catch {
+        // Create a new checkout hold below.
+      }
+    }
 
     try {
       // §Release-audit 2026-04: prefer the engine-emitted ISO start instant
@@ -1228,6 +1253,52 @@ export default function BookingFlow() {
     void completeCustomerOnboardingQuietly();
   }, [user, authLoading]);
 
+  const rebookOpenedRef = useRef(false);
+  useEffect(() => {
+    const offerId = searchParams.get("rebook_offer")?.trim();
+    if (offerId && !rebookOpenedRef.current) {
+      rebookOpenedRef.current = true;
+      void fetcher.post(`/api/public/rebook-offers/${encodeURIComponent(offerId)}/opened`, {}).catch(() => {});
+    }
+    const holdFromUrl = searchParams.get("hold_id")?.trim();
+    const holdId = holdFromUrl || bookingState.holdId;
+    if (holdId && !bookingState.selectedSlotStart) {
+      void fetcher
+        .get<{
+          data?: {
+            expires_at?: string;
+            start_at?: string;
+            end_at?: string;
+            provider_timezone?: string | null;
+          };
+        }>(`/api/public/booking-holds/${encodeURIComponent(holdId)}`)
+        .then((res) => {
+          const row = (res.data ?? res) as {
+            expires_at?: string;
+            start_at?: string;
+            end_at?: string;
+            provider_timezone?: string | null;
+          };
+          if (!row.expires_at || !row.start_at) return;
+          const tz = row.provider_timezone?.trim() || "UTC";
+          const start = new Date(row.start_at);
+          const ymd = formatInTimeZone(start, tz, "yyyy-MM-dd");
+          const [y, m, d] = ymd.split("-").map((n) => Number(n));
+          updateBookingState({
+            holdId,
+            holdExpiresAt: row.expires_at,
+            selectedSlotStart: row.start_at,
+            selectedSlotEnd: row.end_at ?? null,
+            selectedTimeSlot: formatInTimeZone(start, tz, "HH:mm"),
+            selectedDate: new Date(y, (m || 1) - 1, d || 1),
+            providerTimezone: tz,
+          });
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, bookingState.holdId, bookingState.holdExpiresAt]);
+
   useEffect(() => {
     if (searchParams.get("auth_return") !== "1" || !user) return;
     const id = bookingState.holdId;
@@ -1354,6 +1425,64 @@ export default function BookingFlow() {
 
   useEffect(() => {
     const link = parseBookingDeepLink(searchParams);
+    if (!link.slug || link.serviceIds.length === 0) return;
+    if (bookingState.selectedServices.length > 0) return;
+    const fillKey = `${link.slug}:${link.serviceIds.join(",")}:${link.staffId ?? ""}:${link.locationType ?? ""}`;
+    if (deepLinkCartFilledRef.current === fillKey) return;
+    let cancelled = false;
+    (async () => {
+      const mode = link.locationType === "at_home" ? "mobile" : "salon";
+      const res = await fetcher.get<{
+        data?: Array<{
+          id: string;
+          title?: string;
+          duration?: number;
+          bufferMinutes?: number;
+          buffer_minutes?: number;
+          price?: number;
+          currency?: string;
+          at_home_price_adjustment?: number;
+        }>;
+      }>(
+        `/api/services?type=${mode}&providerSlug=${encodeURIComponent(link.slug)}&serviceId=${encodeURIComponent(link.serviceIds.join(","))}`,
+      );
+      if (cancelled) return;
+      const rows = res.data ?? [];
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      const staffId = link.anyone || !link.staffId ? "any" : link.staffId;
+      const isAtHome = link.locationType === "at_home";
+      const built = link.serviceIds.flatMap((id) => {
+        const row = byId.get(id);
+        if (!row) return [];
+        const priced = computeAtHomeLinePrice(
+          Number(row.price ?? 0),
+          Number(row.at_home_price_adjustment ?? 0),
+          isAtHome,
+        );
+        return [{
+          id: row.id,
+          title: row.title || "Service",
+          duration: Number(row.duration ?? 60),
+          bufferMinutes: Number(row.bufferMinutes ?? row.buffer_minutes ?? 0),
+          price: priced.displayPrice,
+          base_price: priced.basePrice,
+          at_home_price_adjustment: priced.adjustmentApplied,
+          currency: row.currency || LAST_RESORT_CURRENCY,
+          staffId,
+        }];
+      });
+      if (built.length === 0) return;
+      deepLinkCartFilledRef.current = fillKey;
+      updateBookingState({ selectedServices: built, mode: isAtHome ? "mobile" : bookingState.mode || "salon" });
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, bookingState.selectedServices.length]);
+
+  useEffect(() => {
+    const link = parseBookingDeepLink(searchParams);
     const updates: Partial<BookingState> = {};
     if (link.rescheduleBookingId) {
       updates.rescheduleBookingId = link.rescheduleBookingId;
@@ -1389,8 +1518,13 @@ export default function BookingFlow() {
       const idx = activeStepOrder.indexOf("services");
       if (idx >= 0) setCurrentStepIndex(idx);
     } else if (link.serviceIds.length > 0 && !link.step) {
-      const idx = activeStepOrder.indexOf("services");
-      if (idx >= 0) setCurrentStepIndex(idx);
+      if (deepLinkSkipsToCalendar(link)) {
+        const idx = activeStepOrder.indexOf("calendar");
+        if (idx >= 0) setCurrentStepIndex(idx);
+      } else {
+        const idx = activeStepOrder.indexOf("services");
+        if (idx >= 0) setCurrentStepIndex(idx);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

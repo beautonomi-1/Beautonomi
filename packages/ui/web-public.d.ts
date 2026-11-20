@@ -85,6 +85,7 @@ export interface ProviderGalleryImageProps {
   alt: string;
   className?: string;
   frameClassName?: string;
+  fillHeight?: boolean;
   priority?: boolean;
   loading?: "eager" | "lazy";
   sizes?: string;

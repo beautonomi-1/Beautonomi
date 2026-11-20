@@ -21,6 +21,8 @@ function resolveBookingLifecycle(booking: BookingNextStepCardInput): string {
   return raw;
 }
 
+type NextStepTranslate = (key: string, opts?: Record<string, unknown>) => string;
+
 export function getBookingNextStepCard(
   booking: BookingNextStepCardInput,
   options: {
@@ -28,12 +30,29 @@ export function getBookingNextStepCard(
     isAtHome: boolean;
     isAtSalon: boolean;
     needsCloseOut?: boolean;
+    openProductCount?: number;
   },
+  nt?: NextStepTranslate,
 ): { title: string; description: string; icon: keyof typeof Ionicons.glyphMap; color: string } {
   const status = resolveBookingLifecycle(booking);
   const needsCloseOut = options.needsCloseOut === true || booking.needs_close_out === true;
   if (needsCloseOut) {
     const action = booking.suggested_close_out_action ?? "review";
+    const closeOutKey =
+      action === "complete" ? "complete" : action === "provider_cancel" ? "providerCancel" : "review";
+    if (nt) {
+      return {
+        title: nt(`closeOut.${closeOutKey}.title`),
+        description: nt(`closeOut.${closeOutKey}.body`),
+        icon:
+          action === "provider_cancel"
+            ? "home-outline"
+            : action === "complete"
+              ? "checkmark-done-outline"
+              : "alert-circle-outline",
+        color: action === "provider_cancel" ? "#dc2626" : "#d97706",
+      };
+    }
     if (action === "complete") {
       return {
         title: "Close out appointment",
@@ -166,6 +185,26 @@ export function getBookingNextStepCard(
       title: "Payment still due",
       description: "Send a payment link, take a card machine payment, or mark the remaining amount as paid.",
       icon: "card-outline",
+      color: "#d97706",
+    };
+  }
+  const openProducts = options.openProductCount ?? 0;
+  if (status === "completed" && openProducts > 0) {
+    if (nt) {
+      return {
+        title: nt("products.handOver.title"),
+        description: nt("products.handOver.body", { count: openProducts }),
+        icon: "cube-outline",
+        color: "#d97706",
+      };
+    }
+    return {
+      title: "Hand over products",
+      description:
+        openProducts === 1
+          ? "One product order still needs pickup or delivery."
+          : `${openProducts} product orders still need pickup or delivery.`,
+      icon: "cube-outline",
       color: "#d97706",
     };
   }

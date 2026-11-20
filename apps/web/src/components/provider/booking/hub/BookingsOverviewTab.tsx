@@ -3,7 +3,7 @@ import { useTranslation } from "@beautonomi/i18n";
 
 
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
 
@@ -24,6 +24,8 @@ import type { ProviderBookingAction } from "@/lib/provider-booking/action-policy
 import { Input } from "@/components/ui/input";
 
 import { fetcher } from "@/lib/http/fetcher";
+import { toast } from "sonner";
+import { formatApiErrorMessage } from "@/lib/http/api-error";
 
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
@@ -74,6 +76,16 @@ type CloseOutApiBooking = {
 
   status: string;
 
+  total_amount?: number | null;
+
+  payment_status?: string | null;
+
+  balance_due?: number | null;
+
+  suggested_close_out_action?: "complete" | "review" | "provider_cancel" | null;
+
+  suggestedAction?: "complete" | "review" | "provider_cancel" | null;
+
   customer?: { full_name?: string | null; phone?: string | null } | null;
 
   booking_services?: Array<{ offering?: { title?: string | null } | null }> | null;
@@ -94,6 +106,8 @@ type CloseOutResponse = {
 
 function mapCloseOutBooking(row: CloseOutApiBooking): HubScheduleBooking {
 
+  const suggestion = row.suggested_close_out_action ?? row.suggestedAction ?? "review";
+
   return {
 
     id: row.id,
@@ -107,6 +121,14 @@ function mapCloseOutBooking(row: CloseOutApiBooking): HubScheduleBooking {
     customer_name: row.customer?.full_name ?? null,
 
     customer_phone: row.customer?.phone ?? null,
+
+    total_amount: row.total_amount ?? null,
+
+    payment_status: row.payment_status ?? null,
+
+    balance_due: row.balance_due ?? null,
+
+    suggested_close_out_action: suggestion,
 
     services: (row.booking_services ?? []).map((bs) => ({
 
@@ -185,6 +207,8 @@ export function BookingsOverviewTab({
 
   const [closeOutQueue, setCloseOutQueue] = useState<CloseOutResponse | null>(null);
 
+  const [closeOutActionPending, setCloseOutActionPending] = useState<Set<string>>(() => new Set());
+
   const [expiringSoonPending, setExpiringSoonPending] = useState(0);
 
 
@@ -248,6 +272,20 @@ export function BookingsOverviewTab({
     };
 
   }, [locationId, bookings.length]);
+
+  const refreshCloseOutQueue = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (locationId) params.set("location_id", locationId);
+      const qs = params.toString();
+      const closeOutRes = await fetcher.get<{ data: CloseOutResponse }>(
+        `/api/provider/bookings/close-out${qs ? `?${qs}` : ""}`,
+      );
+      setCloseOutQueue(closeOutRes.data ?? null);
+    } catch {
+      setCloseOutQueue(null);
+    }
+  }, [locationId]);
 
 
 
@@ -404,6 +442,73 @@ export function BookingsOverviewTab({
 
   };
 
+
+
+
+  const runCloseOutRowAction = useCallback(
+    async (booking: HubScheduleBooking) => {
+      const suggestion = booking.suggested_close_out_action ?? "review";
+      if (suggestion === "provider_cancel" || suggestion === "review") {
+        onOpenBooking(booking);
+        return;
+      }
+      const title = t("web.provider.bookings.overview.closeOutConfirmTitle");
+      const body = t("web.provider.bookings.overview.closeOutConfirmBody");
+      if (typeof window !== "undefined" && !window.confirm(`${title}\n\n${body}`)) {
+        return;
+      }
+      setCloseOutActionPending((prev) => new Set(prev).add(booking.id));
+      try {
+        const res = await fetcher.post<{
+          data?: { results?: Array<{ id: string; ok: boolean; error?: string; code?: string; retry?: boolean }> };
+        }>("/api/provider/bookings/close-out/bulk-complete", { booking_ids: [booking.id] });
+        const row = res?.data?.results?.find((r) => r.id === booking.id);
+        if (!row?.ok) {
+          if (row?.code === "BALANCE_DUE") {
+            toast.error(t("web.provider.bookings.overview.closeOutBalanceDue"));
+            onOpenBooking(booking);
+            return;
+          }
+          if (row?.retry) {
+            toast.error(t("web.provider.bookings.overview.closeOutStartedRetryComplete"));
+            return;
+          }
+          toast.error(row?.error ?? t("web.provider.bookings.overview.closeOutCompleteFailed"));
+          return;
+        }
+        toast.success(t("web.provider.bookings.overview.closeOutCompleted"));
+        await refreshCloseOutQueue();
+      } catch (error) {
+        toast.error(formatApiErrorMessage(error, t("web.provider.bookings.overview.closeOutCompleteFailed")));
+      } finally {
+        setCloseOutActionPending((prev) => {
+          const next = new Set(prev);
+          next.delete(booking.id);
+          return next;
+        });
+      }
+    },
+    [onOpenBooking, refreshCloseOutQueue, t],
+  );
+
+  const closeOutPrimaryFor = useCallback(
+    (booking: HubScheduleBooking): ProviderBookingAction | null => {
+      const suggestion = booking.suggested_close_out_action ?? "review";
+      if (suggestion === "complete") {
+        return {
+          id: "complete_service",
+          label: t("web.provider.bookings.scheduleCard.actions.complete_service"),
+          dbTarget: "completed",
+        };
+      }
+      return {
+        id: "confirm",
+        label: t("web.provider.bookings.scheduleCard.actions.review_booking"),
+        dbTarget: "confirmed",
+      };
+    },
+    [t],
+  );
 
 
   const closeOutTotal = closeOutQueue?.summary.total ?? 0;
@@ -684,13 +789,28 @@ export function BookingsOverviewTab({
 
                 booking={b}
 
-                pending={pendingActionIds?.has(b.id)}
+                pending={
+                  pendingActionIds?.has(b.id) ||
+                  (statusFilter === CLOSE_OUT_FILTER && closeOutActionPending.has(b.id))
+                }
 
-                primaryAction={getPrimaryAction?.(b) ?? null}
+                primaryAction={
+                  statusFilter === CLOSE_OUT_FILTER
+                    ? closeOutPrimaryFor(b)
+                    : getPrimaryAction?.(b) ?? null
+                }
 
                 onOpen={() => onOpenBooking(b)}
 
-                onPrimaryAction={(booking, action) => onPrimaryAction?.(booking, action)}
+                onPrimaryAction={(booking, action) => {
+                  if (statusFilter === CLOSE_OUT_FILTER) {
+                    void runCloseOutRowAction(booking);
+                    return;
+                  }
+                  onPrimaryAction?.(booking, action);
+                }}
+
+                closeOutMode={statusFilter === CLOSE_OUT_FILTER}
 
               />
 

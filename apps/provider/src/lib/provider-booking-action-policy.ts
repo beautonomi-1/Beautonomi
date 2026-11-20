@@ -342,30 +342,59 @@ export function buildProviderBookingActionModel(
   };
 }
 
-export function mapProviderBookingActionError(error: string | null | undefined, code?: string | null): string {
-  if (!error && !code) return "The booking could not be updated. Please refresh and try again.";
+type BookingActionErrorTranslate = (key: string, opts?: Record<string, unknown>) => string;
+
+export function mapProviderBookingActionError(
+  error: string | null | undefined,
+  code?: string | null,
+  te?: BookingActionErrorTranslate,
+): string {
+  const pick = (key: string, fallback: string, opts?: Record<string, unknown>) => {
+    if (te) {
+      const translated = te(key, opts);
+      if (translated && !translated.includes("bookingActions.errors")) return translated;
+    }
+    return fallback;
+  };
+  if (!error && !code) {
+    return pick("default", "The booking could not be updated. Please refresh and try again.");
+  }
   const normalized = (error || "").trim().toLowerCase();
   if (normalized === "failed to update booking" || code === "INTERNAL_ERROR") {
-    return "The booking could not be updated safely. Refresh the booking and try again; if it still fails, choose another slot or contact support.";
+    return pick(
+      "internal",
+      "The booking could not be updated safely. Refresh the booking and try again; if it still fails, choose another slot or contact support.",
+    );
   }
   switch (code) {
     case "INVALID_STATUS_TRANSITION":
-      return error || "That status change is not allowed from the booking's current state.";
+      return pick(
+        "INVALID_STATUS_TRANSITION",
+        error || "That status change is not allowed from the booking's current state.",
+      );
     case "VERIFICATION_NOT_COMPLETE":
-      return "Arrival must be verified by PIN or QR before starting this at-home service.";
+      return pick(
+        "VERIFICATION_NOT_COMPLETE",
+        "Arrival must be verified by PIN or QR before starting this at-home service.",
+      );
     case "HOUSECALL_STAGE_REQUIRED":
-      return error || "Complete the previous house-call step before starting service.";
+      return pick(
+        "HOUSECALL_STAGE_REQUIRED",
+        error || "Complete the previous house-call step before starting service.",
+      );
     case "CONFLICT":
-      return "This booking changed, reload";
+      return pick("CONFLICT", "This booking changed, reload");
     case "SLOT_NOT_AVAILABLE":
-      return error || "That time is no longer available. Choose another slot.";
+      return pick("SLOT_NOT_AVAILABLE", error || "That time is no longer available. Choose another slot.");
     case "VALIDATION_ERROR":
-      return error || "Check the booking details and try again.";
+      return pick("VALIDATION_ERROR", error || "Check the booking details and try again.");
     case "FORBIDDEN":
-      return error || "You do not have permission to update this booking.";
+      return pick("FORBIDDEN", error || "You do not have permission to update this booking.");
     case "NOT_FOUND":
-      return "This booking could not be found. Refresh your bookings list.";
+      return pick("NOT_FOUND", "This booking could not be found. Refresh your bookings list.");
     default:
-      return error || "The booking could not be updated. Please refresh and try again.";
+      return pick("defaultMessage", error || "The booking could not be updated. Please refresh and try again.", {
+        error,
+      });
   }
 }

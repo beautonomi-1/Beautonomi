@@ -499,6 +499,21 @@
               "giftCard": "Gift card",
               "cash": "Cash",
               "manualCard": "Manual card"
+            },
+            "closeOutComplete": "Complete",
+            "closeOutReview": "Review",
+            "closeOutBalanceDue": "Due {{amount}}",
+            "closeOutOverdueSince": "Overdue · {{day}} {{time}}",
+            "actions": {
+              "confirm": "Confirm",
+              "check_in": "Check in",
+              "start_journey": "Start journey",
+              "mark_arrived": "Mark arrived",
+              "start_service": "Start service",
+              "complete_service": "Complete service",
+              "cancel": "Cancel booking",
+              "mark_no_show": "Mark no-show",
+              "reset_to_confirmed": "Reset to confirmed"
             }
           },
           "etaPicker": {
@@ -2746,10 +2761,10 @@
           "expiringSoon_other": "{{count}} requests expiring soon",
           "expiringSoonHint": "Confirm or decline before the slot is released automatically.",
           "review": "Review",
-          "stalePending_one": "{{count}} booking request from past dates need your attention",
+          "stalePending_one": "{{count}} booking request from past dates needs your attention",
           "stalePending_other": "{{count}} booking requests from past dates need your attention",
           "stalePendingHint": "They've fallen outside your date strip — review and confirm or decline them.",
-          "closeOut_one": "{{count}} appointment need close-out",
+          "closeOut_one": "{{count}} appointment needs close-out",
           "closeOut_other": "{{count}} appointments need close-out",
           "closeOutToday": "{{today}} today",
           "closeOutOlder": " · {{older}} from earlier days",
@@ -2811,7 +2826,7 @@
           "expiringSoonA11y_other": "{{count}} booking requests expiring soon",
           "stalePendingA11y_one": "{{count}} booking request from past dates need your attention. Review.",
           "stalePendingA11y_other": "{{count}} booking requests from past dates need your attention. Review.",
-          "closeOutA11y_one": "{{count}} appointment need close-out",
+          "closeOutA11y_one": "{{count}} appointment needs close-out",
           "closeOutA11y_other": "{{count}} appointments need close-out",
           "appointmentsViewAllA11y": "{{count}} appointments — view all",
           "appointmentsViewAllUnavailableA11y": "Appointment count unavailable — view all",
@@ -2855,7 +2870,39 @@
           "journeyBody": "Add an ETA so the client can see when you expect to arrive. You can also start without one.",
           "journeyStartNoEta": "Start journey (no ETA)",
           "journeyStart": "Start journey",
-          "serviceFallback": "Service"
+          "serviceFallback": "Service",
+          "appointmentsTile": "Appointments",
+          "closeOutBreakdown": "{{today}} today · {{older}} from earlier days",
+          "closeOutBreakdownToday": "{{today}} today",
+          "closeOutAction": "Complete, mark no-show, or cancel each one.",
+          "closeOutBannerA11y_one": "{{count}} appointment needs close-out. View queue.",
+          "closeOutBannerA11y_other": "{{count}} appointments need close-out. View queue.",
+          "closeOutFilterTitle_one": "{{count}} needs close-out",
+          "closeOutFilterTitle_other": "{{count}} need close-out",
+          "rangeWeekOf": "Week of {{date}}",
+          "rangeUpcoming": "Upcoming",
+          "rangeAllTime": "All time",
+          "statsLinePending": "{{count}} pending",
+          "statsLineConfirmed": "{{count}} confirmed",
+          "statsLineActive": "{{count}} active",
+          "statsLineCompleted": "{{count}} completed",
+          "statsLineExcludes_one": "excludes {{count}} cancelled/no-show",
+          "statsLineExcludes_other": "excludes {{count}} cancelled/no-show",
+          "closeOutComplete": "Complete",
+          "closeOutReview": "Review",
+          "closeOutConfirmTitle": "Mark as completed?",
+          "closeOutConfirmBody": "Service time will be recorded now.",
+          "closeOutBalanceDue": "Balance due — open the booking to take payment before completing.",
+          "closeOutCompleted": "Appointment completed",
+          "closeOutCompleteFailed": "Could not complete this appointment",
+          "closeOutCompleteAll": "Complete all checked in",
+          "closeOutCompleteAllTitle": "Complete ready appointments?",
+          "closeOutCompleteAllBody_one": "Mark {{count}} checked-in or in-progress appointment as completed.",
+          "closeOutCompleteAllBody_other": "Mark {{count}} checked-in or in-progress appointments as completed.",
+          "closeOutCompleteAllDone_one": "{{count}} appointment completed",
+          "closeOutCompleteAllDone_other": "{{count}} appointments completed",
+          "closeOutCompleteAllNone": "No appointments could be completed from this selection",
+          "closeOutStartedRetryComplete": "Started, but not completed. Tap Complete again."
         },
         "bookingDetail": {
           "title": "Booking",
@@ -3082,6 +3129,7 @@
           "paystackTerminalSheetTitle": "Paystack Terminal",
           "cancelReasonPlaceholder": "Reason for cancellation…",
           "rateClientTitle": "Rate this client",
+          "rateClientIntro": "How was your experience with this client? You can submit a rating as soon as the booking is completed or marked no-show — the customer does not need to leave a review first.",
           "rateCommentPlaceholder": "Optional comment (e.g. punctual, great communication)",
           "customerProfileTitle": "Customer profile",
           "bookingHistoryTitle": "Booking history",
@@ -3294,7 +3342,22 @@
           "recommendCollectInPerson": "Collect in person (cash, card, or terminal)",
           "removeCta": "Remove",
           "lastVisitMemory": "Last visit",
-          "viewLook": "View look"
+          "viewLook": "View look",
+          "productHandoverBannerTitle": "{{count}} product orders still open",
+          "productHandoverBannerTitle_one": "1 product order still open",
+          "productHandoverBannerBody": "Hand over pickup items or finish delivery before you leave this screen.",
+          "productHandoverBannerA11y": "Open products section, {{count}} orders pending",
+          "productOrdersLinked": "{{count}} product orders linked to this visit",
+          "productPickupLabel": "Product pickup",
+          "productDeliveryLabel": "Product delivery",
+          "productFulfillmentUnknownLabel": "Product fulfillment",
+          "productQtyLine": "Qty {{count}}",
+          "appointmentPaymentLine": "Appointment payment: {{status}}",
+          "appointmentPaymentPaidNote": "— product payment is on this booking",
+          "setPickupFulfillment": "Set as pickup",
+          "setDeliveryFulfillment": "Set as delivery",
+          "manageInProductOrders": "Manage in product orders",
+          "couldNotUpdateFulfillment": "Could not update fulfillment"
         },
         "operatingHoursSettings": {
           "title": "Operating Hours",
@@ -8353,13 +8416,17 @@
           "optionalComment": "Optional comment",
           "submitRating": "Submit rating",
           "thanks": "Thanks!",
+          "ratingSavedBody": "Your rating was saved.",
           "freshCaption": "Fresh {{name}}",
           "shareBookingLink": "Share booking link",
           "continueDraftTitle": "Finish your Explore draft",
           "continueDraftBody": "You already started a post for this booking. Pick up where you left off or rate your client.",
           "continueDraftCta": "Continue draft",
           "lockNextVisit": "Lock next visit",
-          "lockNextHintPrepaid": "Share your booking link when they're ready for the next visit."
+          "lockNextHintPrepaid": "Share your booking link when they're ready for the next visit.",
+          "shareRebookYourself": "I'll send it myself",
+          "rebookStatusSent": "Sent",
+          "rebookOpenedWhatsAppDevice": "Opened WhatsApp on this device"
         },
         "advancedPricing": {
           "title": "Advanced pricing",
@@ -13387,6 +13454,44 @@
           "submitGenericError": "Something went wrong.",
           "supportFallback": "Don't know their handle? Open a Partner support ticket instead"
         }
+      },
+      "bookingActions": {
+        "errors": {
+          "default": "The booking could not be updated. Please refresh and try again.",
+          "internal": "The booking could not be updated safely. Refresh the booking and try again; if it still fails, choose another slot or contact support.",
+          "defaultMessage": "{{error}}",
+          "INVALID_STATUS_TRANSITION": "That status change is not allowed from the booking's current state.",
+          "VERIFICATION_NOT_COMPLETE": "Arrival must be verified by PIN or QR before starting this at-home service.",
+          "HOUSECALL_STAGE_REQUIRED": "Complete the previous house-call step before starting service.",
+          "CONFLICT": "This booking changed, reload",
+          "SLOT_NOT_AVAILABLE": "That time is no longer available. Choose another slot.",
+          "VALIDATION_ERROR": "Check the booking details and try again.",
+          "FORBIDDEN": "You do not have permission to update this booking.",
+          "NOT_FOUND": "This booking could not be found. Refresh your bookings list."
+        }
+      },
+      "bookingNextStep": {
+        "closeOut": {
+          "complete": {
+            "title": "Close out appointment",
+            "body": "Service should be finished. Mark completed and settle any remaining balance."
+          },
+          "providerCancel": {
+            "title": "Close out house call",
+            "body": "The visit window has passed. Review the booking and cancel or mark no-show if the client did not arrive."
+          },
+          "review": {
+            "title": "Needs close-out",
+            "body": "The appointment window has ended. Complete, reschedule, or mark no-show so reports stay accurate."
+          }
+        },
+        "products": {
+          "handOver": {
+            "title": "Hand over products",
+            "body": "{{count}} product orders still need pickup or delivery.",
+            "body_one": "One product order still needs pickup or delivery."
+          }
+        }
       }
     },
     "moreTab": {
@@ -18277,6 +18382,8 @@
           "depositRequiredToConfirm": "A deposit is required to confirm your booking",
           "messageCta": "Message",
           "bookNowCta": "Book Now",
+          "openUntil": "Open until {{time}}",
+          "closedOpens": "Closed · Opens {{day}} {{time}}",
           "tabShop": "Shop",
           "saveAction": "Save",
           "shareAction": "Share",
@@ -20376,6 +20483,7 @@
         "signUp": "Sign up",
         "helpCentre": "Help Centre",
         "learningCenter": "Learning Center",
+        "myTickets": "My tickets",
         "accountSettingsAria": "Account settings",
         "userMenuAria": "User menu",
         "userFallback": "User",
@@ -24386,7 +24494,13 @@
           "bookingsCount": "Bookings ({{count}})",
           "closeOutEmptyNow": "No appointments need close-out right now.",
           "noMatchFilter": "No bookings match this filter.",
-          "needCloseOut": "Need Close Out"
+          "needCloseOut": "Need Close Out",
+          "closeOutCompleted": "Appointment completed",
+          "closeOutCompleteFailed": "Could not complete this appointment",
+          "closeOutBalanceDue": "Balance due — open the booking to take payment before completing.",
+          "closeOutStartedRetryComplete": "Started, but not completed. Tap Complete again.",
+          "closeOutConfirmTitle": "Mark as completed?",
+          "closeOutConfirmBody": "Service time will be recorded now."
         },
         "bulkActions": {
           "selectAll": "Select All",
@@ -24586,7 +24700,24 @@
           "products": {
             "title": "Products",
             "fallback": "Product",
-            "quantity": "Quantity: {{count}}"
+            "quantity": "Quantity: {{count}}",
+            "pickupLabel": "Product pickup",
+            "deliveryLabel": "Product delivery",
+            "unknownFulfillmentLabel": "Product fulfillment",
+            "orderStatus": "Status: {{status}}",
+            "paidOnAppointment": "Paid on this appointment",
+            "markCollected": "Mark collected",
+            "manageDelivery": "Manage delivery",
+            "setPickup": "Set as pickup",
+            "setDelivery": "Set as delivery",
+            "openProductOrders": "Open product order",
+            "collected": "Marked as collected",
+            "collectFailed": "Could not mark collected",
+            "fulfillmentTypeSaved": "Fulfillment type updated",
+            "fulfillmentTypeFailed": "Could not update fulfillment type",
+            "handoverBannerTitle": "{{count}} product orders still open",
+            "handoverBannerTitle_one": "1 product order still open",
+            "handoverBannerBody": "Hand over pickup items or finish delivery."
           },
           "specialInstructions": {
             "title": "Special Instructions",
@@ -24909,7 +25040,9 @@
             "title": "Product pickup",
             "linkedOrder": "Linked product order",
             "linkedOrderStatus": "Linked product order · {{status}}",
-            "fulfillOrder": "Fulfill order"
+            "fulfillOrder": "Fulfill order",
+            "collected": "Marked as collected",
+            "collectFailed": "Could not mark collected"
           },
           "paymentSummaryBlock": {
             "title": "Payment summary",
@@ -25139,6 +25272,13 @@
           "giftCard": "Gift card",
           "cash": "Cash",
           "manualCard": "Manual card"
+        },
+        "scheduleCard": {
+          "closeOutDue": "Due",
+          "actions": {
+            "review_booking": "Review",
+            "complete_service": "Complete"
+          }
         }
       },
       "finance": {
@@ -33723,7 +33863,28 @@
         "lockNextVisit": "Lock next visit",
         "lockNextHintPrepaid": "Share your booking link when they're ready for the next visit.",
         "linkCopied": "Booking link copied",
-        "shareFailed": "Could not share the booking link"
+        "shareFailed": "Could not share the booking link",
+        "whatsAppOpenFailed": "Couldn't open WhatsApp on this device. Send the message yourself.",
+        "editRebookMessage": "Edit message",
+        "shareRebookYourself": "I'll send it myself",
+        "clientPhoneForRebook": "Number for {{name}}'s next visit",
+        "rebookStatusTitle": "Rebook",
+        "rebookStatusWhatsApp": "Opened WhatsApp",
+        "rebookStatusSent": "Sent",
+        "rebookStatusOpened": "Opened",
+        "rebookStatusBooked": "Booked",
+        "rebookStatusExpired": "Expired",
+        "rebookStatusCancelled": "Cancelled",
+        "rebookRelease": "Release held time",
+        "rebookReleased": "Held time released",
+        "sendRebookWhatsApp": "WhatsApp {{name}}",
+        "sendRebookSms": "Text {{name}}",
+        "sendRebookEmail": "Email {{name}}",
+        "sendRebookPush": "Notify {{name}}",
+        "rebookOpenedWhatsAppTo": "Opened WhatsApp to {{destination}}",
+        "rebookOpenedWhatsAppDevice": "Opened WhatsApp on this device",
+        "rebookLinkSent": "Rebook link sent",
+        "rebookLoading": "Loading rebook…"
       },
       "qrCodeDisplay": {
         "defaultTitle": "Verification QR Code",

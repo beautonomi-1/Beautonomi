@@ -37,7 +37,8 @@ import AnimatedRe, {
 import { addDays, endOfMonth, format, isSameDay, isTomorrow, startOfDay, startOfMonth } from "date-fns";
 import { usePagedProviderBookings } from "@/hooks/usePagedProviderBookings";
 import { useProvider } from "@/providers/ProviderContext";
-import { useApi } from "@/hooks/useApi";
+import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useAppDateLocale } from "@/hooks/useAppDateLocale";
 import { useBookingsRealtime } from "@/hooks/useBookingsRealtime";
 import { useBookingStatusActions } from "@/hooks/useBookingStatusActions";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -133,6 +134,9 @@ interface Booking {
   services?: BookingService[];
   /** Non-primary participant phones on merged group rows (list API). */
   participant_phones?: (string | null)[];
+  outstanding_balance?: number | null;
+  needs_close_out?: boolean | null;
+  suggested_close_out_action?: "complete" | "review" | "provider_cancel" | null;
 }
 
 function providerBookingMatchesSearch(b: Booking, query: string): boolean {
@@ -200,8 +204,13 @@ interface CloseOutBookingApiRow {
   scheduled_at: string;
   status: string;
   location_type?: string | null;
+  group_booking_id?: string | null;
+  total_amount?: number | null;
+  payment_status?: string | null;
+  balance_due?: number | null;
   suggested_close_out_action?: string | null;
-  customer?: { full_name?: string | null; phone?: string | null } | null;
+  suggestedAction?: string | null;
+  customer?: { full_name?: string | null; phone?: string | null; id?: string | null } | null;
   booking_services?: Array<{ offerings?: { title?: string } | null }> | null;
 }
 
@@ -348,6 +357,24 @@ export default function BookingsListScreen() {
       t(`provider.mobile.screens.bookingsList.${key}`, opts) as string,
     [t],
   );
+  const appLocale = useAppDateLocale();
+  const be = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.bookingActions.errors.${key}`, opts) as string,
+    [t],
+  );
+  const { execute: postBulkCloseOut } = useApiMutation<{
+    completed: number;
+    results: Array<{
+      id: string;
+      ok: boolean;
+      code?: string;
+      error?: string;
+      balance_due?: number;
+      retry?: boolean;
+    }>;
+  }>("post");
+  const [closeOutPendingIds, setCloseOutPendingIds] = useState<Set<string>>(() => new Set());
 
   const dateRangeOptions = useMemo(
     (): { label: string; value: DateRange }[] => [
@@ -520,7 +547,8 @@ export default function BookingsListScreen() {
       setDebouncedSearch("");
     }
     setViewMode("overview");
-  }, [routeParams.status]);
+    router.setParams({ status: undefined } as never);
+  }, [routeParams.status, router]);
 
   interface BookingsStatsPayload {
     booked_gmv: number;
@@ -703,35 +731,52 @@ export default function BookingsListScreen() {
         : "/api/provider/bookings/close-out",
     [selectedLocationId],
   );
-  const { data: closeOutData, refresh: refreshCloseOut } = useApi<CloseOutApiPayload>(closeOutUrl, {
-    staleTimeMs: 30_000,
-  });
+  const { data: closeOutData, refresh: refreshCloseOut, mutate: mutateCloseOut } = useApi<CloseOutApiPayload>(
+    closeOutUrl,
+    {
+      staleTimeMs: 30_000,
+    },
+  );
   const closeOutSummary = closeOutData?.summary;
   const closeOutBookingsAsList = useMemo((): Booking[] => {
     const rows = Array.isArray(closeOutData?.bookings) ? closeOutData!.bookings! : [];
-    return rows.map((row) => ({
-      id: row.id,
-      booking_number: row.booking_number ?? null,
-      status: row.status,
-      scheduled_at: row.scheduled_at,
-      location_type: row.location_type === "at_home" ? "at_home" : "at_salon",
-      total_amount: null,
-      customers: row.customer
-        ? {
-            id: "",
-            full_name: row.customer.full_name ?? null,
-            email: null,
-            phone: row.customer.phone ?? null,
-          }
-        : null,
-      services: (row.booking_services ?? []).map((service, index) => ({
-        id: `${row.id}-${index}`,
-        offering_name: service.offerings?.title ?? bl("serviceFallback"),
-      })),
-    }));
-  }, [closeOutData?.bookings]);
+    return rows.map((row) => {
+      const suggestion = (row.suggested_close_out_action ?? row.suggestedAction ?? "review") as
+        | "complete"
+        | "review"
+        | "provider_cancel";
+      const groupId = row.group_booking_id ?? null;
+      return {
+        id: row.id,
+        booking_number: row.booking_number ?? null,
+        status: row.status,
+        db_status: row.status,
+        scheduled_at: row.scheduled_at,
+        location_type: row.location_type === "at_home" ? "at_home" : "at_salon",
+        total_amount: row.total_amount ?? null,
+        payment_status: row.payment_status ?? null,
+        outstanding_balance: row.balance_due ?? null,
+        is_group_booking: Boolean(groupId),
+        group_booking_id: groupId,
+        needs_close_out: true,
+        suggested_close_out_action: suggestion,
+        customers: row.customer
+          ? {
+              id: row.customer.id ?? "",
+              full_name: row.customer.full_name ?? null,
+              email: null,
+              phone: row.customer.phone ?? null,
+            }
+          : null,
+        services: (row.booking_services ?? []).map((service, index) => ({
+          id: `${row.id}-${index}`,
+          offering_name: service.offerings?.title ?? bl("serviceFallback"),
+        })),
+      };
+    });
+  }, [closeOutData?.bookings, bl]);
 
-  const { data: navCounts } = useApi<{
+  const { data: navCounts, refresh: refreshNavCounts } = useApi<{
     waiting_room: number;
     stale_pending_bookings: number;
     expiring_soon_pending?: number;
@@ -785,6 +830,34 @@ export default function BookingsListScreen() {
     viewMode,
   ]);
 
+  const refreshListsAfterAction = useCallback(async () => {
+    await refreshAllBookings();
+    await refreshCloseOut();
+    await refreshNavCounts();
+  }, [refreshAllBookings, refreshCloseOut, refreshNavCounts]);
+
+  const optimisticRemoveCloseOut = useCallback(
+    (bookingIds: string | string[]) => {
+      if (!closeOutData) return;
+      const drop = new Set(Array.isArray(bookingIds) ? bookingIds : [bookingIds]);
+      if (drop.size === 0) return;
+      const nextBookings = (closeOutData.bookings ?? []).filter((row) => !drop.has(row.id));
+      const removed = (closeOutData.bookings ?? []).length - nextBookings.length;
+      const prevTotal = closeOutData.summary?.total ?? (closeOutData.bookings ?? []).length;
+      mutateCloseOut({
+        ...closeOutData,
+        summary: {
+          ...closeOutData.summary,
+          total: Math.max(0, prevTotal - removed),
+          today: closeOutData.summary?.today,
+          older: closeOutData.summary?.older,
+        },
+        bookings: nextBookings,
+      });
+    },
+    [closeOutData, mutateCloseOut],
+  );
+
   const refreshOverlays = useCallback(async () => {
     await refreshTimeBlocks();
     await refreshAvailability();
@@ -814,8 +887,13 @@ export default function BookingsListScreen() {
   const { applyStatus, pendingIds } = useBookingStatusActions({
     bookings: stripBookingsMerged,
     mutate: mutateMerged,
-    refresh: refreshAllBookings,
+    refresh: refreshListsAfterAction,
   });
+
+  const mergedPendingIds = useMemo(
+    () => new Set([...pendingIds, ...closeOutPendingIds]),
+    [pendingIds, closeOutPendingIds],
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -833,11 +911,16 @@ export default function BookingsListScreen() {
     setTimeout(() => setIsLive(false), 1200);
   }, []);
 
+  const refreshListsRef = useRef(refreshListsAfterAction);
+  useEffect(() => {
+    refreshListsRef.current = refreshListsAfterAction;
+  }, [refreshListsAfterAction]);
+
   useBookingsRealtime(
     provider?.id,
     bookingsListFocused,
     async () => {
-      await refreshAllBookings();
+      await refreshListsRef.current();
       pumpLive();
     },
     refreshOverlays,
@@ -899,8 +982,10 @@ export default function BookingsListScreen() {
   // effects can call it without re-subscribing or re-firing every time refresh
   // changes identity (which happens whenever filters or fetched data change,
   // and also caused "cannot add postgres_changes after subscribe").
-  const refreshRef = useRef(refreshAllBookings);
-  useEffect(() => { refreshRef.current = refreshAllBookings; }, [refreshAllBookings]);
+  const refreshRef = useRef(refreshListsAfterAction);
+  useEffect(() => {
+    refreshRef.current = refreshListsAfterAction;
+  }, [refreshListsAfterAction]);
 
   // The paged bookings hooks already fetch on mount and refetch when their
   // filters (date range / location / view mode) change. The focus refresh only
@@ -1155,7 +1240,9 @@ export default function BookingsListScreen() {
           ? bl("dayLabelToday")
           : isTomorrow(selectedDate)
             ? bl("dayLabelTomorrow")
-            : format(selectedDate, "EEE, MMM d"),
+            : new Intl.DateTimeFormat(appLocale, { weekday: "short", month: "short", day: "numeric" }).format(
+                selectedDate,
+              ),
       count: active.length,
       revenue: active.reduce((n, b) => addMoney(n, Number(b.total_amount || 0)), 0),
       pending,
@@ -1175,15 +1262,149 @@ export default function BookingsListScreen() {
       }
       const r = await applyStatus(bookingId, action);
       if (r.error) {
-        setToast({ message: mapProviderBookingActionError(r.error, r.errorCode), type: "error" });
+        setToast({
+          message: mapProviderBookingActionError(r.error, r.errorCode, be),
+          type: "error",
+        });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       } else {
+        if (isCloseOutFilter) optimisticRemoveCloseOut(bookingId);
         setToast({ message: successMessage, type: "success" });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     },
-    [applyStatus],
+    [applyStatus, be, isCloseOutFilter, optimisticRemoveCloseOut],
   );
+
+  const runCloseOutComplete = useCallback(
+    async (bookingId: string) => {
+      setCloseOutPendingIds((prev) => new Set(prev).add(bookingId));
+      try {
+        const res = await postBulkCloseOut("/api/provider/bookings/close-out/bulk-complete", {
+          booking_ids: [bookingId],
+        });
+        const row = res.data?.results?.find((r) => r.id === bookingId);
+        if (res.error || !row?.ok) {
+          const code = row?.code ?? res.errorCode;
+          if (code === "BALANCE_DUE") {
+            setToast({ message: bl("closeOutBalanceDue"), type: "error" });
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            router.push(`/(app)/(tabs)/bookings/${bookingId}` as never);
+            return;
+          }
+          if (row?.retry) {
+            setToast({ message: bl("closeOutStartedRetryComplete"), type: "error" });
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            return;
+          }
+          setToast({
+            message: row?.error ?? res.error ?? bl("closeOutCompleteFailed"),
+            type: "error",
+          });
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
+        optimisticRemoveCloseOut(bookingId);
+        setToast({ message: bl("closeOutCompleted"), type: "success" });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await refreshListsAfterAction();
+      } finally {
+        setCloseOutPendingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(bookingId);
+          return next;
+        });
+      }
+    },
+    [postBulkCloseOut, bl, router, optimisticRemoveCloseOut, refreshListsAfterAction],
+  );
+
+  const handleCloseOutComplete = useCallback(
+    (b: Booking) => {
+      Alert.alert(bl("closeOutConfirmTitle"), bl("closeOutConfirmBody"), [
+        { text: bl("dismiss"), style: "cancel" },
+        {
+          text: bl("closeOutComplete"),
+          onPress: () => void runCloseOutComplete(b.id),
+        },
+      ]);
+    },
+    [bl, runCloseOutComplete],
+  );
+
+  const handleMarkNoShow = useCallback(
+    async (b: Booking) => {
+      if (b.is_group_booking && b.group_booking_id) {
+        router.push({
+          pathname: "/(app)/(tabs)/more/group-bookings",
+          params: { open_group_id: b.group_booking_id },
+        } as never);
+        return;
+      }
+      const action: ProviderBookingAction = {
+        id: "mark_no_show",
+        label: "Mark no-show",
+        dbTarget: "no_show",
+        kind: "patch-status",
+        payload: { status: "no_show" },
+      };
+      await handleApplyStatus(
+        b.id,
+        action,
+        t("provider.mobile.components.bookings.scheduleCard.actionSaved", {
+          action: t("provider.mobile.components.bookings.scheduleCard.actions.mark_no_show"),
+        }) as string,
+      );
+    },
+    [router, handleApplyStatus, t],
+  );
+
+  const closeOutBulkCompleteIds = useMemo(
+    () =>
+      closeOutBookingsAsList
+        .filter((b) => {
+          const st = (b.db_status || b.status || "").toLowerCase();
+          return st === "in_progress" || st === "checked_in";
+        })
+        .map((b) => b.id),
+    [closeOutBookingsAsList],
+  );
+
+  const handleCloseOutCompleteAll = useCallback(() => {
+    if (closeOutBulkCompleteIds.length === 0) return;
+    Alert.alert(bl("closeOutCompleteAllTitle"), bl("closeOutCompleteAllBody", { count: closeOutBulkCompleteIds.length }), [
+      { text: bl("dismiss"), style: "cancel" },
+      {
+        text: bl("closeOutCompleteAll"),
+        onPress: () => {
+          void (async () => {
+            setCloseOutPendingIds((prev) => {
+              const next = new Set(prev);
+              closeOutBulkCompleteIds.forEach((id) => next.add(id));
+              return next;
+            });
+            try {
+              const res = await postBulkCloseOut("/api/provider/bookings/close-out/bulk-complete", {
+                booking_ids: closeOutBulkCompleteIds,
+              });
+              const completed = res.data?.completed ?? 0;
+              optimisticRemoveCloseOut(
+                (res.data?.results ?? []).filter((row) => row.ok).map((row) => row.id),
+              );
+              if (completed > 0) {
+                setToast({ message: bl("closeOutCompleteAllDone", { count: completed }), type: "success" });
+              } else {
+                setToast({ message: bl("closeOutCompleteAllNone"), type: "error" });
+              }
+              await refreshListsAfterAction();
+            } finally {
+              setCloseOutPendingIds(new Set());
+            }
+          })();
+        },
+      },
+    ]);
+  }, [closeOutBulkCompleteIds, bl, postBulkCloseOut, optimisticRemoveCloseOut, refreshListsAfterAction]);
 
   const confirmStartJourney = useCallback(async () => {
     if (!journeyPrompt) return;
@@ -1197,7 +1418,7 @@ export default function BookingsListScreen() {
       },
     });
     if (r.error) {
-      setToast({ message: mapProviderBookingActionError(r.error, r.errorCode), type: "error" });
+      setToast({ message: mapProviderBookingActionError(r.error, r.errorCode, be), type: "error" });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } else {
       setToast({ message: successMessage, type: "success" });
@@ -1226,15 +1447,18 @@ export default function BookingsListScreen() {
 
   const statsReconciliationLine = useMemo(() => {
     if (!statsSnapshot) return "";
-    return buildStatsReconciliationLine({
-      pending_count: statsSnapshot.pendingCount,
-      confirmed_count: statsSnapshot.confirmedCount,
-      in_progress_count: statsSnapshot.inProgressCount,
-      completed_count: statsSnapshot.completedCount,
-      cancelled_count: statsSnapshot.cancelledCount,
-      no_show_count: statsSnapshot.noShowCount,
-    });
-  }, [statsSnapshot]);
+    return buildStatsReconciliationLine(
+      {
+        pending_count: statsSnapshot.pendingCount,
+        confirmed_count: statsSnapshot.confirmedCount,
+        in_progress_count: statsSnapshot.inProgressCount,
+        completed_count: statsSnapshot.completedCount,
+        cancelled_count: statsSnapshot.cancelledCount,
+        no_show_count: statsSnapshot.noShowCount,
+      },
+      bl,
+    );
+  }, [statsSnapshot, bl]);
 
   const statsListRangeMismatch =
     viewMode === "overview" && statsRangeToDateRange(statsRange) !== dateRange;
@@ -1247,8 +1471,8 @@ export default function BookingsListScreen() {
   }, [statsRange, bl]);
 
   const dateRangeLabel = useMemo(
-    () => buildOverviewDateRangeLabel(dateRange, providerTimezone),
-    [dateRange, providerTimezone],
+    () => buildOverviewDateRangeLabel(dateRange, providerTimezone, { bl, locale: appLocale }),
+    [dateRange, providerTimezone, bl, appLocale],
   );
 
   const applyJumpToDate = useCallback(
@@ -1387,7 +1611,7 @@ export default function BookingsListScreen() {
         <BookingScheduleCard
           booking={item.booking}
           currency={currency}
-          pendingIds={pendingIds}
+          pendingIds={mergedPendingIds}
           isNextUpcoming={item.booking.id === nextUpcomingId}
           onOpen={(booking) => openBooking(booking as Booking)}
           onApplyStatus={handleApplyStatus}
@@ -1395,12 +1619,18 @@ export default function BookingsListScreen() {
           canCancel={bookingListCanCancel(item.booking, canCancelAppointments)}
           onReschedule={(booking) => openBookingReschedule(booking as Booking)}
           onCancel={(booking) => openBookingCancel(booking as Booking)}
+          closeOutMode={isCloseOutFilter}
+          onCloseOutComplete={(booking) => handleCloseOutComplete(booking as Booking)}
+          onMarkNoShow={(booking) => void handleMarkNoShow(booking as Booking)}
         />
       );
     },
     [
       currency,
-      pendingIds,
+      mergedPendingIds,
+      isCloseOutFilter,
+      handleCloseOutComplete,
+      handleMarkNoShow,
       nextUpcomingId,
       openBooking,
       handleApplyStatus,
@@ -1588,19 +1818,30 @@ export default function BookingsListScreen() {
                     accessibilityState={{ selected }}
                     accessibilityLabel={
                       totalCount > 0
-                        ? bl("dateStripScheduledA11y", { date: format(day, "EEEE MMMM d"), count: totalCount })
-                        : format(day, "EEEE MMMM d")
+                        ? bl("dateStripScheduledA11y", {
+                            date: new Intl.DateTimeFormat(appLocale, {
+                              weekday: "long",
+                              month: "long",
+                              day: "numeric",
+                            }).format(day),
+                            count: totalCount,
+                          })
+                        : new Intl.DateTimeFormat(appLocale, {
+                            weekday: "long",
+                            month: "long",
+                            day: "numeric",
+                          }).format(day)
                     }
                   >
                     <Text
                       style={twStyle(`text-[11px] font-semibold ${selected ? "text-white" : "text-gray-500"}`)}
                     >
-                      {format(day, "EEE")}
+                      {new Intl.DateTimeFormat(appLocale, { weekday: "short" }).format(day)}
                     </Text>
                     <Text
                       style={twStyle(`mt-0.5 text-[17px] font-bold ${selected ? "text-white" : info?.isClosed ? "text-gray-400" : "text-gray-900"}`)}
                     >
-                      {format(day, "d")}
+                      {new Intl.DateTimeFormat(appLocale, { day: "numeric" }).format(day)}
                     </Text>
                     {info?.isClosed && !selected ? (
                       <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>×</Text>
@@ -1770,11 +2011,14 @@ export default function BookingsListScreen() {
                     {bl("closeOut", { count: closeOutSummary?.total ?? 0 })}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-xs text-orange-800")}>
-                    {bl("closeOutToday", { today: closeOutSummary?.today ?? 0 })}
                     {(closeOutSummary?.older ?? 0) > 0
-                      ? bl("closeOutOlder", { older: closeOutSummary?.older ?? 0 })
-                      : ""}
-                    {bl("closeOutHint")}
+                      ? bl("closeOutBreakdown", {
+                          today: closeOutSummary?.today ?? 0,
+                          older: closeOutSummary?.older ?? 0,
+                        })
+                      : bl("closeOutBreakdownToday", { today: closeOutSummary?.today ?? 0 })}
+                    {" "}
+                    {bl("closeOutAction")}
                   </Text>
                 </View>
                 <Text style={twStyle("ms-2 text-xs font-bold text-orange-900")}>{bl("view")}</Text>
@@ -1792,6 +2036,7 @@ export default function BookingsListScreen() {
               { backgroundColor: "#fff7ed", borderColor: "#fed7aa", borderLeftWidth: 4, borderLeftColor: "#ea580c" },
             ]}
             accessibilityRole="button"
+            accessibilityLabel={bl("closeOutBannerA11y", { count: closeOutSummary?.total ?? 0 })}
           >
             <Ionicons name="clipboard-outline" size={18} color="#c2410c" style={{ marginEnd: 10 }} />
             <View style={{ flex: 1 }}>
@@ -1802,7 +2047,7 @@ export default function BookingsListScreen() {
                 {bl("closeOutFilterHint")}
               </Text>
             </View>
-            <Text style={twStyle("ms-2 text-xs font-bold text-orange-900")}>{bl("filter")}</Text>
+            <Text style={twStyle("ms-2 text-xs font-bold text-orange-900")}>{bl("view")}</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -1865,7 +2110,7 @@ export default function BookingsListScreen() {
                 <View style={twStyle("flex-row items-center gap-1")}>
                   <Ionicons name="calendar-outline" size={12} color="#6b7280" />
                   <Text style={twStyle("text-[10px] font-semibold uppercase tracking-wide text-gray-500")}>
-                    {bl("appointments")}
+                    {bl("appointmentsTile")}
                   </Text>
                 </View>
                 <Text style={twStyle("mt-0.5 text-lg font-bold text-gray-900")}>
@@ -2098,6 +2343,21 @@ export default function BookingsListScreen() {
           />
         </View>
 
+        {isCloseOutFilter && closeOutBulkCompleteIds.length > 0 ? (
+          <TouchableOpacity
+            onPress={handleCloseOutCompleteAll}
+            activeOpacity={0.85}
+            style={[
+              twStyle("mb-3 flex-row items-center justify-center rounded-xl px-3 py-2.5"),
+              { backgroundColor: Colors.primary },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={bl("closeOutCompleteAll")}
+          >
+            <Text style={twStyle("text-sm font-bold text-white")}>{bl("closeOutCompleteAll")}</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <View style={{ marginBottom: 10 }}>
           <FilterChipGroup options={statusOptions} selected={statusFilter} onSelect={setStatusFilter} />
         </View>
@@ -2139,6 +2399,7 @@ export default function BookingsListScreen() {
       applyStatsTileFilter,
       syncListRangeToStats,
       search,
+      appLocale,
       dateRange,
       listSort,
       statusFilter,

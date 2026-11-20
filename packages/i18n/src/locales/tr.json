@@ -476,7 +476,32 @@
             "moreActionsA11y": "More booking actions",
             "bookingForA11y": "Booking for {{name}}",
             "actionSaved": "{{action}} saved",
-            "minDuration": "{{count}} min"
+            "minDuration": "{{count}} min",
+            "closeOutComplete": "Complete",
+            "closeOutReview": "Review",
+            "closeOutBalanceDue": "Due {{amount}}",
+            "closeOutOverdueSince": "Overdue · {{day}} {{time}}",
+            "actions": {
+              "confirm": "Confirm",
+              "check_in": "Check in",
+              "start_journey": "Start journey",
+              "mark_arrived": "Mark arrived",
+              "start_service": "Start service",
+              "complete_service": "Complete service",
+              "cancel": "Cancel booking",
+              "mark_no_show": "Mark no-show",
+              "reset_to_confirmed": "Reset to confirmed"
+            },
+            "tillPayment": {
+              "online": "Online",
+              "yoco": "Yoco",
+              "cardMachine": "Card machine",
+              "paystackTerminal": "Paystack terminal",
+              "wallet": "Wallet",
+              "giftCard": "Gift card",
+              "cash": "Cash",
+              "manualCard": "Manual card"
+            }
           },
           "etaPicker": {
             "estimatedArrival": "Estimated arrival",
@@ -2803,7 +2828,38 @@
           "journeyBody": "Add an ETA so the client can see when you expect to arrive. You can also start without one.",
           "journeyStartNoEta": "Start journey (no ETA)",
           "journeyStart": "Start journey",
-          "serviceFallback": "Service"
+          "serviceFallback": "Service",
+          "appointmentsTile": "Appointments",
+          "closeOutBreakdown": "{{today}} today · {{older}} from earlier days",
+          "closeOutBreakdownToday": "{{today}} today",
+          "closeOutAction": "Complete, mark no-show, or cancel each one.",
+          "closeOutBannerA11y_one": "{{count}} appointment needs close-out. View queue.",
+          "closeOutBannerA11y_other": "{{count}} appointments need close-out. View queue.",
+          "closeOutFilterTitle_one": "{{count}} need close-out",
+          "closeOutFilterTitle_other": "{{count}} need close-out",
+          "rangeWeekOf": "Week of {{date}}",
+          "rangeUpcoming": "Upcoming",
+          "rangeAllTime": "All time",
+          "statsLinePending": "{{count}} pending",
+          "statsLineConfirmed": "{{count}} confirmed",
+          "statsLineActive": "{{count}} active",
+          "statsLineCompleted": "{{count}} completed",
+          "statsLineExcludes_one": "excludes {{count}} cancelled/no-show",
+          "statsLineExcludes_other": "excludes {{count}} cancelled/no-show",
+          "closeOutComplete": "Complete",
+          "closeOutReview": "Review",
+          "closeOutConfirmTitle": "Mark as completed?",
+          "closeOutConfirmBody": "Service time will be recorded now.",
+          "closeOutBalanceDue": "Balance due — open the booking to take payment before completing.",
+          "closeOutCompleted": "Appointment completed",
+          "closeOutCompleteFailed": "Could not complete this appointment",
+          "closeOutCompleteAll": "Complete all checked in",
+          "closeOutCompleteAllTitle": "Complete ready appointments?",
+          "closeOutCompleteAllBody_one": "Mark {{count}} checked-in or in-progress appointment as completed.",
+          "closeOutCompleteAllBody_other": "Mark {{count}} checked-in or in-progress appointments as completed.",
+          "closeOutCompleteAllDone_one": "{{count}} appointment completed",
+          "closeOutCompleteAllDone_other": "{{count}} appointments completed",
+          "closeOutCompleteAllNone": "No appointments could be completed from this selection"
         },
         "bookingDetail": {
           "title": "Booking",
@@ -13169,6 +13225,37 @@
           "paycloudSection": "PayCloud amount mismatch",
           "unavailable": "Enable Yoco or Beautonomi card machines to use this report."
         }
+      },
+      "bookingActions": {
+        "errors": {
+          "default": "The booking could not be updated. Please refresh and try again.",
+          "internal": "The booking could not be updated safely. Refresh the booking and try again; if it still fails, choose another slot or contact support.",
+          "defaultMessage": "{{error}}",
+          "INVALID_STATUS_TRANSITION": "That status change is not allowed from the booking's current state.",
+          "VERIFICATION_NOT_COMPLETE": "Arrival must be verified by PIN or QR before starting this at-home service.",
+          "HOUSECALL_STAGE_REQUIRED": "Complete the previous house-call step before starting service.",
+          "CONFLICT": "This booking changed, reload",
+          "SLOT_NOT_AVAILABLE": "That time is no longer available. Choose another slot.",
+          "VALIDATION_ERROR": "Check the booking details and try again.",
+          "FORBIDDEN": "You do not have permission to update this booking.",
+          "NOT_FOUND": "This booking could not be found. Refresh your bookings list."
+        }
+      },
+      "bookingNextStep": {
+        "closeOut": {
+          "complete": {
+            "title": "Close out appointment",
+            "body": "Service should be finished. Mark completed and settle any remaining balance."
+          },
+          "providerCancel": {
+            "title": "Close out house call",
+            "body": "The visit window has passed. Review the booking and cancel or mark no-show if the client did not arrive."
+          },
+          "review": {
+            "title": "Needs close-out",
+            "body": "The appointment window has ended. Complete, reschedule, or mark no-show so reports stay accurate."
+          }
+        }
       }
     },
     "moreTab": {
@@ -20112,7 +20199,8 @@
         "searching": "Recherche...",
         "suggestionProvider": "Prestataire",
         "suggestionCategory": "Catégorie",
-        "noSuggestions": "Non suggestions found"
+        "noSuggestions": "Non suggestions found",
+        "myTickets": "Biletlerim"
       },
       "bottomNav": {
         "home": "Accueil",

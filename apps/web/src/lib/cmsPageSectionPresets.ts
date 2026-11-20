@@ -208,6 +208,12 @@ export const CMS_PAGE_SECTION_PRESETS: Record<string, { value: string; label: st
     { value: "hero_title", label: "Help centre — hero title" },
     { value: "search_placeholder", label: "Search placeholder" },
     { value: "search_suggestions", label: "Search suggestions (JSON array of strings)" },
+    { value: "cta_heading", label: "CTA — heading" },
+    { value: "cta_body_guest", label: "CTA — body (logged out)" },
+    { value: "cta_body_authenticated", label: "CTA — body (logged in)" },
+    { value: "cta_mobile_hint_guest", label: "CTA — mobile hint (logged out)" },
+    { value: "company_notice", label: "Company / support notice (footer text on help page)" },
+    { value: "explore_cards", label: "Explore more — cards (JSON array of title, description, href)" },
   ],
 };
 

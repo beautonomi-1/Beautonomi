@@ -6,8 +6,10 @@ import {
   successResponse,
   notFoundResponse,
   handleApiError,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { isBookingResourceLocked } from "@beautonomi/utils";
 
 /**
  * DELETE /api/provider/bookings/[id]/resources/[resourceId]
@@ -30,11 +32,14 @@ export async function DELETE(
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id")
+      .select("id, status")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
     if (!booking) return notFoundResponse("Booking not found");
+    if (isBookingResourceLocked((booking as { status?: string }).status)) {
+      return errorResponse("Cannot change resources on a closed booking.", "BOOKING_CLOSED", 409);
+    }
 
     const { data: existing, error: findError } = await adminSupabase
       .from("booking_resources")

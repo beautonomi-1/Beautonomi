@@ -38,6 +38,14 @@ describe("computeBookingFlowKey", () => {
     expect(a).toBe(b);
   });
 
+  it("ignores rebook_offer so opening the link does not reset the hold", () => {
+    const a = computeBookingFlowKey(
+      new URLSearchParams("slug=a&service=s1&hold_id=h1&rebook_offer=o1"),
+    );
+    const b = computeBookingFlowKey(new URLSearchParams("slug=a&service=s1&hold_id=h1"));
+    expect(a).toBe(b);
+  });
+
   it("changes when slug changes", () => {
     const a = computeBookingFlowKey(new URLSearchParams("slug=a&service=s1"));
     const b = computeBookingFlowKey(new URLSearchParams("slug=b&service=s1"));

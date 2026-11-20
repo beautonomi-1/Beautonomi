@@ -25,6 +25,8 @@ export interface HubScheduleBooking {
   customer_running_late_minutes?: number | null;
   customer_running_late_at?: string | null;
   services?: { offering_name?: string; service_name?: string; name?: string }[];
+  balance_due?: number | null;
+  suggested_close_out_action?: "complete" | "review" | "provider_cancel" | null;
 }
 
 interface BookingScheduleCardProps {
@@ -34,6 +36,7 @@ interface BookingScheduleCardProps {
   primaryAction?: ProviderBookingAction | null;
   onOpen: (booking: HubScheduleBooking) => void;
   onPrimaryAction?: (booking: HubScheduleBooking, action: ProviderBookingAction) => void;
+  closeOutMode?: boolean;
 }
 
 function serviceLabel(booking: HubScheduleBooking, bookingFallback: string, serviceFallback: string): string {
@@ -57,6 +60,7 @@ export function BookingScheduleCard({
   primaryAction,
   onOpen,
   onPrimaryAction,
+  closeOutMode = false,
 }: BookingScheduleCardProps) {
   const { t } = useTranslation();
   const customer = booking.customer_name?.trim() || t("web.provider.common.customer");
@@ -98,6 +102,11 @@ export function BookingScheduleCard({
             {booking.total_amount != null && booking.total_amount > 0 ? (
               <p className="text-xs text-gray-500 mt-1">
                 <Money amount={booking.total_amount} />
+              </p>
+            ) : null}
+            {closeOutMode && (booking.balance_due ?? 0) > 0 ? (
+              <p className="text-[10px] font-semibold uppercase tracking-wide rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 inline-block mt-1">
+                {t("web.provider.bookings.scheduleCard.closeOutDue")}
               </p>
             ) : null}
           </div>

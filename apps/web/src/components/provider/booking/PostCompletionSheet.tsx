@@ -4,9 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Share2, Trophy } from "lucide-react";
 import {
-  buildProviderPublicBookUrl,
-  providerLockNextShareSms,
-  providerPostCashCompleteShareLine,
+  buildWebNavigatorSharePayload,
+  ensureSingleLinkInMessage,
 } from "@beautonomi/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +38,9 @@ type PostCompletionSheetProps = {
 
 export const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
 
+type JsonRecord = Record<string, unknown>;
+type RebookOfferResponse = { data?: JsonRecord } & JsonRecord;
+
 export function PostCompletionSheet({
   open,
   bookingId,
@@ -52,14 +54,38 @@ export function PostCompletionSheet({
 }: PostCompletionSheetProps) {
   const { t } = useTranslation();
   const router = useRouter();
-  const [providerSlug, setProviderSlug] = useState<string | null>(null);
   const [step, setStep] = useState<PostCompletionStep>("choose");
   const [hasExistingRating, setHasExistingRating] = useState(false);
   const [rateStars, setRateStars] = useState(0);
   const [rateComment, setRateComment] = useState("");
   const [submittingRate, setSubmittingRate] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
+  const [rebookLoading, setRebookLoading] = useState(false);
+  const [rebookPreview, setRebookPreview] = useState<{
+    clientFirstName: string;
+    providerHint: string;
+    messageBody: string;
+    link: string;
+    channel: string;
+    channelReason: string | null;
+    maskedDestination: string | null;
+    canWhatsAppHandoff: boolean;
+    canEditClientPhone: boolean;
+    customerUserId?: string;
+    existingOffer?: {
+      id: string;
+      status: string;
+      openedAt: string | null;
+      sentAt: string | null;
+      bookedAt: string | null;
+    } | null;
+  } | null>(null);
+  const [rebookMessage, setRebookMessage] = useState("");
+  const [rebookStatus, setRebookStatus] = useState<string | null>(null);
+  const [editMessageOpen, setEditMessageOpen] = useState(false);
+  const [clientPhoneDraft, setClientPhoneDraft] = useState("");
   const seenRef = useRef(false);
+  const dismissTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!open || !bookingId) return;
@@ -73,39 +99,106 @@ export function PostCompletionSheet({
       )
       .then((res) => setHasExistingRating(Boolean(res.data?.has_rating ?? res.has_rating)))
       .catch(() => setHasExistingRating(false));
-    void fetcher
-      .get<{ data?: { slug?: string | null }; slug?: string | null }>("/api/provider/profile")
-      .then((res) => setProviderSlug(res.data?.slug ?? res.slug ?? null))
-      .catch(() => setProviderSlug(null));
   }, [open, bookingId]);
 
-  const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-  const providerPublicBookUrl =
-    providerSlug && appBase
-      ? buildProviderPublicBookUrl(appBase, providerSlug, { serviceId: primaryOfferingId ?? undefined })
-      : null;
+  useEffect(() => {
+    if (!open || !bookingId) return;
+    setRebookLoading(true);
+    setRebookStatus(null);
+    fetcher
+      .get<RebookOfferResponse>(
+        `/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`,
+      )
+      .then((res) => {
+        const row = (res.data ?? res) as Record<string, unknown>;
+        setRebookPreview(row as typeof rebookPreview);
+        setRebookMessage(String(row.messageBody ?? ""));
+      })
+      .catch(() => setRebookPreview(null))
+      .finally(() => setRebookLoading(false));
+  }, [open, bookingId]);
 
-  const shareLockNext = async () => {
-    if (!providerPublicBookUrl) return;
-    const msg = providerLockNextShareSms(providerPublicBookUrl, !walkInOrUnpaidComplete);
+  const shareRebookYourself = async () => {
+    if (!rebookPreview) return;
+    setRebookLoading(true);
     try {
+      const res = await fetcher.post<{
+        data?: { message_body?: string; channel?: string };
+      }>(`/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`, {
+        message: rebookMessage,
+        deliver: "self",
+        ...(clientPhoneDraft.trim() ? { client_phone: clientPhoneDraft.trim() } : {}),
+      });
+      const data = (res.data ?? res) as { message_body?: string; link?: string };
+      const link = data.link || rebookPreview.link;
+      const msg = data.message_body || ensureSingleLinkInMessage(rebookMessage, link);
+      setRebookMessage(msg);
       if (typeof navigator !== "undefined" && navigator.share) {
-        await navigator.share({ text: msg, url: providerPublicBookUrl });
+        await navigator.share(buildWebNavigatorSharePayload(link, msg));
         return;
       }
       await navigator.clipboard.writeText(msg);
       toast.success(t("web.provider.postCompletion.linkCopied"));
     } catch {
-      try {
-        await navigator.clipboard.writeText(msg);
-        toast.success(t("web.provider.postCompletion.linkCopied"));
-      } catch {
-        toast.error(t("web.provider.postCompletion.shareFailed"));
-      }
+      toast.error(t("web.provider.postCompletion.shareFailed"));
+    } finally {
+      setRebookLoading(false);
     }
   };
 
+  const sendRebook = async () => {
+    if (!rebookPreview) return;
+    setRebookLoading(true);
+    try {
+      const res = await fetcher.post<{ data?: { whatsapp_url?: string | null; channel?: string } }>(
+        `/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`,
+        {
+          message: rebookMessage,
+          ...(clientPhoneDraft.trim() ? { client_phone: clientPhoneDraft.trim() } : {}),
+        },
+      );
+      const data = res.data ?? (res as { whatsapp_url?: string; channel?: string });
+      const wa = (data as { whatsapp_url?: string | null }).whatsapp_url;
+      const channel = String((data as { channel?: string }).channel ?? "");
+      if (wa) {
+        const opened = window.open(wa, "_blank", "noopener,noreferrer");
+        if (!opened) {
+          toast.error(t("web.provider.postCompletion.whatsAppOpenFailed"));
+          return;
+        }
+        setRebookStatus(
+          rebookPreview.maskedDestination
+            ? t("web.provider.postCompletion.rebookOpenedWhatsAppTo", {
+                destination: rebookPreview.maskedDestination,
+              })
+            : t("web.provider.postCompletion.rebookOpenedWhatsAppDevice"),
+        );
+      } else if (channel === "sms" || channel === "email" || channel === "push") {
+        setRebookStatus(t("web.provider.postCompletion.rebookStatusSent"));
+        toast.success(t("web.provider.postCompletion.rebookLinkSent"));
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("web.provider.postCompletion.shareFailed"));
+    } finally {
+      setRebookLoading(false);
+    }
+  };
+
+  const primaryChannelLabel = () => {
+    if (!rebookPreview) return t("web.provider.postCompletion.lockNextVisit");
+    const name = rebookPreview.clientFirstName || customerName;
+    if (rebookPreview.canWhatsAppHandoff) return t("web.provider.postCompletion.sendRebookWhatsApp", { name });
+    if (rebookPreview.channel === "sms") return t("web.provider.postCompletion.sendRebookSms", { name });
+    if (rebookPreview.channel === "email") return t("web.provider.postCompletion.sendRebookEmail", { name });
+    if (rebookPreview.channel === "push") return t("web.provider.postCompletion.sendRebookPush", { name });
+    return t("web.provider.postCompletion.lockNextVisit");
+  };
+
   const markSeen = useCallback(() => {
+    if (dismissTimerRef.current != null) {
+      window.clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
     seenRef.current = true;
     onDismiss(true);
   }, [onDismiss]);
@@ -139,7 +232,10 @@ export function PostCompletionSheet({
       setStep("done");
       onRated?.();
       toast.success(t("web.provider.postCompletion.ratingSaved"));
-      window.setTimeout(() => markSeen(), 800);
+      dismissTimerRef.current = window.setTimeout(() => {
+        dismissTimerRef.current = null;
+        markSeen();
+      }, 800);
     } catch (error) {
       setRateError(error instanceof Error ? error.message : t("web.provider.postCompletion.submitFailed"));
     } finally {
@@ -176,18 +272,102 @@ export function PostCompletionSheet({
                 )}
               </DialogDescription>
             </DialogHeader>
-            {providerPublicBookUrl ? (
-              <div className="space-y-3 text-center">
-                <p className="text-xs leading-5 text-muted-foreground">
-                  {walkInOrUnpaidComplete
-                    ? providerPostCashCompleteShareLine(customerName)
-                    : t("web.provider.postCompletion.lockNextHintPrepaid")}
+            {rebookPreview ? (
+              <div className="space-y-3 text-start">
+                <p className="text-xs leading-5 text-muted-foreground">{rebookPreview.providerHint}</p>
+                <p className="rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed whitespace-pre-wrap">
+                  {rebookMessage}
                 </p>
-                <Button onClick={() => void shareLockNext()} className="w-full">
-                  <Share2 className="me-2 h-4 w-4" aria-hidden />
-                  {t("web.provider.postCompletion.lockNextVisit")}
+                <button
+                  type="button"
+                  className="text-xs text-primary underline"
+                  onClick={() => setEditMessageOpen((v) => !v)}
+                >
+                  Edit message
+                </button>
+                {editMessageOpen ? (
+                  <Textarea
+                    value={rebookMessage}
+                    onChange={(e) => setRebookMessage(e.target.value)}
+                    rows={4}
+                    className="text-sm"
+                  />
+                ) : null}
+                {rebookPreview.channel !== "none" ||
+                rebookPreview.canWhatsAppHandoff ||
+                (rebookPreview.canEditClientPhone && clientPhoneDraft.trim().length > 0) ? (
+                  <Button onClick={() => void sendRebook()} className="w-full" disabled={rebookLoading}>
+                    <Share2 className="me-2 h-4 w-4" aria-hidden />
+                    {primaryChannelLabel()}
+                  </Button>
+                ) : null}
+                {rebookPreview.maskedDestination ? (
+                  <p className="text-center text-xs text-muted-foreground">{rebookPreview.maskedDestination}</p>
+                ) : null}
+                {rebookPreview.channel === "none" && rebookPreview.channelReason ? (
+                  <p className="text-xs text-amber-700">{rebookPreview.channelReason}</p>
+                ) : null}
+                {rebookPreview.canEditClientPhone &&
+                rebookPreview.channel === "none" &&
+                !rebookPreview.canWhatsAppHandoff ? (
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground" htmlFor="rebook-client-phone">
+                      {t("web.provider.postCompletion.clientPhoneForRebook", {
+                        name: rebookPreview.clientFirstName || customerName,
+                      })}
+                    </label>
+                    <Textarea
+                      id="rebook-client-phone"
+                      value={clientPhoneDraft}
+                      onChange={(e) => setClientPhoneDraft(e.target.value)}
+                      rows={1}
+                      className="text-sm min-h-9"
+                    />
+                  </div>
+                ) : null}
+                {rebookPreview.existingOffer?.status &&
+                !["pending", "cancelled"].includes(rebookPreview.existingOffer.status) ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t("web.provider.postCompletion.rebookStatusTitle")}:{" "}
+                    {rebookPreview.existingOffer.status === "handed_to_whatsapp"
+                      ? t("web.provider.postCompletion.rebookStatusWhatsApp")
+                      : rebookPreview.existingOffer.status === "sent"
+                        ? t("web.provider.postCompletion.rebookStatusSent")
+                        : rebookPreview.existingOffer.status === "opened"
+                          ? t("web.provider.postCompletion.rebookStatusOpened")
+                          : rebookPreview.existingOffer.status === "booked"
+                            ? t("web.provider.postCompletion.rebookStatusBooked")
+                            : rebookPreview.existingOffer.status}
+                  </p>
+                ) : null}
+                {rebookStatus ? <p className="text-xs font-medium text-primary">{rebookStatus}</p> : null}
+                {rebookPreview.existingOffer &&
+                ["handed_to_whatsapp", "sent", "opened"].includes(rebookPreview.existingOffer.status) ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={async () => {
+                      try {
+                        await fetcher.delete(
+                          `/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`,
+                        );
+                        toast.success(t("web.provider.postCompletion.rebookReleased"));
+                        setRebookStatus(null);
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : t("web.provider.postCompletion.shareFailed"));
+                      }
+                    }}
+                  >
+                    {t("web.provider.postCompletion.rebookRelease")}
+                  </Button>
+                ) : null}
+                <Button variant="ghost" onClick={() => void shareRebookYourself()} className="w-full">
+                  {t("web.provider.postCompletion.shareRebookYourself")}
                 </Button>
               </div>
+            ) : rebookLoading ? (
+              <p className="text-center text-xs text-muted-foreground">{t("web.provider.postCompletion.rebookLoading")}</p>
             ) : null}
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-start">
               <div className="mb-1 flex items-center gap-2">
@@ -275,10 +455,17 @@ export function PostCompletionSheet({
         ) : null}
 
         {step === "done" ? (
-          <div className="py-6 text-center">
-            <DialogTitle className="mb-2">{t("web.provider.postCompletion.thanks")}</DialogTitle>
-            <DialogDescription>{t("web.provider.postCompletion.ratingSavedBody")}</DialogDescription>
-          </div>
+          <>
+            <div className="py-4 text-center">
+              <DialogTitle className="mb-2">{t("web.provider.postCompletion.thanks")}</DialogTitle>
+              <DialogDescription>{t("web.provider.postCompletion.ratingSavedBody")}</DialogDescription>
+            </div>
+            <DialogFooter className="flex-col gap-2 sm:flex-col">
+              <Button onClick={markSeen} className="w-full">
+                {t("web.provider.postCompletion.doneForNow")}
+              </Button>
+            </DialogFooter>
+          </>
         ) : null}
       </DialogContent>
     </Dialog>

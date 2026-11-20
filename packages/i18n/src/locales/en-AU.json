@@ -478,6 +478,37 @@
           "partiallyRefundedRefundRemaining": "This order was partially refunded. Mark it refunded for the remaining amount — cancel is not available.",
           "refundRemainingHint": "Refund remaining"
         }
+      },
+      "bookingActions": {
+        "errors": {
+          "default": "The booking could not be updated. Please refresh and try again.",
+          "internal": "The booking could not be updated safely. Refresh the booking and try again; if it still fails, choose another slot or contact support.",
+          "defaultMessage": "{{error}}",
+          "INVALID_STATUS_TRANSITION": "That status change is not allowed from the booking's current state.",
+          "VERIFICATION_NOT_COMPLETE": "Arrival must be verified by PIN or QR before starting this at-home service.",
+          "HOUSECALL_STAGE_REQUIRED": "Complete the previous house-call step before starting service.",
+          "CONFLICT": "This booking changed, reload",
+          "SLOT_NOT_AVAILABLE": "That time is no longer available. Choose another slot.",
+          "VALIDATION_ERROR": "Check the booking details and try again.",
+          "FORBIDDEN": "You do not have permission to update this booking.",
+          "NOT_FOUND": "This booking could not be found. Refresh your bookings list."
+        }
+      },
+      "bookingNextStep": {
+        "closeOut": {
+          "complete": {
+            "title": "Close out appointment",
+            "body": "Service should be finished. Mark completed and settle any remaining balance."
+          },
+          "providerCancel": {
+            "title": "Close out house call",
+            "body": "The visit window has passed. Review the booking and cancel or mark no-show if the client did not arrive."
+          },
+          "review": {
+            "title": "Needs close-out",
+            "body": "The appointment window has ended. Complete, reschedule, or mark no-show so reports stay accurate."
+          }
+        }
       }
     }
   },

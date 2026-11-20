@@ -16,6 +16,7 @@ import { addMoney, subtractMoney } from "@beautonomi/utils";
 import { Colors, Shadows } from "@/constants/colors";
 import { buildProviderBookingActionModel, type ProviderBookingAction } from "@/lib/provider-booking-action-policy";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { useAppDateLocale } from "@/hooks/useAppDateLocale";
 
 export interface BookingScheduleCardCustomer {
   full_name: string | null;
@@ -55,6 +56,8 @@ export interface BookingScheduleCardBooking {
   custom_offer?: unknown;
   customers?: BookingScheduleCardCustomer | null;
   services?: BookingScheduleCardService[];
+  needs_close_out?: boolean | null;
+  suggested_close_out_action?: "complete" | "review" | "provider_cancel" | null;
 }
 
 interface BookingScheduleCardProps {
@@ -74,6 +77,9 @@ interface BookingScheduleCardProps {
   canCancel?: boolean;
   onReschedule?: (booking: BookingScheduleCardBooking) => void;
   onCancel?: (booking: BookingScheduleCardBooking) => void;
+  closeOutMode?: boolean;
+  onCloseOutComplete?: (booking: BookingScheduleCardBooking) => void;
+  onMarkNoShow?: (booking: BookingScheduleCardBooking) => void;
 }
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
@@ -126,8 +132,12 @@ export function BookingScheduleCard({
   canCancel = false,
   onReschedule,
   onCancel,
+  closeOutMode = false,
+  onCloseOutComplete,
+  onMarkNoShow,
 }: BookingScheduleCardProps) {
   const { t } = useTranslation();
+  const appLocale = useAppDateLocale();
   const sc = useCallback(
     (key: string, opts?: Record<string, unknown>) =>
       t(`provider.mobile.components.bookings.scheduleCard.${key}`, opts) as string,
@@ -150,17 +160,22 @@ export function BookingScheduleCard({
       if (!value) return sc("unscheduled");
       const parsed = new Date(value);
       if (!Number.isFinite(parsed.getTime())) return sc("unscheduled");
-      return parsed.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+      return parsed.toLocaleDateString(appLocale, { weekday: "short", month: "short", day: "numeric" });
     },
-    [sc],
+    [appLocale, sc],
   );
 
   const formatBookingTime = (value: string | null | undefined): string => {
     if (!value) return "—";
     const parsed = new Date(value);
     if (!Number.isFinite(parsed.getTime())) return "—";
-    return parsed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+    return parsed.toLocaleTimeString(appLocale, { hour: "numeric", minute: "2-digit", hour12: true });
   };
+
+  const actionLabel = useCallback(
+    (action: ProviderBookingAction): string => sc(`actions.${action.id}`),
+    [sc],
+  );
 
   const serviceSummary = useCallback(
     (services: BookingScheduleCardService[] | undefined): string => {
@@ -220,7 +235,16 @@ export function BookingScheduleCard({
   const staffName = booking.services?.find((s) => s.staff_name)?.staff_name ?? null;
   const totalDuration = booking.services?.reduce((n, s) => n + (s.duration_minutes ?? 0), 0) ?? 0;
   const actionModel = buildProviderBookingActionModel(booking, { listContext: true });
-  const cta = actionModel.primaryListAction;
+  const cta = closeOutMode ? null : actionModel.primaryListAction;
+  const suggestedCloseOut = booking.suggested_close_out_action ?? "review";
+  const closeOutCta =
+    closeOutMode && suggestedCloseOut === "provider_cancel"
+      ? { kind: "review" as const, label: sc("closeOutReview") }
+      : closeOutMode
+        ? { kind: "complete" as const, label: sc("closeOutComplete") }
+        : null;
+  const dbForCloseOut = (booking.db_status || booking.status || "").trim().toLowerCase();
+  const canMarkNoShowCloseOut = closeOutMode && dbForCloseOut === "confirmed";
   const traits = [
     booking.is_group_booking
       ? {
@@ -249,6 +273,10 @@ export function BookingScheduleCard({
     if (canReschedule && onReschedule) {
       options.push(sc("reschedule"));
       handlers.push(() => onReschedule(booking));
+    }
+    if (closeOutMode && canMarkNoShowCloseOut && onMarkNoShow) {
+      options.push(sc("actions.mark_no_show"));
+      handlers.push(() => onMarkNoShow(booking));
     }
     if (canCancel && onCancel) {
       options.push(sc("cancelBooking"));
@@ -353,6 +381,11 @@ export function BookingScheduleCard({
                   {serviceName}
                   {staffName ? sc("withStaff", { name: staffName }) : ""}
                 </Text>
+                {closeOutMode && booking.scheduled_at ? (
+                  <Text style={twStyle("mt-1 text-[11px] font-medium text-amber-800")} numberOfLines={1}>
+                    {sc("closeOutOverdueSince", { time: scheduledTime, day: scheduledDay })}
+                  </Text>
+                ) : null}
               </View>
               <AnimatedRe.View
                 style={[
@@ -380,6 +413,17 @@ export function BookingScheduleCard({
                 {payment && paymentStyle ? (
                   <View style={[twStyle("rounded-full px-2 py-1"), { backgroundColor: paymentStyle.bg }]}>
                     <Text style={[twStyle("text-[11px] font-bold"), { color: paymentStyle.text }]}>{payment.label}</Text>
+                  </View>
+                ) : null}
+                {closeOutMode &&
+                typeof booking.outstanding_balance === "number" &&
+                booking.outstanding_balance > 0.005 ? (
+                  <View style={twStyle("rounded-full bg-amber-100 px-2 py-1")}>
+                    <Text style={twStyle("text-[11px] font-bold text-amber-900")}>
+                      {sc("closeOutBalanceDue", {
+                        amount: formatCurrency(booking.outstanding_balance, currency),
+                      })}
+                    </Text>
                   </View>
                 ) : null}
                 {booking.till_payment_kind || booking.till_payment_label ? (
@@ -417,11 +461,15 @@ export function BookingScheduleCard({
                 >
                   <Ionicons name="ellipsis-horizontal" size={18} color="#4b5563" />
                 </TouchableOpacity>
-                {cta ? (
+                {closeOutCta ? (
                   <TouchableOpacity
                     onPress={() => {
                       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      void onApplyStatus(booking.id, cta, sc("actionSaved", { action: cta.label }));
+                      if (closeOutCta.kind === "review") {
+                        onOpen(booking);
+                        return;
+                      }
+                      onCloseOutComplete?.(booking);
                     }}
                     disabled={pendingIds.has(booking.id)}
                     style={[
@@ -430,7 +478,7 @@ export function BookingScheduleCard({
                       pendingIds.has(booking.id) ? { opacity: 0.7 } : null,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={cta.label}
+                    accessibilityLabel={closeOutCta.label}
                   >
                     {pendingIds.has(booking.id) ? (
                       <ActivityIndicator size="small" color="#fff" />
@@ -442,7 +490,39 @@ export function BookingScheduleCard({
                           adjustsFontSizeToFit
                           minimumFontScale={0.85}
                         >
-                          {cta.label}
+                          {closeOutCta.label}
+                        </Text>
+                        <DirectionalIcon name="arrow-forward" size={13} color="#fff" style={{ marginStart: 4 }} />
+                      </>
+                    )}
+                  </TouchableOpacity>
+                ) : cta ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      const label = actionLabel(cta);
+                      void onApplyStatus(booking.id, cta, sc("actionSaved", { action: label }));
+                    }}
+                    disabled={pendingIds.has(booking.id)}
+                    style={[
+                      twStyle("min-h-[36px] flex-row items-center justify-center rounded-full px-3.5"),
+                      { backgroundColor: Colors.primary, minWidth: 96, maxWidth: "100%", flexShrink: 1 },
+                      pendingIds.has(booking.id) ? { opacity: 0.7 } : null,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={actionLabel(cta)}
+                  >
+                    {pendingIds.has(booking.id) ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Text
+                          style={twStyle("text-xs font-extrabold text-white")}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.85}
+                        >
+                          {actionLabel(cta)}
                         </Text>
                         <DirectionalIcon name="arrow-forward" size={13} color="#fff" style={{ marginStart: 4 }} />
                       </>

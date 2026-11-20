@@ -1027,6 +1027,18 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             {/* Notification bell for signed-in customers (incl. mobile public home). */}
             {isMounted && user && user.role === "customer" ? <CustomerNotificationsDropdown /> : null}
 
+            <Link
+              href="/help"
+              className="hidden lg:block text-sm font-normal text-gray-700 hover:text-[#FF007F] transition-colors"
+            >
+              {t("web.layout.header.helpCentre")}
+            </Link>
+            <Link
+              href="/learn"
+              className="hidden lg:block text-sm font-normal text-gray-700 hover:text-[#FF007F] transition-colors"
+            >
+              {t("web.layout.header.learningCenter")}
+            </Link>
             {/* Become a partner link (Desktop) */}
             <Link
               href="/become-a-partner"
@@ -1153,13 +1165,58 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                   </SheetContent>
                 </Sheet>
               ) : user && (authRole ?? user.role) === "customer" ? (
-                <Link
-                  href="/account-settings"
-                  className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
-                  aria-label={t("web.layout.header.accountSettingsAria")}
-                >
-                  <User className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
-                </Link>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("web.layout.header.userMenuAria")}
+                      className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
+                    >
+                      <User className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 bg-white border-gray-200">
+                    <div className="px-4 py-2 border-b border-gray-200">
+                      <p className="text-sm font-medium text-gray-900">
+                        {user?.full_name || t("web.layout.header.userFallback")}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                    </div>
+                    <DropdownMenuItem asChild>
+                      <Link href="/account-settings" className="cursor-pointer">
+                        {t("web.layout.header.profileAndAccount")}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/help/my-tickets" className="cursor-pointer">
+                        {t("web.layout.header.myTickets")}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/help" className="cursor-pointer">
+                        {t("web.layout.header.helpCentre")}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/learn" className="cursor-pointer">
+                        {t("web.layout.header.learningCenter")}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/become-a-partner" className="cursor-pointer">
+                        {t("web.layout.becomePartner")}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        await signOut();
+                      }}
+                      className="cursor-pointer text-red-600 focus:text-red-600"
+                    >
+                      {t("web.layout.header.signOut")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : user ? (
                 // Authenticated non-customer: dashboard + account + sign out
                 <DropdownMenu>
@@ -1189,6 +1246,26 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     <DropdownMenuItem asChild>
                       <Link href="/account-settings" className="cursor-pointer">
                         {t("web.layout.header.profileAndAccount")}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/help/my-tickets" className="cursor-pointer">
+                        {t("web.layout.header.myTickets")}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/help" className="cursor-pointer">
+                        {t("web.layout.header.helpCentre")}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/learn" className="cursor-pointer">
+                        {t("web.layout.header.learningCenter")}
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/become-a-partner" className="cursor-pointer">
+                        {t("web.layout.becomePartner")}
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem
