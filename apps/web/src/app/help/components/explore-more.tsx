@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
-import Policies from "./../../../../public/images/policy-web.png";
-import Safety from "./../../../../public/images/safety-web.png";
+import Policies from "./../../../../public/images/help-explore-policies.jpg";
+import Safety from "./../../../../public/images/help-explore-provider.jpg";
 import type { HelpPageContent } from "../page";
 import {
   exploreCardImageKey,

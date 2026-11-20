@@ -1027,18 +1027,6 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             {/* Notification bell for signed-in customers (incl. mobile public home). */}
             {isMounted && user && user.role === "customer" ? <CustomerNotificationsDropdown /> : null}
 
-            <Link
-              href="/help"
-              className="hidden lg:block text-sm font-normal text-gray-700 hover:text-[#FF007F] transition-colors"
-            >
-              {t("web.layout.header.helpCentre")}
-            </Link>
-            <Link
-              href="/learn"
-              className="hidden lg:block text-sm font-normal text-gray-700 hover:text-[#FF007F] transition-colors"
-            >
-              {t("web.layout.header.learningCenter")}
-            </Link>
             {/* Become a partner link (Desktop) */}
             <Link
               href="/become-a-partner"
@@ -1136,20 +1124,6 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       >
                         {t("web.layout.becomePartner")}
                       </Link>
-                      <Link 
-                        href="/help"
-                        className="flex items-center w-full justify-start text-base font-normal h-14 px-4 hover:bg-gray-50 rounded-xl text-gray-700"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        {t("web.layout.header.helpCentre")}
-                      </Link>
-                      <Link 
-                        href="/learn"
-                        className="flex items-center w-full justify-start text-base font-normal h-14 px-4 hover:bg-gray-50 rounded-xl text-gray-700"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        {t("web.layout.header.learningCenter")}
-                      </Link>
                       <button
                         type="button"
                         className="flex items-center gap-2 w-full justify-start text-base font-normal h-14 px-4 hover:bg-gray-50 rounded-xl text-gray-700"
@@ -1190,16 +1164,6 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     <DropdownMenuItem asChild>
                       <Link href="/help/my-tickets" className="cursor-pointer">
                         {t("web.layout.header.myTickets")}
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/help" className="cursor-pointer">
-                        {t("web.layout.header.helpCentre")}
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/learn" className="cursor-pointer">
-                        {t("web.layout.header.learningCenter")}
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
@@ -1251,16 +1215,6 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     <DropdownMenuItem asChild>
                       <Link href="/help/my-tickets" className="cursor-pointer">
                         {t("web.layout.header.myTickets")}
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/help" className="cursor-pointer">
-                        {t("web.layout.header.helpCentre")}
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/learn" className="cursor-pointer">
-                        {t("web.layout.header.learningCenter")}
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>

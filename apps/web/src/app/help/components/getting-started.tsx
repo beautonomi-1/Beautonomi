@@ -3,7 +3,7 @@ import Link from "next/link";
 import Getting from "./../../../../public/images/getting-started-optimized.jpg";
 import Access from "./../../../../public/images/accessing-your-account-optimized.jpg";
 import Reservation from "./../../../../public/images/help-with-a-reservation-optimized.jpg";
-import Aircover from "./../../../../public/images/AC_Guests_HG_EN_S@3x.png";
+import Policies from "./../../../../public/images/help-policies-community.jpg";
 
 /**
  * v0 by Vercel.
@@ -31,7 +31,7 @@ const guides = [
     href: "/learn/managing-bookings",
   },
   {
-    src: Aircover,
+    src: Policies,
     alt: "Policies and community standards",
     description: "Policies and community standards",
     href: "/learn/article/policies-overview",

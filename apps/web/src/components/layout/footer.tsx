@@ -37,6 +37,12 @@ interface FooterSettings {
   copyright_text?: string;
 }
 
+/** Keep a stored or translated “© 2024 …” line on the current calendar year. */
+function copyrightWithCurrentYear(text: string): string {
+  const year = String(new Date().getFullYear());
+  return text.replace(/©\s*\d{4}/, `© ${year}`);
+}
+
 export default function Footer({
   initialFooter,
 }: {
@@ -387,7 +393,9 @@ export default function Footer({
               </Suspense>
               <div className="flex flex-wrap justify-center md:justify-end items-baseline gap-x-3 gap-y-1 text-[11px] leading-tight text-gray-500">
               <span className="text-center md:text-end">
-                {footerSettings.copyright_text || t("web.layout.footer.copyright")}
+                {copyrightWithCurrentYear(
+                  footerSettings.copyright_text || t("web.layout.footer.copyright"),
+                )}
               </span>
               <span className="text-gray-400 hidden sm:inline">·</span>
               <Link href="/sitemap.xml" className="hover:underline text-center md:text-end">{t("web.layout.footer.sitemap")}</Link>
