@@ -62,6 +62,44 @@ async function runJob(request: NextRequest) {
     }
 
     const row = Array.isArray(data) ? data[0] : data;
+
+    const nowIso = new Date().toISOString();
+
+    const { data: staleHoldOffers } = await supabase
+      .from("rebook_offers")
+      .select("id, hold_id")
+      .in("status", ["pending", "handed_to_whatsapp", "sent", "opened"])
+      .not("hold_id", "is", null);
+
+    for (const offer of staleHoldOffers ?? []) {
+      const holdId = (offer as { hold_id?: string }).hold_id;
+      if (!holdId) continue;
+      const { data: hold } = await supabase
+        .from("booking_holds")
+        .select("hold_status, expires_at")
+        .eq("id", holdId)
+        .maybeSingle();
+      const expired =
+        (hold as { hold_status?: string } | null)?.hold_status === "expired" ||
+        (hold as { hold_status?: string } | null)?.hold_status === "cancelled" ||
+        ((hold as { expires_at?: string } | null)?.expires_at &&
+          Date.parse((hold as { expires_at: string }).expires_at) <= Date.now());
+      if (expired) {
+        await supabase
+          .from("rebook_offers")
+          .update({ status: "expired", expired_at: nowIso, updated_at: nowIso })
+          .eq("id", (offer as { id: string }).id);
+      }
+    }
+
+  const sentCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  await supabase
+    .from("rebook_offers")
+    .update({ status: "expired", expired_at: nowIso, updated_at: nowIso })
+    .in("status", ["handed_to_whatsapp", "sent", "opened", "pending"])
+    .is("hold_id", null)
+    .lt("created_at", sentCutoff);
+
     return successResponse({
       message: "Booking holds expired + stale consuming leases reclaimed",
       expired_count: Number(row?.expired_count ?? 0),

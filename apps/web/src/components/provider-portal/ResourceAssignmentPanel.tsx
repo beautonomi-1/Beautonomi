@@ -15,6 +15,7 @@ import {
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
+import { isBookingResourceLocked } from "@beautonomi/utils";
 
 interface Resource {
   id: string;
@@ -35,6 +36,7 @@ interface BookingResource {
 
 interface ResourceAssignmentPanelProps {
   bookingId: string;
+  bookingStatus?: string;
   bookingDate: Date;
   bookingTime: string;
   onUpdate?: () => void;
@@ -42,11 +44,13 @@ interface ResourceAssignmentPanelProps {
 
 export default function ResourceAssignmentPanel({
   bookingId,
+  bookingStatus,
   bookingDate: _bookingDate,
   bookingTime: _bookingTime,
   onUpdate,
 }: ResourceAssignmentPanelProps) {
   const { t } = useTranslation();
+  const resourcesLocked = isBookingResourceLocked(bookingStatus);
   const [availableResources, setAvailableResources] = useState<Resource[]>([]);
   const [assignedResources, setAssignedResources] = useState<BookingResource[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -148,14 +152,16 @@ export default function ResourceAssignmentPanel({
                     <Check className="w-4 h-4 text-green-600" />
                     <span className="text-sm font-medium">{resource.resource_name}</span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveResource(resource.resource_id)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  {!resourcesLocked ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveResource(resource.resource_id)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -163,7 +169,7 @@ export default function ResourceAssignmentPanel({
         )}
 
         {/* Assign New Resource */}
-        {unassignedResources.length > 0 && (
+        {!resourcesLocked && unassignedResources.length > 0 && (
           <div className="space-y-2">
             <Label>{t("web.provider.portal.resourceAssignment.assignLabel")}</Label>
             <div className="flex gap-2">

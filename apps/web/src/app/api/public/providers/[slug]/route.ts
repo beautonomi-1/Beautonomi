@@ -363,9 +363,8 @@ export async function GET(
       supportsHouseCalls = (offerings as any[]).some((o: any) => Boolean(o.supports_at_home));
     }
 
-    // Keep provider-level capability as a fallback signal when data is partially migrated.
-    if (!supportsHouseCalls && providerData.offers_mobile_services === true) {
-      supportsHouseCalls = true;
+    if (providerData.offers_mobile_services === false) {
+      supportsHouseCalls = false;
     }
 
     // Support salon only if provider has at least one physical salon location (location_type = 'salon').

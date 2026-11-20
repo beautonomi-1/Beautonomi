@@ -7,8 +7,10 @@ import {
   successResponse,
   notFoundResponse,
   handleApiError,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { isBookingResourceLocked } from "@beautonomi/utils";
 
 /**
  * GET /api/provider/bookings/[id]/resources
@@ -93,8 +95,8 @@ export async function POST(
       .single();
 
     if (bookError || !booking) return notFoundResponse("Booking not found");
-    if ((booking as any).status === "cancelled") {
-      return handleApiError(new Error("Cannot assign resources to a cancelled booking"), "Booking is cancelled", "VALIDATION", 400);
+    if (isBookingResourceLocked((booking as { status?: string }).status)) {
+      return errorResponse("Cannot change resources on a closed booking.", "BOOKING_CLOSED", 409);
     }
 
     const body = await request.json().catch(() => ({}));

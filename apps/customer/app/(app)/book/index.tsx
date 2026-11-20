@@ -571,6 +571,7 @@ export default function BookScreen() {
     package_currency: packageCurrencyParam,
     package_discount: packageDiscountParam,
     hold_id: holdIdParam,
+    rebook_offer: rebookOfferParam,
   } = useLocalSearchParams<{
     slug: string | string[];
     service_id?: string;
@@ -606,6 +607,7 @@ export default function BookScreen() {
     package_discount?: string;
     /** When returning from checkout to change time — exclude this hold from availability (same as web). */
     hold_id?: string | string[];
+    rebook_offer?: string | string[];
   }>();
   const slugFromParam =
     typeof slugParam === "string"
@@ -623,6 +625,18 @@ export default function BookScreen() {
       : Array.isArray(holdIdParam)
         ? (holdIdParam[0]?.trim() ?? "")
         : "";
+  const rebookOfferFromRoute =
+    typeof rebookOfferParam === "string"
+      ? rebookOfferParam.trim()
+      : Array.isArray(rebookOfferParam)
+        ? (rebookOfferParam[0]?.trim() ?? "")
+        : "";
+  const rebookOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!rebookOfferFromRoute || rebookOpenedRef.current) return;
+    rebookOpenedRef.current = true;
+    void api.post(`/api/public/rebook-offers/${encodeURIComponent(rebookOfferFromRoute)}/opened`, {}).catch(() => {});
+  }, [rebookOfferFromRoute]);
   const packageIdFromRoute =
     typeof packageParam === "string"
       ? packageParam

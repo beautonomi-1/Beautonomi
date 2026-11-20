@@ -5,6 +5,7 @@ export const BOOKING_FLOW_KEY_IGNORE_PARAMS = new Set([
   "step",
   "auth_return",
   "hold_id",
+  "rebook_offer",
   "embed",
   "reschedule_booking_id",
   "reset",

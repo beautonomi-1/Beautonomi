@@ -280,12 +280,116 @@ export async function sendRebookReminders() {
     const providerName = provider?.business_name || "your provider";
     const providerSlug = provider?.slug || "";
 
+    const { data: rebookOfferRow } = await supabaseAdmin
+      .from("rebook_offers")
+      .select("id, status, hold_id, created_at, expired_at, sent_at")
+      .eq("source_booking_id", booking.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const REBOOK_OFFER_LIVE_MS = 24 * 60 * 60 * 1000;
+    let offerJustExpired = false;
+    if (rebookOfferRow) {
+      const st = String((rebookOfferRow as { status?: string }).status ?? "");
+      if (st === "booked") continue;
+      if (["handed_to_whatsapp", "sent", "opened", "pending"].includes(st)) {
+        const holdId = (rebookOfferRow as { hold_id?: string | null }).hold_id;
+        let live = false;
+        if (holdId) {
+          const { data: hold } = await supabaseAdmin
+            .from("booking_holds")
+            .select("expires_at, hold_status")
+            .eq("id", holdId)
+            .maybeSingle();
+          const exp = (hold as { expires_at?: string } | null)?.expires_at;
+          live =
+            (hold as { hold_status?: string } | null)?.hold_status === "active" &&
+            Boolean(exp && Date.parse(exp) > Date.now());
+        } else {
+          const sentRaw =
+            (rebookOfferRow as { sent_at?: string; created_at?: string }).sent_at ??
+            (rebookOfferRow as { created_at?: string }).created_at;
+          if (sentRaw) {
+            live = Date.now() - Date.parse(sentRaw) < REBOOK_OFFER_LIVE_MS;
+          }
+        }
+        if (live) continue;
+        offerJustExpired = true;
+      }
+      if (st === "expired") offerJustExpired = true;
+    }
+
     for (const bs of booking.booking_services || []) {
       const off = bs?.offering;
       if (!off?.reminder_to_rebook_enabled) continue;
       const weeks = Math.max(1, Number(off.reminder_to_rebook_weeks) || 4);
       const target = new Date(completedAt.getTime() + weeks * MS_PER_WEEK);
       const targetDayUtc = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate());
+
+      if (offerJustExpired && targetDayUtc < startOfTodayUtc) {
+        const followKey = `rebook_expired_followup_${booking.id}_${off.id}`;
+        const { data: existingFollow } = await supabaseAdmin
+          .from("notifications")
+          .select("id")
+          .eq("user_id", booking.customer_id)
+          .eq("type", "rebook_reminder")
+          .contains("data", { reminder_key: followKey })
+          .limit(1);
+        if (!existingFollow?.length) {
+          const { customerAllowsAnyChannel } = await import(
+            "@/lib/notifications/customer-notification-channels"
+          );
+          const allowsRebook = await customerAllowsAnyChannel(
+            supabaseAdmin,
+            booking.customer_id as string,
+            "rebook_reminder",
+            ["push", "email", "sms"],
+          );
+          if (allowsRebook) {
+            const serviceTitle = (off.title as string) || "Service";
+            const bookingUrlPath = providerSlug
+              ? `/booking?slug=${encodeURIComponent(providerSlug)}&service=${encodeURIComponent(off.id)}`
+              : `/account-settings/bookings`;
+            const { insertNotification: insertFollow } = await import("@/lib/notifications/insert-notification");
+            await insertFollow({
+              user_id: booking.customer_id,
+              type: "rebook_reminder",
+              title: "Still time to rebook",
+              message: `The hold expired. Here are openings to book ${serviceTitle} again with ${providerName}.`,
+              data: { reminder_key: followKey, booking_id: booking.id, offering_id: off.id, provider_slug: providerSlug },
+              action_url: bookingUrlPath,
+            });
+            try {
+              await sendTemplateNotification(
+                "rebook_reminder",
+                [booking.customer_id],
+                {
+                  provider_name: providerName,
+                  service_title: serviceTitle,
+                  service_id: off.id,
+                  provider_slug: providerSlug,
+                  booking_id: booking.id,
+                  booking_url: bookingUrlPath,
+                },
+                await (async () => {
+                  const tenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
+                  const { customerBookingChannels } = await import(
+                    "@/lib/notifications/customer-booking-channels"
+                  );
+                  return customerBookingChannels(tenantId);
+                })(),
+                { appType: "customer", skipInApp: true, tenantId: (booking as { tenant_id?: string | null }).tenant_id ?? null },
+              );
+              sent.push(followKey);
+            } catch (e) {
+              console.warn("sendRebookReminders: expired follow-up failed", e);
+            }
+          }
+        }
+        continue;
+      }
+
       if (targetDayUtc !== startOfTodayUtc) continue;
 
       const reminderKey = `rebook_${booking.id}_${off.id}_${weeks}`;

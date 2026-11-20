@@ -11,6 +11,7 @@ import { computeBookingTotals } from "@/lib/booking/compute-booking-totals";
 import { useTranslation } from "@beautonomi/i18n";
 import { getHoldTimeRemaining } from "@beautonomi/utils";
 import { Clock } from "lucide-react";
+import { formatInTimeZone } from "date-fns-tz";
 
 interface BookingActionBarProps {
   bookingState: BookingState;
@@ -130,11 +131,24 @@ const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(funct
           >
             <Clock className="h-4 w-4 shrink-0" />
             <span>
-              {t("web.booking.stepPayment.slotHeldBefore")}
-              <span className="tabular-nums">
-                {holdTick.minutes}:{String(holdTick.seconds).padStart(2, "0")}
-              </span>
-              {t("web.booking.stepPayment.slotHeldAfter")}
+              {holdTick.minutes >= 60 && holdExpiresAt ? (
+                <>
+                  Held until{" "}
+                  {formatInTimeZone(
+                    new Date(holdExpiresAt),
+                    bookingState.providerTimezone?.trim() || "UTC",
+                    "EEE d MMM, HH:mm",
+                  )}
+                </>
+              ) : (
+                <>
+                  {t("web.booking.stepPayment.slotHeldBefore")}
+                  <span className="tabular-nums">
+                    {holdTick.minutes}:{String(holdTick.seconds).padStart(2, "0")}
+                  </span>
+                  {t("web.booking.stepPayment.slotHeldAfter")}
+                </>
+              )}
             </span>
           </div>
         )}

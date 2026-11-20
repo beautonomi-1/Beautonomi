@@ -1,7 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from "react";
+import ProviderPhotoDialog, {
+  type ProviderPhotoDialogMode,
+} from "./components/provider-photo-dialog";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
@@ -13,7 +16,7 @@ const PartnerHeroMobile = dynamic(() => import("./components/partner-hero-mobile
   loading: () => heroFallback,
 });
 const PartnerHero = dynamic(() => import("./components/partner-hero"), {
-  loading: () => heroFallback,
+  loading: () => <div className="h-40 bg-gray-100 animate-pulse" aria-hidden />,
 });
 const PartnerServices = dynamic(() => import("./components/partner-services"), {
   loading: () => tabChunkFallback,
@@ -87,7 +90,80 @@ export default function PartnerProfileClient({
   const { track, isReady } = useAmplitude();
   const profileViewTrackedRef = useRef(false);
   const distanceEnrichedRef = useRef(false);
+  const pendingServicesScrollRef = useRef(false);
   const router = useRouter();
+
+  const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
+  const [photoDialogMode, setPhotoDialogMode] = useState<ProviderPhotoDialogMode>("viewer");
+  const [photoDialogIndex, setPhotoDialogIndex] = useState(0);
+
+  const profileImageUrls = useMemo(() => {
+    const fromGallery = (provider.gallery ?? [])
+      .map((url) => (typeof url === "string" ? url.trim() : ""))
+      .filter((url) => url.length > 0);
+    if (fromGallery.length > 0) return fromGallery;
+    const thumb = provider.thumbnail_url?.trim();
+    return thumb ? [thumb] : [];
+  }, [provider.gallery, provider.thumbnail_url]);
+
+  const dialogImages = useMemo(
+    () =>
+      profileImageUrls.map((url, idx) => ({
+        src: url,
+        alt: `${provider.business_name || "Provider"} image ${idx + 1}`,
+      })),
+    [profileImageUrls, provider.business_name],
+  );
+
+  const resolvedOperatingHours =
+    provider.operating_hours ??
+    (provider.locations?.find((l: { is_primary?: boolean }) => l.is_primary) ??
+      provider.locations?.[0])?.working_hours;
+
+  const scrollToServicesSection = useCallback(() => {
+    const started = performance.now();
+    const run = () => {
+      const header = document.querySelector("header");
+      const sentinel = document.getElementById("partner-profile-services");
+      if (!sentinel) {
+        if (performance.now() - started < 2000) requestAnimationFrame(run);
+        return;
+      }
+      const headerH = header?.getBoundingClientRect().height ?? 0;
+      const top = sentinel.getBoundingClientRect().top + window.scrollY - headerH;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(run));
+  }, []);
+
+  const handleBookFromHero = useCallback(() => {
+    if (activeTab === "services") {
+      scrollToServicesSection();
+      return;
+    }
+    pendingServicesScrollRef.current = true;
+    setActiveTab("services");
+  }, [activeTab, scrollToServicesSection]);
+
+  useLayoutEffect(() => {
+    if (!pendingServicesScrollRef.current || activeTab !== "services") return;
+    pendingServicesScrollRef.current = false;
+    scrollToServicesSection();
+  }, [activeTab, scrollToServicesSection]);
+
+  const openPhotoAt = useCallback((index: number) => {
+    if (dialogImages.length === 0) return;
+    setPhotoDialogMode("viewer");
+    setPhotoDialogIndex(index);
+    setPhotoDialogOpen(true);
+  }, [dialogImages.length]);
+
+  const openAllPhotos = useCallback(() => {
+    if (dialogImages.length === 0) return;
+    setPhotoDialogMode("grid");
+    setPhotoDialogIndex(0);
+    setPhotoDialogOpen(true);
+  }, [dialogImages.length]);
 
   useEffect(() => {
     setProvider(initialProvider);
@@ -203,17 +279,36 @@ export default function PartnerProfileClient({
           country={provider.country}
           is_featured={provider.is_featured}
           is_verified={provider.is_verified}
-          gallery={provider.gallery}
+          gallery={profileImageUrls}
           description={provider.description}
           distance_km={provider.distance_km}
           thumbnail_url={provider.thumbnail_url}
+          avatar_url={provider.avatar_url}
           owner_name={provider.owner_name}
           business_type={provider.business_type}
           supports_house_calls={provider.supports_house_calls}
           supports_salon={provider.supports_salon}
           current_badge={provider.current_badge}
+          categories={provider.categories}
+          starting_price={provider.starting_price}
+          currency={provider.currency}
+          operating_hours={resolvedOperatingHours}
+          timezone={provider.timezone}
+          disclosureTier={disclosureTier}
+          onBook={handleBookFromHero}
+          onOpenPhoto={openPhotoAt}
+          onOpenAllPhotos={openAllPhotos}
         />
       </div>
+
+      <ProviderPhotoDialog
+        open={photoDialogOpen}
+        onOpenChange={setPhotoDialogOpen}
+        images={dialogImages}
+        mode={photoDialogMode}
+        initialIndex={photoDialogIndex}
+        businessName={provider.business_name}
+      />
 
       {/* Tab Navigation */}
       <div className="max-w-[2340px] mx-auto border-b border-gray-200 sticky top-0 bg-white/95 backdrop-blur-md z-40 md:bg-white md:backdrop-blur-none">
@@ -239,7 +334,7 @@ export default function PartnerProfileClient({
             </div>
           </TabsList>
 
-          <TabsContent value="services" className="mt-0">
+          <TabsContent value="services" className="mt-0" id="partner-profile-services">
             <PartnerServices
               slug={provider.slug}
               id={provider.id}
@@ -250,7 +345,13 @@ export default function PartnerProfileClient({
             <PartnerProducts slug={provider.slug} />
           </TabsContent>
           <TabsContent value="photos" className="mt-0">
-            <PartnerPhotos gallery={provider.gallery} businessName={provider.business_name} slug={provider.slug} />
+            <PartnerPhotos
+              gallery={profileImageUrls}
+              businessName={provider.business_name}
+              slug={provider.slug}
+              onOpenPhoto={openPhotoAt}
+              onOpenAllPhotos={openAllPhotos}
+            />
           </TabsContent>
           {provider.business_type === "salon" && provider.staff_count && provider.staff_count > 0 && (
             <TabsContent value="team" className="mt-0">

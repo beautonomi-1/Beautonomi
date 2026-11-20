@@ -55,7 +55,7 @@ export default function TopArticles() {
                 {article.title}
               </Link>
             </h3>
-            <p className="text-base font-light  text-destructive">
+            <p className="text-base font-light text-zinc-600">
               {article.description}
             </p>
           </div>

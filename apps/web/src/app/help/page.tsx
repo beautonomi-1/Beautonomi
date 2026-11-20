@@ -6,6 +6,8 @@ import BottomNav from "@/components/layout/bottom-nav";
 import SearchBox from "./components/searchbox";
 import CTA from "./components/cta";
 import ExploreMore from "./components/explore-more";
+import GettingStartedGuides from "./components/getting-started";
+import TopArticles from "./components/top-articles";
 import {
   getPublicPageContent,
   type PublicPageContent,
@@ -37,7 +39,9 @@ const Page = async () => {
         </div>
         <SearchBox content={content} />
         <CTA content={content} />
-        <ExploreMore />
+        <GettingStartedGuides />
+        <TopArticles />
+        <ExploreMore content={content} />
       </div>
       <Footer />
       <BottomNav />

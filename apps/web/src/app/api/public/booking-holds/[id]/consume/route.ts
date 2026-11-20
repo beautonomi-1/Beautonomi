@@ -728,6 +728,12 @@ async function handlePost(
 
     // Save custom field values for the new booking (user session has access via RLS)
     const bookingId = bookingData?.data?.booking_id;
+    const rebookOfferId =
+      typeof holdMeta.rebook_offer_id === "string" ? holdMeta.rebook_offer_id.trim() : "";
+    if (bookingId && rebookOfferId) {
+      const { markRebookOfferBooked } = await import("@/lib/bookings/rebook-offer-service");
+      await markRebookOfferBooked(adminSupabase, rebookOfferId, bookingId);
+    }
     if (bookingId && customFieldValues && Object.keys(customFieldValues).length > 0) {
       const { data: fields } = await supabase
         .from("custom_fields")

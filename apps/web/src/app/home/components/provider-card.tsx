@@ -232,7 +232,9 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
                 iconUrl: provider.current_badge.icon_url ?? undefined,
               });
             }
-            if (showTopRatedBadge) badges.push({ key: "top", label: t("web.cards.topRated"), className: "bg-[#FF0077]" });
+            if (showTopRatedBadge && (provider.review_count ?? 0) > 0) {
+              badges.push({ key: "top", label: t("web.cards.topRated"), className: "bg-[#FF0077]" });
+            }
             if (showHottestBadge) badges.push({ key: "hot", label: t("web.cards.hottest"), className: "bg-orange-600" });
             if (showNearestBadge) badges.push({ key: "near", label: t("web.cards.nearest"), className: "bg-blue-600" });
             if (showUpcomingTalentBadge) badges.push({ key: "up", label: t("web.cards.risingStar"), className: "bg-purple-600" });
@@ -363,13 +365,19 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
 
           {/* Rating */}
           <div className="flex items-center gap-1 md:gap-1.5 mb-1.5 md:mb-1" aria-label={t("web.cards.ratingA11y", { rating: ratingText, reviews: reviewCountText })}>
-            <FaStar className="text-yellow-400 flex-shrink-0 w-3.5 h-3.5 md:w-4 md:h-4" aria-hidden />
-            <span className="text-xs md:text-sm font-medium leading-tight">
-              {provider.rating > 0 ? provider.rating.toFixed(1) : "0.0"}
-            </span>
-            <span className="text-xs md:text-sm text-gray-500 leading-tight">
-              ({formatReviewCount(provider.review_count || 0)})
-            </span>
+            {(provider.review_count ?? 0) > 0 ? (
+              <>
+                <FaStar className="text-yellow-400 flex-shrink-0 w-3.5 h-3.5 md:w-4 md:h-4" aria-hidden />
+                <span className="text-xs md:text-sm font-medium leading-tight">
+                  {provider.rating.toFixed(1)}
+                </span>
+                <span className="text-xs md:text-sm text-gray-500 leading-tight">
+                  ({formatReviewCount(provider.review_count)})
+                </span>
+              </>
+            ) : (
+              <span className="text-xs md:text-sm text-gray-500 leading-tight">{t("web.cards.noReviews")}</span>
+            )}
           </div>
 
           {/* Description */}

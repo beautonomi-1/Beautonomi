@@ -5,6 +5,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 
+export const LEARN_AUDIENCE_HUB_SLUGS = ["customer", "provider"] as const;
+
+export function isLearnAudienceHubSlug(slug: string): slug is (typeof LEARN_AUDIENCE_HUB_SLUGS)[number] {
+  return (LEARN_AUDIENCE_HUB_SLUGS as readonly string[]).includes(slug);
+}
+
 async function getCategoryLineage(
   supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
   categoryId: string
@@ -43,9 +49,35 @@ export async function GET(
       .select("id, title, slug, icon, sort_order, audience, parent_id")
       .eq("slug", slug)
       .eq("visibility", "public")
-      .single();
+      .is("tenant_id", null)
+      .maybeSingle();
 
-    if (catError || !category) {
+    const categoryMissing = catError || !category;
+
+    if (categoryMissing && isLearnAudienceHubSlug(slug)) {
+      const hubTitle = slug === "customer" ? "Customer guides" : "Provider guides";
+      const { data: hubCategories, error: hubError } = await supabase
+        .from("learning_categories")
+        .select("id, title, slug, icon, sort_order, audience")
+        .eq("visibility", "public")
+        .eq("audience", slug)
+        .is("tenant_id", null)
+        .order("sort_order", { ascending: true });
+
+      if (hubError) {
+        console.error("Error fetching learn audience hub:", hubError);
+      }
+
+      return NextResponse.json({
+        data: {
+          hub: { slug, title: hubTitle },
+          categories: hubCategories ?? [],
+        },
+        error: null,
+      });
+    }
+
+    if (categoryMissing) {
       return NextResponse.json(
         { data: null, error: { message: "Topic not found", code: "NOT_FOUND" } },
         { status: 404 }

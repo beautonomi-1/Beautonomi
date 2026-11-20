@@ -1058,7 +1058,7 @@ export async function GET(request: Request) {
 
       // Ensure service type fields are always boolean, never undefined
       const supportsHouseCalls = Boolean(
-        serviceType.supports_house_calls || provider.offers_mobile_services === true
+        serviceType.supports_house_calls && provider.offers_mobile_services !== false
       );
       const supportsSalon = Boolean(serviceType.supports_salon);
 
@@ -1305,7 +1305,7 @@ export async function GET(request: Request) {
             }
 
             const supportsHouseCalls = Boolean(
-              serviceType.supports_house_calls || provider.offers_mobile_services === true
+              serviceType.supports_house_calls && provider.offers_mobile_services !== false
             );
             const supportsSalon = Boolean(serviceType.supports_salon);
             

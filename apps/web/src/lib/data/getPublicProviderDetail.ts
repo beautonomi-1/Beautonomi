@@ -272,8 +272,8 @@ export const getPublicProviderDetail = cache(
       if (!supportsHouseCalls && sResult.data?.some((s: any) => Boolean(s.supports_at_home))) {
         supportsHouseCalls = true;
       }
-      if (!supportsHouseCalls && providerData.offers_mobile_services === true) {
-        supportsHouseCalls = true;
+      if (providerData.offers_mobile_services === false) {
+        supportsHouseCalls = false;
       }
       const salonLocations = (locations as any[]).filter(
         (l: any) => (l.location_type || "salon") === "salon",
@@ -355,6 +355,7 @@ export const getPublicProviderDetail = cache(
         distance_km: distance_km ?? undefined,
         seo_indexable: includeInSearchEngines,
         profile_promotions,
+        timezone: typeof providerData.timezone === "string" ? providerData.timezone : null,
       };
 
       return {

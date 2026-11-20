@@ -3,7 +3,7 @@ import Link from "next/link";
 import Getting from "./../../../../public/images/getting-started-optimized.jpg";
 import Access from "./../../../../public/images/accessing-your-account-optimized.jpg";
 import Reservation from "./../../../../public/images/help-with-a-reservation-optimized.jpg";
-import Aircover from "./../../../../public/images/AC_Guests_HG_EN_S@3x.png";
+import Policies from "./../../../../public/images/help-policies-community.jpg";
 
 /**
  * v0 by Vercel.
@@ -14,13 +14,13 @@ import Aircover from "./../../../../public/images/AC_Guests_HG_EN_S@3x.png";
 const guides = [
   {
     src: Getting,
-    alt: "Access and manage your account",
+    alt: "Getting started on Beautonomi",
     description: "Getting started on Beautonomi",
     href: "/learn/article/getting-started-overview",
   },
   {
     src: Access,
-    alt: "Getting paid",
+    alt: "Account and profile settings",
     description: "Access and manage your account",
     href: "/learn/account-profile",
   },
@@ -31,9 +31,9 @@ const guides = [
     href: "/learn/managing-bookings",
   },
   {
-    src: Aircover,
-    alt: "Getting protected through Beautonomi Coverage for Providers",
-    description: "Beautonomi Coverage for customers",
+    src: Policies,
+    alt: "Policies and community standards",
+    description: "Policies and community standards",
     href: "/learn/article/policies-overview",
   },
 ];
@@ -52,15 +52,16 @@ export default function GettingStartedGuides() {
           Browse all topics <ArrowRightIcon className="ms-1 h-4 w-4" />
         </Link>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 ">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 min-w-0">
         {guides.map((guide, index) => (
-          <Link key={index} href={guide.href} className="group">
+          <Link key={index} href={guide.href} className="group min-w-0">
             <Image
               src={guide.src}
               alt={guide.alt}
-              className="h-[255px] w-[255px] rounded-lg mb-3 object-cover group-hover:opacity-90 transition-opacity"
+              className="w-full h-auto aspect-square max-h-[255px] rounded-lg mb-3 object-cover group-hover:opacity-90 transition-opacity"
               width={255}
               height={255}
+              sizes="(max-width: 768px) 100vw, 25vw"
             />
             <p className=" text-lg  font-normal group-hover:underline">
               {guide.description}

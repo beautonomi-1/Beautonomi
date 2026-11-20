@@ -6,7 +6,7 @@ import { useTranslation } from "@beautonomi/i18n";
 const Getting = "/images/getting-started-optimized.jpg";
 import Access from "./../../public/images/accessing-your-account-optimized.jpg";
 import Reservation from "./../../public/images/help-with-a-reservation-optimized.jpg";
-import Aircover from "./../../public/images/AC_Guests_HG_EN_S@3x.png";
+import Policies from "./../../public/images/help-policies-community.jpg";
 import Started from "./../../public/images/started.svg";
 import Profile from "./../../public/images/profile-icon.svg";
 import Calendar from "./../../public/images/calendar.svg";
@@ -49,7 +49,7 @@ export default function CustomerTab() {
 
     },
     {
-      src: Aircover,
+      src: Policies,
       alt: t("web.helpGuides.coverageProviders"),
       description: t("web.helpGuides.coverageCustomers"),
       mobileSrc: Home,

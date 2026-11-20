@@ -12,4 +12,14 @@ describe("mapBookingQueryToNativeBookPath", () => {
     );
     expect(path).toBe("/(app)/book?slug=salon&service_id=aaa&staff_id=bbb&location_type=at_home");
   });
+
+  it("passes rebook hold deep link params", () => {
+    const path = mapBookingQueryToNativeBookPath(
+      "?slug=salon&services=a,b&hold_id=h1&rebook_offer=o1&date=2026-12-18&step=calendar",
+    );
+    expect(path).toContain("hold_id=h1");
+    expect(path).toContain("rebook_offer=o1");
+    expect(path).toContain("service_ids=a%2Cb");
+    expect(path).toContain("step=time");
+  });
 });

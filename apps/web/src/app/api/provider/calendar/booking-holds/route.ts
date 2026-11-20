@@ -129,9 +129,16 @@ export async function GET(request: NextRequest) {
         let endTime = formatInTz(segEnd, "HH:mm", tz);
 
         const isConsuming = row.hold_status === "consuming";
-        const reasonLabel = isConsuming
-          ? "Booking in progress (checkout)"
-          : "Booking hold";
+        const meta = row.metadata ?? {};
+        const isRebookOffer = meta.kind === "rebook_offer";
+        const clientFirst = typeof meta.client_first_name === "string" ? meta.client_first_name.trim() : "";
+        const reasonLabel = isRebookOffer
+          ? clientFirst
+            ? `Held for ${clientFirst} (rebook)`
+            : "Held for client (rebook)"
+          : isConsuming
+            ? "Booking in progress (checkout)"
+            : "Booking hold";
 
         display.push({
           id: `hold-${row.id}-${ymd}`,

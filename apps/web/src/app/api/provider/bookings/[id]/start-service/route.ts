@@ -73,6 +73,8 @@ export async function POST(
     }
 
     const bookingData = booking as any;
+    const startBody = await request.json().catch(() => ({} as Record<string, unknown>));
+    const suppressCustomerNotice = startBody.suppress_customer_notice === true;
 
     // For at-home bookings, check if verification was required and completed
     if (bookingData.location_type === "at_home") {
@@ -169,13 +171,15 @@ export async function POST(
     // §Release-audit 2026-04: let the customer know the service has begun.
     // Fire-and-forget — notification failure must not break the provider's
     // start-service action.
-    try {
-      const { sendServiceStartedNotification } = await import(
-        "@/lib/bookings/notifications"
-      );
-      await sendServiceStartedNotification(id);
-    } catch (notifyErr) {
-      console.error("[start-service] notification failed:", notifyErr);
+    if (!suppressCustomerNotice) {
+      try {
+        const { sendServiceStartedNotification } = await import(
+          "@/lib/bookings/notifications"
+        );
+        await sendServiceStartedNotification(id);
+      } catch (notifyErr) {
+        console.error("[start-service] notification failed:", notifyErr);
+      }
     }
 
     return successResponse({

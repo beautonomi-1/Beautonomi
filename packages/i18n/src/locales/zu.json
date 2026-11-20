@@ -486,6 +486,21 @@
               "giftCard": "Ikhadi lesipho",
               "cash": "Ukheshi",
               "manualCard": "Ikhadi ngesandla"
+            },
+            "closeOutComplete": "qeda",
+            "closeOutReview": "isibuyekezo",
+            "closeOutBalanceDue": "Kufanele {{amount}}",
+            "closeOutOverdueSince": "Kudlule · {{day}} {{time}}",
+            "actions": {
+              "confirm": "Qinisekisa",
+              "check_in": "Ngena",
+              "start_journey": "qala journey",
+              "mark_arrived": "Mark arrived",
+              "start_service": "qala insizakalo",
+              "complete_service": "qeda insizakalo",
+              "cancel": "Khansela ukubhuka",
+              "mark_no_show": "Mark cha-bonisa",
+              "reset_to_confirmed": "Setha kabusha to qinisekisaed"
             }
           },
           "etaPicker": {
@@ -2704,7 +2719,7 @@
           "expiringSoon_other": "{{count}} izicelo expiring maduze",
           "expiringSoonHint": "Qinisekisa noma wenqaba ngaphambi kokuthi i-slot ikhishwe ngokuzenzakalelayo.",
           "review": "isibuyekezo",
-          "stalePending_one": "{{count}} ukubhuka isicelo from past usukus need your attention",
+          "stalePending_one": "{{count}} isicelo sokubhuka ezinsukwini ezidlule sidinga ukunakwa kwakho",
           "stalePending_other": "Izicelo zokubhuka ezingu-{{count}} ezinsukwini ezedlule zidinga ukunakwa kwakho",
           "stalePendingHint": "Ziphume ngaphandle komugqa wakho wezinsuku — buyekeza bese uqinisekisa noma wenqaba.",
           "closeOut_one": "{{count}} isikhathi need vala-out",
@@ -2813,7 +2828,38 @@
           "journeyBody": "Engeza i-ETA ukuze ikhasimende libone ukuthi ulindele ukufika nini. Ungaqala ngaphandle kwayo.",
           "journeyStartNoEta": "qala journey (cha ETA)",
           "journeyStart": "qala journey",
-          "serviceFallback": "Insizakalo"
+          "serviceFallback": "Insizakalo",
+          "appointmentsTile": "izikhathi",
+          "closeOutBreakdown": "{{today}} namuhla · {{older}} from earlier izinsuku",
+          "closeOutBreakdownToday": "{{today}} namuhla",
+          "closeOutAction": "qeda, mark cha-bonisa, or khansela each one.",
+          "closeOutBannerA11y_one": "{{count}} isikhathi needs vala-out. buka queue.",
+          "closeOutBannerA11y_other": "{{count}} izikhathi need vala-out. buka queue.",
+          "closeOutFilterTitle_one": "{{count}} need vala-out",
+          "closeOutFilterTitle_other": "{{count}} need vala-out",
+          "rangeWeekOf": "iviki of {{date}}",
+          "rangeUpcoming": "Okuzayo",
+          "rangeAllTime": "Sonke isikhathi",
+          "statsLinePending": "{{count}} kulindile",
+          "statsLineConfirmed": "{{count}} qinisekisaed",
+          "statsLineActive": "{{count}} Iyasebenza",
+          "statsLineCompleted": "{{count}} kuqediwe",
+          "statsLineExcludes_one": "excludes {{count}} kukhanseliwe/cha-bonisa",
+          "statsLineExcludes_other": "excludes {{count}} kukhanseliwe/cha-bonisa",
+          "closeOutComplete": "qeda",
+          "closeOutReview": "isibuyekezo",
+          "closeOutConfirmTitle": "Mark as kuqediwe?",
+          "closeOutConfirmBody": "insizakalo isikhathi will be recorded manje.",
+          "closeOutBalanceDue": "Ibhalansi isele — vula ukubhuka ukuze uthole inkokhelo ngaphambi kokuqeda.",
+          "closeOutCompleted": "isikhathi kuqediwe",
+          "closeOutCompleteFailed": "Ayikwazanga uku-qeda this isikhathi",
+          "closeOutCompleteAll": "qeda all checked in",
+          "closeOutCompleteAllTitle": "qeda Kulungile izikhathi?",
+          "closeOutCompleteAllBody_one": "Mark {{count}} checked-in or in-Inqubekela phambili isikhathi as kuqediwe.",
+          "closeOutCompleteAllBody_other": "Mark {{count}} checked-in or in-Inqubekela phambili izikhathi as kuqediwe.",
+          "closeOutCompleteAllDone_one": "{{count}} isikhathi kuqediwe",
+          "closeOutCompleteAllDone_other": "{{count}} izikhathi kuqediwe",
+          "closeOutCompleteAllNone": "Azikho izikhathi ezingaqedwa kulokhu okukhethiwe"
         },
         "bookingDetail": {
           "title": "Ukubhuka",
@@ -13183,6 +13229,37 @@
           "paycloudSection": "PayCloud inani mismatch",
           "unavailable": "vula Yoco or Beautonomi imishini yamakhadi to use this umbiko."
         }
+      },
+      "bookingActions": {
+        "errors": {
+          "default": "Ukubhuka akukwazanga ukuvuselelwa. Sicela uvuselele bese uzama futhi.",
+          "internal": "Ukubhuka akukwazanga ukuvuselelwa ngokuphepha. Vuselela ukubhuka uzame futhi; uma kusahluleka, khetha esinye isikhathi noma uxhumane nosekelo.",
+          "defaultMessage": "{{error}}",
+          "INVALID_STATUS_TRANSITION": "Lolo shintsho lwesimo aluvunyelwe esimweni samanje sokubhuka.",
+          "VERIFICATION_NOT_COMPLETE": "Ukufika kufanele kuqinisekiswe nge-PIN noma i-QR ngaphambi kokuqala le nsizakalo yasekhaya.",
+          "HOUSECALL_STAGE_REQUIRED": "Qeda isinyathelo sangaphambilini sovakashelo lwasekhaya ngaphambi kokuqala insizakalo.",
+          "CONFLICT": "This ukubhuka shintshad, reulayisha",
+          "SLOT_NOT_AVAILABLE": "Leso sikhathi asisatholakali. Khetha esinye isikhathi.",
+          "VALIDATION_ERROR": "Check the imininingwane yokubhuka and zama futhi.",
+          "FORBIDDEN": "You do not have imvume to buyekeza this ukubhuka.",
+          "NOT_FOUND": "Lokhu kubhuka akutholakalanga. Vuselela uhlu lwakho lokubhuka."
+        }
+      },
+      "bookingNextStep": {
+        "closeOut": {
+          "complete": {
+            "title": "vala usuku isikhathi",
+            "body": "Insizakalo kufanele iqediwe. Yimake iqediwe bese ukhokhisa ibhalansi esele."
+          },
+          "providerCancel": {
+            "title": "vala usuku house shayela",
+            "body": "Isikhathi sokuvakasha sidlulile. Buyekeza ukubhuka bese ukhansela noma umake ukungafiki uma ikhasimende ingafikanga."
+          },
+          "review": {
+            "title": "Needs vala-out",
+            "body": "Isikhathi sesikhathi siphelile. Qeda, hlela kabusha, noma umake ukungafiki ukuze imibiko ihlale iqinisile."
+          }
+        }
       }
     },
     "moreTab": {
@@ -20127,7 +20204,8 @@
         "searching": "Seshaing...",
         "suggestionProvider": "Umhlinzeki",
         "suggestionCategory": "Isigaba",
-        "noSuggestions": "Awekho amacebo atholiwe"
+        "noSuggestions": "Awekho amacebo atholiwe",
+        "myTickets": "Amathikithi ami"
       },
       "bottomNav": {
         "home": "Ikhaya",

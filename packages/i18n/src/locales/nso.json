@@ -476,7 +476,32 @@
             "moreActionsA11y": "tše dingwe bukingo actions",
             "bookingForA11y": "bukingo for {{name}}",
             "actionSaved": "{{action}} bolokad",
-            "minDuration": "{{count}} Nnyane"
+            "minDuration": "{{count}} Nnyane",
+            "closeOutComplete": "fediša",
+            "closeOutReview": "tshekatsheko",
+            "closeOutBalanceDue": "E swanetšego {{amount}}",
+            "closeOutOverdueSince": "Fetilego · {{day}} {{time}}",
+            "actions": {
+              "confirm": "Netefatša",
+              "check_in": "Tsena",
+              "start_journey": "thoma journey",
+              "mark_arrived": "Mark arrived",
+              "start_service": "thoma tirelo",
+              "complete_service": "fediša tirelo",
+              "cancel": "Khansela bukingo",
+              "mark_no_show": "Mark aowa-bontšha",
+              "reset_to_confirmed": "Bea leswa to netefatšaed"
+            },
+            "tillPayment": {
+              "online": "Inthaneteng",
+              "yoco": "Yoco",
+              "cardMachine": "Motšhene wa karata",
+              "paystackTerminal": "Paystack Terminal",
+              "wallet": "Sepatši",
+              "giftCard": "Karata ya mpho",
+              "cash": "Tšhelete",
+              "manualCard": "Manual Karata"
+            }
           },
           "etaPicker": {
             "estimatedArrival": "Estimated arrival",
@@ -2694,7 +2719,7 @@
           "expiringSoon_other": "{{count}} dikgopelo expiring kgauswinyane",
           "expiringSoonHint": "Netefatša or Gana before the slot is released automatiletšay.",
           "review": "tshekatsheko",
-          "stalePending_one": "{{count}} bukingo kgopelo from past letšatšis need your attention",
+          "stalePending_one": "{{count}} kgopelo ya bukingo go tšwa matšatšing a fetilego e nyaka šedi ya gago",
           "stalePending_other": "{{count}} dikgopelo tša go beakanya go tšwa matšatšing a go feta di nyaka tlhokomelo ya gago",
           "stalePendingHint": "Di tšhitše ka ntle ga molalo wa gago wa matšatši — lekola gomme o netefatše goba o gane.",
           "closeOut_one": "{{count}} kopano need tswalela-out",
@@ -2803,7 +2828,38 @@
           "journeyBody": "Oketša ETA gore moreki a bone gore o lebela go fihla neng. O ka thoma ntle le yona.",
           "journeyStartNoEta": "thoma journey (aowa ETA)",
           "journeyStart": "thoma journey",
-          "serviceFallback": "Tirelo"
+          "serviceFallback": "Tirelo",
+          "appointmentsTile": "dikopano",
+          "closeOutBreakdown": "{{today}} lehono · {{older}} from earlier matšatši",
+          "closeOutBreakdownToday": "{{today}} lehono",
+          "closeOutAction": "fediša, mark aowa-bontšha, or khansela each one.",
+          "closeOutBannerA11y_one": "{{count}} kopano needs tswalela-out. bona queue.",
+          "closeOutBannerA11y_other": "{{count}} dikopano need tswalela-out. bona queue.",
+          "closeOutFilterTitle_one": "{{count}} need tswalela-out",
+          "closeOutFilterTitle_other": "{{count}} need tswalela-out",
+          "rangeWeekOf": "beke of {{date}}",
+          "rangeUpcoming": "Tše di tlago",
+          "rangeAllTime": "Nako ka moka",
+          "statsLinePending": "{{count}} e emetše",
+          "statsLineConfirmed": "{{count}} netefatšaed",
+          "statsLineActive": "{{count}} E a šoma",
+          "statsLineCompleted": "{{count}} e fedile",
+          "statsLineExcludes_one": "excludes {{count}} e khansetšwe/aowa-bontšha",
+          "statsLineExcludes_other": "excludes {{count}} e khansetšwe/aowa-bontšha",
+          "closeOutComplete": "fediša",
+          "closeOutReview": "tshekatsheko",
+          "closeOutConfirmTitle": "Mark as e fedile?",
+          "closeOutConfirmBody": "tirelo nako will be recorded gabjale.",
+          "closeOutBalanceDue": "Tekanyetšo e šetšego — bula bukingo go hwetša tefo pele o fediša.",
+          "closeOutCompleted": "kopano e fedile",
+          "closeOutCompleteFailed": "Ga e kgona go fediša this kopano",
+          "closeOutCompleteAll": "fediša all checked in",
+          "closeOutCompleteAllTitle": "fediša E lokile dikopano?",
+          "closeOutCompleteAllBody_one": "Mark {{count}} checked-in or in-Tšwelopele kopano as e fedile.",
+          "closeOutCompleteAllBody_other": "Mark {{count}} checked-in or in-Tšwelopele dikopano as e fedile.",
+          "closeOutCompleteAllDone_one": "{{count}} kopano e fedile",
+          "closeOutCompleteAllDone_other": "{{count}} dikopano e fedile",
+          "closeOutCompleteAllNone": "Ga go na dikopano tše di ka fedišwago go kgetho ye"
         },
         "bookingDetail": {
           "title": "Bukingo",
@@ -13172,6 +13228,37 @@
           "paycloudSection": "PayCloud palo mismatch",
           "unavailable": "bula Yoco or Beautonomi metšhene ya dikarata to use this pego."
         }
+      },
+      "bookingActions": {
+        "errors": {
+          "default": "Bukingo ga se ya kgona go mpshafatšwa. Hle mpshafatša o leke gape.",
+          "internal": "Bukingo ga se ya kgona go mpshafatšwa ka polokego. Mpshafatša bukingo o leke gape; ge e sa palelwa, kgetha nako ye nngwe goba ikgokaganye le thekgo.",
+          "defaultMessage": "{{error}}",
+          "INVALID_STATUS_TRANSITION": "Phetogo yeo ya boemo ga e dumelelwe go tšwa boemong bja gona bjale bja bukingo.",
+          "VERIFICATION_NOT_COMPLETE": "Go fihla go swanetše go netefatšwa ka PIN goba QR pele go thoma tirelo ye ya gae.",
+          "HOUSECALL_STAGE_REQUIRED": "Fediša kgato ye e fetilego ya ketelo ya gae pele o thoma tirelo.",
+          "CONFLICT": "This bukingo fetošad, relaiša",
+          "SLOT_NOT_AVAILABLE": "Nako yeo ga e sa hwetšagala. Kgetha nako ye nngwe.",
+          "VALIDATION_ERROR": "Check the dintlha tša bukingo and leka gape.",
+          "FORBIDDEN": "You do not have tumello to mpshafatša this bukingo.",
+          "NOT_FOUND": "Bukingo ye ga se ya hwetšwa. Mpshafatša lenaneo la gago la dibukingo."
+        }
+      },
+      "bookingNextStep": {
+        "closeOut": {
+          "complete": {
+            "title": "tswalela letšatši kopano",
+            "body": "Tirelo e swanetše e be e fedile. E swaye e fedile o lokiše tekanyetšo e šetšego."
+          },
+          "providerCancel": {
+            "title": "tswalela letšatši house letša",
+            "body": "Nako ya ketelo e fetile. Lekodišiša bukingo o hlakole goba o swaye go se fihle ge moreki a sa fihla."
+          },
+          "review": {
+            "title": "Needs tswalela-out",
+            "body": "Nako ya kopano e fedile. Fediša, beakanya gape, goba swaya go se fihle gore dipego di dule di nepagetše."
+          }
+        }
       }
     },
     "moreTab": {
@@ -20115,7 +20202,8 @@
         "searching": "Nyakaing...",
         "suggestionProvider": "Mophakeri",
         "suggestionCategory": "Sehlopha",
-        "noSuggestions": "Ga go na ditšhišinyo tše di hwetšwago"
+        "noSuggestions": "Ga go na ditšhišinyo tše di hwetšwago",
+        "myTickets": "Dithekete tša ka"
       },
       "bottomNav": {
         "home": "Gae",

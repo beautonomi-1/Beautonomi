@@ -26,6 +26,8 @@ import {
 } from "@/lib/bookings/close-out-booking-select";
 import { hasPermission } from "@/lib/auth/permissions";
 import { redactBookingCustomerContacts } from "@/lib/provider/redact-booking-customer-contact";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { roundCurrency } from "@beautonomi/utils";
 
 const OPEN_STATUSES = ["confirmed", "checked_in", "waiting", "in_progress"];
 
@@ -91,10 +93,29 @@ export async function GET(request: NextRequest) {
     return successResponse({
       summary,
       bookings: redactBookingCustomerContacts(
-        rows.map((row) => ({
-          ...row,
-          suggestedAction: row.suggested_close_out_action,
-        })),
+        rows.map((row) => {
+          const charges = (row as { additional_charges?: Array<{ amount?: number | null; status?: string | null }> | null })
+            .additional_charges;
+          const unpaidAdditionalCharges = (charges ?? [])
+            .filter((c) => c?.status !== "paid" && c?.status !== "rejected")
+            .reduce((s, c) => s + Number(c?.amount ?? 0), 0);
+          const balance_due = roundCurrency(
+            computeBookingOutstandingDisplay({
+              totalAmount: Number((row as { total_amount?: number | null }).total_amount ?? 0),
+              totalPaid: Number((row as { total_paid?: number | null }).total_paid ?? 0),
+              totalRefunded: Number((row as { total_refunded?: number | null }).total_refunded ?? 0),
+              walletAmount: Number((row as { wallet_amount?: number | null }).wallet_amount ?? 0),
+              giftCardAmount: Number((row as { gift_card_amount?: number | null }).gift_card_amount ?? 0),
+              unpaidAdditionalCharges,
+              paymentStatus: (row as { payment_status?: string | null }).payment_status,
+            }),
+          );
+          return {
+            ...row,
+            suggestedAction: row.suggested_close_out_action,
+            balance_due,
+          };
+        }),
         canViewClients,
       ),
     });
