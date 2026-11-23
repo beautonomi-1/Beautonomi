@@ -412,22 +412,83 @@ jobs:
     if: needs.changes.outputs.database == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    services:
-      postgres:
-        image: public.ecr.aws/supabase/postgres:17.6.1.127
-        env:
-          POSTGRES_PASSWORD: ci_only_throwaway
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 30
+    # Authenticated GHCR pulls. A job `services:` image is pulled before any step
+    # can log in, and anonymous public.ecr.aws pulls fail with "Data limit exceeded".
+    permissions:
+      contents: read
+      packages: read
     env:
       DATABASE_URL: postgres://postgres:ci_only_throwaway@localhost:5432/postgres
+      POSTGRES_IMAGE: ghcr.io/supabase/postgres:17.6.1.127
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore Postgres image
+        id: pg-image
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/supabase-postgres.tar
+          key: supabase-postgres-17.6.1.127-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Start Postgres
+        id: pg-start
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/supabase-postgres.tar"
+          if [ -f "$archive" ]; then
+            echo "Loading cached ${POSTGRES_IMAGE}"
+            docker load -i "$archive"
+          else
+            pull() {
+              local ref="$1" attempt
+              for attempt in 1 2 3; do
+                if docker pull "$ref"; then
+                  return 0
+                fi
+                echo "Pull failed (attempt ${attempt}): ${ref}"
+                sleep $((attempt * 8))
+              done
+              return 1
+            }
+            if pull "${POSTGRES_IMAGE}"; then
+              :
+            elif pull "supabase/postgres:17.6.1.127"; then
+              docker tag supabase/postgres:17.6.1.127 "${POSTGRES_IMAGE}"
+            else
+              echo "Could not pull Supabase Postgres from GHCR or Docker Hub" >&2
+              exit 1
+            fi
+            docker save "${POSTGRES_IMAGE}" -o "$archive"
+          fi
+          docker rm -f ci-postgres >/dev/null 2>&1 || true
+          docker run -d --name ci-postgres \
+            -e POSTGRES_PASSWORD=ci_only_throwaway \
+            -p 5432:5432 \
+            "${POSTGRES_IMAGE}"
+          for attempt in $(seq 1 30); do
+            if docker exec ci-postgres pg_isready -U postgres; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Postgres did not become ready" >&2
+          docker logs ci-postgres >&2 || true
+          exit 1
+
+      - name: Save Postgres image cache
+        if: steps.pg-image.outputs.cache-hit != 'true' && steps.pg-start.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/supabase-postgres.tar
+          key: supabase-postgres-17.6.1.127-${{ runner.os }}-${{ runner.arch }}
 
       - uses: actions/setup-node@v4
         with:
