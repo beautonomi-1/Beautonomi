@@ -87,6 +87,16 @@ describe("booking payment and lifecycle display", () => {
     expect(payment.isPaymentSettled).toBe(true);
   });
 
+  it("does not call a booking paid in full while a balance is still due", () => {
+    const payment = getBookingPaymentDisplay({
+      paymentStatus: "paid",
+      outstandingBalance: 165,
+    });
+
+    expect(payment.label).toBe("Partially paid");
+    expect(payment.isPaymentSettled).toBe(false);
+  });
+
   it("does not treat a missing outstanding balance as paid", () => {
     const payment = getBookingPaymentDisplay({
       paymentStatus: "pending",

@@ -4,7 +4,6 @@ import React, { ReactNode, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import Breadcrumb, { BreadcrumbItem } from "@/components/ui/breadcrumb";
 import { useTranslation } from "@beautonomi/i18n";
 
@@ -40,20 +39,18 @@ export function SettingsDetailLayout({
   const disabled = isSaving || saveDisabled;
   const effectiveSaveLabel = saveLabel ?? t("web.provider.common.saveChanges");
   const label = isSaving ? t("web.provider.common.saving") : effectiveSaveLabel;
-  const searchParams = useSearchParams();
   const [returnUrl, setReturnUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const returnTo = searchParams.get("returnTo");
-    if (returnTo) {
-      try {
-        const decoded = decodeURIComponent(returnTo);
-        queueMicrotask(() => setReturnUrl(decoded));
-      } catch (e) {
-        console.error("Invalid returnTo parameter:", e);
-      }
+    if (typeof window === "undefined") return;
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+    if (!returnTo) return;
+    try {
+      setReturnUrl(decodeURIComponent(returnTo));
+    } catch (e) {
+      console.error("Invalid returnTo parameter:", e);
     }
-  }, [searchParams]);
+  }, []);
 
   const finalBackHref = returnUrl || backHref;
 

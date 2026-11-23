@@ -40,6 +40,10 @@ import {
   isCollectionFulfillment,
   isDeliveryFulfillment,
   isTerminalProductOrderStatus,
+  bookingAddonLineLabel,
+  bookingProductLineLabel,
+  collectBookingAddonLines,
+  collectBookingProductLines,
 } from "@beautonomi/utils";
 import {
   usePaycloudCollectAvailability,
@@ -184,18 +188,6 @@ function formatTimeSafe(value: unknown, tz?: string | null): string {
     });
   } catch {
     return parsed.toLocaleTimeString();
-  }
-}
-
-function formatProductVariantLabel(variant: unknown): string | null {
-  if (variant == null || typeof variant !== "object") return null;
-  const ov = (variant as { option_values?: unknown }).option_values;
-  if (ov == null) return null;
-  if (typeof ov === "string") return ov;
-  try {
-    return JSON.stringify(ov);
-  } catch {
-    return null;
   }
 }
 
@@ -1958,9 +1950,9 @@ export default function BookingDetailScreen() {
       });
     }
 
-    const totalAmount = row.total_amount ?? 0;
-    const totalPaid = row.total_paid ?? 0;
-    const totalRefunded = row.total_refunded ?? 0;
+    const totalAmount = Number(row.total_amount ?? 0) || 0;
+    const totalPaid = Number(row.total_paid ?? 0) || 0;
+    const totalRefunded = Number(row.total_refunded ?? 0) || 0;
     const walletAmountApplied = Number(row.wallet_amount ?? 0);
     const giftCardAmountApplied = Number(row.gift_card_amount ?? 0);
     const effectivePaid = Math.max(0, subtractMoney(totalPaid, totalRefunded));
@@ -1968,9 +1960,10 @@ export default function BookingDetailScreen() {
     const walletGiftCoverage = addMoney(walletAmountApplied, giftCardAmountApplied);
     const coverageLocal = Math.max(effectivePaid, walletGiftCoverage);
     const outstandingRawLocal = subtractMoney(totalAmount, coverageLocal);
+    const serverOutstanding = Number(row.outstanding_balance);
     const outstanding =
-      typeof row.outstanding_balance === "number"
-        ? Math.max(0, row.outstanding_balance)
+      row.outstanding_balance != null && row.outstanding_balance !== "" && Number.isFinite(serverOutstanding)
+        ? Math.max(0, serverOutstanding)
         : ps === "refunded"
           ? 0
           : Math.max(0, outstandingRawLocal);
@@ -2009,6 +2002,8 @@ export default function BookingDetailScreen() {
 
   const b = (resolvedBooking ?? (data as BookingDetail)) as BookingDetail;
   const services = b.services ?? [];
+  const addonLines = collectBookingAddonLines(b);
+  const productLines = collectBookingProductLines(b);
   const recurringDetails = getRecurringDetails(b, bk);
   const customerName = b.customers?.full_name ?? bk("guestFallback");
   const customerId = b.customer_id ?? (b.customers as { id?: string } | undefined)?.id ?? null;
@@ -2132,9 +2127,9 @@ export default function BookingDetailScreen() {
     const at = new Date(b.completed_at);
     return Number.isFinite(at.getTime()) ? format(at, "HH:mm") : null;
   })();
-  const totalAmount = b.total_amount ?? 0;
-  const totalPaid = b.total_paid ?? 0;
-  const totalRefunded = b.total_refunded ?? 0;
+  const totalAmount = Number(b.total_amount ?? 0) || 0;
+  const totalPaid = Number(b.total_paid ?? 0) || 0;
+  const totalRefunded = Number(b.total_refunded ?? 0) || 0;
   const walletAmountApplied = Number(b.wallet_amount ?? 0);
   const giftCardAmountApplied = Number(b.gift_card_amount ?? 0);
   const effectivePaid = Math.max(0, subtractMoney(totalPaid, totalRefunded));
@@ -2146,9 +2141,10 @@ export default function BookingDetailScreen() {
   const walletGiftCoverage = addMoney(walletAmountApplied, giftCardAmountApplied);
   const coverageLocal = Math.max(effectivePaid, walletGiftCoverage);
   const outstandingRawLocal = subtractMoney(totalAmount, coverageLocal);
+  const serverOutstanding = Number(b.outstanding_balance);
   const outstanding =
-    typeof b.outstanding_balance === "number"
-      ? Math.max(0, b.outstanding_balance)
+    b.outstanding_balance != null && b.outstanding_balance !== "" && Number.isFinite(serverOutstanding)
+      ? Math.max(0, serverOutstanding)
       : ps === "refunded"
         ? 0
         : Math.max(0, outstandingRawLocal);
@@ -4366,6 +4362,19 @@ export default function BookingDetailScreen() {
                     ? `Still outstanding: ${b.currency ?? getTenantDefaultCurrency()} ${outstanding.toFixed(2)}.`
                     : "Paid in full."}
                 </Text>
+                {!completionChecklist.allDone ? (
+                  <View style={twStyle("mt-2")}>
+                    <RequirementChecklist
+                      title={bk("stillOpen")}
+                      items={completionChecklist.items.map((item) => ({
+                        id: item.id,
+                        label: item.label,
+                        done: item.done,
+                        detail: item.detail,
+                      }))}
+                    />
+                  </View>
+                ) : null}
               </View>
             )}
             {isEnRoute && !isArrived && (
@@ -4840,7 +4849,9 @@ export default function BookingDetailScreen() {
             {b.payment_status ? (
               <Text style={twStyle("text-xs text-gray-500 mb-2")}>
                 {"Status: " + (
-                  b.payment_status === "paid" ? "Paid in full" :
+                  outstanding > 0 && (b.payment_status === "paid" || b.payment_status === "partially_paid")
+                    ? "Partially paid"
+                    : b.payment_status === "paid" ? "Paid in full" :
                   b.payment_status === "partially_paid" ? "Partially paid" :
                   b.payment_status === "partially_refunded" ? "Partially refunded" :
                   b.payment_status === "refunded" ? "Refunded" :
@@ -4849,8 +4860,10 @@ export default function BookingDetailScreen() {
                 )}
               </Text>
             ) : null}
-            {(typeof b.subtotal === "number" && b.subtotal > 0) ||
-            (typeof b.discount_amount === "number" && b.discount_amount > 0) ||
+            {(Number(b.subtotal) > 0) ||
+            addonLines.length > 0 ||
+            productLines.length > 0 ||
+            (Number(b.discount_amount) > 0) ||
             (typeof (b as { promotion_discount_amount?: number }).promotion_discount_amount === "number" &&
               Number((b as { promotion_discount_amount?: number }).promotion_discount_amount) > 0) ||
             (typeof (b as { membership_discount_amount?: number }).membership_discount_amount === "number" &&
@@ -4862,9 +4875,19 @@ export default function BookingDetailScreen() {
             (typeof b.tip_amount === "number" && b.tip_amount > 0) ||
             (typeof b.travel_fee_amount === "number" && b.travel_fee_amount > 0) ? (
               <View style={twStyle("mb-2 border-b border-gray-100 pb-2")}>
-                {typeof b.subtotal === "number" && b.subtotal > 0 ? (
+                {addonLines.map((line) => (
+                  <Text key={line.id} style={twStyle("text-sm text-gray-700")}>
+                    {bookingAddonLineLabel(line)}: {b.currency ?? getTenantDefaultCurrency()} {line.totalPrice.toLocaleString()}
+                  </Text>
+                ))}
+                {productLines.map((line) => (
+                  <Text key={line.id} style={twStyle("text-sm text-gray-700")}>
+                    {bookingProductLineLabel(line)}: {b.currency ?? getTenantDefaultCurrency()} {line.totalPrice.toLocaleString()}
+                  </Text>
+                ))}
+                {Number(b.subtotal) > 0 ? (
                   <Text style={twStyle("text-sm text-gray-600")}>
-                    Subtotal: {b.currency ?? getTenantDefaultCurrency()} {b.subtotal.toLocaleString()}
+                    Subtotal: {b.currency ?? getTenantDefaultCurrency()} {Number(b.subtotal).toLocaleString()}
                   </Text>
                 ) : null}
                 {typeof b.discount_amount === "number" && b.discount_amount > 0 ? (
@@ -4906,15 +4929,15 @@ export default function BookingDetailScreen() {
                     : {b.currency ?? getTenantDefaultCurrency()} {b.tax_amount.toLocaleString()}
                   </Text>
                 ) : null}
-                {typeof b.service_fee_amount === "number" && b.service_fee_amount > 0 ? (
+                {Number(b.service_fee_amount) > 0 ? (
                   <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
                     Platform fee (customer-paid, retained by platform): {b.currency ?? getTenantDefaultCurrency()}{" "}
-                    {b.service_fee_amount.toLocaleString()}
+                    {Number(b.service_fee_amount).toLocaleString()}
                   </Text>
                 ) : null}
-                {typeof b.tip_amount === "number" && b.tip_amount > 0 ? (
+                {Number(b.tip_amount) > 0 ? (
                   <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
-                    Tip: {b.currency ?? getTenantDefaultCurrency()} {b.tip_amount.toLocaleString()}
+                    Tip: {b.currency ?? getTenantDefaultCurrency()} {Number(b.tip_amount).toLocaleString()}
                   </Text>
                 ) : null}
                 {typeof b.travel_fee_amount === "number" && b.travel_fee_amount > 0 ? (
@@ -5386,7 +5409,7 @@ export default function BookingDetailScreen() {
           </View>
         )}
 
-        {(b.products?.length ?? 0) > 0 && (
+        {productLines.length > 0 && (
           <View
             ref={productsBlockRef}
             style={twStyle("mb-3")}
@@ -5395,32 +5418,27 @@ export default function BookingDetailScreen() {
             }}
           >
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("products")}</Text>
-            {(b.products ?? []).map((p, i) => {
-              const vLabel = formatProductVariantLabel(p.product_variant);
-              return (
-                <View key={p.id ?? `prod-${i}`} style={twStyle("rounded-xl border border-gray-200 bg-white p-3 mb-2")}>
-                  <Text style={twStyle("font-medium text-gray-900")}>{p.product_name ?? bk("productFallback")}</Text>
-                  {vLabel ? <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>{vLabel}</Text> : null}
+            {productLines.map((line) => (
+                <View key={line.id} style={twStyle("rounded-xl border border-gray-200 bg-white p-3 mb-2")}>
+                  <Text style={twStyle("font-medium text-gray-900")}>{line.name === "Product" ? bk("productFallback") : line.name}</Text>
+                  {line.variantLabel ? <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>{line.variantLabel}</Text> : null}
                   <Text style={twStyle("text-sm text-gray-600 mt-1")}>
-                    {bk("productQtyLine", { count: p.quantity ?? 1 })}
-                    {typeof p.unit_price === "number"
-                      ? ` · ${b.currency ?? getTenantDefaultCurrency()} ${p.unit_price.toLocaleString()} ea`
+                    {bk("productQtyLine", { count: line.quantity })}
+                    {line.unitPrice > 0
+                      ? ` · ${b.currency ?? getTenantDefaultCurrency()} ${line.unitPrice.toLocaleString()} ea`
                       : ""}
                   </Text>
-                  {typeof p.total_price === "number" ? (
-                    <Text style={twStyle("text-sm font-medium text-gray-900 mt-1")}>
-                      {b.currency ?? getTenantDefaultCurrency()} {p.total_price.toLocaleString()}
-                    </Text>
-                  ) : null}
+                  <Text style={twStyle("text-sm font-medium text-gray-900 mt-1")}>
+                    {b.currency ?? getTenantDefaultCurrency()} {line.totalPrice.toLocaleString()}
+                  </Text>
                 </View>
-              );
-            })}
+              ))}
             {b.payment_status ? (
               <Text style={twStyle("text-xs text-gray-500 mt-1 mb-2")}>
                 {bk("appointmentPaymentLine", {
                   status: (b.payment_status ?? "pending").replace(/_/g, " "),
                 })}
-                {b.payment_status === "paid" ? ` ${bk("appointmentPaymentPaidNote")}` : ""}
+                {b.payment_status === "paid" && outstanding <= 0 ? ` ${bk("appointmentPaymentPaidNote")}` : ""}
               </Text>
             ) : null}
             {appointmentProductOrders.length > 0 ? (

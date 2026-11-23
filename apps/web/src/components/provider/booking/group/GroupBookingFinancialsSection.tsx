@@ -1,5 +1,5 @@
 "use client";
-import { multiplyMoney } from "@beautonomi/utils";
+import { bookingProductLineLabel, collectBookingProductLines } from "@beautonomi/utils";
 
 import { ShoppingBag } from "lucide-react";
 import { useTranslation } from "@beautonomi/i18n";
@@ -85,32 +85,26 @@ export function GroupBookingFinancialsSection({
             </div>
           ) : null}
         </div>
-        {financials.groupProducts.length > 0 ? (
+        {collectBookingProductLines(booking).length > 0 ? (
           <>
             <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide flex items-center gap-1.5">
               <ShoppingBag className="h-4 w-4" />
               {t("web.provider.bookings.groupFinancials.products")}
             </h3>
             <ul className="space-y-2 text-sm bg-gray-50 rounded-xl p-4">
-              {financials.groupProducts.map((product, index) => {
-                const quantity = Number(product?.quantity ?? 1) || 1;
-                const name = String(
-                  product?.product_name ??
-                    product?.productName ??
-                    t("web.provider.bookings.groupFinancials.productFallback", { index: index + 1 }),
-                );
-                const total =
-                  Number(product?.total_price ?? product?.totalPrice) ||
-                  multiplyMoney(Number(product?.unit_price ?? product?.unitPrice ?? 0), quantity);
-                return (
-                  <li key={`${name}-${index}`} className="flex justify-between gap-2">
+              {collectBookingProductLines(booking).map((line) => (
+                  <li key={line.id} className="flex justify-between gap-2">
                     <span>
-                      {t("web.provider.bookings.groupFinancials.productQty", { name, quantity })}
+                      {t("web.provider.bookings.groupFinancials.productQty", {
+                        name: line.name === "Product"
+                          ? t("web.provider.bookings.groupFinancials.productFallback", { index: 1 })
+                          : line.variantLabel ? `${line.name} · ${line.variantLabel}` : line.name,
+                        quantity: line.quantity,
+                      })}
                     </span>
-                    <span className="font-medium">{formatMoney(total)}</span>
+                    <span className="font-medium">{formatMoney(line.totalPrice)}</span>
                   </li>
-                );
-              })}
+                ))}
             </ul>
           </>
         ) : null}
@@ -144,7 +138,11 @@ export function GroupBookingFinancialsSection({
         ) : null}
         {financials.participantCollected > 0 ? (
           <BookingSummaryRow
-            label={t("web.provider.bookings.groupFinancials.collected")}
+            label={t(
+              participants.some((p) => Number(p.total_refunded ?? 0) > 0.009)
+                ? "web.provider.bookings.groupFinancials.collectedNet"
+                : "web.provider.bookings.groupFinancials.collected",
+            )}
             value={formatMoney(financials.participantCollected)}
           />
         ) : null}
@@ -211,32 +209,26 @@ export function GroupBookingFinancialsSection({
         </BookingSectionCard>
       ) : null}
 
-      {financials.groupProducts.length > 0 ? (
+      {collectBookingProductLines(booking).length > 0 ? (
         <BookingSectionCard>
           <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
             <ShoppingBag className="h-4 w-4" />
             {t("web.provider.bookings.groupFinancials.products")}
           </BookingSectionLabel>
           <ul className="space-y-2 text-sm">
-            {financials.groupProducts.map((product, index) => {
-              const quantity = Number(product?.quantity ?? 1) || 1;
-              const name = String(
-                product?.product_name ??
-                  product?.productName ??
-                  t("web.provider.bookings.groupFinancials.productFallback", { index: index + 1 }),
-              );
-              const total =
-                Number(product?.total_price ?? product?.totalPrice) ||
-                multiplyMoney(Number(product?.unit_price ?? product?.unitPrice ?? 0), quantity);
-              return (
-                <li key={`${name}-${index}`} className="flex justify-between gap-2">
+            {collectBookingProductLines(booking).map((line) => (
+                <li key={line.id} className="flex justify-between gap-2">
                   <span>
-                    {t("web.provider.bookings.groupFinancials.productQty", { name, quantity })}
+                    {t("web.provider.bookings.groupFinancials.productQty", {
+                      name: line.name === "Product"
+                        ? t("web.provider.bookings.groupFinancials.productFallback", { index: 1 })
+                        : bookingProductLineLabel({ ...line, quantity: 1 }),
+                      quantity: line.quantity,
+                    })}
                   </span>
-                  <span className="font-medium">{formatMoney(total)}</span>
+                  <span className="font-medium">{formatMoney(line.totalPrice)}</span>
                 </li>
-              );
-            })}
+              ))}
           </ul>
         </BookingSectionCard>
       ) : null}

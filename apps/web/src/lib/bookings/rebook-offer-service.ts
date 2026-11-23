@@ -41,6 +41,8 @@ export type RebookOfferPreview = {
   canWhatsAppHandoff: boolean;
   canEditMessage: boolean;
   canEditClientPhone: boolean;
+  /** False only when the client account has no phone. The number itself stays off this payload. */
+  hasClientPhone: boolean;
   suggestedSlot: { startAt: string; endAt: string; dateYmd: string; staffId: string | null } | null;
   existingOffer: {
     id: string;
@@ -422,6 +424,7 @@ export async function previewRebookOffer(
     canWhatsAppHandoff: canWhatsApp && Boolean(ctx.customer.phone?.trim()),
     canEditMessage: true,
     canEditClientPhone: await rebookOfferCanEditClientPhone(userId, request),
+    hasClientPhone: Boolean(ctx.customer.phone?.trim()),
     suggestedSlot: suggested
       ? { startAt: suggested.startAt, endAt: suggested.endAt, dateYmd: suggested.dateYmd, staffId: suggested.staffId }
       : null,

@@ -53,18 +53,30 @@ export function GroupSessionSteps({
   const paidUp = outstanding <= 0.01;
 
   const steps: Array<{ id: StepId; done: boolean; detail: string }> = [
-    { id: "start", done: started, detail: t(`${k}.startDetail`) },
+    { id: "start", done: started, detail: started ? t(`${k}.startDone`) : t(`${k}.startDetail`) },
     {
       id: "checkIn",
       done: completed || allCheckedIn,
-      detail: t(`${k}.checkInDetail`, { checkedIn, total: active.length }),
+      detail: allCheckedIn
+        ? t(`${k}.checkInDone`, { total: active.length })
+        : completed
+          ? t(`${k}.checkInClosed`, { checkedIn, total: active.length })
+          : t(`${k}.checkInDetail`, { checkedIn, total: active.length }),
     },
     {
       id: "collect",
       done: paidUp,
       detail: paidUp ? t(`${k}.collectDone`) : t(`${k}.collectDetail`, { amount: formatMoney(outstanding) }),
     },
-    { id: "complete", done: completed, detail: t(`${k}.completeDetail`) },
+    {
+      id: "complete",
+      done: completed,
+      detail: completed
+        ? paidUp
+          ? t(`${k}.completeDone`)
+          : t(`${k}.completeDoneUnpaid`)
+        : t(`${k}.completeDetail`),
+    },
     { id: "receipt", done: false, detail: t(`${k}.receiptDetail`) },
   ];
   const currentId = steps.find((s) => !s.done)?.id ?? "receipt";
@@ -77,7 +89,7 @@ export function GroupSessionSteps({
         </BookingActionButton>
       );
     }
-    if (id === "collect" && canProcessPayments && !paidUp && !completed) {
+    if (id === "collect" && canProcessPayments && !paidUp) {
       return (
         <BookingActionButton size="sm" fullWidth={false} disabled={busy} onClick={onCollect}>
           {t(`${k}.collectAction`)}
@@ -122,7 +134,9 @@ export function GroupSessionSteps({
                   {index + 1}. {t(`${k}.${step.id}`)}
                 </p>
                 <p className="text-xs text-gray-500">{step.detail}</p>
-                {isCurrent ? <div className="mt-2">{actionFor(step.id)}</div> : null}
+                {isCurrent || (step.id === "receipt" && completed) ? (
+                  <div className="mt-2">{actionFor(step.id)}</div>
+                ) : null}
               </div>
             </li>
           );

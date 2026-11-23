@@ -5,7 +5,7 @@ import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 export const MIN_CONFIRM_WINDOW_MS = 15 * 60 * 1000;
 
 /** Default confirmation SLA (business hours). */
-export const DEFAULT_CONFIRMATION_SLA_HOURS = 2;
+export const DEFAULT_CONFIRMATION_SLA_HOURS = 4;
 
 /** Default hours before slot to release unconfirmed requests. */
 export const DEFAULT_UNCONFIRMED_EXPIRE_HOURS_BEFORE_SLOT = 2;

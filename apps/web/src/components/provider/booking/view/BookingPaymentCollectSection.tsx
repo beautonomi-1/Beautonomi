@@ -134,7 +134,6 @@ export function BookingPaymentCollectSection({
   const canSendPaymentLink =
     paymentLinkEnabled &&
     outstanding > 0 &&
-    appointment.payment_status !== "paid" &&
     appointment.status !== "cancelled" &&
     !!(customerEmail || customerPhone);
 

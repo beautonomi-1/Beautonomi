@@ -11,7 +11,7 @@ import { getGoogleCalendarUrl, getOutlookCalendarUrl, downloadICS } from "@/lib/
 import { formatCurrency } from "@/lib/utils";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
-import { subtractMoney, getBookingLifecycleDisplay, getBookingPaymentDisplay, multiplyMoney } from "@beautonomi/utils";
+import { subtractMoney, getBookingLifecycleDisplay, getBookingPaymentDisplay, multiplyMoney, bookingProductLineLabel, collectBookingProductLines } from "@beautonomi/utils";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
@@ -526,20 +526,16 @@ export default function BookingConfirmationPage() {
                     ))}
                   </>
                 )}
-                {booking.products && booking.products.length > 0 && (
-                  <>
-                    {booking.products.map((product, index) => (
-                      <div key={`product-${index}`} className="flex justify-between items-start ps-4">
+                {collectBookingProductLines(booking).map((line) => (
+                      <div key={line.id} className="flex justify-between items-start ps-4">
                         <div className="flex-1">
-                          <p className="text-gray-600">{product.product_name || t("web.booking.confirmation.productFallback")}{product.quantity > 1 ? ` ×${product.quantity}` : ""}</p>
+                          <p className="text-gray-600">{line.name === "Product" ? t("web.booking.confirmation.productFallback") : bookingProductLineLabel(line)}</p>
                         </div>
                         <p className="font-semibold text-gray-900">
-                          {formatCurrency(product.total_price, booking.currency)}
+                          {formatCurrency(line.totalPrice, booking.currency)}
                         </p>
                       </div>
                     ))}
-                  </>
-                )}
               </div>
             </div>
 

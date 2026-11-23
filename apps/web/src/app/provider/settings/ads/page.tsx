@@ -3,7 +3,7 @@
 import { useTranslation } from "@beautonomi/i18n";
 import { getDefaultMoneyLocale, subtractMoney } from "@beautonomi/utils";
 import { resolveAdPackAmountMajor } from "@/lib/ads/resolve-ad-pack-price";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -164,7 +164,8 @@ function campaignProgress(
     if (cap <= 0) return 0;
     return Math.max(0, Math.min(1, Number(metrics.impressions ?? 0) / cap));
   }
-  if (campaign.billing_model === "time_based" && campaign.start_at && campaign.end_at) {
+  if (campaign.billing_model === "time_based") {
+    if (!timeBoostIsFunded(campaign) || !campaign.start_at || !campaign.end_at) return 0;
     const start = new Date(campaign.start_at).getTime();
     const end = new Date(campaign.end_at).getTime();
     if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
@@ -232,6 +233,29 @@ function getLifecycleBadge(
   };
 }
 
+function timeBoostIsFunded(campaign: Campaign): boolean {
+  if (campaign.payment_state) return campaign.payment_state === "paid";
+  return campaign.status === "active" || campaign.status === "paused";
+}
+
+function unpaidTimeBoostLine(
+  campaign: Campaign,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (campaign.status === "ended" || campaign.lifecycle === "expired" || campaign.lifecycle === "cancelled") {
+    return campaign.lifecycle === "cancelled"
+      ? t("web.provider.settings.pages.ads.cancelled")
+      : t("web.provider.settings.pages.ads.boostPeriodEnded");
+  }
+  if (campaign.payment_state === "failed" || campaign.lifecycle === "payment_failed") {
+    return t("web.provider.settings.pages.ads.paymentFailed");
+  }
+  if (campaign.payment_state === "pending" || campaign.lifecycle === "confirming") {
+    return t("web.provider.settings.pages.ads.confirmingPayment");
+  }
+  return t("web.provider.settings.pages.ads.startsAfterPayment");
+}
+
 function isPastCampaign(lifecycle: CampaignLifecycle | undefined): boolean {
   return (
     lifecycle === "budget_exhausted" ||
@@ -259,7 +283,7 @@ type TimePack = {
   display_order: number;
 };
 
-export default function ProviderAdsPage() {
+function ProviderAdsPage() {
   const { t } = useTranslation();
   const { currencyCode, format: fmt } = useReportCurrency();
   const searchParams = useSearchParams();
@@ -298,6 +322,17 @@ export default function ProviderAdsPage() {
     run: () => Promise<void>;
   } | null>(null);
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
+  const [listingPreview, setListingPreview] = useState<{
+    businessName?: string;
+    thumbnailUrl?: string | null;
+    avatarUrl?: string | null;
+    city?: string | null;
+    rating?: number;
+    reviewCount?: number;
+    isVerified?: boolean;
+    description?: string | null;
+    businessType?: "freelancer" | "salon" | null;
+  } | null>(null);
   const [showEndedCampaigns, setShowEndedCampaigns] = useState(false);
   const [form, setForm] = useState({
     budget: "",
@@ -349,6 +384,42 @@ export default function ProviderAdsPage() {
     }
     (async () => {
       setLoading(true);
+      void fetcher
+        .get<{
+          data?: {
+            business_name?: string;
+            thumbnail_url?: string | null;
+            avatar_url?: string | null;
+            description?: string | null;
+            business_type?: string | null;
+            is_verified?: boolean;
+            rating_average?: number | string | null;
+            review_count?: number | string | null;
+            locations?: { city?: string | null; is_primary?: boolean }[];
+          };
+        }>("/api/provider/profile")
+        .then((profileRes) => {
+          const profile = profileRes.data;
+          if (!profile) return;
+          const city =
+            profile.locations?.find((location) => location.is_primary)?.city ??
+            profile.locations?.[0]?.city ??
+            null;
+          const rating = Number(profile.rating_average);
+          const reviews = Number(profile.review_count);
+          setListingPreview({
+            businessName: profile.business_name,
+            thumbnailUrl: profile.thumbnail_url,
+            avatarUrl: profile.avatar_url,
+            city,
+            rating: Number.isFinite(rating) ? rating : 0,
+            reviewCount: Number.isFinite(reviews) ? reviews : 0,
+            isVerified: Boolean(profile.is_verified),
+            description: profile.description,
+            businessType: profile.business_type === "freelancer" ? "freelancer" : "salon",
+          });
+        })
+        .catch(() => undefined);
       await Promise.all([loadCampaigns(), loadPerformance()]);
       try {
         const [catRes, packsRes] = await Promise.all([
@@ -526,6 +597,10 @@ subtitle: t("web.provider.settings.pages.ads.cpcSubtitle"),
         window.location.href = data.payment_url;
         return;
       }
+      if (data?.requires_payment) {
+        toast.error(t("web.provider.settings.pages.ads.checkoutDidNotOpen"));
+        return;
+      }
       toast.success(t("web.provider.settings.pages.ads.campaignCreatedDraftActivateItWhen"));
     } catch {
       toast.error(t("web.provider.settings.pages.ads.failedToCreateCampaign"));
@@ -581,6 +656,11 @@ subtitle: t("web.provider.settings.pages.ads.impressionPackSubtitle"),
         window.location.href = data.payment_url;
         return;
       }
+      if (data?.requires_payment) {
+        toast.error(t("web.provider.settings.pages.ads.checkoutDidNotOpen"));
+        loadCampaigns();
+        return;
+      }
       toast.success(t("web.provider.settings.pages.ads.campaignCreated"));
     } catch {
       toast.error(t("web.provider.settings.pages.ads.failedToCreateCampaign"));
@@ -609,6 +689,11 @@ subtitle: t("web.provider.settings.pages.ads.impressionPackSubtitle"),
         window.location.href = payload.payment_url;
         return;
       }
+      if (payload?.requires_payment) {
+        toast.error(t("web.provider.settings.pages.ads.checkoutDidNotOpen"));
+        loadCampaigns();
+        return;
+      }
       toast.success(t("web.provider.settings.pages.ads.campaignCreated"));
       loadCampaigns();
     } catch {
@@ -628,6 +713,7 @@ heading: t("web.provider.settings.pages.ads.timeBoost"),
         t("web.provider.settings.pages.ads.benefitSponsoredDuration", { days: daysLabel }),
         t("web.provider.settings.pages.ads.benefitFlatPrice"),
         t("web.provider.settings.pages.ads.benefitGoesLiveAfterPayment"),
+        t("web.provider.settings.pages.ads.benefitClockRunsWhilePaused"),
       ],
       lineItems: [
         { label: t("web.provider.settings.pages.ads.boostDuration"), value: daysLabel },
@@ -1216,10 +1302,11 @@ toast.message(t("web.provider.settings.pages.ads.pickImpressionPack"));
                   Number(c.budget) > Number(c.spent ?? 0) &&
                   paymentState === "paid";
                 const progress = campaignProgress(c, nowMs, metrics);
+                const fundedTimeBoost = c.billing_model === "time_based" && timeBoostIsFunded(c);
                 const remaining =
                   c.billing_model === "time_based"
-                    ? !c.end_at
-? t("web.provider.settings.pages.ads.startsAfterPayment")
+                    ? !fundedTimeBoost || !c.end_at
+? unpaidTimeBoostLine(c, t)
                       : new Date(c.end_at).getTime() <= nowMs
 ? t("web.provider.settings.pages.ads.boostPeriodEnded")
                         : t("web.provider.settings.pages.ads.daysRemaining", { count: Math.max(0, Math.ceil((new Date(c.end_at).getTime() - nowMs) / 86400000)) })
@@ -1246,7 +1333,9 @@ toast.message(t("web.provider.settings.pages.ads.pickImpressionPack"));
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {c.billing_model === "time_based"
-                          ? t("web.provider.settings.pages.ads.dayBoostPaid", { days: c.duration_days ?? t("web.provider.settings.pages.ads.unknownDays"), amount: fmt(Number(c.budget)) }) + (c.end_at ? ` · ${t("web.provider.settings.pages.ads.endsOn", { date: new Date(c.end_at).toLocaleDateString() })}` : "")
+                          ? fundedTimeBoost
+                            ? t("web.provider.settings.pages.ads.dayBoostPaid", { count: Number(c.duration_days ?? 0), amount: fmt(Number(c.budget)) }) + (c.end_at ? ` · ${t("web.provider.settings.pages.ads.endsOn", { date: new Date(c.end_at).toLocaleDateString() })}` : "")
+                            : unpaidTimeBoostLine(c, t)
                           : c.pack_impressions != null
                             ? t("web.provider.settings.pages.ads.impressionsPaidSpent", { count: c.pack_impressions, paid: fmt(Number(c.budget)), spent: fmt(Number(c.spent)) })
                             : [t("web.provider.settings.pages.ads.totalBudgetSpent", { budget: fmt(Number(c.budget)), spent: fmt(Number(c.spent)) }), c.daily_budget != null ? t("web.provider.settings.pages.ads.dailyCapLine", { amount: fmt(Number(c.daily_budget)) }) : null, c.bid_cpc != null && c.bid_cpc > 0 ? t("web.provider.settings.pages.ads.bidLine", { amount: fmt(Number(c.bid_cpc)) }) : null].filter(Boolean).join(" · ")}
@@ -1553,8 +1642,15 @@ toast.message(t("web.provider.settings.pages.ads.pickImpressionPack"));
               ) : null}
 
               <AdsPlacementPreview
-                headline={checkoutReview.title}
-                businessName={checkoutReview.subtitle ?? undefined}
+                businessName={listingPreview?.businessName ?? provider?.business_name}
+                thumbnailUrl={listingPreview?.thumbnailUrl}
+                avatarUrl={listingPreview?.avatarUrl}
+                city={listingPreview?.city ?? provider?.locations?.find((location) => location.is_primary)?.city ?? provider?.locations?.[0]?.city}
+                rating={listingPreview?.rating}
+                reviewCount={listingPreview?.reviewCount}
+                isVerified={listingPreview?.isVerified}
+                description={listingPreview?.description}
+                businessType={listingPreview?.businessType}
               />
 
               <div className="rounded-lg border p-4">
@@ -1619,5 +1715,13 @@ toast.message(t("web.provider.settings.pages.ads.pickImpressionPack"));
         </DialogContent>
       </Dialog>
     </SettingsDetailLayout>
+  );
+}
+
+export default function ProviderAdsPageRoute() {
+  return (
+    <Suspense fallback={null}>
+      <ProviderAdsPage />
+    </Suspense>
   );
 }

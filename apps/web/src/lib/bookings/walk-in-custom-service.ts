@@ -179,7 +179,7 @@ export function mapProviderBookingServiceLineForApi(
     offering_name: displayName,
     service_name: displayName,
     duration_minutes: bs.duration_minutes ?? 60,
-    price: bs.price ?? 0,
+    price: Number(bs.price ?? 0) || 0,
     currency: bs.currency,
     scheduled_start_at: bs.scheduled_start_at,
     scheduled_end_at: bs.scheduled_end_at,

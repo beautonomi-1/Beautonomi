@@ -2,8 +2,8 @@
 
 import { useTranslation } from "@beautonomi/i18n";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { DataTableShell } from "@/components/provider/DataTableShell";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -176,6 +176,8 @@ export function ClientsClient({
 }) {
   const { t } = useTranslation();
   const { selectedLocationId } = useProviderPortal();
+  const searchParams = useSearchParams();
+  const openedClientFromQuery = useRef(false);
   const [clients, setClients] = useState<Client[]>(() => initialClients ?? []);
   const [isLoading, setIsLoading] = useState(() => {
     if (initialError) return false;
@@ -318,6 +320,20 @@ export function ClientsClient({
     loadClientHistory(historyId);
     setIsDetailSheetOpen(true);
   };
+
+  useEffect(() => {
+    if (openedClientFromQuery.current || isLoading) return;
+    const openId = searchParams.get("client")?.trim();
+    if (!openId) return;
+    const match = clients.find(
+      (client) =>
+        client.id === openId ||
+        (client as { customer_id?: string | null }).customer_id === openId,
+    );
+    if (!match) return;
+    openedClientFromQuery.current = true;
+    handleViewDetails(match);
+  }, [clients, isLoading, searchParams]);
 
   const handleSave = async (data: ClientFormData) => {
     try {

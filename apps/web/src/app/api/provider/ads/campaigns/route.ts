@@ -369,10 +369,10 @@ export async function POST(request: NextRequest) {
 
     const dailyBudget = body.daily_budget != null ? Number(body.daily_budget) : null;
     const bidCpc = Number(body.bid_cpc) || 0;
-    const startAt = billingModel === "time_based" ? new Date().toISOString() : (body.start_at ?? null);
-    const endAt = billingModel === "time_based" && durationDays
-      ? new Date(Date.now() + durationDays * 86400000).toISOString()
-      : (body.end_at ?? null);
+    // Time boosts start only after payment is verified. Stamping the window
+    // here made unpaid drafts look like the paid day was already counting down.
+    const startAt = billingModel === "time_based" ? null : (body.start_at ?? null);
+    const endAt = billingModel === "time_based" ? null : (body.end_at ?? null);
     const targeting = body.targeting ?? {};
     const bidSettings = body.bid_settings ?? {};
 

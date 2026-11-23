@@ -73,6 +73,7 @@ export default function ProviderReturnsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [updating, setUpdating] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [focusReturnId, setFocusReturnId] = useState("");
 
   const [dialog, setDialog] = useState<ActionDialog | null>(null);
   const [dialogNotes, setDialogNotes] = useState("");
@@ -91,7 +92,24 @@ export default function ProviderReturnsPage() {
       }>(`/api/provider/returns?${params}`);
 
       if (res?.data) {
-        setReturns(res.data.returns);
+        let rows = res.data.returns;
+        const focusId =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("return")?.trim() ?? ""
+            : "";
+        setFocusReturnId(focusId);
+        if (focusId && !rows.some((row) => row.id === focusId)) {
+          try {
+            const one = await fetcher.get<{ data?: { return_request?: ReturnRequest } }>(
+              `/api/provider/returns/${encodeURIComponent(focusId)}`,
+            );
+            const focused = one.data?.return_request;
+            if (focused) rows = [focused, ...rows];
+          } catch {
+            // The returns list is still the right place when that one request is unavailable.
+          }
+        }
+        setReturns(rows);
         setTotalPages(res.data.pagination.totalPages);
       }
     } catch {
@@ -104,6 +122,11 @@ export default function ProviderReturnsPage() {
     const id = setTimeout(() => fetchReturns(), 0);
     return () => clearTimeout(id);
   }, [fetchReturns]);
+
+  useEffect(() => {
+    if (!focusReturnId || loading) return;
+    document.getElementById(`return-${focusReturnId}`)?.scrollIntoView({ block: "center" });
+  }, [focusReturnId, loading, returns]);
 
   const openActionDialog = (returnId: string, action: string, label: string) => {
     setDialog({ returnId, action, label });
@@ -187,7 +210,13 @@ export default function ProviderReturnsPage() {
                 (a) => a.action !== "process_refund" || canProcessPayments,
               );
               return (
-                <div key={r.id} className="p-4 sm:p-5 hover:bg-gray-50 transition-colors">
+                <div
+                  key={r.id}
+                  id={`return-${r.id}`}
+                  className={`p-4 sm:p-5 hover:bg-gray-50 transition-colors ${
+                    focusReturnId === r.id ? "bg-amber-50 ring-1 ring-inset ring-amber-300" : ""
+                  }`}
+                >
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">

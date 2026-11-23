@@ -37,6 +37,21 @@ function pathWithQuery(pathname: string, sp: URLSearchParams): string {
   return qs ? `${pathname}?${qs}` : pathname;
 }
 
+function bookingIdFromPath(pathname: string): string | null {
+  const match = pathname.match(/\/bookings\/([0-9a-f-]{36})\/?$/i);
+  return match && isProviderNotificationUuid(match[1]) ? match[1] : null;
+}
+
+/** Keep only the query keys the provider booking page actually reads. */
+function providerBookingPath(id: string, searchParams: URLSearchParams): string {
+  const q = new URLSearchParams();
+  for (const key of ["action", "collectPaycloud", "collectYoco"] as const) {
+    const value = searchParams.get(key);
+    if (value) q.set(key, value);
+  }
+  return pathWithQuery(`/provider/bookings/${id}`, q);
+}
+
 /**
  * Returns a path suitable for `router.push` in the provider web portal, or undefined if unknown.
  */
@@ -127,7 +142,51 @@ export function deriveProviderPortalNotificationUrl(
 
       const bookingM = pathname.match(/^\/account-settings\/bookings\/([0-9a-f-]{36})$/i);
       if (bookingM) {
-        return `/provider/bookings/${bookingM[1]}`;
+        return providerBookingPath(bookingM[1], searchParams);
+      }
+
+      if (
+        pathname === "/settings/subscription" ||
+        pathname === "/provider/settings/subscription" ||
+        pathname.endsWith("/more/subscription")
+      ) {
+        return "/provider/subscription";
+      }
+
+      if (pathname === "/booking-detail") {
+        const id = searchParams.get("id");
+        if (isProviderNotificationUuid(id)) return providerBookingPath(id, searchParams);
+      }
+
+      if (pathname === "/group-booking-detail") {
+        const id = searchParams.get("id");
+        if (isProviderNotificationUuid(id)) {
+          return `/provider/group-bookings?open_group_id=${encodeURIComponent(id.trim())}`;
+        }
+        return "/provider/group-bookings";
+      }
+
+      const groupDeep = pathname.match(/^\/provider\/group-bookings\/([0-9a-f-]{36})\/?$/i);
+      if (groupDeep && isProviderNotificationUuid(groupDeep[1])) {
+        return `/provider/group-bookings?open_group_id=${encodeURIComponent(groupDeep[1])}`;
+      }
+
+      const clientDeep = pathname.match(/^\/provider\/clients\/([0-9a-f-]{36})\/?$/i);
+      if (clientDeep && isProviderNotificationUuid(clientDeep[1])) {
+        return `/provider/clients?client=${encodeURIComponent(clientDeep[1])}`;
+      }
+
+      if (pathname === "/provider/products" || pathname.startsWith("/provider/products/")) {
+        return pathWithQuery("/provider/catalogue/products", searchParams);
+      }
+
+      const foreignBookingId = bookingIdFromPath(pathname);
+      if (
+        foreignBookingId &&
+        !pathname.startsWith("/provider/bookings/") &&
+        (pathname.includes("(app)") || pathname === `/bookings/${foreignBookingId}` || pathname.startsWith("/bookings/"))
+      ) {
+        return providerBookingPath(foreignBookingId, searchParams);
       }
 
       if (pathname === "/account-settings/messages" || pathname.startsWith("/account-settings/messages")) {
@@ -159,6 +218,9 @@ export function deriveProviderPortalNotificationUrl(
   if (isProviderNotificationUuid(d.booking_id)) {
     return `/provider/bookings/${String(d.booking_id).trim()}`;
   }
+  if (isProviderNotificationUuid(d.group_booking_id)) {
+    return `/provider/group-bookings?open_group_id=${encodeURIComponent(String(d.group_booking_id).trim())}`;
+  }
   if (isProviderNotificationUuid(d.conversation_id)) {
     return `/provider/messaging?conversationId=${encodeURIComponent(String(d.conversation_id).trim())}`;
   }
@@ -166,7 +228,7 @@ export function deriveProviderPortalNotificationUrl(
     return `/provider/calendar`;
   }
   if (isProviderNotificationUuid(d.client_id)) {
-    return `/provider/clients/${String(d.client_id).trim()}`;
+    return `/provider/clients?client=${encodeURIComponent(String(d.client_id).trim())}`;
   }
   if (productOrderId) {
     return `/provider/ecommerce/orders?order=${encodeURIComponent(productOrderId)}`;

@@ -12,14 +12,16 @@ function parseIsoSafe(dateStr: string | null | undefined): Date | null {
 }
 
 export function formatCurrency(
-  amount: number,
+  amount: number | string | null | undefined,
   currency = getTenantDefaultCurrency(),
   locale?: string,
 ): string {
+  const n = typeof amount === "number" ? amount : Number(amount);
+  const safe = Number.isFinite(n) ? n : 0;
   const code = normalizeCurrencyCode(currency);
   const resolvedLocale =
     locale ?? getDefaultMoneyLocale() ?? Intl.DateTimeFormat().resolvedOptions().locale ?? "en-ZA";
-  return formatMoney(amount, code, resolvedLocale);
+  return formatMoney(safe, code, resolvedLocale);
 }
 
 export function formatCurrencyShort(

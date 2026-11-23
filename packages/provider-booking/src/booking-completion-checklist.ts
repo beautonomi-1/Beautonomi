@@ -46,16 +46,27 @@ export function buildBookingCompletionChecklist(
   if (!chargesDone) blockingLabels.push("Unpaid additional charges");
 
   const terminalProductStatuses = new Set(["delivered", "cancelled", "refunded"]);
-  const pendingProductOrders =
-    input.hasProductsOnBooking && input.productOrders.length > 0
-      ? input.productOrders.filter((o) => !terminalProductStatuses.has((o.status ?? "").toLowerCase()))
-      : [];
-  const productsDone = !input.hasProductsOnBooking || pendingProductOrders.length === 0;
+  const pendingProductOrders = input.hasProductsOnBooking
+    ? input.productOrders.filter((o) => !terminalProductStatuses.has((o.status ?? "").toLowerCase()))
+    : [];
+  const productsDone =
+    !input.hasProductsOnBooking ||
+    (input.productOrders.length > 0 && pendingProductOrders.length === 0);
+  const awaitingPickup = pendingProductOrders.some((order) => {
+    const fulfillment = (order.fulfillment_type ?? "collection").toLowerCase();
+    return fulfillment === "collection" || fulfillment === "pickup";
+  });
   items.push({
     id: "products",
     label: "Products handed over",
     done: productsDone,
-    detail: productsDone ? undefined : `${pendingProductOrders.length} product order(s) not delivered`,
+    detail: productsDone
+      ? undefined
+      : input.productOrders.length === 0
+        ? "Product has not been marked handed over"
+        : awaitingPickup
+          ? "Not marked collected"
+          : `${pendingProductOrders.length} product order(s) not delivered`,
   });
   if (!productsDone) blockingLabels.push("Products not marked collected/delivered");
 

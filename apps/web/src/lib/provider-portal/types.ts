@@ -580,6 +580,8 @@ export interface FilterParams {
   payment_method?: string;
   amount_min?: number;
   amount_max?: number;
+  /** Catalogue notification: only products above zero and at or under their low-stock level. */
+  has_low_stock?: boolean;
 }
 
 export interface PaginationParams {

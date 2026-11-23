@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  bookingAddonLineLabel,
+  bookingProductLineLabel,
+  collectBookingAddonLines,
+  collectBookingProductLines,
+  getBookingPaymentDisplay,
+} from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 
 import type { Appointment } from "@/lib/provider-portal/types";
@@ -31,16 +38,30 @@ export function BookingPaymentSummarySection({
     raw.platform_fee_amount ?? raw.service_fee_amount ?? raw.platform_service_fee ?? 0,
   );
   const subtotal = Number(raw.subtotal ?? 0);
+  const addonLines = collectBookingAddonLines(raw);
+  const productLines = collectBookingProductLines(raw);
   const depositRequired = Boolean(raw.deposit_required);
   const depositAmount = Number(raw.deposit_amount ?? 0);
   const paymentOption = String(raw.payment_option ?? "");
   const paymentStatus = (appointment.payment_status ?? "").toLowerCase();
+  const paymentDisplay = getBookingPaymentDisplay({
+    paymentStatus,
+    outstandingBalance: outstanding,
+    paymentOption,
+    depositRequired,
+  });
 
-  if (totalAmount <= 0 && outstanding <= 0 && totalPaid <= 0) return null;
+  if (totalAmount <= 0 && outstanding <= 0 && totalPaid <= 0 && addonLines.length === 0 && productLines.length === 0) return null;
 
   return (
     <BookingSectionCard>
       <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.paymentSummaryBlock.title")}</BookingSectionLabel>
+      {addonLines.map((line) => (
+        <BookingSummaryRow key={line.id} label={bookingAddonLineLabel(line)} value={formatMoney(line.totalPrice)} />
+      ))}
+      {productLines.map((line) => (
+        <BookingSummaryRow key={line.id} label={bookingProductLineLabel(line)} value={formatMoney(line.totalPrice)} />
+      ))}
       {subtotal > 0 ? (
         <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.subtotal")} value={formatMoney(subtotal)} />
       ) : null}
@@ -63,17 +84,22 @@ export function BookingPaymentSummarySection({
       {platformFee > 0 ? (
         <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.platformFee")} value={formatMoney(platformFee)} />
       ) : null}
-      {totalAmount > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.total")} value={formatMoney(totalAmount)} /> : null}
+      {platformFee > 0 && totalPaid > 0 && outstanding > 0 ? (
+        <p className="text-xs text-gray-500 pb-1">{t("web.provider.bookings.detail.paymentSummaryBlock.platformFeeOnlineNote")}</p>
+      ) : null}
       {tipAmount > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.tip")} value={formatMoney(tipAmount)} /> : null}
+      {totalAmount > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.total")} value={formatMoney(totalAmount)} /> : null}
       {depositRequired && paymentOption === "deposit" && depositAmount > 0 ? (
         <BookingSummaryRow label={t("web.provider.bookings.detail.paymentDetails.depositRequired")} value={formatMoney(depositAmount)} />
       ) : null}
       {totalPaid > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentActions.paid")} value={formatMoney(totalPaid)} /> : null}
       {outstanding > 0 ? (
         <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummaryBlock.balanceDue")} value={formatMoney(outstanding)} emphasize />
-      ) : paymentStatus === "paid" ? (
-        <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummaryBlock.statusLabel")} value={t("web.provider.bookings.detail.paymentSummaryBlock.paidInFull")} />
       ) : null}
+      <BookingSummaryRow
+        label={t("web.provider.bookings.detail.paymentSummaryBlock.statusLabel")}
+        value={paymentDisplay.label}
+      />
     </BookingSectionCard>
   );
 }

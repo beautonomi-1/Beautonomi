@@ -907,7 +907,7 @@ export async function GET(request: Request) {
     // Increased limit and added price > 0 filter to ensure we get all valid prices
     const { data: offerings } = allProviderIds.size > 0 ? await supabase
       .from("offerings")
-      .select("provider_id, price, currency, supports_at_home, service:services(supports_at_home)")
+      .select("provider_id, price, currency, supports_at_home")
       .in("provider_id", Array.from(allProviderIds))
       .eq("is_active", true)
       .not("price", "is", null)
@@ -915,16 +915,8 @@ export async function GET(request: Request) {
       .order("price", { ascending: true })
       .limit(2000) : { data: null }; // Increased limit to ensure we get all prices
 
-    // Also fetch prices directly from services table as fallback (some providers may have services without offerings)
-    const { data: services } = allProviderIds.size > 0 ? await supabase
-      .from("services")
-      .select("provider_id, price, currency, supports_at_home")
-      .in("provider_id", Array.from(allProviderIds))
-      .eq("is_active", true)
-      .not("price", "is", null)
-      .gt("price", 0) // Ensure price is greater than 0
-      .order("price", { ascending: true })
-      .limit(2000) : { data: null };
+    // Offerings are the bookable catalog. There is no public.services table.
+    const services = null;
 
     // Create a map of provider_id -> minimum price and service type support
     const priceMap = new Map<string, { price: number; currency: string }>();
@@ -1172,20 +1164,13 @@ export async function GET(request: Request) {
         // Fetch prices and service types for nearest providers from both offerings and services
         const { data: nearestOfferings } = await supabase
           .from("offerings")
-          .select("provider_id, price, currency, supports_at_home, service:services(supports_at_home)")
-          .in("provider_id", nearestProviderIds)
-          .eq("is_active", true)
-          .not("price", "is", null)
-          .order("price", { ascending: true });
-
-        // Also fetch prices directly from services table
-        const { data: nearestServices } = await supabase
-          .from("services")
           .select("provider_id, price, currency, supports_at_home")
           .in("provider_id", nearestProviderIds)
           .eq("is_active", true)
           .not("price", "is", null)
           .order("price", { ascending: true });
+
+        const nearestServices = null;
 
         const nearestPriceMap = new Map<string, { price: number; currency: string }>();
         const nearestServiceTypeMap = new Map<string, { supports_house_calls: boolean; supports_salon: boolean }>();

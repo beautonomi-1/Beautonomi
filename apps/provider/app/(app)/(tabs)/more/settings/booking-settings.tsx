@@ -203,7 +203,7 @@ export default function BookingSettingsScreen() {
   const [autoConfirm, setAutoConfirm] = useState(false);
   const [requireConfirmation, setRequireConfirmation] = useState(true);
   const [defaultStatus, setDefaultStatus] = useState("booked");
-  const [confirmationSlaHours, setConfirmationSlaHours] = useState(2);
+  const [confirmationSlaHours, setConfirmationSlaHours] = useState(4);
   const [unconfirmedExpireHours, setUnconfirmedExpireHours] = useState(2);
   const [closeoutGraceSalon, setCloseoutGraceSalon] = useState(20);
   const [closeoutGraceAtHome, setCloseoutGraceAtHome] = useState(30);
@@ -222,7 +222,7 @@ export default function BookingSettingsScreen() {
       setAutoConfirm(apptSettings.autoConfirmAppointments ?? false);
       setRequireConfirmation(apptSettings.requireConfirmationForBookings ?? true);
       setDefaultStatus(apptSettings.defaultAppointmentStatus ?? "booked");
-      setConfirmationSlaHours(apptSettings.confirmationSlaHours ?? 2);
+      setConfirmationSlaHours(apptSettings.confirmationSlaHours ?? 4);
       setUnconfirmedExpireHours(apptSettings.unconfirmedExpireHoursBeforeSlot ?? 2);
       setCloseoutGraceSalon(apptSettings.closeoutGraceMinutesSalon ?? 20);
       setCloseoutGraceAtHome(apptSettings.closeoutGraceMinutesAtHome ?? 30);

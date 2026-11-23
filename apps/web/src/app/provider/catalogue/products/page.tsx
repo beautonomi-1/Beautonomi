@@ -136,8 +136,12 @@ export default function ProviderProducts() {
   const loadProducts = async () => {
     try {
       setIsLoading(true);
+      const lowStockOnly =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("low_stock") === "true";
       const filters: FilterParams = {
         search: debouncedSearchQuery || undefined,
+        has_low_stock: lowStockOnly || undefined,
       };
       const pagination: PaginationParams = { page, limit: 20 };
       const response = await providerApi.listProducts(filters, pagination);

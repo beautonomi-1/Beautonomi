@@ -1506,7 +1506,20 @@ export async function POST(request: NextRequest) {
       console.error("Error upgrading user role after onboarding:", roleError);
     }
 
-    const supportsHouseCalls = business_type === "mobile" || business_type === "both";
+    const supportsHouseCalls =
+      business_type === "mobile" ||
+      business_type === "both" ||
+      servicesToCreate.some((service) => service?.supports_at_home === true);
+
+    if (supportsHouseCalls) {
+      const { error: mobileToggleError } = await supabaseAdmin
+        .from("providers")
+        .update({ offers_mobile_services: true })
+        .eq("id", providerId);
+      if (mobileToggleError) {
+        console.error("Error enabling house calls on provider:", mobileToggleError);
+      }
+    }
     let travelFeesCustomized = false;
 
     if (supportsHouseCalls) {
@@ -1752,7 +1765,7 @@ export async function POST(request: NextRequest) {
                 phone: owner_phone || legacyPhone,
                 role: "owner",
                 is_active: true,
-                mobile_ready: false,
+                mobile_ready: supportsHouseCalls,
               });
             if (createSalonStaffErr) {
               console.error("Error creating salon owner staff record:", createSalonStaffErr);
@@ -1762,6 +1775,21 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error("Error creating salon owner staff:", error);
         // Non-fatal; staff can be created later through the team management UI
+      }
+
+      if (supportsHouseCalls) {
+        try {
+          const { error: salonMobileReadyError } = await supabaseAdmin
+            .from("provider_staff")
+            .update({ mobile_ready: true })
+            .eq("provider_id", providerId)
+            .eq("user_id", user.id);
+          if (salonMobileReadyError) {
+            console.error("Error marking salon owner mobile-ready:", salonMobileReadyError);
+          }
+        } catch (error) {
+          console.error("Error marking salon owner mobile-ready:", error);
+        }
       }
     }
 

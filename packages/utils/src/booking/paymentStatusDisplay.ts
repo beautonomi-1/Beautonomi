@@ -184,12 +184,26 @@ export function getBookingPaymentDisplay(input: {
     };
   }
 
-  if (paymentStatus === "paid" || (paymentStatus === "pending" && hasOutstandingBalance && outstanding <= 0)) {
+  if (
+    (paymentStatus === "paid" && (!hasOutstandingBalance || outstanding <= 0)) ||
+    (paymentStatus === "pending" && hasOutstandingBalance && outstanding <= 0)
+  ) {
     return {
       label: "Paid in full",
       description: "Payment has been received.",
       tone: "success",
       isPaymentSettled: true,
+      isDepositPaid: false,
+      isPaymentPending: false,
+    };
+  }
+
+  if (paymentStatus === "paid" && outstanding > 0) {
+    return {
+      label: "Partially paid",
+      description: "A partial payment has been received. A balance is still due.",
+      tone: "warning",
+      isPaymentSettled: false,
       isDepositPaid: false,
       isPaymentPending: false,
     };

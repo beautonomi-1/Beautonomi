@@ -162,12 +162,12 @@ export const ProviderCard = React.memo(function ProviderCard({
       iconUri: provider.current_badge.icon_url ?? undefined,
     });
   }
+  if (provider.supports_house_calls) allBadges.push({ key: "house", bg: "#22C55E", label: "House Calls" });
   if (showTopRatedBadge) allBadges.push({ key: "top", bg: Colors.primary, label: "Top Rated" });
   if (showHottestBadge) allBadges.push({ key: "hot", bg: "#EA580C", label: "Hottest" });
   if (showNearestBadge) allBadges.push({ key: "near", bg: "#2563EB", label: "Nearest" });
   if (showUpcomingBadge) allBadges.push({ key: "up", bg: "#9333EA", label: "Rising Star" });
   if (provider.business_type === "freelancer") allBadges.push({ key: "free", bg: "#F97316", label: "Freelancer" });
-  if (provider.supports_house_calls) allBadges.push({ key: "house", bg: "#22C55E", label: "House Calls" });
   if (provider.supports_salon) allBadges.push({ key: "salon", bg: "#A855F7", label: "At Salon" });
 
   const visibleBadges = allBadges.slice(0, MAX_VISIBLE_BADGES);

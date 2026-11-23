@@ -1,5 +1,5 @@
 "use client";
-import { multiplyMoney } from "@beautonomi/utils";
+import { bookingProductLineLabel, collectBookingProductLines } from "@beautonomi/utils";
 
 import { useTranslation } from "@beautonomi/i18n";
 
@@ -8,18 +8,6 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { ShoppingBag } from "lucide-react";
 import { BookingSectionCard, BookingSectionLabel } from "../ui";
 
-type ProductLine = {
-  product_name?: string;
-  productName?: string;
-  product_variant_name?: string;
-  productVariantName?: string;
-  quantity?: number;
-  unit_price?: number;
-  unitPrice?: number;
-  total_price?: number;
-  totalPrice?: number;
-};
-
 interface BookingProductsSectionProps {
   appointment: Appointment;
 }
@@ -27,8 +15,7 @@ interface BookingProductsSectionProps {
 export function BookingProductsSection({ appointment }: BookingProductsSectionProps) {
   const { format: formatMoney } = useProviderMoneyFormat();
   const { t } = useTranslation();
-  const raw = appointment as unknown as Record<string, unknown>;
-  const lines = (raw.products as ProductLine[] | undefined) ?? [];
+  const lines = collectBookingProductLines(appointment);
 
   if (lines.length === 0) return null;
 
@@ -39,24 +26,16 @@ export function BookingProductsSection({ appointment }: BookingProductsSectionPr
         {t("web.provider.bookings.detail.products.title")}
       </BookingSectionLabel>
       <ul className="space-y-2 text-sm">
-        {lines.map((line, index) => {
-          const name = line.product_name ?? line.productName ?? t("web.provider.bookings.detail.products.fallback");
-          const variant = line.product_variant_name ?? line.productVariantName;
-          const label = variant ? `${name} · ${variant}` : name;
-          const qty = Number(line.quantity ?? 1);
-          const total = Number(
-            line.total_price ?? line.totalPrice ??
-              multiplyMoney(Number(line.unit_price ?? line.unitPrice ?? 0), qty),
-          );
-          return (
-            <li key={index} className="flex justify-between gap-2">
+        {lines.map((line) => (
+            <li key={line.id} className="flex justify-between gap-2">
               <span className="truncate">
-                {label} ×{qty}
+                {line.name === "Product"
+                  ? t("web.provider.bookings.detail.products.fallback")
+                  : bookingProductLineLabel(line)}
               </span>
-              <span className="font-medium shrink-0">{formatMoney(total)}</span>
+              <span className="font-medium shrink-0">{formatMoney(line.totalPrice)}</span>
             </li>
-          );
-        })}
+          ))}
       </ul>
     </BookingSectionCard>
   );

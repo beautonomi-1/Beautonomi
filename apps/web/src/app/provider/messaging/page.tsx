@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { MessagingClient } from "./MessagingClient";
 import { fetchMessagingInitial } from "./fetch-messaging-initial";
 import { getSupabaseServer } from "@/lib/supabase/server";
@@ -47,12 +48,14 @@ export default async function ProviderMessagingPage({
 
   const { conversations, error } = await fetchMessagingInitial();
   return (
-    <MessagingClient
-      initialConversations={conversations}
-      initialError={error}
-      initialConversationId={resolvedConversationId}
-      fromServer
-      offerId={sp.offer_id ?? null}
-    />
+    <Suspense fallback={null}>
+      <MessagingClient
+        initialConversations={conversations}
+        initialError={error}
+        initialConversationId={resolvedConversationId}
+        fromServer
+        offerId={sp.offer_id ?? null}
+      />
+    </Suspense>
   );
 }

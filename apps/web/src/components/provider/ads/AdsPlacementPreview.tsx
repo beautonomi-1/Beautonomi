@@ -7,37 +7,49 @@ import type { PublicProviderCard } from "@/types/beautonomi";
 
 type Props = {
   businessName?: string | null;
-  headline?: string | null;
   thumbnailUrl?: string | null;
+  avatarUrl?: string | null;
   city?: string | null;
+  rating?: number | null;
+  reviewCount?: number | null;
+  isVerified?: boolean;
+  description?: string | null;
+  businessType?: "freelancer" | "salon" | null;
   className?: string;
 };
 
 /** Sponsored-slot preview using the same customer `ProviderCard` with `is_sponsored`. */
 export function AdsPlacementPreview({
   businessName,
-  headline,
   thumbnailUrl,
+  avatarUrl,
   city,
+  rating,
+  reviewCount,
+  isVerified,
+  description,
+  businessType,
   className,
 }: Props) {
   const { t } = useTranslation();
-  const title = headline?.trim() || businessName?.trim() || t("web.providerExtras.yourBusinessName");
+  const title = businessName?.trim() || t("web.providerExtras.yourBusinessName");
+  const reviews = Number(reviewCount);
+  const score = Number(rating);
   const provider: PublicProviderCard = {
     id: "preview",
     slug: "preview",
     business_name: title,
-    business_type: "salon",
-    rating: 4.8,
-    review_count: 24,
+    business_type: businessType === "freelancer" ? "freelancer" : "salon",
+    rating: Number.isFinite(score) && score > 0 ? score : 0,
+    review_count: Number.isFinite(reviews) && reviews > 0 ? reviews : 0,
     thumbnail_url: thumbnailUrl ?? null,
-    city: city?.trim() || t("web.providerExtras.johannesburg"),
+    avatar_url: avatarUrl ?? null,
+    city: city?.trim() || "",
     country: "ZA",
     is_featured: false,
-    is_verified: true,
-    starting_price: 250,
+    is_verified: Boolean(isVerified),
     currency: "ZAR",
-    description: t("web.providerExtras.listingPreviewHint"),
+    description: description?.trim() || null,
     is_sponsored: true,
     campaign_id: "preview",
   };

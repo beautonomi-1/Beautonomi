@@ -135,6 +135,37 @@ function adsCreatePaymentUrl(data: AdsCampaignCreateData | undefined): string | 
   return typeof url === "string" && url.trim() ? url : null;
 }
 
+function adsCheckoutDidNotOpen(data: AdsCampaignCreateData | undefined): boolean {
+  return Boolean(
+    data &&
+      typeof data === "object" &&
+      "requires_payment" in data &&
+      data.requires_payment &&
+      !adsCreatePaymentUrl(data),
+  );
+}
+
+function timeBoostIsFunded(campaign: Campaign): boolean {
+  if (campaign.payment_state) return campaign.payment_state === "paid";
+  return campaign.status === "active" || campaign.status === "paused";
+}
+
+function unpaidTimeBoostLine(
+  campaign: Campaign,
+  tr: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (campaign.status === "ended" || campaign.lifecycle === "expired" || campaign.lifecycle === "cancelled") {
+    return campaign.lifecycle === "cancelled" ? tr("lifecycleCancelled") : tr("boostPeriodEnded");
+  }
+  if (campaign.payment_state === "failed" || campaign.lifecycle === "payment_failed") {
+    return tr("lifecyclePaymentFailed");
+  }
+  if (campaign.payment_state === "pending" || campaign.lifecycle === "confirming") {
+    return tr("lifecycleConfirming");
+  }
+  return tr("startsAfterPayment");
+}
+
 function adsCreateReference(data: AdsCampaignCreateData | undefined): string | undefined {
   if (!data || typeof data !== "object" || !("reference" in data)) return undefined;
   const reference = data.reference;
@@ -322,6 +353,7 @@ function campaignSummaryLine(
   tr: (key: string, opts?: Record<string, unknown>) => string,
 ): string {
   if (c.billing_model === "time_based") {
+    if (!timeBoostIsFunded(c)) return unpaidTimeBoostLine(c, tr);
     const d = c.duration_days;
     const daysLabel = d == null ? "?" : tr("day", { count: d });
     const paid = formatMoney(Number(c.budget), currency);
@@ -380,7 +412,8 @@ function campaignProgress(c: Campaign, nowMs: number, metrics?: CampaignPerforma
     if (cap <= 0) return 0;
     return Math.max(0, Math.min(1, Number(metrics.impressions ?? 0) / cap));
   }
-  if (c.billing_model === "time_based" && c.start_at && c.end_at) {
+  if (c.billing_model === "time_based") {
+    if (!timeBoostIsFunded(c) || !c.start_at || !c.end_at) return 0;
     const start = new Date(c.start_at).getTime();
     const end = new Date(c.end_at).getTime();
     if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
@@ -481,7 +514,7 @@ function remainingLine(
   tr: (key: string, opts?: Record<string, unknown>) => string,
 ): string {
   if (c.billing_model === "time_based") {
-    if (!c.end_at) return tr("startsAfterPayment");
+    if (!timeBoostIsFunded(c) || !c.end_at) return unpaidTimeBoostLine(c, tr);
     if (new Date(c.end_at).getTime() <= nowMs) return tr("boostPeriodEnded");
     const days = Math.max(0, Math.ceil((new Date(c.end_at).getTime() - nowMs) / 86400000));
     return tr("daysRemaining", { count: days });
@@ -1012,6 +1045,11 @@ export default function AdsSettingsScreen() {
         });
         return;
       }
+      if (adsCheckoutDidNotOpen(data)) {
+        loadAll();
+        Alert.alert(ads("errorTitle"), ads("checkoutDidNotOpen"));
+        return;
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       loadAll();
       Alert.alert(t("common.done"), ads("createdDraft"));
@@ -1100,6 +1138,11 @@ export default function AdsSettingsScreen() {
                 : tenantCurrency,
             productLabel: ads("impressionPack"),
           });
+          return;
+        }
+        if (adsCheckoutDidNotOpen(data)) {
+          loadAll();
+          Alert.alert(ads("errorTitle"), ads("checkoutDidNotOpen"));
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1676,6 +1719,7 @@ export default function AdsSettingsScreen() {
                           ads("timeBoostBenefit1", { days: daysLabel }),
                           ads("timeBoostBenefit2"),
                           ads("timeBoostBenefit3"),
+                          ads("timeBoostBenefit4"),
                         ],
                         lineItems: [
                           { label: ads("boostDuration"), value: daysLabel },
@@ -1739,6 +1783,11 @@ export default function AdsSettingsScreen() {
                                 : tenantCurrency,
                             productLabel: ads("timeBoost"),
                           });
+                          return;
+                        }
+                        if (adsCheckoutDidNotOpen(data)) {
+                          loadAll();
+                          Alert.alert(ads("errorTitle"), ads("checkoutDidNotOpen"));
                           return;
                         }
                         Alert.alert(ads("successTitle"), ads("created"));

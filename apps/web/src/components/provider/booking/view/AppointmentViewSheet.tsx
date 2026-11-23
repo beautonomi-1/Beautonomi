@@ -123,17 +123,20 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
 
   const appt = appointment ?? selectedAppointment;
   const raw = appt ? (appt as unknown as Record<string, unknown>) : null;
+  const serverOutstanding = Number(raw?.outstanding_balance);
   const outstanding = appt
-    ? computeBookingOutstandingDisplay({
-        totalAmount: Number(appt.total_amount ?? appt.price ?? 0),
-        totalPaid: Number(raw?.total_paid ?? 0),
-        totalRefunded: Number(raw?.total_refunded ?? 0),
-        walletAmount: Number(raw?.wallet_amount ?? 0),
-        giftCardAmount: Number(raw?.gift_card_amount ?? 0),
-        unpaidAdditionalCharges: Number(raw?.unpaid_additional_charges ?? 0),
-        paymentStatus: appt.payment_status,
-        pendingWalletGiftAmount: Number(raw?.pending_wallet_gift_amount ?? 0),
-      })
+    ? Number.isFinite(serverOutstanding)
+      ? serverOutstanding
+      : computeBookingOutstandingDisplay({
+          totalAmount: Number(appt.total_amount ?? appt.price ?? 0),
+          totalPaid: Number(raw?.total_paid ?? 0),
+          totalRefunded: Number(raw?.total_refunded ?? 0),
+          walletAmount: Number(raw?.wallet_amount ?? 0),
+          giftCardAmount: Number(raw?.gift_card_amount ?? 0),
+          unpaidAdditionalCharges: Number(raw?.unpaid_additional_charges ?? 0),
+          paymentStatus: appt.payment_status,
+          pendingWalletGiftAmount: Number(raw?.pending_wallet_gift_amount ?? 0),
+        })
     : 0;
 
   const totalPaid = Number(raw?.total_paid ?? 0);
@@ -293,17 +296,23 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
               />
             ) : null}
 
-            {completionChecklist && completionChecklist.items.length > 0 ? (
+            {completionChecklist && !completionChecklist.allDone ? (
               <BookingCompletionChecklist
                 items={completionChecklist.items}
                 allDone={completionChecklist.allDone}
                 blockingLabels={completionChecklist.blockingLabels}
+                alreadyFinished={
+                  appt.status === "completed" || appt.status === "cancelled" || appt.status === "no_show"
+                }
               />
             ) : null}
 
             <BookingRecurringBanner appointment={appt} />
             <BookingCustomOfferBlock appointment={appt} />
-            <BookingProductFulfillmentBlock bookingId={appt.id} />
+            <BookingProductFulfillmentBlock
+              bookingId={appt.id}
+              onUpdated={() => void loadFullAppointment()}
+            />
 
             {isAtHome ? (
               <>

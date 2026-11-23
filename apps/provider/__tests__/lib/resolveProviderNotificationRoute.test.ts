@@ -81,6 +81,24 @@ describe("resolveProviderNotificationRoute", () => {
     expect(push).toHaveBeenCalledWith("/(app)/(tabs)/more/team-pay?tab=my-earnings");
   });
 
+  it("routes an ads payment push to ads settings", () => {
+    const ok = applyProviderNotificationRoute(router, {
+      type: "ads_payment_confirmed",
+      action_url: "/provider/settings/ads",
+    });
+    expect(ok).toBe(true);
+    expect(push).toHaveBeenCalledWith("/(app)/(tabs)/more/settings/ads");
+  });
+
+  it("routes a subscription reminder push to subscription settings", () => {
+    const ok = applyProviderNotificationRoute(router, {
+      type: "subscription_expiring",
+      action_url: "/settings/subscription",
+    });
+    expect(ok).toBe(true);
+    expect(push).toHaveBeenCalledWith("/(app)/(tabs)/more/settings/subscription");
+  });
+
   it("returns false for unknown types", () => {
     const ok = applyProviderNotificationRoute(router, { type: "unknown_event_type" });
     expect(ok).toBe(false);

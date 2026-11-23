@@ -31,7 +31,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { isAppleBillingActive } from "@/lib/iap/apple/billing-active";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { useTranslation } from "@beautonomi/i18n";
 import { formatCurrency } from "@/lib/utils";
 
@@ -99,6 +98,8 @@ interface ProviderSubscription {
     plan_name?: string | null;
   } | null;
   billing_provider?: "paystack" | "stripe" | "flutterwave" | "apple" | "manual" | null;
+  /** Present on the subscription row. Used for live updates without the portal shell. */
+  provider_id?: string | null;
 }
 
 function isPaidSubscriptionState(sub: ProviderSubscription | null): boolean {
@@ -211,7 +212,6 @@ export default function SubscriptionPage() {
   const { t } = useTranslation();
   const tx = (key: string, opts?: Record<string, unknown>) =>
     t(`web.provider.subscription.${key}`, opts) as string;
-  const { provider } = useProviderPortal();
   const router = useRouter();
   const [subscription, setSubscription] = useState<ProviderSubscription | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
@@ -432,18 +432,19 @@ export default function SubscriptionPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!provider?.id) return;
+    const providerId = subscription?.provider_id;
+    if (!providerId) return;
     const supabaseClient = getSupabaseClient();
     if (!supabaseClient) return;
     const channel = supabaseClient
-      .channel(`provider-subscription:${provider.id}`)
+      .channel(`provider-subscription:${providerId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "provider_subscriptions",
-          filter: `provider_id=eq.${provider.id}`,
+          filter: `provider_id=eq.${providerId}`,
         },
         () => {
           void loadData();
@@ -453,7 +454,7 @@ export default function SubscriptionPage() {
     return () => {
       void supabaseClient.removeChannel(channel);
     };
-  }, [provider?.id]);
+  }, [subscription?.provider_id]);
 
   // Paid plans open the review dialog first; free plans activate immediately.
   const handleUpgrade = async (planId: string) => {

@@ -15,6 +15,11 @@ describe("normalizeTaxRatePercent", () => {
     expect(normalizeTaxRatePercent(undefined)).toBe(0);
     expect(normalizeTaxRatePercent(0)).toBe(0);
   });
+
+  it("accepts numeric strings stored by the database", () => {
+    expect(normalizeTaxRatePercent("15")).toBe(15);
+    expect(normalizeTaxRatePercent("0.15")).toBe(15);
+  });
 });
 
 describe("isStandardVatRatePercent", () => {
