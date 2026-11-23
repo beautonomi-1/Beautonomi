@@ -1960,9 +1960,10 @@ export default function BookingDetailScreen() {
     const walletGiftCoverage = addMoney(walletAmountApplied, giftCardAmountApplied);
     const coverageLocal = Math.max(effectivePaid, walletGiftCoverage);
     const outstandingRawLocal = subtractMoney(totalAmount, coverageLocal);
-    const serverOutstanding = Number(row.outstanding_balance);
+    const rawOutstanding: unknown = row.outstanding_balance;
+    const serverOutstanding = Number(rawOutstanding);
     const outstanding =
-      row.outstanding_balance != null && row.outstanding_balance !== "" && Number.isFinite(serverOutstanding)
+      rawOutstanding != null && rawOutstanding !== "" && Number.isFinite(serverOutstanding)
         ? Math.max(0, serverOutstanding)
         : ps === "refunded"
           ? 0
@@ -2141,9 +2142,10 @@ export default function BookingDetailScreen() {
   const walletGiftCoverage = addMoney(walletAmountApplied, giftCardAmountApplied);
   const coverageLocal = Math.max(effectivePaid, walletGiftCoverage);
   const outstandingRawLocal = subtractMoney(totalAmount, coverageLocal);
-  const serverOutstanding = Number(b.outstanding_balance);
+  const rawOutstanding: unknown = b.outstanding_balance;
+  const serverOutstanding = Number(rawOutstanding);
   const outstanding =
-    b.outstanding_balance != null && b.outstanding_balance !== "" && Number.isFinite(serverOutstanding)
+    rawOutstanding != null && rawOutstanding !== "" && Number.isFinite(serverOutstanding)
       ? Math.max(0, serverOutstanding)
       : ps === "refunded"
         ? 0

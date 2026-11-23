@@ -59,6 +59,20 @@ type PostCompletionSheetProps = {
 
 const STORAGE_PREFIX = "provider_booking_completion_modal_seen_";
 
+type RebookPreview = {
+  clientFirstName: string;
+  providerHint: string;
+  messageBody: string;
+  link: string;
+  channel: string;
+  channelReason: string | null;
+  maskedDestination: string | null;
+  canWhatsAppHandoff: boolean;
+  canEditClientPhone: boolean;
+  hasClientPhone?: boolean;
+  existingOffer?: { id?: string; status: string } | null;
+};
+
 function clientMessagePreview(message: string, link: string): string {
   const without = link ? message.split(link).join(" ") : message;
   return without.replace(/\s+/g, " ").replace(/\s+([:.])/g, "$1").replace(/:\s*$/, "").trim();
@@ -96,19 +110,7 @@ export function PostCompletionSheet({
   const [rateError, setRateError] = useState<string | null>(null);
   const [storeReviewOpen, setStoreReviewOpen] = useState(false);
   const [rebookLoading, setRebookLoading] = useState(false);
-  const [rebookPreview, setRebookPreview] = useState<{
-    clientFirstName: string;
-    providerHint: string;
-    messageBody: string;
-    link: string;
-    channel: string;
-    channelReason: string | null;
-    maskedDestination: string | null;
-    canWhatsAppHandoff: boolean;
-    canEditClientPhone: boolean;
-    hasClientPhone?: boolean;
-    existingOffer?: { id?: string; status: string } | null;
-  } | null>(null);
+  const [rebookPreview, setRebookPreview] = useState<RebookPreview | null>(null);
   const [rebookMessage, setRebookMessage] = useState("");
   const [rebookStatus, setRebookStatus] = useState<string | null>(null);
   const [editMessageOpen, setEditMessageOpen] = useState(false);
@@ -142,7 +144,7 @@ export function PostCompletionSheet({
       .get<Record<string, unknown>>(`/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`)
       .then((res) => {
         const row = ((res as { data?: Record<string, unknown> }).data ?? res) as Record<string, unknown>;
-        setRebookPreview(row as typeof rebookPreview);
+        setRebookPreview(row as RebookPreview);
         setRebookMessage(String(row.messageBody ?? ""));
       })
       .catch(() => setRebookPreview(null))
@@ -154,8 +156,8 @@ export function PostCompletionSheet({
       `/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`,
     );
     const row = ((fresh as { data?: Record<string, unknown> }).data ?? fresh) as Record<string, unknown>;
-    const next = { ...(row as typeof rebookPreview) };
-    if (sent?.link && next) next.link = sent.link;
+    const next: RebookPreview = { ...(row as RebookPreview) };
+    if (sent?.link) next.link = sent.link;
     setRebookPreview(next);
     if (sent?.message) setRebookMessage(sent.message);
     else if (!editMessageOpen) setRebookMessage(String(row.messageBody ?? ""));
