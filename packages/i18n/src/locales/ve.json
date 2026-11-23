@@ -26383,7 +26383,7 @@
             "impressionsRemaining": "{{value}} U vhonala remaining",
             "budgetFullyUsed": "Budget yo ḓalay used",
             "budgetRemaining": "{{amount}} mali i re hone",
-            "dayBoostPaid": "{{days}} ḓuvha boost · {{amount}} yo badelwa",
+            "dayBoostPaid": "{{count}} ḓuvha boost · {{amount}} yo badelwa",
             "endsOn": "I fhela {{date}}",
             "impressionsPaidSpent": "{{count}} U vhonala · {{paid}} yo badelwa · {{spent}} spent",
             "totalBudgetSpent": "yoṱhe budget {{budget}} · Spent {{spent}}",

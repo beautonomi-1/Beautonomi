@@ -26383,7 +26383,7 @@
             "impressionsRemaining": "{{value}} Ukubonakala remaining",
             "budgetFullyUsed": "Budget kugcweley used",
             "budgetRemaining": "{{amount}} ibhajethi eshiyekileyo",
-            "dayBoostPaid": "{{days}} usuku boost · {{amount}} kuhlawulwe",
+            "dayBoostPaid": "{{count}} usuku boost · {{amount}} kuhlawulwe",
             "endsOn": "Iphela {{date}}",
             "impressionsPaidSpent": "{{count}} Ukubonakala · {{paid}} kuhlawulwe · {{spent}} spent",
             "totalBudgetSpent": "iyonke budget {{budget}} · Spent {{spent}}",

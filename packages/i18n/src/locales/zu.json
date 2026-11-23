@@ -26413,7 +26413,7 @@
             "impressionsRemaining": "{{value}} Ukubonakala remaining",
             "budgetFullyUsed": "Budget kugcweley used",
             "budgetRemaining": "{{amount}} isabelomali esisele",
-            "dayBoostPaid": "{{days}} usuku boost · {{amount}} kukhokhelwe",
+            "dayBoostPaid": "{{count}} usuku boost · {{amount}} kukhokhelwe",
             "endsOn": "Iphela {{date}}",
             "impressionsPaidSpent": "{{count}} Ukubonakala · {{paid}} kukhokhelwe · {{spent}} spent",
             "totalBudgetSpent": "isamba budget {{budget}} · Spent {{spent}}",

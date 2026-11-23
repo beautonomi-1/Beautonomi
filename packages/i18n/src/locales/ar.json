@@ -26430,7 +26430,7 @@
             "impressionsRemaining": "{{value}} impressions remaining",
             "budgetFullyUsed": "استُخدمت الميزانية بالكامل",
             "budgetRemaining": "{{amount}} ميزانية متبقية",
-            "dayBoostPaid": "{{days}} يوم boost · {{amount}} paid",
+            "dayBoostPaid": "{{count}} يوم boost · {{amount}} paid",
             "endsOn": "ينتهي في {{date}}",
             "impressionsPaidSpent": "{{count}} ظهور · {{paid}} مدفوعة · {{spent}} مُنفَقة",
             "totalBudgetSpent": "الإجمالي budget {{budget}} · Spent {{spent}}",

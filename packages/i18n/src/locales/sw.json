@@ -26379,7 +26379,7 @@
             "impressionsRemaining": "{{value}} impressions remaining",
             "budgetFullyUsed": "Bajeti imetumika kabisa",
             "budgetRemaining": "{{amount}} budget remaining",
-            "dayBoostPaid": "{{days}} siku boost · {{amount}} paid",
+            "dayBoostPaid": "{{count}} siku boost · {{amount}} paid",
             "endsOn": "Inaisha {{date}}",
             "impressionsPaidSpent": "{{count}} impressions · {{paid}} paid · {{spent}} spent",
             "totalBudgetSpent": "Jumla budget {{budget}} · Spent {{spent}}",
