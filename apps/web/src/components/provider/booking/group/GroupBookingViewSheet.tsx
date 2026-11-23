@@ -509,7 +509,7 @@ export function GroupBookingViewSheet({
               </BookingSectionCard>
             ) : null}
 
-            {canProcessPayments && !isFinal && outstanding > 0 ? (
+            {canProcessPayments && booking.status !== "cancelled" && outstanding > 0 ? (
               <BookingSectionCard id="group-collect-payment">
                 <BookingSectionLabel className="mb-2">{t(`${gv}.collectPayment`)}</BookingSectionLabel>
                 {!hasLinkedBookings ? (
@@ -643,7 +643,7 @@ export function GroupBookingViewSheet({
                         ) : null}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {canEdit && !isFinal && canResendGuestPayLink(p) ? (
+                        {canEdit && booking.status !== "cancelled" && canResendGuestPayLink(p) ? (
                           <button
                             type="button"
                             className="text-xs font-semibold underline"

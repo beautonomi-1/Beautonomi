@@ -149,6 +149,14 @@ export function AdsCheckoutReviewSheet({
             ) : null}
 
             <ActionButton
+              label={ads("notNow")}
+              onPress={onClose}
+              disabled={submitting}
+              variant="outline"
+              fullWidth
+            />
+
+            <ActionButton
               label={
                 submitting
                   ? useAppleIap

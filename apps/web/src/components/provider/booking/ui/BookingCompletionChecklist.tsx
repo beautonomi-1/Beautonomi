@@ -12,6 +12,8 @@ interface BookingCompletionChecklistProps {
   items: ChecklistItem[];
   allDone?: boolean;
   blockingLabels?: string[];
+  /** The visit is already completed, so these rows are leftover close-out, not a block on completing. */
+  alreadyFinished?: boolean;
   className?: string;
 }
 
@@ -19,12 +21,19 @@ export function BookingCompletionChecklist({
   items,
   allDone,
   blockingLabels = [],
+  alreadyFinished = false,
   className,
 }: BookingCompletionChecklistProps) {
   const { t } = useTranslation();
   return (
     <BookingSectionCard className={className}>
-      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.completion.beforeCompleting")}</BookingSectionLabel>
+      <BookingSectionLabel className="mb-3">
+        {t(
+          alreadyFinished
+            ? "web.provider.bookings.detail.completion.stillOpen"
+            : "web.provider.bookings.detail.completion.beforeCompleting",
+        )}
+      </BookingSectionLabel>
       <ul className="space-y-2">
         {items.map((item) => (
           <li key={item.id} className="flex items-start gap-2">
@@ -44,7 +53,7 @@ export function BookingCompletionChecklist({
           </li>
         ))}
       </ul>
-      {!allDone && blockingLabels.length > 0 ? (
+      {!alreadyFinished && !allDone && blockingLabels.length > 0 ? (
         <p className="mt-3 text-xs text-amber-800">
           {t("web.provider.bookings.detail.completion.blockedItems", { items: blockingLabels.join(", ") })}
         </p>

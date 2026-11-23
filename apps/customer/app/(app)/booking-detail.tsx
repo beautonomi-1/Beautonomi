@@ -34,7 +34,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
 import * as Calendar from "expo-calendar";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { subtractMoney, addMoney, formatMoney, multiplyMoney, normalizeTipPercentPresets, percentOf, roundCurrency } from "@beautonomi/utils";
+import { subtractMoney, addMoney, formatMoney, multiplyMoney, normalizeTipPercentPresets, percentOf, roundCurrency, bookingAddonLineLabel, bookingProductLineLabel, collectBookingAddonLines, collectBookingProductLines } from "@beautonomi/utils";
 import { showPermissionRecoveryAlert } from "@/lib/native-permissions";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
@@ -58,7 +58,6 @@ import {
 } from "@beautonomi/utils";
 import { pendingConfirmationSlaDisplay } from "@/lib/pending-confirmation-sla-copy";
 import {
-  bookingPaymentStatusLabel,
   customerLifecycleDescription,
   customerLifecycleTitle,
   customerPaymentDisplayLabel,
@@ -1882,6 +1881,18 @@ export default function BookingDetailScreen() {
           </Text>
         </View>
       ) : null}
+      {collectBookingAddonLines(booking).map((line) => (
+        <View key={line.id} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[700], flex: 1, marginEnd: 12 }}>{bookingAddonLineLabel(line)}</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{moneyFmt(line.totalPrice)}</Text>
+        </View>
+      ))}
+      {collectBookingProductLines(booking).map((line) => (
+        <View key={line.id} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[700], flex: 1, marginEnd: 12 }}>{bookingProductLineLabel(line)}</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{moneyFmt(line.totalPrice)}</Text>
+        </View>
+      ))}
       {booking.subtotal != null && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentSubtotal")}</Text>
@@ -2040,15 +2051,21 @@ export default function BookingDetailScreen() {
               borderRadius: 4,
               marginEnd: 8,
               backgroundColor:
-                booking.payment_status === "paid" ? "#22C55E" : booking.payment_status === "partially_paid" ? "#F59E0B" : "#9CA3AF",
+                Number(booking.outstanding_balance) > 0
+                  ? "#F59E0B"
+                  : booking.payment_status === "paid"
+                    ? "#22C55E"
+                    : booking.payment_status === "partially_paid"
+                      ? "#F59E0B"
+                      : "#9CA3AF",
             }}
           />
           <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-            {bookingPaymentStatusLabel(String(booking.payment_status), bd)}
+            {localizedPaymentChipLabel}
           </Text>
         </View>
       )}
-      {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
+      {Number(booking.outstanding_balance) > 0 && (
         <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("paymentOutstandingBalance")}</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: "#B45309" }}>
@@ -2056,7 +2073,7 @@ export default function BookingDetailScreen() {
           </Text>
         </View>
       )}
-      {isCashBooking && typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
+      {isCashBooking && Number(booking.outstanding_balance) > 0 && (
         <View style={{ marginTop: 8, backgroundColor: "#FEF3C7", borderRadius: 8, padding: 10 }}>
           <Text style={{ fontSize: 13, color: "#92400E" }}>
             {booking.location_type === "at_home"
@@ -3690,23 +3707,17 @@ export default function BookingDetailScreen() {
         )}
 
         {/* Products */}
-        {Array.isArray((booking as any).products) && (booking as any).products.length > 0 && (
+        {collectBookingProductLines(booking).length > 0 && (
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{bd("productsSection")}</Text>
-            {((booking as any).products as Record<string, unknown>[]).map((prod, i) => {
-              const prodName = String(prod.product_name ?? bd("productFallback"));
-              const qty = Number(prod.quantity ?? 1);
-              const unitPrice = Number(prod.unit_price ?? 0);
-              const totalPrice = Number(prod.total_price ?? multiplyMoney(unitPrice, qty));
-              return (
-                <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>{prodName}{qty > 1 ? ` x${qty}` : ""}</Text>
+            {collectBookingProductLines(booking).map((line) => (
+                <View key={line.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>{line.name === "Product" ? bd("productFallback") : bookingProductLineLabel(line)}</Text>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
-                    {booking.currency} {totalPrice.toFixed(2)}
+                    {booking.currency} {line.totalPrice.toFixed(2)}
                   </Text>
                 </View>
-              );
-            })}
+              ))}
           </View>
         )}
 

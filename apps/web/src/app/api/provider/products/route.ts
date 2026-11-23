@@ -51,8 +51,12 @@ export async function GET(request: Request) {
       query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,barcode.ilike.%${search}%`);
     }
 
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1);
+    // Stock filters compare variant totals, which are not a SQL column.
+    // Load the matching catalogue first, then page the filtered rows.
+    const stockFilter = hasLowStock || outOfStock;
+    if (!stockFilter) {
+      query = query.range(offset, offset + limit - 1);
+    }
 
     const { data: productsRaw, error, count } = await query;
 
@@ -86,11 +90,13 @@ export async function GET(request: Request) {
       });
     }
 
-    const totalPages = count ? Math.ceil(count / limit) : 1;
+    const filteredTotal = stockFilter ? products.length : count || 0;
+    const pageItems = stockFilter ? products.slice(offset, offset + limit) : products;
+    const totalPages = filteredTotal ? Math.ceil(filteredTotal / limit) : 1;
 
     return successResponse({
-      products,
-      total: count || 0,
+      products: pageItems,
+      total: filteredTotal,
       page,
       limit,
       total_pages: totalPages,

@@ -14,9 +14,10 @@ import { formatApiErrorMessage } from "@/lib/http/api-error";
 
 interface BookingProductFulfillmentBlockProps {
   bookingId: string;
+  onUpdated?: () => void;
 }
 
-export function BookingProductFulfillmentBlock({ bookingId }: BookingProductFulfillmentBlockProps) {
+export function BookingProductFulfillmentBlock({ bookingId, onUpdated }: BookingProductFulfillmentBlockProps) {
   const { t } = useTranslation();
   const mobileShell = useProviderBookingMobileShell();
   const [orderId, setOrderId] = useState<string | null>(null);
@@ -63,6 +64,7 @@ export function BookingProductFulfillmentBlock({ bookingId }: BookingProductFulf
       await fetcher.patch(`/api/provider/product-orders/${orderId}`, { status: "delivered" });
       toast.success(t(`${p}.collected`));
       await load();
+      onUpdated?.();
     } catch (error) {
       toast.error(formatApiErrorMessage(error, t(`${p}.collectFailed`)));
     } finally {

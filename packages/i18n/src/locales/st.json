@@ -26413,7 +26413,7 @@
             "impressionsRemaining": "{{value}} Ponahalo remaining",
             "budgetFullyUsed": "Budget e tletsey used",
             "budgetRemaining": "{{amount}} chelete e setseng",
-            "dayBoostPaid": "{{days}} letsatsi boost · {{amount}} e lefuoe",
+            "dayBoostPaid": "{{count}} letsatsi boost · {{amount}} e lefuoe",
             "endsOn": "E fela {{date}}",
             "impressionsPaidSpent": "{{count}} Ponahalo · {{paid}} e lefuoe · {{spent}} spent",
             "totalBudgetSpent": "kakaretso budget {{budget}} · Spent {{spent}}",

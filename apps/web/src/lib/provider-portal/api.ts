@@ -874,11 +874,41 @@ export class ProviderApiClient implements ProviderApi {
       const firstSvc = services[0] || {};
       const apt = this.buildAppointmentFromBooking(booking, firstSvc, 0);
       (apt as any).services = services; // Include full services array for sidebar
+      const money = (value: unknown) => {
+        const n = Number(value ?? 0);
+        return Number.isFinite(n) ? n : 0;
+      };
+      const chargeRows = Array.isArray(booking.additional_charges) ? booking.additional_charges : [];
+      const unpaidAdditionalCharges = chargeRows
+        .filter((charge: { status?: string }) => charge?.status !== "paid" && charge?.status !== "rejected")
+        .reduce((sum: number, charge: { amount?: unknown }) => addMoney(sum, money(charge?.amount)), 0);
       (apt as any).products = booking.products || [];
-      (apt as any).total_paid = booking.total_paid || 0;
-      (apt as any).total_refunded = booking.total_refunded || 0;
+      (apt as any).addons = booking.addons || [];
+      (apt as any).product_orders = booking.product_orders || [];
+      (apt as any).additional_charges = chargeRows;
+      (apt as any).subtotal = money(booking.subtotal ?? (apt as any).subtotal);
+      (apt as any).discount_amount = money(booking.discount_amount);
+      (apt as any).promotion_discount_amount = money(booking.promotion_discount_amount);
+      (apt as any).membership_discount_amount = money(booking.membership_discount_amount);
+      (apt as any).loyalty_discount_amount = money(booking.loyalty_discount_amount);
+      (apt as any).tax_amount = money(booking.tax_amount);
+      (apt as any).tip_amount = money(booking.tip_amount);
+      (apt as any).travel_fee = money(booking.travel_fee ?? booking.travel_fee_amount);
+      (apt as any).platform_fee_amount = money(booking.platform_fee_amount ?? booking.service_fee_amount);
+      (apt as any).service_fee_amount = money(booking.service_fee_amount ?? booking.platform_fee_amount);
+      (apt as any).total_amount = money(booking.total_amount ?? (apt as any).total_amount);
+      (apt as any).price = money(booking.total_amount ?? (apt as any).price);
+      (apt as any).total_paid = money(booking.total_paid);
+      (apt as any).total_refunded = money(booking.total_refunded);
+      (apt as any).wallet_amount = money(booking.wallet_amount);
+      (apt as any).gift_card_amount = money(booking.gift_card_amount);
+      (apt as any).pending_wallet_gift_amount = money(booking.pending_wallet_gift_amount);
+      (apt as any).unpaid_additional_charges = unpaidAdditionalCharges;
+      if (booking.outstanding_balance != null && booking.outstanding_balance !== "") {
+        (apt as any).outstanding_balance = money(booking.outstanding_balance);
+      }
+      (apt as any).payment_status = booking.payment_status;
       (apt as any).tax_rate = booking.tax_rate;
-      (apt as any).service_fee_amount = booking.service_fee_amount || 0;
       (apt as any).service_fee_percentage = booking.service_fee_percentage;
       (apt as any).version = booking.version;
       (apt as any).is_group_booking = booking.is_group_booking || false;
@@ -2267,6 +2297,9 @@ export class ProviderApiClient implements ProviderApi {
       const params = new URLSearchParams();
       if (filters?.search) {
         params.append('search', filters.search);
+      }
+      if (filters?.has_low_stock) {
+        params.append('has_low_stock', 'true');
       }
       if (pagination?.page) {
         params.append('page', pagination.page.toString());

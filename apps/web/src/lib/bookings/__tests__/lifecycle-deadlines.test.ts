@@ -95,8 +95,10 @@ describe("lifecycle-deadlines", () => {
   });
 
   it("labels overnight SLA expiry as sla when the business-hours bound wins", () => {
+    // Wednesday 23:00 SAST for a Thursday 16:00 slot. Four business hours from
+    // Thursday 09:00 is 13:00, which is still before the 14:00 pre-slot cutoff.
     const createdAt = new Date("2026-06-10T21:00:00.000Z");
-    const scheduledAt = new Date("2026-06-11T12:00:00.000Z");
+    const scheduledAt = new Date("2026-06-11T14:00:00.000Z");
     const decision = resolvePendingExpireDecision({
       createdAt,
       scheduledAt,

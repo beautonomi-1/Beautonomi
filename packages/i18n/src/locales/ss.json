@@ -26383,7 +26383,7 @@
             "impressionsRemaining": "{{value}} Kubonakala remaining",
             "budgetFullyUsed": "Budget kugcweley used",
             "budgetRemaining": "{{amount}} ibhajethi lesisele",
-            "dayBoostPaid": "{{days}} lilanga boost · {{amount}} kukhokhelwe",
+            "dayBoostPaid": "{{count}} lilanga boost · {{amount}} kukhokhelwe",
             "endsOn": "Kuphela {{date}}",
             "impressionsPaidSpent": "{{count}} Kubonakala · {{paid}} kukhokhelwe · {{spent}} spent",
             "totalBudgetSpent": "siphelele budget {{budget}} · Spent {{spent}}",

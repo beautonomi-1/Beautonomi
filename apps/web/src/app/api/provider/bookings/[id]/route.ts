@@ -41,7 +41,13 @@ import {
   enrichBookingLifecycleFields,
 } from "@/lib/bookings/lifecycle-booking-enrichment";
 import { totalAmountAfterCancellationFeeChange } from "@/lib/bookings/cancellation-total";
-import { recomputeProviderBookingEditTotals } from "@/lib/bookings/recompute-provider-booking-edit-totals";
+import {
+  paymentStatusAfterBookingTotal,
+  platformFeeKeptOnRetailAdd,
+  recomputeProviderBookingEditTotals,
+  serviceFeeForUpdatedSubtotal,
+  sumProviderBookingLineSubtotal,
+} from "@/lib/bookings/recompute-provider-booking-edit-totals";
 import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 import { providerBookingUpdateErrorResponse } from "@/lib/bookings/provider-booking-update-error";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -434,6 +440,10 @@ export async function GET(
 
     const bookingData = booking as BookingDbRow;
     const pendingWalletGift = await sumPendingWalletGiftBookingPayments(supabaseAdmin, id);
+    const { data: linkedProductOrders } = await supabaseAdmin
+      .from("product_orders")
+      .select("id, status, fulfillment_type, payment_status")
+      .eq("booking_id", id);
     const lifecycle = enrichBookingLifecycleFields({
       status: String(bookingData.status ?? ""),
       scheduled_at: String(bookingData.scheduled_at ?? ""),
@@ -563,8 +573,8 @@ export async function GET(
         const one = Array.isArray(sp) ? sp[0] : sp;
         return typeof one?.name === "string" ? one.name : null;
       })(),
-      subtotal: bookingData.subtotal || 0,
-      discount_amount: bookingData.discount_amount || 0,
+      subtotal: Number(bookingData.subtotal) || 0,
+      discount_amount: Number(bookingData.discount_amount) || 0,
       promotion_discount_amount: Number(
         (bookingData as { promotion_discount_amount?: number | null }).promotion_discount_amount ?? 0,
       ),
@@ -581,20 +591,20 @@ export async function GET(
       ),
       discount_code: bookingData.discount_code || null,
       discount_reason: bookingData.discount_reason || null,
-      tax_amount: bookingData.tax_amount || 0,
-      tax_rate: bookingData.tax_rate || 0,
+      tax_amount: Number(bookingData.tax_amount) || 0,
+      tax_rate: Number(bookingData.tax_rate) || 0,
       platform_fee_percentage: Number(bookingData.platform_fee_percentage || bookingData.service_fee_percentage || 0),
       platform_fee_amount: Number(bookingData.platform_fee_amount || bookingData.service_fee_amount || 0),
       service_fee_percentage: Number(bookingData.service_fee_percentage || bookingData.platform_fee_percentage || 0),
       service_fee_amount: Number(bookingData.service_fee_amount || bookingData.platform_fee_amount || 0),
       platform_fee_paid_by: bookingData.platform_fee_paid_by ?? bookingData.service_fee_paid_by ?? null,
       service_fee_paid_by: bookingData.service_fee_paid_by ?? bookingData.platform_fee_paid_by ?? null,
-      tip_amount: bookingData.tip_amount || 0,
-      travel_fee: bookingData.travel_fee || 0,
-      travel_fee_amount: bookingData.travel_fee || 0,
-      total_amount: bookingData.total_amount || 0,
-      total_paid: bookingData.total_paid || 0,
-      total_refunded: bookingData.total_refunded || 0,
+      tip_amount: Number(bookingData.tip_amount) || 0,
+      travel_fee: Number(bookingData.travel_fee) || 0,
+      travel_fee_amount: Number(bookingData.travel_fee) || 0,
+      total_amount: Number(bookingData.total_amount) || 0,
+      total_paid: Number(bookingData.total_paid) || 0,
+      total_refunded: Number(bookingData.total_refunded) || 0,
       wallet_amount: Number((bookingData as Record<string, unknown>).wallet_amount ?? 0),
       gift_card_amount: Number((bookingData as Record<string, unknown>).gift_card_amount ?? 0),
       display_time_zone: resolveBookingDisplayTimeZone(
@@ -725,6 +735,7 @@ export async function GET(
         if (row.qr_code_verified) return false;
         return true;
       })(),
+      product_orders: linkedProductOrders ?? [],
     } as unknown as BookingResponse;
 
     // Load booking custom field values (provider can read their bookings' values via RLS)
@@ -1364,19 +1375,34 @@ export async function PATCH(
         const n = Number(value ?? 0);
         return Number.isFinite(n) ? n : 0;
       };
-      const recomputed = recomputeProviderBookingEditTotals({
-        subtotal: num(updateData.subtotal ?? current.subtotal),
-        discountAmount: num(updateData.discount_amount ?? current.discount_amount),
-        promotionDiscountAmount: num(current.promotion_discount_amount),
-        membershipDiscountAmount: num(current.membership_discount_amount),
-        loyaltyDiscountAmount: num(current.loyalty_discount_amount),
-        travelFee: num(travel_fee !== undefined ? travel_fee : current.travel_fee),
-        tipAmount: num(tip_amount !== undefined ? tip_amount : current.tip_amount),
-        serviceFeeAmount: num(
-          body.service_fee_amount !== undefined
-            ? body.service_fee_amount
-            : current.service_fee_amount,
+      const discountAmount = num(updateData.discount_amount ?? current.discount_amount);
+      const promotionDiscountAmount = num(current.promotion_discount_amount);
+      const membershipDiscountAmount = num(current.membership_discount_amount);
+      const loyaltyDiscountAmount = num(current.loyalty_discount_amount);
+      const travelFee = num(travel_fee !== undefined ? travel_fee : current.travel_fee);
+      const nextSubtotal = num(updateData.subtotal ?? current.subtotal);
+      const nextServiceFee = serviceFeeForUpdatedSubtotal({
+        previousSubtotal: num(current.subtotal),
+        nextSubtotal,
+        discountAmount,
+        promotionDiscountAmount,
+        membershipDiscountAmount,
+        loyaltyDiscountAmount,
+        travelFee,
+        percentage: num(body.service_fee_percentage ?? current.service_fee_percentage),
+        currentFeeAmount: num(
+          body.service_fee_amount !== undefined ? body.service_fee_amount : current.service_fee_amount,
         ),
+      });
+      const recomputed = recomputeProviderBookingEditTotals({
+        subtotal: nextSubtotal,
+        discountAmount,
+        promotionDiscountAmount,
+        membershipDiscountAmount,
+        loyaltyDiscountAmount,
+        travelFee,
+        tipAmount: num(tip_amount !== undefined ? tip_amount : current.tip_amount),
+        serviceFeeAmount: nextServiceFee,
         registered: resolvedVat.registered,
         ratePercent: resolvedVat.ratePercent,
         inclusive: resolvedVat.inclusive,
@@ -1384,11 +1410,13 @@ export async function PATCH(
       updateData.tax_amount = recomputed.taxAmount;
       updateData.tax_rate = recomputed.taxRatePercent;
       updateData.total_amount = recomputed.totalAmount;
+      updateData.service_fee_amount = nextServiceFee;
+      updateData.platform_fee_amount = nextServiceFee;
     }
     if (body.service_fee_percentage !== undefined) {
       updateData.service_fee_percentage = body.service_fee_percentage;
     }
-    if (body.service_fee_amount !== undefined) {
+    if (body.service_fee_amount !== undefined && !pricingTouched) {
       updateData.service_fee_amount = body.service_fee_amount;
     }
     if (body.service_fee_paid_by !== undefined) {
@@ -2271,6 +2299,115 @@ export async function PATCH(
         }
       }
 
+      const [{ data: servicePriceRows, error: servicePriceError }, { data: addonPriceRows, error: addonPriceError }, { data: providerTaxRow, error: providerTaxError }] =
+        await Promise.all([
+          supabaseAdminPatch.from("booking_services").select("price").eq("booking_id", id),
+          supabaseAdminPatch.from("booking_addons").select("price, quantity").eq("booking_id", id),
+          supabaseAdminPatch
+            .from("providers")
+            .select("tenant_id, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number")
+            .eq("id", providerId)
+            .maybeSingle(),
+        ]);
+      if (servicePriceError || addonPriceError || providerTaxError) {
+        console.error("Error loading lines to reprice booking after products:", {
+          servicePriceError,
+          addonPriceError,
+          providerTaxError,
+        });
+        return errorResponse(
+          "Products were saved, but the booking total could not be updated. Please try again.",
+          "BOOKING_PRODUCT_TOTALS_FAILED",
+          422,
+        );
+      }
+
+      const resolvedVat = await resolveProviderVat(supabaseAdminPatch, {
+        tax_rate_percent: providerTaxRow?.tax_rate_percent ?? null,
+        tax_inclusive: providerTaxRow?.tax_inclusive ?? null,
+        is_vat_registered: providerTaxRow?.is_vat_registered ?? null,
+        vat_number: providerTaxRow?.vat_number ?? null,
+        tenant_id: providerTaxRow?.tenant_id ?? null,
+        tax_rate_override_percent: null,
+      });
+      if (resolvedVat.registered && resolvedVat.source === "none") {
+        return errorResponse(
+          "This provider is VAT registered but no country VAT rate is configured.",
+          "VAT_RATE_UNAVAILABLE",
+          503,
+        );
+      }
+
+      const currentMoney = currentBooking as Record<string, unknown>;
+      const money = (value: unknown) => {
+        const n = Number(value ?? 0);
+        return Number.isFinite(n) ? n : 0;
+      };
+      const lineSubtotal = sumProviderBookingLineSubtotal({
+        servicePrices: (servicePriceRows ?? []).map((row) => (row as { price?: number | string | null }).price),
+        addons: (addonPriceRows ?? []) as Array<{ price?: number | string | null; quantity?: number | string | null }>,
+        productTotals: productValidation.products.map((product) => product.totalPrice),
+      });
+      const discountAmount = money(updateData.discount_amount ?? currentMoney.discount_amount);
+      const promotionDiscountAmount = money(currentMoney.promotion_discount_amount);
+      const membershipDiscountAmount = money(currentMoney.membership_discount_amount);
+      const loyaltyDiscountAmount = money(currentMoney.loyalty_discount_amount);
+      const travelFee = money(updateData.travel_fee ?? currentMoney.travel_fee);
+      const keptPlatformFee = platformFeeKeptOnRetailAdd({
+        currentFeeAmount: money(currentMoney.service_fee_amount),
+        currentPercentage: money(currentMoney.service_fee_percentage ?? currentMoney.platform_fee_percentage),
+        nextSubtotal: lineSubtotal,
+        discountAmount,
+        promotionDiscountAmount,
+        membershipDiscountAmount,
+        loyaltyDiscountAmount,
+        travelFee,
+      });
+      const nextServiceFee = keptPlatformFee.feeAmount;
+      const recomputed = recomputeProviderBookingEditTotals({
+        subtotal: lineSubtotal,
+        discountAmount,
+        promotionDiscountAmount,
+        membershipDiscountAmount,
+        loyaltyDiscountAmount,
+        travelFee,
+        tipAmount: money(updateData.tip_amount ?? currentMoney.tip_amount),
+        serviceFeeAmount: nextServiceFee,
+        registered: resolvedVat.registered,
+        ratePercent: resolvedVat.ratePercent,
+        inclusive: resolvedVat.inclusive,
+      });
+      const nextPaymentStatus = paymentStatusAfterBookingTotal({
+        totalAmount: recomputed.totalAmount,
+        totalPaid: money(currentMoney.total_paid),
+        totalRefunded: money(currentMoney.total_refunded),
+        currentStatus: currentMoney.payment_status as string | null,
+      });
+      const retailMoneyPatch = {
+        subtotal: lineSubtotal,
+        tax_amount: recomputed.taxAmount,
+        tax_rate: recomputed.taxRatePercent,
+        service_fee_amount: nextServiceFee,
+        platform_fee_amount: nextServiceFee,
+        service_fee_percentage: keptPlatformFee.percentage,
+        platform_fee_percentage: keptPlatformFee.percentage,
+        total_amount: recomputed.totalAmount,
+        payment_status: nextPaymentStatus,
+      };
+      const { error: retailTotalsError } = await supabaseAdminPatch
+        .from("bookings")
+        .update(retailMoneyPatch)
+        .eq("id", id);
+      if (retailTotalsError) {
+        console.error("Error updating booking totals after products:", retailTotalsError);
+        return errorResponse(
+          "Products were saved, but the booking total could not be updated. Please try again.",
+          "BOOKING_PRODUCT_TOTALS_FAILED",
+          422,
+        );
+      }
+      Object.assign(updatedBooking as object, retailMoneyPatch);
+
       try {
         await syncAppointmentProductOrder(supabaseAdminPatch as never, id);
       } catch (orderSyncError) {
@@ -2632,8 +2769,8 @@ export async function PATCH(
       }),
       addons: mapBookingAddonsForApi(bookingData.booking_addons as BookingAddonJoinRow[] | undefined),
       package_id: bookingData.package_id || null,
-      subtotal: bookingData.subtotal || 0,
-      discount_amount: bookingData.discount_amount || 0,
+      subtotal: Number(bookingData.subtotal) || 0,
+      discount_amount: Number(bookingData.discount_amount) || 0,
       promotion_discount_amount: Number(
         (bookingData as { promotion_discount_amount?: number | null }).promotion_discount_amount ?? 0,
       ),
@@ -2650,14 +2787,14 @@ export async function PATCH(
       ),
       discount_code: bookingData.discount_code || null,
       discount_reason: bookingData.discount_reason || null,
-      tax_amount: bookingData.tax_amount || 0,
-      tax_rate: bookingData.tax_rate || 0,
-      service_fee_percentage: bookingData.service_fee_percentage || 0,
-      service_fee_amount: bookingData.service_fee_amount || 0,
-      tip_amount: bookingData.tip_amount || 0,
-      total_amount: bookingData.total_amount || 0,
-      total_paid: bookingData.total_paid || 0,
-      total_refunded: bookingData.total_refunded || 0,
+      tax_amount: Number(bookingData.tax_amount) || 0,
+      tax_rate: Number(bookingData.tax_rate) || 0,
+      service_fee_percentage: Number(bookingData.service_fee_percentage) || 0,
+      service_fee_amount: Number(bookingData.service_fee_amount) || 0,
+      tip_amount: Number(bookingData.tip_amount) || 0,
+      total_amount: Number(bookingData.total_amount) || 0,
+      total_paid: Number(bookingData.total_paid) || 0,
+      total_refunded: Number(bookingData.total_refunded) || 0,
       wallet_amount: patchWalletAmount,
       gift_card_amount: patchGiftCardAmount,
       currency: bookingData.currency || lastResortCurrency,

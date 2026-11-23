@@ -180,7 +180,7 @@ export function applyProviderNotificationRoute(router: ExpoRouter, data: Record<
       actionUrlLc.includes("/provider/settings/ads") ||
       actionUrlLc.includes("settings/ads")
     ) {
-      router.push("/(app)/(tabs)/bookings" as never);
+      router.push("/(app)/(tabs)/more/settings/ads" as never);
       return true;
     }
 
@@ -435,7 +435,7 @@ export function applyProviderNotificationRoute(router: ExpoRouter, data: Record<
         return true;
       case "subscription_expiring":
       case "subscription_renewed":
-        router.push("/(app)/(tabs)/more/subscription");
+        router.push("/(app)/(tabs)/more/settings/subscription" as never);
         return true;
       case "provider_custom_offer_declined":
       case "provider_custom_offer_changes_requested":

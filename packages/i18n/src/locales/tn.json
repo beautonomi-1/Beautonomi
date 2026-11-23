@@ -26383,7 +26383,7 @@
             "impressionsRemaining": "{{value}} Ponagalo remaining",
             "budgetFullyUsed": "Budget e tletsey used",
             "budgetRemaining": "{{amount}} madi a a setseng",
-            "dayBoostPaid": "{{days}} letsatsi boost · {{amount}} e duetswe",
+            "dayBoostPaid": "{{count}} letsatsi boost · {{amount}} e duetswe",
             "endsOn": "E fela {{date}}",
             "impressionsPaidSpent": "{{count}} Ponagalo · {{paid}} e duetswe · {{spent}} spent",
             "totalBudgetSpent": "palogotlhe budget {{budget}} · Spent {{spent}}",

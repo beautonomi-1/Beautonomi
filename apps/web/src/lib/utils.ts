@@ -8,10 +8,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(
-  amount: number,
+  amount: number | string | null | undefined,
   currency: string = LAST_RESORT_CURRENCY,
   locale?: string,
 ): string {
+  const n = typeof amount === "number" ? amount : Number(amount);
+  const safeAmount = Number.isFinite(n) ? n : 0;
   const code = (currency || LAST_RESORT_CURRENCY).trim().toUpperCase();
   const safe = /^[A-Z]{3}$/.test(code) ? code : LAST_RESORT_CURRENCY;
   try {
@@ -19,9 +21,9 @@ export function formatCurrency(
       style: "currency",
       currency: safe,
       minimumFractionDigits: 2,
-    }).format(amount);
+    }).format(safeAmount);
   } catch {
-    return `${safe} ${amount.toFixed(2)}`;
+    return `${safe} ${safeAmount.toFixed(2)}`;
   }
 }
 

@@ -231,11 +231,11 @@ export default function AppointmentSettingsPage() {
                   type="number"
                   min={1}
                   max={72}
-                  value={localSettings?.confirmationSlaHours ?? 2}
+                  value={localSettings?.confirmationSlaHours ?? 4}
                   onChange={(e) =>
                     setLocalSettings({
                       ...localSettings,
-                      confirmationSlaHours: Number(e.target.value) || 2,
+                      confirmationSlaHours: Number(e.target.value) || 4,
                     })
                   }
                 />

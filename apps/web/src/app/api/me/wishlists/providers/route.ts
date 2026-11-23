@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
     // Fetch minimum prices from offerings
     const { data: offerings, error: offeringsError } = await supabase
       .from("offerings")
-      .select("provider_id, price, currency, service:services(supports_at_home)")
+      .select("provider_id, price, currency, supports_at_home")
       .in("provider_id", providerIds)
       .eq("is_active", true)
       .not("price", "is", null)
@@ -176,19 +176,7 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching offerings:", offeringsError);
     }
 
-    // Also fetch prices from services as fallback
-    const { data: services, error: servicesError } = await supabase
-      .from("services")
-      .select("provider_id, price, currency, supports_at_home")
-      .in("provider_id", providerIds)
-      .eq("is_active", true)
-      .not("price", "is", null)
-      .gt("price", 0)
-      .order("price", { ascending: true });
-
-    if (servicesError) {
-      console.error("Error fetching services:", servicesError);
-    }
+    const services = null;
 
     // Create price map and service type map
     const priceMap = new Map<string, { price: number; currency: string }>();
@@ -207,7 +195,7 @@ export async function GET(request: NextRequest) {
           }
         }
         const serviceType = serviceTypeMap.get(offering.provider_id) || { supports_house_calls: false, supports_salon: false };
-        if (offering.service?.supports_at_home) {
+        if (offering.supports_at_home) {
           serviceType.supports_house_calls = true;
         }
         serviceType.supports_salon = true; // If provider has offerings, they support salon

@@ -1,7 +1,7 @@
 "use client";
 import { useTranslation } from "@beautonomi/i18n";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher, clearFetcherCache, FetchError } from "@/lib/http/fetcher";
@@ -177,7 +177,7 @@ const STATUS_BADGE: Record<string, "default" | "destructive" | "outline" | "seco
   cancelled: "destructive",
 };
 
-export default function ProviderProductOrdersPage() {
+function ProviderProductOrdersPage() {
   const { t } = useTranslation();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
@@ -1075,5 +1075,13 @@ export default function ProviderProductOrdersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ProviderProductOrdersPageRoute() {
+  return (
+    <Suspense fallback={null}>
+      <ProviderProductOrdersPage />
+    </Suspense>
   );
 }

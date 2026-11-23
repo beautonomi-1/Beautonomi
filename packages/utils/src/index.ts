@@ -392,6 +392,16 @@ export {
   type BookingTravelLocationType,
 } from "./booking/calculateBookingPricing";
 export {
+  bookingAddonLineFromUnknown,
+  bookingAddonLineLabel,
+  bookingProductLineFromUnknown,
+  bookingProductLineLabel,
+  collectBookingAddonLines,
+  collectBookingProductLines,
+  type BookingAddonLine,
+  type BookingProductLine,
+} from "./booking/booking-product-lines";
+export {
   normalizePlatformFeeFields,
   type CanonicalPlatformFeeFields,
   type LegacyPlatformFeeFields,

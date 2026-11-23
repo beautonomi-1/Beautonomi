@@ -106,7 +106,10 @@ function makeChain(resolveQuery: (state: ChainState) => { data: unknown; error: 
     order: () => chain,
     like: () => chain,
     limit: () => chain,
-    maybeSingle: () => Promise.resolve(resolveQuery(state)),
+    maybeSingle: () => {
+      state.single = true;
+      return Promise.resolve(resolveQuery(state));
+    },
     then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => {
       try {
         resolve(resolveQuery(state));
@@ -122,6 +125,7 @@ interface ChainState {
   filters: Record<string, unknown[]>;
   updatePayload: unknown;
   selected?: string;
+  single?: boolean;
 }
 
 function resolveQuery(table: string, state: ChainState): { data: unknown; error: unknown; count?: number } {
@@ -168,10 +172,13 @@ function resolveQuery(table: string, state: ChainState): { data: unknown; error:
     return { data: config.staleGroups, error: null };
   }
   if (table === "providers") {
-    return {
-      data: [{ id: "provider-1", timezone: "Africa/Johannesburg", confirmation_sla_hours: 2, unconfirmed_expire_hours_before_slot: 2 }],
-      error: null,
+    const row = {
+      id: "provider-1",
+      timezone: "Africa/Johannesburg",
+      confirmation_sla_hours: 2,
+      unconfirmed_expire_hours_before_slot: 2,
     };
+    return { data: state.single ? row : [row], error: null };
   }
   if (table === "provider_locations") {
     return { data: [{ working_hours: null }], error: null };

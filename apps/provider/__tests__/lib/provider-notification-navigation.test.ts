@@ -181,6 +181,44 @@ describe("navigateFromProviderNotification", () => {
     expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/bookings?booking_id=booking-from-offer");
   });
 
+  it("keeps the confirm action on a pending booking reminder", () => {
+    const router = { push: jest.fn() };
+    const id = "98945c09-4964-488e-a9eb-d2df1918c109";
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-confirm",
+      type: "new_appointment",
+      link: `/provider/bookings/${id}?action=confirm`,
+      data: { booking_id: id },
+    });
+
+    expect(router.push).toHaveBeenCalledWith(`/(app)/(tabs)/bookings/${id}?action=confirm`);
+  });
+
+  it("routes a subscription reminder to the subscription screen", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-subscription",
+      type: "subscription_expiring",
+      link: "/settings/subscription",
+    });
+
+    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/more/settings/subscription");
+  });
+
+  it("routes a low-stock alert to the product catalogue filter", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-stock",
+      type: "low_stock_alert",
+      link: "/provider/products?low_stock=true",
+    });
+
+    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/more/products?filter=low_stock");
+  });
+
   it("routes custom_offer without booking_id to requests list", () => {
     const router = { push: jest.fn() };
 

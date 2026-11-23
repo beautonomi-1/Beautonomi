@@ -8,6 +8,23 @@ import { fetcher } from "@/lib/http/fetcher";
 import { format } from "date-fns";
 import { BookingBottomSheet, BookingSectionCard, BookingSectionLabel } from "../ui";
 
+function formatAuditEvent(eventType: string | undefined, data: Record<string, unknown>): string {
+  const amount = data.amount != null && data.amount !== "" ? String(data.amount) : "";
+  if (eventType === "payment_received") {
+    const method = String(data.payment_method ?? "payment").replace(/_/g, " ");
+    return [method, amount].filter(Boolean).join(" · ");
+  }
+  if (eventType === "refund_issued" || eventType === "refund") {
+    const method = String(data.refund_method ?? data.method ?? "refund").replace(/_/g, " ");
+    return [method, amount].filter(Boolean).join(" · ");
+  }
+  const keys = ["status", "previous_status", "payment_method", "refund_method", "reason", "amount"];
+  const lines = keys
+    .filter((key) => data[key] != null && data[key] !== "")
+    .map((key) => `${key.replace(/_/g, " ")}: ${String(data[key])}`);
+  return lines.length > 0 ? lines.join("\n") : JSON.stringify(data);
+}
+
 type AuditEntry = {
   id: string;
   event_type?: string;
@@ -69,7 +86,7 @@ export function AuditLogSheet({ open, onOpenChange, bookingId }: AuditLogSheetPr
               </p>
               {entry.event_data && Object.keys(entry.event_data).length > 0 ? (
                 <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
-                  {JSON.stringify(entry.event_data, null, 2)}
+                  {formatAuditEvent(entry.event_type, entry.event_data)}
                 </p>
               ) : null}
             </BookingSectionCard>

@@ -7,6 +7,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Share,
   Text,
   TextInput,
@@ -58,6 +59,25 @@ type PostCompletionSheetProps = {
 
 const STORAGE_PREFIX = "provider_booking_completion_modal_seen_";
 
+type RebookPreview = {
+  clientFirstName: string;
+  providerHint: string;
+  messageBody: string;
+  link: string;
+  channel: string;
+  channelReason: string | null;
+  maskedDestination: string | null;
+  canWhatsAppHandoff: boolean;
+  canEditClientPhone: boolean;
+  hasClientPhone?: boolean;
+  existingOffer?: { id?: string; status: string } | null;
+};
+
+function clientMessagePreview(message: string, link: string): string {
+  const without = link ? message.split(link).join(" ") : message;
+  return without.replace(/\s+/g, " ").replace(/\s+([:.])/g, "$1").replace(/:\s*$/, "").trim();
+}
+
 export function PostCompletionSheet({
   visible,
   bookingId,
@@ -90,20 +110,10 @@ export function PostCompletionSheet({
   const [rateError, setRateError] = useState<string | null>(null);
   const [storeReviewOpen, setStoreReviewOpen] = useState(false);
   const [rebookLoading, setRebookLoading] = useState(false);
-  const [rebookPreview, setRebookPreview] = useState<{
-    clientFirstName: string;
-    providerHint: string;
-    messageBody: string;
-    link: string;
-    channel: string;
-    channelReason: string | null;
-    maskedDestination: string | null;
-    canWhatsAppHandoff: boolean;
-    canEditClientPhone: boolean;
-    existingOffer?: { status: string } | null;
-  } | null>(null);
+  const [rebookPreview, setRebookPreview] = useState<RebookPreview | null>(null);
   const [rebookMessage, setRebookMessage] = useState("");
   const [rebookStatus, setRebookStatus] = useState<string | null>(null);
+  const [editMessageOpen, setEditMessageOpen] = useState(false);
   const [clientPhoneDraft, setClientPhoneDraft] = useState("");
   const seenRef = useRef(false);
   const followUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,12 +144,24 @@ export function PostCompletionSheet({
       .get<Record<string, unknown>>(`/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`)
       .then((res) => {
         const row = ((res as { data?: Record<string, unknown> }).data ?? res) as Record<string, unknown>;
-        setRebookPreview(row as typeof rebookPreview);
+        setRebookPreview(row as RebookPreview);
         setRebookMessage(String(row.messageBody ?? ""));
       })
       .catch(() => setRebookPreview(null))
       .finally(() => setRebookLoading(false));
   }, [visible, bookingId]);
+
+  const refreshRebookPreview = async (sent?: { message?: string; link?: string }) => {
+    const fresh = await api.get<Record<string, unknown>>(
+      `/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`,
+    );
+    const row = ((fresh as { data?: Record<string, unknown> }).data ?? fresh) as Record<string, unknown>;
+    const next: RebookPreview = { ...(row as RebookPreview) };
+    if (sent?.link) next.link = sent.link;
+    setRebookPreview(next);
+    if (sent?.message) setRebookMessage(sent.message);
+    else if (!editMessageOpen) setRebookMessage(String(row.messageBody ?? ""));
+  };
 
   const shareRebookYourself = async () => {
     if (!rebookPreview?.link) return;
@@ -159,10 +181,19 @@ export function PostCompletionSheet({
       const link = data.link || rebookPreview.link;
       msg = data.message_body || ensureSingleLinkInMessage(rebookMessage, link);
       setRebookMessage(msg);
-      const payload = buildShareBookingLinkPayload(Platform.OS, link, msg);
-      await Share.share(payload);
+      try {
+        const payload = buildShareBookingLinkPayload(Platform.OS, link, msg);
+        await Share.share(payload);
+      } catch {
+        await Clipboard.setStringAsync(msg);
+      }
+      try {
+        await refreshRebookPreview({ message: msg, link });
+      } catch {
+        // The link was already prepared.
+      }
     } catch {
-      await Clipboard.setStringAsync(msg);
+      setRebookStatus(pc("sendFailed"));
     } finally {
       setRebookLoading(false);
     }
@@ -183,18 +214,31 @@ export function PostCompletionSheet({
       const data = res.data ?? res;
       const wa = (data as { whatsapp_url?: string | null }).whatsapp_url;
       const channel = String((data as { channel?: string }).channel ?? "");
+      const sentMessage = (data as { message_body?: string }).message_body;
+      const sentLink = (data as { link?: string }).link;
       if (wa) {
-        await Linking.openURL(wa);
-        setRebookStatus(
-          rebookPreview.maskedDestination
-            ? `Opened WhatsApp to ${rebookPreview.maskedDestination}`
-            : pc("rebookOpenedWhatsAppDevice"),
-        );
+        try {
+          await Linking.openURL(wa);
+          setRebookStatus(
+            rebookPreview.maskedDestination
+              ? `Opened WhatsApp to ${rebookPreview.maskedDestination}`
+              : pc("rebookOpenedWhatsAppDevice"),
+          );
+        } catch {
+          setRebookStatus(pc("shareFailed"));
+        }
       } else if (channel === "sms" || channel === "email" || channel === "push") {
         setRebookStatus(pc("rebookStatusSent"));
+      } else {
+        setRebookStatus(pc("notDelivered"));
+      }
+      try {
+        await refreshRebookPreview({ message: sentMessage, link: sentLink });
+      } catch {
+        // The send already finished.
       }
     } catch {
-      setRebookStatus(null);
+      setRebookStatus(pc("sendFailed"));
     } finally {
       setRebookLoading(false);
     }
@@ -203,7 +247,9 @@ export function PostCompletionSheet({
   const primaryChannelLabel = () => {
     if (!rebookPreview) return pc("lockNextVisit");
     const name = rebookPreview.clientFirstName || clientDisplayName || "";
-    if (rebookPreview.canWhatsAppHandoff) return `WhatsApp ${name}`;
+    if (rebookPreview.canWhatsAppHandoff || (rebookPreview.channel === "none" && clientPhoneDraft.trim().length > 0)) {
+      return `WhatsApp ${name}`;
+    }
     if (rebookPreview.channel === "sms") return `Text ${name}`;
     if (rebookPreview.channel === "email") return `Email ${name}`;
     if (rebookPreview.channel === "push") return `Notify ${name}`;
@@ -316,73 +362,164 @@ export function PostCompletionSheet({
           onPress={(e) => e.stopPropagation()}
         >
           {step === "choose" ? (
-            <>
-              <Text style={{ fontSize: 20, fontWeight: "700", textAlign: "center", marginBottom: 8 }}>{pc("completeTitle")}</Text>
-              {providerPointsEarned && providerPointsEarned > 0 ? (
-                <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.primary, textAlign: "center", marginBottom: 16 }}>
-                  {pc("pointsEarned", { count: providerPointsEarned })}
+            <ScrollView style={{ maxHeight: 560 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={{ alignItems: "center", marginBottom: 16 }}>
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#ECFDF3", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+                  <Ionicons name="checkmark" size={26} color="#15803d" />
+                </View>
+                <Text style={{ fontSize: 20, fontWeight: "700", textAlign: "center" }}>{pc("completeTitle")}</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center", marginTop: 6 }}>
+                  {Number.isFinite(Number(providerPointsEarned)) && Number(providerPointsEarned) > 0
+                    ? pc("pointsEarned", { count: Number(providerPointsEarned) })
+                    : pc("pointsHint")}
                 </Text>
+              </View>
+              {!hideAddPhoto ? (
+                <View style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 16, padding: 14, marginBottom: 10 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                    <Ionicons name="camera-outline" size={16} color={Colors.gray[900]} style={{ marginEnd: 6 }} />
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.gray[900] }}>{pc("showOffTitle")}</Text>
+                  </View>
+                  <Text style={{ fontSize: 13, lineHeight: 18, color: Colors.gray[600], marginBottom: 12 }}>{pc("showOffBody")}</Text>
+                  <TouchableOpacity
+                    onPress={() => setStep("photo")}
+                    style={{ borderWidth: 1, borderColor: Colors.gray[300], paddingVertical: 12, borderRadius: 12, alignItems: "center" }}
+                  >
+                    <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{pc("addPhoto")}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {!hasExistingRating ? (
+                <View style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 16, padding: 14, marginBottom: 10 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                    <Ionicons name="star-outline" size={16} color={Colors.gray[900]} style={{ marginEnd: 6 }} />
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.gray[900] }}>{pc("howWasClient")}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setStep("rate")}
+                    style={{ borderWidth: 1, borderColor: Colors.gray[300], paddingVertical: 12, borderRadius: 12, alignItems: "center", marginTop: 8 }}
+                  >
+                    <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{pc("rateClient")}</Text>
+                  </TouchableOpacity>
+                </View>
               ) : null}
               {rebookPreview ? (
-                <>
-                  <Text style={{ color: Colors.gray[600], fontSize: 13, marginBottom: 8 }}>{rebookPreview.providerHint}</Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[800], marginBottom: 8 }}>{rebookMessage}</Text>
-                  {(rebookPreview.channel !== "none" || rebookPreview.canWhatsAppHandoff) && (
+                <View style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 16, padding: 14, marginBottom: 10 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                    <Ionicons name="chatbubble-outline" size={16} color={Colors.gray[900]} style={{ marginEnd: 6 }} />
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.gray[900] }}>{pc("nextVisit")}</Text>
+                  </View>
+                  <Text style={{ fontSize: 13, lineHeight: 18, color: Colors.gray[600] }}>{rebookPreview.providerHint}</Text>
+                  <Text style={{ marginTop: 10, backgroundColor: Colors.gray[50], borderRadius: 12, padding: 10, fontSize: 13, lineHeight: 18, color: Colors.gray[800] }}>
+                    {clientMessagePreview(rebookMessage, rebookPreview.link)}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8 }}>{pc("linkIncluded")}</Text>
+                  {editMessageOpen ? (
+                    <TextInput
+                      value={rebookMessage}
+                      onChangeText={setRebookMessage}
+                      multiline
+                      style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 10, padding: 10, minHeight: 88, marginTop: 10, fontSize: 13 }}
+                    />
+                  ) : null}
+                  {rebookPreview.canEditClientPhone &&
+                  rebookPreview.hasClientPhone === false &&
+                  rebookPreview.channel === "none" &&
+                  !rebookPreview.canWhatsAppHandoff ? (
+                    <TextInput
+                      value={clientPhoneDraft}
+                      onChangeText={setClientPhoneDraft}
+                      keyboardType="phone-pad"
+                      placeholder={pc("clientPhoneForRebook", {
+                        name: rebookPreview.clientFirstName || clientDisplayName || "",
+                      })}
+                      style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 10, padding: 10, marginTop: 10, fontSize: 13 }}
+                    />
+                  ) : null}
+                  {rebookPreview.channel === "none" && rebookPreview.channelReason ? (
+                    <Text style={{ fontSize: 12, color: "#92400e", marginTop: 8 }}>{rebookPreview.channelReason}</Text>
+                  ) : null}
+                  {(rebookPreview.channel !== "none" ||
+                    rebookPreview.canWhatsAppHandoff ||
+                    clientPhoneDraft.trim().length > 0) && (
                     <TouchableOpacity
                       disabled={rebookLoading}
                       onPress={() => void sendRebook()}
                       style={{
-                        backgroundColor: Colors.primary,
-                        paddingVertical: 14,
-                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: Colors.gray[300],
+                        paddingVertical: 12,
+                        borderRadius: 12,
                         alignItems: "center",
-                        marginBottom: 8,
+                        marginTop: 12,
                       }}
                     >
                       {rebookLoading ? (
-                        <ActivityIndicator color="#fff" />
+                        <ActivityIndicator color={Colors.gray[900]} />
                       ) : (
-                        <Text style={{ color: "#fff", fontWeight: "700" }}>{primaryChannelLabel()}</Text>
+                        <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{primaryChannelLabel()}</Text>
                       )}
                     </TouchableOpacity>
                   )}
                   {rebookPreview.maskedDestination ? (
-                    <Text style={{ fontSize: 11, color: Colors.gray[500], textAlign: "center", marginBottom: 6 }}>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 8 }}>
                       {rebookPreview.maskedDestination}
                     </Text>
                   ) : null}
                   {rebookStatus ? (
-                    <Text style={{ fontSize: 12, color: Colors.primary, marginBottom: 6, textAlign: "center" }}>
-                      {rebookStatus}
+                    <Text style={{ fontSize: 12, color: "#15803d", marginTop: 8, textAlign: "center" }}>{rebookStatus}</Text>
+                  ) : null}
+                  {rebookPreview.existingOffer?.status &&
+                  !["pending", "cancelled"].includes(rebookPreview.existingOffer.status) ? (
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8, textAlign: "center" }}>
+                      {rebookPreview.existingOffer.status === "handed_to_whatsapp"
+                        ? pc("rebookStatusWhatsApp")
+                        : rebookPreview.existingOffer.status === "sent"
+                          ? pc("rebookStatusSent")
+                          : rebookPreview.existingOffer.status === "opened"
+                            ? pc("rebookStatusOpened")
+                            : rebookPreview.existingOffer.status === "booked"
+                              ? pc("rebookStatusBooked")
+                              : rebookPreview.existingOffer.status}
                     </Text>
                   ) : null}
-                  <TouchableOpacity onPress={() => void shareRebookYourself()} style={{ paddingVertical: 10, alignItems: "center", marginBottom: 6 }}>
-                    <Text style={{ color: Colors.primary, fontWeight: "600" }}>{pc("shareRebookYourself")}</Text>
-                  </TouchableOpacity>
-                </>
+                  {rebookPreview.existingOffer &&
+                  ["handed_to_whatsapp", "sent", "opened"].includes(rebookPreview.existingOffer.status) ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        void api
+                          .delete(`/api/provider/bookings/${encodeURIComponent(bookingId)}/rebook-offer`)
+                          .then(async () => {
+                            setRebookStatus(pc("rebookReleased"));
+                            try {
+                              await refreshRebookPreview();
+                            } catch {
+                              // The hold is already released.
+                            }
+                          })
+                          .catch(() => setRebookStatus(pc("sendFailed")));
+                      }}
+                      style={{ marginTop: 8, alignItems: "center" }}
+                    >
+                      <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 13 }}>{pc("rebookRelease")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 12 }}>
+                    <TouchableOpacity onPress={() => setEditMessageOpen((open) => !open)} style={{ marginEnd: 16 }}>
+                      <Text style={{ color: Colors.gray[800], fontWeight: "600", fontSize: 13 }}>{pc("editRebookMessage")}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => void shareRebookYourself()} disabled={rebookLoading}>
+                      <Text style={{ color: Colors.gray[800], fontWeight: "600", fontSize: 13 }}>{pc("shareRebookYourself")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               ) : rebookLoading ? (
                 <ActivityIndicator style={{ marginBottom: 12 }} color={Colors.primary} />
-              ) : null}
-              {!hideAddPhoto ? (
-                <TouchableOpacity
-                  onPress={() => setStep("photo")}
-                  style={{ borderWidth: 1.5, borderColor: Colors.primary, paddingVertical: 13, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
-                >
-                  <Text style={{ color: Colors.primary, fontWeight: "600" }}>{pc("addPhoto")}</Text>
-                </TouchableOpacity>
-              ) : null}
-              {!hasExistingRating ? (
-                <TouchableOpacity
-                  onPress={() => setStep("rate")}
-                  style={{ borderWidth: 1.5, borderColor: Colors.gray[300], paddingVertical: 13, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
-                >
-                  <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>{pc("rateClient")}</Text>
-                </TouchableOpacity>
               ) : null}
               <TouchableOpacity onPress={markSeen} style={{ paddingVertical: 12, alignItems: "center" }}>
                 <Text style={{ color: Colors.gray[500] }}>{pc("doneForNow")}</Text>
               </TouchableOpacity>
-            </>
+            </ScrollView>
           ) : null}
 
           {step === "photo" ? (

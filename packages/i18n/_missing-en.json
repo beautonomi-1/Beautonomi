@@ -1018,7 +1018,7 @@
             "impressionsRemaining": "{{count}} impressions remaining",
             "budgetFullyUsed": "Budget fully used",
             "budgetRemaining": "{{amount}} budget remaining",
-            "dayBoostPaid": "{{days}} day boost · {{amount}} paid",
+            "dayBoostPaid": "{{count}} day boost · {{amount}} paid",
             "endsOn": "Ends {{date}}",
             "impressionsPaidSpent": "{{count}} impressions · {{paid}} paid · {{spent}} spent",
             "totalBudgetSpent": "Total budget {{budget}} · Spent {{spent}}",

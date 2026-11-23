@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslation } from "@beautonomi/i18n";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -45,7 +45,7 @@ interface StatusResponse extends VerificationHubStatus {
 
 const DOC_TYPE_VALUES = ["license", "passport", "identity"] as const;
 
-export default function VerificationPage() {
+function VerificationPage() {
   const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const router = useRouter();
@@ -249,5 +249,13 @@ toast.error((res as { error?: { message?: string } }).error?.message ?? t("web.p
         </p>
       </SectionCard>
     </SettingsDetailLayout>
+  );
+}
+
+export default function VerificationPageRoute() {
+  return (
+    <Suspense fallback={null}>
+      <VerificationPage />
+    </Suspense>
   );
 }

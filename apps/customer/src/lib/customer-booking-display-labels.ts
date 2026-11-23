@@ -49,13 +49,15 @@ export function customerPaymentDisplayLabel(
   if (isCash && paymentStatus === "pending") {
     return td("payAtAppointment");
   }
+  const outstanding = Math.max(0, Number(input.outstandingBalance || 0));
+  const balanceStillDue = input.outstandingBalance != null && outstanding > 0;
   if (display.isPaymentSettled) {
     return td("paymentPaidInFull");
   }
-  if (paymentStatus === "partially_paid" && isDeposit) {
+  if ((paymentStatus === "partially_paid" || (paymentStatus === "paid" && balanceStillDue)) && isDeposit) {
     return td("depositPaid");
   }
-  if (paymentStatus === "partially_paid") {
+  if (paymentStatus === "partially_paid" || (paymentStatus === "paid" && balanceStillDue)) {
     return td("paymentPartiallyPaid");
   }
   if (paymentStatus === "partially_refunded") {
@@ -86,7 +88,10 @@ export function customerPaymentDisplayDescription(
   if (isCash && paymentStatus === "pending") {
     return td("lifecyclePayAtAppointmentDescription");
   }
-  if (paymentStatus === "paid" || (paymentStatus === "pending" && outstanding <= 0)) {
+  if (paymentStatus === "paid" && outstanding > 0) {
+    return td("lifecyclePartialPaymentDescription");
+  }
+  if ((paymentStatus === "paid" && outstanding <= 0) || (paymentStatus === "pending" && outstanding <= 0)) {
     return td("lifecyclePaymentReceivedDescription");
   }
   if (paymentStatus === "partially_paid" && isDeposit) {

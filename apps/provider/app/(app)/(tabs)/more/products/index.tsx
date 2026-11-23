@@ -8,7 +8,7 @@ import {
   RefreshControl,
   DeviceEventEmitter,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "@beautonomi/i18n";
@@ -82,9 +82,18 @@ export function ProductsContent() {
     [t],
   );
   const router = useRouter();
+  const routeParams = useLocalSearchParams<{ filter?: string | string[] }>();
+  const routeFilter = Array.isArray(routeParams.filter) ? routeParams.filter[0] : routeParams.filter;
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [filter, setFilter] = useState<FilterKey>(
+    routeFilter === "low_stock" ||
+      routeFilter === "out_of_stock" ||
+      routeFilter === "inactive" ||
+      routeFilter === "active"
+      ? routeFilter
+      : "all",
+  );
   const [page, setPage] = useState(1);
   const [menuProduct, setMenuProduct] = useState<ProductItem | null>(null);
   const [adjustProduct, setAdjustProduct] = useState<ProductItem | null>(null);

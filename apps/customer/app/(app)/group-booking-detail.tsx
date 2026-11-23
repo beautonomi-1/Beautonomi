@@ -10,7 +10,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
-import { subtractMoney, formatMoney } from "@beautonomi/utils";
+import { subtractMoney, formatMoney, collectBookingProductLines } from "@beautonomi/utils";
 import { useTranslation } from "@beautonomi/i18n";
 import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import { getTenantLocaleTag } from "@/lib/locale";
@@ -640,23 +640,23 @@ export default function GroupBookingDetailScreen() {
           </View>
 
           {/* Products */}
-          {Array.isArray(data.products) && data.products.length > 0 ? (
+          {collectBookingProductLines(data).length > 0 ? (
             <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18, marginBottom: 16 }, Shadows.cardSmall]}>
               <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>{gbd("products")}</Text>
-              {data.products.map((product, idx) => (
-                <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: idx < data.products!.length - 1 ? 1 : 0, borderBottomColor: Colors.gray[100] }}>
+              {collectBookingProductLines(data).map((line) => (
+                <View key={line.id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{product.name}</Text>
-                    {product.quantity > 1 ? (
+                    <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{line.name === "Product" ? gbd("products") : line.variantLabel ? `${line.name} · ${line.variantLabel}` : line.name}</Text>
+                    {line.quantity > 1 ? (
                       <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2 }}>
                         {gbd("productQtyLine", {
-                          unitPrice: formatGroupMoney(product.unit_price, data.currency),
-                          quantity: product.quantity,
+                          unitPrice: formatGroupMoney(line.unitPrice, data.currency),
+                          quantity: line.quantity,
                         })}
                       </Text>
                     ) : null}
                   </View>
-                  <Text style={{ fontWeight: "700", color: Colors.gray[900] }}>{formatGroupMoney(product.total, data.currency)}</Text>
+                  <Text style={{ fontWeight: "700", color: Colors.gray[900] }}>{formatGroupMoney(line.totalPrice, data.currency)}</Text>
                 </View>
               ))}
             </View>
@@ -671,14 +671,12 @@ export default function GroupBookingDetailScreen() {
                 <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{formatGroupMoney(p.price, data.currency)}</Text>
               </View>
             ))}
-            {Array.isArray(data.products) && data.products.length > 0 ? (
-              data.products.map((product, idx) => (
-                <View key={`prod-${idx}`} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
-                  <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{gbd("productQtyShort", { name: product.name, quantity: product.quantity })}</Text>
-                  <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{formatGroupMoney(product.total, data.currency)}</Text>
+            {collectBookingProductLines(data).map((line) => (
+                <View key={`prod-${line.id}`} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                  <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{gbd("productQtyShort", { name: line.variantLabel ? `${line.name} · ${line.variantLabel}` : line.name, quantity: line.quantity })}</Text>
+                  <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{formatGroupMoney(line.totalPrice, data.currency)}</Text>
                 </View>
-              ))
-            ) : null}
+              ))}
             {(data.travel_fee ?? 0) > 0 ? (
               <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
                 <Text style={{ color: Colors.gray[600] }}>{gbd("travelFee")}</Text>

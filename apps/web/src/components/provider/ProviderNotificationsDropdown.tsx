@@ -43,6 +43,7 @@ interface Notification {
   message: string;
   timestamp: string;
   link?: string;
+  action_url?: string | null;
   priority: 'low' | 'medium' | 'high';
   read: boolean;
   metadata?: Record<string, any>;
@@ -131,7 +132,7 @@ const realtimeChannelKey = () =>
 function deriveNotificationUrl(notification: Notification): string | undefined {
   return deriveProviderPortalNotificationUrl({
     type: notification.type,
-    link: notification.link,
+    link: notification.link ?? notification.action_url,
     data: notification.data,
     metadata: notification.metadata,
   });

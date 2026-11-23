@@ -221,12 +221,17 @@ export function navigateFromProviderNotification(router: ExpoRouter, n: Provider
   }
 
   if (data.booking_id) {
+    const bookingId = String(data.booking_id).trim();
+    if (getLinkParam(link, "action") === "confirm") {
+      router.push(`/(app)/(tabs)/bookings/${bookingId}?action=confirm` as never);
+      return true;
+    }
     const dateParam = getLinkParam(link, "date");
     const params = new URLSearchParams();
     if (dateParam) params.set("date", dateParam);
-    params.set("booking_id", String(data.booking_id));
+    params.set("booking_id", bookingId);
     const q = params.toString();
-    router.push((q ? `/(app)/(tabs)/bookings?${q}` : `/(app)/(tabs)/bookings/${data.booking_id}`) as never);
+    router.push((q ? `/(app)/(tabs)/bookings?${q}` : `/(app)/(tabs)/bookings/${bookingId}`) as never);
     return true;
   }
   if (
@@ -267,7 +272,12 @@ export function navigateFromProviderNotification(router: ExpoRouter, n: Provider
     }
     const idMatch = link.match(/\/bookings\/([a-f0-9-]+)/i) || link.match(/\/booking\/([a-f0-9-]+)/i);
     if (idMatch) {
-      router.push(`/(app)/(tabs)/bookings/${idMatch[1]}` as never);
+      const action = getLinkParam(link, "action");
+      router.push(
+        (action === "confirm"
+          ? `/(app)/(tabs)/bookings/${idMatch[1]}?action=confirm`
+          : `/(app)/(tabs)/bookings/${idMatch[1]}`) as never,
+      );
       return true;
     }
     if (link.includes("messaging") || link.includes("messages")) {
@@ -322,14 +332,43 @@ export function navigateFromProviderNotification(router: ExpoRouter, n: Provider
     }
     if (link.includes("clients")) {
       const clientMatch = link.match(/\/([a-f0-9-]+)$/);
-      if (clientMatch) {
+      const clientQuery = getLinkParam(link, "client");
+      if (clientMatch && !link.endsWith("/clients")) {
         router.push(`/(app)/(tabs)/clients/${clientMatch[1]}` as never);
+      } else if (clientQuery) {
+        router.push(`/(app)/(tabs)/clients/${clientQuery}` as never);
       } else {
         router.push("/(app)/(tabs)/clients" as never);
       }
       return true;
     }
+    if (
+      linkLc.includes("/settings/subscription") ||
+      linkLc.includes("/provider/subscription") ||
+      linkLc.endsWith("/subscription")
+    ) {
+      router.push("/(app)/(tabs)/more/settings/subscription" as never);
+      return true;
+    }
+    if (
+      linkLc.includes("low_stock") ||
+      linkLc.includes("/provider/products") ||
+      linkLc.includes("/catalogue/products")
+    ) {
+      const lowStock = linkLc.includes("low_stock");
+      router.push(
+        (lowStock
+          ? "/(app)/(tabs)/more/products?filter=low_stock"
+          : "/(app)/(tabs)/more/products") as never,
+      );
+      return true;
+    }
     return false;
+  }
+
+  if (typeof data.client_id === "string" && data.client_id.trim()) {
+    router.push(`/(app)/(tabs)/clients/${data.client_id.trim()}` as never);
+    return true;
   }
 
   if (nType.includes("booking") || nType.includes("appointment")) {
@@ -349,6 +388,10 @@ export function navigateFromProviderNotification(router: ExpoRouter, n: Provider
   if (nType.includes("payout") || nType.includes("earning")) {
     // Payouts and earnings → Finance screen (consistent with push notification routing)
     router.push("/(app)/(tabs)/more/finance" as never);
+    return true;
+  }
+  if (nType.includes("subscription") || templateKey.includes("subscription")) {
+    router.push("/(app)/(tabs)/more/settings/subscription" as never);
     return true;
   }
   if (nType.includes("payment")) {

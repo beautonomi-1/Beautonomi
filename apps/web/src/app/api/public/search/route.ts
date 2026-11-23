@@ -175,7 +175,8 @@ export async function GET(request: Request) {
         is_featured,
         is_verified,
         currency,
-        created_at
+        created_at,
+        offers_mobile_services
       `, { count: "exact" })
         .eq("tenant_id", tenantId),
     );
@@ -583,7 +584,9 @@ export async function GET(request: Request) {
       const coords = coordMap.get(provider.id);
       const priceInfo = priceMap.get(provider.id);
       const distance_km = distanceMap.get(provider.id) ?? null;
-      const supports_house_calls = supportsHouseCallsMap.get(provider.id) ?? false;
+      const supports_house_calls =
+        provider.offers_mobile_services !== false &&
+        (supportsHouseCallsMap.get(provider.id) ?? false);
       const supports_salon = supportsSalonMap.get(provider.id) ?? false;
 
       return {
@@ -688,7 +691,7 @@ export async function GET(request: Request) {
         const { data: sponsoredProviders } = await applyPublicProviderVisibility(
           (supabaseAdmin
             .from("providers")
-            .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, currency")
+            .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, currency, offers_mobile_services")
             .in("id", winnerProviderIds)
             .eq("tenant_id", tenantId) as any),
         );
@@ -700,7 +703,7 @@ export async function GET(request: Request) {
           .order("is_primary", { ascending: false });
         const { data: sponsoredOfferings } = await supabaseAdmin
           .from("offerings")
-          .select("provider_id, price, currency")
+          .select("provider_id, price, currency, supports_at_home")
           .in("provider_id", winnerProviderIds)
           .eq("is_active", true);
         const locMap = new Map<string, { city: string; country: string }>();
@@ -771,7 +774,13 @@ export async function GET(request: Request) {
             currency: priceInfo?.currency ?? p.currency ?? defaultCurrency,
             is_sponsored: true,
             campaign_id: winnerToCampaign.get(p.id) ?? null,
-            supports_house_calls: supportsHouseCallsMap.get(p.id) ?? false,
+            supports_house_calls:
+              p.offers_mobile_services !== false &&
+              ((supportsHouseCallsMap.get(p.id) ?? false) ||
+                (sponsoredOfferings ?? []).some(
+                  (o: { provider_id?: string; supports_at_home?: boolean }) =>
+                    o.provider_id === p.id && o.supports_at_home === true,
+                )),
             supports_salon: supportsSalonMap.get(p.id) ?? true,
             ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
             ...(distance_km != null ? { distance_km } : {}),

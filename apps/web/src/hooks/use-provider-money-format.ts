@@ -15,8 +15,19 @@ export function useProviderMoneyFormat() {
   const currency = provider?.currency ?? LAST_RESORT_CURRENCY;
 
   return useMemo(() => {
-    const format = (amount: number) =>
-      new Intl.NumberFormat(locale, { style: "currency", currency }).format(amount);
+    const format = (amount: number | string | null | undefined) => {
+      const n = typeof amount === "number" ? amount : Number(amount);
+      const safe = Number.isFinite(n) ? n : 0;
+      const code = /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : LAST_RESORT_CURRENCY;
+      try {
+        return new Intl.NumberFormat(locale || "en-ZA", {
+          style: "currency",
+          currency: code,
+        }).format(safe);
+      } catch {
+        return `${code} ${safe.toFixed(2)}`;
+      }
+    };
     return { format, currency, locale };
   }, [locale, currency]);
 }

@@ -179,7 +179,7 @@ export async function GET(
       // Fetch categories and prices (from offerings) - also get supports_at_home
       supabase
         .from("offerings")
-        .select("category_id, price, currency, category_name, provider_category_id, supports_at_home, master_service_id")
+        .select("category_id, price, currency, provider_category_id, supports_at_home, master_service_id")
         .eq("provider_id", providerData.id)
         .eq("is_active", true)
         .limit(100), // Limit to prevent huge queries

@@ -26426,7 +26426,7 @@
             "impressionsRemaining": "{{value}} Impresiones remaining",
             "budgetFullyUsed": "Budget llenoy used",
             "budgetRemaining": "{{amount}} budget remaining",
-            "dayBoostPaid": "{{days}} día boost · {{amount}} pagado",
+            "dayBoostPaid": "{{count}} día boost · {{amount}} pagado",
             "endsOn": "Ends {{date}}",
             "impressionsPaidSpent": "{{count}} Impresiones · {{paid}} pagado · {{spent}} spent",
             "totalBudgetSpent": "total budget {{budget}} · Spent {{spent}}",

@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     const { data: provider, error } = await supabase
       .from("providers")
-      .select("id, slug, business_name, description, business_type, phone, email, thumbnail_url, avatar_url, tenant_id, timezone, offers_mobile_services, is_verified, status")
+      .select("id, slug, business_name, description, business_type, phone, email, thumbnail_url, avatar_url, tenant_id, timezone, offers_mobile_services, is_verified, status, rating_average, review_count")
       .eq("id", providerId)
       .single();
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { Suspense, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
@@ -91,6 +91,10 @@ import {
   multiplyMoney,
   roundCurrency,
   subtractMoney,
+  bookingAddonLineLabel,
+  bookingProductLineLabel,
+  collectBookingAddonLines,
+  collectBookingProductLines,
 } from "@beautonomi/utils";
 import CustomerRatingButton from "@/components/reviews/customer-rating-button";
 import { PostCompletionSheet } from "@/components/provider/booking/PostCompletionSheet";
@@ -171,7 +175,7 @@ function heldWalletGift(bookingLike: unknown): number {
   );
 }
 
-export default function ProviderBookingDetail() {
+function ProviderBookingDetail() {
   const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const yocoEnabled = useFeatureFlag("payment_yoco");
@@ -665,7 +669,7 @@ export default function ProviderBookingDetail() {
       if (due && due.amount > 0.01) {
         if (due.action_required) {
           // Yoco: no refund API — walk staff through refunding on the machine, then recording it.
-          setRefundAmount(due.amount.toFixed(2));
+          setRefundAmount((Number(due.amount) || 0).toFixed(2));
           setRefundReason(cancellationReason || t("web.provider.bookings.detail.toast.noReasonProvided"));
           setRefundMethod("original");
           setYocoRefundPendingRecord(true);
@@ -1729,9 +1733,9 @@ export default function ProviderBookingDetail() {
     ["confirmed", "booked", "checked_in", "waiting"].includes(bookingLifecycleStatus) &&
     (!isAtHome || atHomeHouseCallReadyForServiceStart);
   const canStartServiceInJourney = canStartService && isArrived;
-  const totalPaid = b.total_paid ?? 0;
-  const totalRefunded = b.total_refunded ?? 0;
-  const totalAmount = b.total_amount ?? 0;
+  const totalPaid = Number(b.total_paid ?? 0) || 0;
+  const totalRefunded = Number(b.total_refunded ?? 0) || 0;
+  const totalAmount = Number(b.total_amount ?? 0) || 0;
   const walletAmountApplied = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
   const giftCardAmountApplied = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
   const outstanding = computeBookingOutstandingDisplay({
@@ -2458,7 +2462,7 @@ export default function ProviderBookingDetail() {
         <div className="bg-white border rounded-lg p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">{t("web.provider.bookings.detail.services.title")}</h2>
           <div className="space-y-3">
-            {booking.services?.map((service, index) => (
+            {(Array.isArray(booking.services) ? booking.services : []).map((service, index) => (
               <div
                 key={index}
                 className="flex justify-between items-center py-3 border-b last:border-0"
@@ -2517,7 +2521,7 @@ export default function ProviderBookingDetail() {
         </div>
 
         {/* Products */}
-        {booking.products && booking.products.length > 0 && (
+        {collectBookingProductLines(booking).length > 0 && (
           <div
             id={`booking-product-orders-${bookingId}`}
             className="bg-white border rounded-lg p-6 mb-6"
@@ -2527,17 +2531,17 @@ export default function ProviderBookingDetail() {
               <BookingDetailProductOrders bookingId={bookingId} hasLineItems />
             </div>
             <div className="space-y-3">
-              {booking.products.map((product, index: number) => (
+              {collectBookingProductLines(booking).map((line) => (
                 <div
-                  key={product.id || index}
+                  key={line.id}
                   className="flex justify-between items-center py-3 border-b last:border-0"
                 >
                   <div>
-                    <p className="font-medium">{product.product_name || t("web.provider.bookings.detail.products.fallback")}</p>
-                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.products.quantity", { count: product.quantity })}</p>
+                    <p className="font-medium">{line.name === "Product" ? t("web.provider.bookings.detail.products.fallback") : bookingProductLineLabel(line)}</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.bookings.detail.products.quantity", { count: line.quantity })}</p>
                   </div>
                   <p className="font-medium">
-                    {booking.currency} {product.total_price.toFixed(2)}
+                    {booking.currency} {(Number(line.totalPrice) || 0).toFixed(2)}
                   </p>
                 </div>
               ))}
@@ -2681,6 +2685,22 @@ export default function ProviderBookingDetail() {
             show={outstanding > 0 && booking.status !== "cancelled"}
           />
           <div className="space-y-2">
+            {collectBookingAddonLines(booking).map((line) => (
+              <div key={line.id} className="flex justify-between">
+                <span className="text-gray-600">{bookingAddonLineLabel(line)}</span>
+                <span className="font-medium">
+                  {booking.currency} {(Number(line.totalPrice) || 0).toFixed(2)}
+                </span>
+              </div>
+            ))}
+            {collectBookingProductLines(booking).map((line) => (
+              <div key={line.id} className="flex justify-between">
+                <span className="text-gray-600">{bookingProductLineLabel(line)}</span>
+                <span className="font-medium">
+                  {booking.currency} {(Number(line.totalPrice) || 0).toFixed(2)}
+                </span>
+              </div>
+            ))}
             <div className="flex justify-between">
               <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.subtotal")}</span>
               <span className="font-medium">
@@ -2723,7 +2743,7 @@ export default function ProviderBookingDetail() {
               <div className="flex justify-between">
                 <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.travelFee")}</span>
                 <span className="font-medium">
-                  {booking.currency} {booking.travel_fee.toFixed(2)}
+                  {booking.currency} {Number(booking.travel_fee).toFixed(2)}
                 </span>
               </div>
             )}
@@ -2731,7 +2751,7 @@ export default function ProviderBookingDetail() {
               <div className="flex justify-between">
                 <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.platformFee")}</span>
                 <span className="font-medium">
-                  {booking.currency} {booking.service_fee_amount.toFixed(2)}
+                  {booking.currency} {Number(booking.service_fee_amount).toFixed(2)}
                 </span>
               </div>
             )}
@@ -2745,7 +2765,7 @@ export default function ProviderBookingDetail() {
                     : t("web.provider.bookings.detail.paymentSummary.tax")}
                 </span>
                 <span className="font-medium text-blue-600">
-                  {booking.currency} {booking.tax_amount.toFixed(2)}
+                  {booking.currency} {Number(booking.tax_amount).toFixed(2)}
                 </span>
               </div>
             )}
@@ -2753,7 +2773,7 @@ export default function ProviderBookingDetail() {
               <div className="flex justify-between">
                 <span className="text-gray-600">{t("web.provider.bookings.detail.paymentSummary.tip")}</span>
                 <span className="font-medium">
-                  {booking.currency} {booking.tip_amount.toFixed(2)}
+                  {booking.currency} {Number(booking.tip_amount).toFixed(2)}
                 </span>
               </div>
             )}
@@ -2761,10 +2781,22 @@ export default function ProviderBookingDetail() {
               <div className="flex justify-between">
                 <span className="font-semibold">{t("web.provider.bookings.detail.paymentSummary.total")}</span>
                 <span className="font-semibold text-lg">
-                  {booking.currency} {(booking.total_amount?.toFixed(2)) ?? "0.00"}
+                  {booking.currency} {Number(booking.total_amount || 0).toFixed(2)}
                 </span>
               </div>
             </div>
+            {totalPaid > 0 ? (
+              <div className="flex justify-between text-sm mt-2">
+                <span className="text-gray-600">{t("web.provider.bookings.detail.paymentActions.paid")}</span>
+                <span className="font-medium text-green-600">{formatMoney(totalPaid)}</span>
+              </div>
+            ) : null}
+            {outstanding > 0 ? (
+              <div className="flex justify-between text-sm mt-1">
+                <span className="text-gray-700 font-medium">{t("web.provider.bookings.detail.paymentDetails.outstanding")}</span>
+                <span className="font-bold text-amber-600">{formatMoney(outstanding)}</span>
+              </div>
+            ) : null}
             {booking.tax_amount != null && booking.tax_amount > 0 && (
               <div className="mt-2 pt-2 border-t">
                 <p className="text-xs text-gray-500">
@@ -2773,7 +2805,7 @@ export default function ProviderBookingDetail() {
                         rate: normalizeTaxRatePercent(booking.tax_rate).toFixed(1),
                       })
                     : t("web.provider.bookings.detail.paymentSummary.taxAmount")}
-                  {booking.currency} {booking.tax_amount.toFixed(2)}.
+                  {booking.currency} {Number(booking.tax_amount).toFixed(2)}.
                   {booking.tax_rate != null && isStandardVatRatePercent(booking.tax_rate)
                     ? t("web.provider.bookings.detail.paymentSummary.sarsRemit")
                     : ""}
@@ -3119,7 +3151,7 @@ export default function ProviderBookingDetail() {
                 size="sm"
                 className="min-h-[40px] bg-amber-600 hover:bg-amber-700 text-white"
                 onClick={() => {
-                  setRefundAmount(awaitingMachineRefunds[0].amount.toFixed(2));
+                  setRefundAmount((Number(awaitingMachineRefunds[0].amount) || 0).toFixed(2));
                   setRefundReason(
                     (b as { cancellation_reason?: string | null }).cancellation_reason ||
                       t("web.provider.bookings.detail.toast.noReasonProvided"),
@@ -3992,5 +4024,13 @@ export default function ProviderBookingDetail() {
         />
       </div>
     </RoleGuard>
+  );
+}
+
+export default function ProviderBookingDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProviderBookingDetail />
+    </Suspense>
   );
 }

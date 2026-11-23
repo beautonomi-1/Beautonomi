@@ -26383,7 +26383,7 @@
             "impressionsRemaining": "{{value}} Ponagalo remaining",
             "budgetFullyUsed": "Budget e tletšey used",
             "budgetRemaining": "{{amount}} tšhelete e šetšego",
-            "dayBoostPaid": "{{days}} letšatši boost · {{amount}} e lefilwe",
+            "dayBoostPaid": "{{count}} letšatši boost · {{amount}} e lefilwe",
             "endsOn": "E fela {{date}}",
             "impressionsPaidSpent": "{{count}} Ponagalo · {{paid}} e lefilwe · {{spent}} spent",
             "totalBudgetSpent": "palomoka budget {{budget}} · Spent {{spent}}",

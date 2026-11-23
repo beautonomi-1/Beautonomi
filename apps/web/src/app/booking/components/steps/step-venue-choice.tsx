@@ -114,7 +114,7 @@ export default function StepVenueChoice({
     try {
       setIsLoadingProviderInfo(true);
       const [providerResponse, zonesResponse] = await Promise.all([
-        fetcher.get<{ data: { offers_mobile_services?: boolean } }>(
+        fetcher.get<{ data: { supports_house_calls?: boolean } }>(
           `/api/public/providers/${encodeURIComponent(providerSlug)}`
         ),
         fetcher.get<{ data: { zones?: any[] } }>(
@@ -122,7 +122,7 @@ export default function StepVenueChoice({
         ).catch(() => ({ data: { zones: [] } })), // Silently fail if zones endpoint doesn't exist
       ]);
       
-      setOffersMobileServices(providerResponse.data?.offers_mobile_services ?? true);
+      setOffersMobileServices(providerResponse.data?.supports_house_calls === true);
       setServiceZones(zonesResponse.data?.zones || []);
     } catch (error) {
       console.error("Error loading provider info:", error);

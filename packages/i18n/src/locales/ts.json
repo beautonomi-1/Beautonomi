@@ -26383,7 +26383,7 @@
             "impressionsRemaining": "{{value}} Ku vonaka remaining",
             "budgetFullyUsed": "Budget yi teley used",
             "budgetRemaining": "{{amount}} mali leyi saleke",
-            "dayBoostPaid": "{{days}} siku boost · {{amount}} yi hakeleriwile",
+            "dayBoostPaid": "{{count}} siku boost · {{amount}} yi hakeleriwile",
             "endsOn": "Yi hela {{date}}",
             "impressionsPaidSpent": "{{count}} Ku vonaka · {{paid}} yi hakeleriwile · {{spent}} spent",
             "totalBudgetSpent": "hinkwaswo budget {{budget}} · Spent {{spent}}",

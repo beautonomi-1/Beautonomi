@@ -26462,7 +26462,7 @@
             "impressionsRemaining": "{{value}} Vertonings remaining",
             "budgetFullyUsed": "Budget voly used",
             "budgetRemaining": "{{amount}} begroting oor",
-            "dayBoostPaid": "{{days}} dag boost · {{amount}} betaal",
+            "dayBoostPaid": "{{count}} dag boost · {{amount}} betaal",
             "endsOn": "Eindig {{date}}",
             "impressionsPaidSpent": "{{count}} Vertonings · {{paid}} betaal · {{spent}} spent",
             "totalBudgetSpent": "totaal budget {{budget}} · Spent {{spent}}",

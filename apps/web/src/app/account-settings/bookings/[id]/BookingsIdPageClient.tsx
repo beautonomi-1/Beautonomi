@@ -29,7 +29,7 @@ import {
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 import type { Booking } from "@/types/beautonomi";
 import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
-import { subtractMoney, getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveBookingLifecycleStatus, buildWebRebookHref, slaSettingsFromHours } from "@beautonomi/utils";
+import { subtractMoney, getBookingLifecycleDisplay, getBookingPaymentDisplay, resolveEffectiveBookingLifecycleStatus, buildWebRebookHref, slaSettingsFromHours, bookingAddonLineLabel, bookingProductLineLabel, collectBookingAddonLines, collectBookingProductLines } from "@beautonomi/utils";
 import { pendingConfirmationSlaDisplay } from "@/lib/bookings/pending-confirmation-sla-copy";
 import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { useTranslation } from "@beautonomi/i18n";
@@ -921,21 +921,21 @@ export default function BookingDetailPage() {
       </div>
 
       {/* Products */}
-      {booking.products && booking.products.length > 0 && (
+      {collectBookingProductLines(booking).length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
           <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.bookings.products")}</h2>
           <div className="space-y-3">
-            {booking.products.map((product, index: number) => (
+            {collectBookingProductLines(booking).map((line) => (
               <div
-                key={product.id || index}
+                key={line.id}
                 className="flex justify-between items-center py-3 border-b last:border-0"
               >
                 <div>
-                  <p className="font-medium">{product.product_name || t("web.accountSettings.bookings.productFallback")}</p>
-                  <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.quantity", { count: product.quantity })}</p>
+                  <p className="font-medium">{line.name === "Product" ? t("web.accountSettings.bookings.productFallback") : bookingProductLineLabel(line)}</p>
+                  <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.quantity", { count: line.quantity })}</p>
                 </div>
                 <p className="font-medium">
-                  {booking.currency} {product.total_price.toFixed(2)}
+                  {booking.currency} {line.totalPrice.toFixed(2)}
                 </p>
               </div>
             ))}
@@ -1031,6 +1031,22 @@ export default function BookingDetailPage() {
       <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
         <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.bookings.paymentSummary")}</h2>
         <div className="space-y-2">
+          {collectBookingAddonLines(booking).map((line) => (
+            <div key={line.id} className="flex justify-between">
+              <span className="text-gray-600">{bookingAddonLineLabel(line)}</span>
+              <span className="font-medium">
+                {booking.currency} {line.totalPrice.toFixed(2)}
+              </span>
+            </div>
+          ))}
+          {collectBookingProductLines(booking).map((line) => (
+            <div key={line.id} className="flex justify-between">
+              <span className="text-gray-600">{bookingProductLineLabel(line)}</span>
+              <span className="font-medium">
+                {booking.currency} {line.totalPrice.toFixed(2)}
+              </span>
+            </div>
+          ))}
           <div className="flex justify-between">
             <span className="text-gray-600">{t("web.accountSettings.bookings.subtotal")}</span>
             <span className="font-medium">

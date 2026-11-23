@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { CalendarClient } from "./CalendarClient";
 import { fetchCalendarInitial } from "./fetch-calendar-initial";
 
@@ -10,5 +11,9 @@ export default async function ProviderCalendarPage({
 }) {
   const sp = await searchParams;
   const initialCalendar = await fetchCalendarInitial({ date: sp.date });
-  return <CalendarClient initialCalendar={initialCalendar} />;
+  return (
+    <Suspense fallback={null}>
+      <CalendarClient initialCalendar={initialCalendar} />
+    </Suspense>
+  );
 }

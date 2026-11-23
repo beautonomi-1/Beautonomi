@@ -232,6 +232,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
                 iconUrl: provider.current_badge.icon_url ?? undefined,
               });
             }
+            if (provider.supports_house_calls) badges.push({ key: "house", label: t("web.cards.houseCalls"), className: "bg-green-500" });
             if (showTopRatedBadge && (provider.review_count ?? 0) > 0) {
               badges.push({ key: "top", label: t("web.cards.topRated"), className: "bg-[#FF0077]" });
             }
@@ -239,7 +240,6 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             if (showNearestBadge) badges.push({ key: "near", label: t("web.cards.nearest"), className: "bg-blue-600" });
             if (showUpcomingTalentBadge) badges.push({ key: "up", label: t("web.cards.risingStar"), className: "bg-purple-600" });
             if (provider.business_type === "freelancer") badges.push({ key: "free", label: t("web.cards.freelancer"), className: "bg-orange-500" });
-            if (provider.supports_house_calls) badges.push({ key: "house", label: t("web.cards.houseCalls"), className: "bg-green-500" });
             if (provider.supports_salon) badges.push({ key: "salon", label: t("web.cards.atSalon"), className: "bg-purple-500" });
 
             const visible = badges.slice(0, MAX_VISIBLE);

@@ -4526,12 +4526,17 @@ export default function GroupBookingsScreen() {
               const checkedIn = active.filter((p) => isGroupParticipantCheckedIn(p)).length;
               const due = Math.max(0, Number(selectedGroup.balance_due ?? 0));
               const paidUp = groupIsFullyPaid(selectedGroup) || due <= 0.01;
+              const allCheckedIn = active.length > 0 && checkedIn === active.length;
               const steps = [
-                { id: "start", done: started, detail: gb("stepStartDetail") },
+                { id: "start", done: started, detail: started ? gb("stepStartDone") : gb("stepStartDetail") },
                 {
                   id: "checkIn",
-                  done: done || (active.length > 0 && checkedIn === active.length),
-                  detail: gb("stepCheckInDetail", { checkedIn, total: active.length }),
+                  done: done || allCheckedIn,
+                  detail: allCheckedIn
+                    ? gb("stepCheckInDone", { total: active.length })
+                    : done
+                      ? gb("stepCheckInClosed", { checkedIn, total: active.length })
+                      : gb("stepCheckInDetail", { checkedIn, total: active.length }),
                 },
                 {
                   id: "collect",
@@ -4540,7 +4545,15 @@ export default function GroupBookingsScreen() {
                     ? gb("stepCollectDone")
                     : gb("stepCollectDetail", { amount: formatCurrency(due) }),
                 },
-                { id: "complete", done, detail: gb("stepCompleteDetail") },
+                {
+                  id: "complete",
+                  done,
+                  detail: done
+                    ? paidUp
+                      ? gb("stepCompleteDone")
+                      : gb("stepCompleteDoneUnpaid")
+                    : gb("stepCompleteDetail"),
+                },
                 { id: "receipt", done: false, detail: gb("stepReceiptDetail") },
               ] as const;
               const currentId = steps.find((s) => !s.done)?.id ?? "receipt";
@@ -4587,6 +4600,15 @@ export default function GroupBookingsScreen() {
                               ]}
                             >
                               <Text style={twStyle("text-xs font-semibold text-white")}>{action.label}</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {!isCurrent && step.id === "receipt" && done ? (
+                            <TouchableOpacity
+                              onPress={() => void openGroupReceipt(selectedGroup)}
+                              accessibilityRole="button"
+                              style={twStyle("mt-1.5 self-start rounded-md border border-gray-300 px-3 py-1.5")}
+                            >
+                              <Text style={twStyle("text-xs font-semibold text-gray-900")}>{gb("stepReceiptAction")}</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
@@ -4785,7 +4807,6 @@ export default function GroupBookingsScreen() {
                                       : gb("shareStatusPending", { amount: formatCurrency(owed) })}
                                 </Text>
                                 {canEditGroups &&
-                                selectedGroup.status !== "completed" &&
                                 selectedGroup.status !== "cancelled" &&
                                 canResendGuestPayLink(p) ? (
                                   <TouchableOpacity
