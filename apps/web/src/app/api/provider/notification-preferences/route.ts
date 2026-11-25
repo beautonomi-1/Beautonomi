@@ -28,7 +28,8 @@ export async function GET(request: NextRequest) {
         targetUserId = userIdParam;
       } else if (providerIdParam) {
         // Get user_id from provider_id
-        const { data: provider, error: providerError } = await supabase
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        const { data: provider, error: providerError } = await getSupabaseAdmin()
           .from("providers")
           .select("user_id")
           .eq("id", providerIdParam)
@@ -111,7 +112,8 @@ export async function PATCH(request: NextRequest) {
         targetUserId = userIdParam;
       } else if (providerIdParam) {
         // Get user_id from provider_id
-        const { data: provider, error: providerError } = await supabase
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        const { data: provider, error: providerError } = await getSupabaseAdmin()
           .from("providers")
           .select("user_id")
           .eq("id", providerIdParam)

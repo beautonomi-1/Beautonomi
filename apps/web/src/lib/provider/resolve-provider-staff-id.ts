@@ -18,7 +18,8 @@ export async function resolveProviderStaffRowId(
 
   if (byPk?.id) return byPk.id as string;
 
-  const { data: byUser } = await supabase
+  const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+  const { data: byUser } = await getSupabaseAdmin()
     .from("provider_staff")
     .select("id")
     .eq("user_id", routeParamId)

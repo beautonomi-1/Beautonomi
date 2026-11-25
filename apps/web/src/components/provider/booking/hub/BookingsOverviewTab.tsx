@@ -460,7 +460,16 @@ export function BookingsOverviewTab({
       setCloseOutActionPending((prev) => new Set(prev).add(booking.id));
       try {
         const res = await fetcher.post<{
-          data?: { results?: Array<{ id: string; ok: boolean; error?: string; code?: string; retry?: boolean }> };
+          data?: {
+            results?: Array<{
+              id: string;
+              ok: boolean;
+              error?: string;
+              code?: string;
+              retry?: boolean;
+              products_still_open?: number;
+            }>;
+          };
         }>("/api/provider/bookings/close-out/bulk-complete", { booking_ids: [booking.id] });
         const row = res?.data?.results?.find((r) => r.id === booking.id);
         if (!row?.ok) {
@@ -476,7 +485,13 @@ export function BookingsOverviewTab({
           toast.error(row?.error ?? t("web.provider.bookings.overview.closeOutCompleteFailed"));
           return;
         }
-        toast.success(t("web.provider.bookings.overview.closeOutCompleted"));
+        const productsOpen = row?.products_still_open ?? 0;
+        toast.success(t("web.provider.bookings.overview.closeOutCompleted"), {
+          description:
+            productsOpen > 0
+              ? t("web.provider.bookings.overview.closeOutProductsStillOpen", { count: productsOpen })
+              : undefined,
+        });
         await refreshCloseOutQueue();
       } catch (error) {
         toast.error(formatApiErrorMessage(error, t("web.provider.bookings.overview.closeOutCompleteFailed")));

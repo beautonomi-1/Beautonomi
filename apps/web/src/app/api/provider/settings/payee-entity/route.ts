@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       return errorResponse("Provider not found", "NOT_FOUND", 404);
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabaseAdmin()
       .from("providers")
       .select(
         "payee_kind, registered_business_name, business_registration_number, business_registration_country, verified_person_role, business_type, kyb_verification_status",

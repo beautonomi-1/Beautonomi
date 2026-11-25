@@ -49,7 +49,7 @@ async function findReferralDuplicates(
       matches.push({ type: "lead", id: lead.id, name: lead.business_name });
     }
 
-    const { data: emailProviders } = await supabase
+    const { data: emailProviders } = await getSupabaseAdmin()
       .from("providers")
       .select("id, business_name")
       .eq("tenant_id", tenantId)
@@ -72,7 +72,7 @@ async function findReferralDuplicates(
       }
     }
 
-    const { data: phoneProviders } = await supabase
+    const { data: phoneProviders } = await getSupabaseAdmin()
       .from("providers")
       .select("id, business_name")
       .eq("tenant_id", tenantId)

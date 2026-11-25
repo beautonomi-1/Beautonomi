@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import {
   isReviewContentEditBlocked,
@@ -42,14 +43,8 @@ export async function POST(
       );
     }
 
-    // Get provider ID
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("id")
-      .or(`user_id.eq.${permissionCheck.user.id},staff_members.user_id.eq.${permissionCheck.user.id}`)
-      .single();
-
-    if (!provider) {
+    const providerId = await getProviderIdForUser(permissionCheck.user.id, supabase, { request: request as Request });
+    if (!providerId) {
       return NextResponse.json(
         {
           data: null,
@@ -61,8 +56,6 @@ export async function POST(
         { status: 404 }
       );
     }
-
-    const providerData = provider as any;
 
     // Verify review belongs to provider's booking
     const { data: review } = await supabase
@@ -80,7 +73,7 @@ export async function POST(
       .single();
 
     const reviewData = review as any;
-    if (!review || reviewData.bookings?.provider_id !== providerData.id) {
+    if (!review || reviewData.bookings?.provider_id !== providerId) {
       return NextResponse.json(
         {
           data: null,
@@ -224,14 +217,8 @@ export async function PATCH(
       );
     }
 
-    // Get provider ID
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("id")
-      .or(`user_id.eq.${permissionCheck.user.id},staff_members.user_id.eq.${permissionCheck.user.id}`)
-      .single();
-
-    if (!provider) {
+    const providerId = await getProviderIdForUser(permissionCheck.user.id, supabase, { request: request as Request });
+    if (!providerId) {
       return NextResponse.json(
         {
           data: null,
@@ -243,8 +230,6 @@ export async function PATCH(
         { status: 404 }
       );
     }
-
-    const providerData = provider as any;
 
     // Verify review belongs to provider's booking and has a response
     const { data: review } = await supabase
@@ -262,7 +247,7 @@ export async function PATCH(
       .single();
 
     const reviewData = review as any;
-    if (!review || reviewData.bookings?.provider_id !== providerData.id) {
+    if (!review || reviewData.bookings?.provider_id !== providerId) {
       return NextResponse.json(
         {
           data: null,

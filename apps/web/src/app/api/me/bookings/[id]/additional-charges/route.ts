@@ -39,7 +39,8 @@ export async function GET(
 
     // If provider, verify they own the booking
     if (isProvider && !isAdmin) {
-      const { data: provider } = await supabase
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const { data: provider } = await getSupabaseAdmin()
         .from("providers")
         .select("id")
         .eq("user_id", user.id)

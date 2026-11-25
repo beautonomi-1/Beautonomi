@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest) {
       }
     } else if (recipient_type === "all_providers") {
       try {
-        const resolved = await resolveBroadcastProviderUserIds(supabase, tenantId);
+        const resolved = await resolveBroadcastProviderUserIds(getSupabaseAdmin(), tenantId);
         userIds = resolved.userIds;
       } catch (e) {
         return handleApiError(e, "Failed to resolve provider recipients");

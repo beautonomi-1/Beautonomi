@@ -195,7 +195,20 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
           arrival_otp_verified: raw?.arrival_otp_verified as boolean | undefined,
           qr_code_verified: raw?.qr_code_verified as boolean | undefined,
         },
-        { outstanding, isAtHome, isAtSalon },
+        {
+          outstanding,
+          isAtHome,
+          isAtSalon,
+          openProductCount: (() => {
+            const orders = (raw?.product_orders as Array<{ status?: string | null }> | undefined) ?? [];
+            const open = orders.filter(
+              (o) => !["delivered", "cancelled", "refunded"].includes((o.status ?? "").toLowerCase()),
+            ).length;
+            const saved = Array.isArray(raw?.products) ? raw.products.length : 0;
+            if (saved > 0 && orders.length === 0) return 1;
+            return open;
+          })(),
+        },
       )
     : null;
 
@@ -304,6 +317,23 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
                 alreadyFinished={
                   appt.status === "completed" || appt.status === "cancelled" || appt.status === "no_show"
                 }
+                onPressItem={(itemId) => {
+                  if (itemId === "payment") {
+                    triggerCollectPayment();
+                    return;
+                  }
+                  if (itemId === "products") {
+                    document.getElementById("booking-product-fulfillment")?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                    return;
+                  }
+                  document.getElementById("booking-additional-charges")?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                }}
               />
             ) : null}
 
@@ -311,7 +341,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
             <BookingCustomOfferBlock appointment={appt} />
             <BookingProductFulfillmentBlock
               bookingId={appt.id}
-              onUpdated={() => void loadFullAppointment()}
+              hasLineItems={Boolean((raw?.products as unknown[] | undefined)?.length)}
             />
 
             {isAtHome ? (
@@ -404,11 +434,13 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
               initialOpenPaystack={autoOpenPaystack}
             />
 
-            <BookingAdditionalChargesSection
-              bookingId={appt.id}
-              bookingLocationId={appt.location_id ?? null}
-              onUpdated={refreshAfterPayment}
-            />
+            <div id="booking-additional-charges">
+              <BookingAdditionalChargesSection
+                bookingId={appt.id}
+                bookingLocationId={appt.location_id ?? null}
+                onUpdated={refreshAfterPayment}
+              />
+            </div>
 
             <BookingSectionCard>
               <BookingSectionLabel className="mb-3">{t(`${prefix}.payment`)}</BookingSectionLabel>

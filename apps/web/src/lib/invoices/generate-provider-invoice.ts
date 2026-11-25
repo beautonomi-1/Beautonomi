@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { addDays } from "date-fns";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 import { formatDateYmd, resolveTz } from "@/lib/dates/provider-tz";
@@ -76,7 +77,7 @@ export async function generateProviderInvoice(
     );
   }
 
-  const { data: providerData, error: providerError } = await supabase
+  const { data: providerData, error: providerError } = await getSupabaseAdmin()
     .from("providers")
     .select("id, business_name, billing_email, billing_address, timezone, currency")
     .eq("id", providerId)

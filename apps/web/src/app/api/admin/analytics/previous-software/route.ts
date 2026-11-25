@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     // Get total providers for percentage calculation
     const { count: totalProviders } = await supabase
       .from("providers")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId);
 
     // Sort by count (descending)

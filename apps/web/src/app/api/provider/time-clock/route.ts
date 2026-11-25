@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       (await hasPermission(user.id, "manage_team", undefined, request));
     let ownStaffId: string | null = null;
     if (!canSeeAll) {
-      ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+      ownStaffId = await getProviderStaffIdForUser(user.id, providerId);
       if (!ownStaffId) return successResponse([]);
     }
 
@@ -135,7 +135,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Find staff member by PIN
-    const { data: staff, error: staffError } = await supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: staff, error: staffError } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, name, time_clock_enabled")
       .eq("provider_id", providerId)

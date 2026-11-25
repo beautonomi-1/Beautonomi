@@ -904,6 +904,12 @@ export async function PATCH(
     }
 
     // Status is not required if we're updating other fields
+    const syncProductOrder = (body as { sync_product_order?: boolean }).sync_product_order === true;
+    const patchBodyKeys = Object.keys(body).filter(
+      (k) => !["sync_product_order", "version", "updated_at"].includes(k),
+    );
+    const onlySyncProductOrder = syncProductOrder && patchBodyKeys.length === 0;
+
     const { 
       scheduled_at, 
       staff_id,
@@ -946,17 +952,31 @@ export async function PATCH(
     
     // Check if any updateable field is provided
     // Note: duration_minutes is stored in booking_services, not bookings table
-    const hasUpdates = status || scheduled_at || staff_id !== undefined || booking_service_id || special_requests !== undefined ||
-        subtotal !== undefined || 
-        total_amount !== undefined || tip_amount !== undefined ||
-        discount_amount !== undefined || discount_code !== undefined || discount_reason !== undefined ||
-        tax_amount !== undefined ||
-        cancellation_reason !== undefined || cancellation_fee !== undefined ||
-        location_type || location_id || address_line1 || travel_fee !== undefined ||
-        services !== undefined || products !== undefined ||
-        current_stage !== undefined ||
-        referral_source_id !== undefined;
-        
+    const hasUpdates =
+      onlySyncProductOrder ||
+      status ||
+      scheduled_at ||
+      staff_id !== undefined ||
+      booking_service_id ||
+      special_requests !== undefined ||
+      subtotal !== undefined ||
+      total_amount !== undefined ||
+      tip_amount !== undefined ||
+      discount_amount !== undefined ||
+      discount_code !== undefined ||
+      discount_reason !== undefined ||
+      tax_amount !== undefined ||
+      cancellation_reason !== undefined ||
+      cancellation_fee !== undefined ||
+      location_type ||
+      location_id ||
+      address_line1 ||
+      travel_fee !== undefined ||
+      services !== undefined ||
+      products !== undefined ||
+      current_stage !== undefined ||
+      referral_source_id !== undefined;
+
     if (!hasUpdates) {
       return errorResponse("At least one field to update is required", "VALIDATION_ERROR", 400);
     }
@@ -965,6 +985,30 @@ export async function PATCH(
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    if (onlySyncProductOrder) {
+      const supabaseAdminSync = getSupabaseAdmin();
+      const { data: bookingRow } = await supabase
+        .from("bookings")
+        .select("id, provider_id")
+        .eq("id", id)
+        .eq("provider_id", providerId)
+        .single();
+      if (!bookingRow) {
+        return notFoundResponse("Booking not found");
+      }
+      try {
+        await syncAppointmentProductOrder(supabaseAdminSync as never, id);
+      } catch (orderSyncError) {
+        console.error(`[provider/bookings patch] sync_product_order failed for ${id}:`, orderSyncError);
+        return errorResponse(
+          orderSyncError instanceof Error ? orderSyncError.message : "Product order could not be created",
+          "PRODUCT_ORDER_SYNC_FAILED",
+          422,
+        );
+      }
+      return successResponse({ booking: { id }, message: "Product order synced" });
     }
 
     // calendar_scope=own: 403 CALENDAR_SCOPE_FORBIDDEN unless the booking includes the caller's staff id.

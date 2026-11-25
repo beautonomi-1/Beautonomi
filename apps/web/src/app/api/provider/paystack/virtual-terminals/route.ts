@@ -54,7 +54,8 @@ async function resolveProvider(request: NextRequest) {
   const providerId = await getProviderIdForUser(user.id, supabase, { request });
   if (!providerId) return { supabase, user, providerId: null, provider: null };
 
-  const { data: provider } = await supabase
+  const admin = getSupabaseAdmin();
+  const { data: provider } = await admin
     .from("providers")
     .select("id, tenant_id, currency, business_name, phone, billing_phone, billing_email, user_id")
     .eq("id", providerId)

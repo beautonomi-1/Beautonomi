@@ -54,7 +54,8 @@ export async function POST(
       return notFoundResponse("Provider not found");
     }
 
-    const { data: staff, error: staffError } = await supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: staff, error: staffError } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, name, email, phone, user_id, is_active, deleted_at")
       .eq("id", id)

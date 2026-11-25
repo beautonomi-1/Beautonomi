@@ -18,7 +18,8 @@ async function shiftAccessDenied(
 ) {
   let targetUserId: string | null = null;
   if (staffId) {
-    const { data: staffRow } = await supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: staffRow } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, user_id")
       .eq("id", staffId)

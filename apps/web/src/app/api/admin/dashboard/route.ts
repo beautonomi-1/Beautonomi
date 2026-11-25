@@ -149,16 +149,16 @@ export async function GET(request: NextRequest) {
         p_created_at_max: endOfLastMonth.toISOString(),
       }),
       Promise.allSettled([
-      supabase.from("providers").select("*", { count: "exact", head: true }).eq("status", "active").eq("tenant_id", tenantId),
+      supabase.from("providers").select("id", { count: "exact", head: true }).eq("status", "active").eq("tenant_id", tenantId),
       supabase
         .from("providers")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("status", "active")
         .eq("tenant_id", tenantId)
         .gte("created_at", startOfMonth.toISOString()),
       supabase
         .from("providers")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("status", "active")
         .eq("tenant_id", tenantId)
         .gte("created_at", startOfLastMonth.toISOString())
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
         .lte("created_at", endOfLastMonth.toISOString()),
       supabase
         .from("providers")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("status", "pending_approval")
         .eq("tenant_id", tenantId),
       ]),

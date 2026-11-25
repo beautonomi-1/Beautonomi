@@ -38,7 +38,7 @@ export async function GET(
     }
 
     if (user.role !== "superadmin") {
-      const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+      const ownStaffId = await getProviderStaffIdForUser(user.id, providerId);
       const canViewOthers =
         (await isProviderOwner(user.id, request)) ||
         (await hasPermission(user.id, "view_team", undefined, request)) ||

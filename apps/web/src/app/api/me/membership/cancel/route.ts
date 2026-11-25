@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       const { data: activeSalon, error: salonFindError } = await (supabase
         .from("user_memberships") as any)
         .select(
-          "id, user_id, status, expires_at, provider:providers(id, tenant_id, user_id, business_name), plan:membership_plans!user_memberships_plan_id_fkey(id, name)"
+          "id, user_id, status, expires_at, provider:providers(id, tenant_id, business_name), plan:membership_plans!user_memberships_plan_id_fkey(id, name)"
         )
         .eq("id", providerMembershipId)
         .eq("user_id", user.id)
@@ -79,10 +79,21 @@ export async function POST(request: NextRequest) {
           // best-effort customer name lookup
         }
 
+        let providerOwnerUserId: string | null = null;
+        if (provider?.id) {
+          const { data: ownerRow } = await getSupabaseAdmin()
+            .from("providers")
+            .select("user_id")
+            .eq("id", provider.id)
+            .maybeSingle();
+          providerOwnerUserId =
+            (ownerRow as { user_id?: string | null } | null)?.user_id ?? null;
+        }
+
         if (provider?.id) {
           await notifyProviderMembershipCancelled({
             providerId: provider.id,
-            providerOwnerUserId: provider?.user_id ?? null,
+            providerOwnerUserId,
             customerName,
             planName: plan?.name ?? "membership",
             customerId: user.id,

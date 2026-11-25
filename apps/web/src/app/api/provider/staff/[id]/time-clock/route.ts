@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -36,7 +37,7 @@ export async function POST(
     }
 
     // Verify staff belongs to provider
-    const { data: staff, error: staffError } = await supabase
+    const { data: staff, error: staffError } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, user_id, time_clock_enabled, time_clock_pin")
       .eq("id", id)
@@ -125,7 +126,7 @@ export async function PATCH(
     }
 
     // Verify staff belongs to provider
-    const { data: staff } = await supabase
+    const { data: staff } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, user_id")
       .eq("id", id)
@@ -217,7 +218,7 @@ export async function GET(
     }
 
     // Verify staff belongs to provider
-    const { data: staff } = await supabase
+    const { data: staff } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, name, user_id")
       .eq("id", id)

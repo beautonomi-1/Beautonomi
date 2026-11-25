@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -37,7 +38,8 @@ export async function GET(request: NextRequest) {
       return errorResponse("Provider profile is not created yet", "NEW_PROVIDER", 404);
     }
 
-    const { data: provider, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: provider, error } = await admin
       .from("providers")
       .select("id, slug, business_name, description, business_type, phone, email, thumbnail_url, avatar_url, tenant_id, timezone, offers_mobile_services, is_verified, status, rating_average, review_count")
       .eq("id", providerId)
@@ -161,7 +163,8 @@ export async function PATCH(request: NextRequest) {
       updates.avatar_url = body.avatar_url || null;
     }
 
-    const { data: provider, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: provider, error } = await admin
       .from("providers")
       .update(updates)
       .eq("id", providerId)

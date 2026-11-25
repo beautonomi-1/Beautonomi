@@ -31,7 +31,7 @@ function resolveBookingLifecycle(booking: BookingNextStepCardInput): string {
 
 export function getBookingNextStepCard(
   booking: BookingNextStepCardInput,
-  options: { outstanding: number; isAtHome: boolean; isAtSalon: boolean },
+  options: { outstanding: number; isAtHome: boolean; isAtSalon: boolean; openProductCount?: number },
 ): { title: string; description: string; icon: BookingNextStepIcon; color: string } {
   const status = resolveBookingLifecycle(booking);
   if (status === "pending" || status === "pending_payment") {
@@ -119,6 +119,26 @@ export function getBookingNextStepCard(
     };
   }
   if (status === "started" || status === "in_progress") {
+    if (options.outstanding > 0) {
+      return {
+        title: "Service in progress",
+        description: "Complete the service when finished, then settle any outstanding balance.",
+        icon: "timer-outline",
+        color: "#d97706",
+      };
+    }
+    const openDuringService = options.openProductCount ?? 0;
+    if (openDuringService > 0) {
+      return {
+        title: "Hand over products",
+        description:
+          openDuringService === 1
+            ? "Mark the product collected or finish delivery before completing the visit."
+            : `${openDuringService} product orders still need pickup or delivery.`,
+        icon: "alert-circle-outline",
+        color: "#d97706",
+      };
+    }
     return {
       title: "Service in progress",
       description: "Complete the service when finished, then settle any outstanding balance.",
@@ -131,6 +151,18 @@ export function getBookingNextStepCard(
       title: "Payment still due",
       description: "Send a payment link, take a card machine payment, or mark the remaining amount as paid.",
       icon: "card-outline",
+      color: "#d97706",
+    };
+  }
+  const openProducts = options.openProductCount ?? 0;
+  if (status === "completed" && openProducts > 0) {
+    return {
+      title: "Hand over products",
+      description:
+        openProducts === 1
+          ? "One product order still needs pickup or delivery."
+          : `${openProducts} product orders still need pickup or delivery.`,
+      icon: "alert-circle-outline",
       color: "#d97706",
     };
   }

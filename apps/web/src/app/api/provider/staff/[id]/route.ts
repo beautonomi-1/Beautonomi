@@ -145,11 +145,11 @@ function mapDbRoleToApi(dbRole: string | null | undefined): string {
 }
 
 async function fetchStaffDetailForApi(
-  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  _supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
   staffId: string,
   providerId: string,
 ): Promise<Record<string, unknown> | null> {
-  const { data: row, error } = await supabase
+  const { data: row, error } = await getSupabaseAdmin()
     .from("provider_staff")
     .select(
       `
@@ -318,7 +318,7 @@ export async function PATCH(
       return notFoundResponse("Provider not found");
     }
 
-    const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+    const ownStaffId = await getProviderStaffIdForUser(user.id, providerId);
     const editingSelf = ownStaffId === id;
 
     const canManageTeam =
@@ -367,7 +367,7 @@ export async function PATCH(
     const replaceLocations = Object.prototype.hasOwnProperty.call(body, "location_ids");
     const replaceServices = Object.prototype.hasOwnProperty.call(body, "service_ids");
 
-    const { data: existingRow, error: existingErr } = await supabase
+    const { data: existingRow, error: existingErr } = await getSupabaseAdmin()
       .from("provider_staff")
       .select(
         "id, role, user_id, commission_rate, commission_percentage, service_commission_rate, product_commission_rate",
@@ -684,7 +684,7 @@ export async function DELETE(
       return notFoundResponse("Provider not found");
     }
 
-    const { data: existingRow, error: existingErr } = await supabase
+    const { data: existingRow, error: existingErr } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, role, user_id, name, is_active")
       .eq("id", id)

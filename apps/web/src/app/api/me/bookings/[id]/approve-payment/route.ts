@@ -82,7 +82,8 @@ export async function POST(
 
       const providerId = (bookingRow as any)?.provider_id;
       if (providerId) {
-        const { data: providerRow } = await supabase
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        const { data: providerRow } = await getSupabaseAdmin()
           .from("providers")
           .select("user_id")
           .eq("id", providerId)

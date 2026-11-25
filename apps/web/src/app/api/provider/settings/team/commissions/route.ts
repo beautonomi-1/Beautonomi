@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get staff with their base commission percentage
-    let staffQuery = supabase
+    let staffQuery = getSupabaseAdmin()
       .from("provider_staff")
       .select(
         "id, user_id, name, email, role, commission_percentage, service_commission_rate, product_commission_rate, commission_rate, is_active",
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
     if (view === "setup") {
       const [{ data: staffFull }, { data: offerings }, { data: settings }] = await Promise.all([
         (() => {
-          let setupStaff = supabase
+          let setupStaff = getSupabaseAdmin()
             .from("provider_staff")
             .select("id, name, commission_enabled, service_commission_rate, product_commission_rate, commission_rate, commission_percentage")
             .eq("provider_id", providerId)
@@ -231,7 +232,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Verify staff belongs to this provider
-    const { data: staff, error: staffError } = await supabase
+    const { data: staff, error: staffError } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, service_commission_rate, product_commission_rate, commission_rate, commission_percentage")
       .eq("id", staffId)
@@ -283,8 +284,8 @@ export async function PATCH(request: NextRequest) {
       }
     }
     if (Object.keys(rateUpdate).length > 0) {
-      const { error: updateError } = await supabase
-        .from("provider_staff")
+      const { error: updateError } = await getSupabaseAdmin()
+      .from("provider_staff")
         .update(rateUpdate)
         .eq("id", staffId)
         .eq("provider_id", providerId);
@@ -334,7 +335,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Return the updated data
-    const { data: updatedStaff } = await supabase
+    const { data: updatedStaff } = await getSupabaseAdmin()
       .from("provider_staff")
       .select(
         "id, name, commission_percentage, service_commission_rate, product_commission_rate, commission_rate",

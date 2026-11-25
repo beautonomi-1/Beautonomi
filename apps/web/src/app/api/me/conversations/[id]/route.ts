@@ -4,7 +4,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { getBlockedUserIds } from "@/lib/safety/user-blocks";
 
-function mapConversationRow(c: Record<string, unknown>) {
+function mapConversationRow(
+  c: Record<string, unknown>,
+  priv?: { phone?: string | null; email?: string | null; user_id?: string | null } | null,
+) {
   const provider = Array.isArray(c.provider) ? c.provider[0] : c.provider;
   const booking = Array.isArray(c.booking) ? c.booking[0] : c.booking;
   const p = provider as Record<string, unknown> | null | undefined;
@@ -17,8 +20,8 @@ function mapConversationRow(c: Record<string, unknown>) {
     last_message_at: c.last_message_at,
     unread_count: (c.unread_count_customer as number | undefined) ?? 0,
     provider_name: (p?.business_name as string | undefined) || null,
-    provider_phone: (p?.phone as string | undefined) || null,
-    provider_email: (p?.email as string | undefined) || null,
+    provider_phone: priv?.phone ?? null,
+    provider_email: priv?.email ?? null,
     booking_number: (b?.booking_number as string | undefined) || null,
     avatar: (p?.avatar_url as string | undefined) ?? (p?.thumbnail_url as string | undefined) ?? null,
     last_message_preview: (c.last_message_preview as string | undefined) || null,
@@ -31,7 +34,7 @@ function mapConversationRow(c: Record<string, unknown>) {
         }
       : undefined,
     provider_slug: (p?.slug as string | undefined) ?? null,
-    provider_owner_user_id: (p?.user_id as string | undefined) ?? null,
+    provider_owner_user_id: priv?.user_id ?? null,
     unread_count_customer: (c.unread_count_customer as number | undefined) ?? 0,
     is_pinned: Boolean(c.is_starred_customer),
   };
@@ -70,7 +73,7 @@ export async function GET(
         unread_count_customer,
         unread_count_provider,
         is_starred_customer,
-        provider:providers(id, user_id, slug, business_name, thumbnail_url, avatar_url, phone, email),
+        provider:providers(id, slug, business_name, thumbnail_url, avatar_url),
         booking:bookings(id, booking_number)
       `,
       )
@@ -83,16 +86,25 @@ export async function GET(
       return notFoundResponse("Conversation not found");
     }
 
+    const admin = getSupabaseAdmin();
+  const providerId = (conversation as { provider_id?: string | null }).provider_id;
+  let priv: { phone?: string | null; email?: string | null; user_id?: string | null } | null = null;
+  if (providerId) {
+    const { data: privRow } = await admin
+      .from("providers")
+      .select("phone, email, user_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    priv = (privRow as typeof priv) ?? null;
+  }
+
     const blockedIds = await getBlockedUserIds(user.id, supabase);
-    const provider = Array.isArray(conversation.provider)
-      ? conversation.provider[0]
-      : conversation.provider;
-    const ownerId = (provider as { user_id?: string } | null)?.user_id ?? null;
+    const ownerId = priv?.user_id ?? null;
     if (ownerId && blockedIds.has(ownerId)) {
       return notFoundResponse("Conversation not found");
     }
 
-    return successResponse(mapConversationRow(conversation as Record<string, unknown>));
+    return successResponse(mapConversationRow(conversation as Record<string, unknown>, priv));
   } catch (error) {
     return handleApiError(error, "Failed to fetch conversation");
   }

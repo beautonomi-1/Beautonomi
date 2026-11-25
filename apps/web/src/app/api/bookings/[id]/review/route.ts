@@ -162,12 +162,12 @@ export async function POST(
 
     // Notify provider that customer left a review
     try {
-      const supabaseNotify = await getSupabaseServer(request);
-      const { data: providerData } = await supabaseNotify
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const { data: providerData } = await getSupabaseAdmin()
         .from("providers")
         .select("user_id")
         .eq("id", booking.provider_id)
-        .single();
+        .maybeSingle();
 
       if (providerData?.user_id) {
         const { insertNotification } = await import("@/lib/notifications/insert-notification");

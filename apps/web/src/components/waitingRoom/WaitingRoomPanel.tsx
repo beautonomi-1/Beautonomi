@@ -275,14 +275,25 @@ export function WaitingRoomPanel({
     setCloseOutLoading(true);
     try {
       const res = await fetcher.post<{
-        data?: { completed?: number; results?: Array<{ id: string; ok: boolean; error?: string }> };
+        data?: {
+          completed?: number;
+          results?: Array<{ id: string; ok: boolean; error?: string; products_still_open?: number }>;
+        };
       }>("/api/provider/bookings/close-out/bulk-complete", {
         booking_ids: eligible.map((b) => b.id),
       });
       const completedCount = res?.data?.completed ?? 0;
       const skipped = (res?.data?.results ?? []).filter((r) => !r.ok);
       if (completedCount > 0) {
-        toast.success(t("web.provider.waitingRoomPanel.completedAppointments", { count: completedCount }));
+        const productsStillOpen = (res?.data?.results ?? [])
+          .filter((r) => r.ok)
+          .reduce((sum, r) => sum + (r.products_still_open ?? 0), 0);
+        toast.success(t("web.provider.waitingRoomPanel.completedAppointments", { count: completedCount }), {
+          description:
+            productsStillOpen > 0
+              ? t("web.provider.bookings.overview.closeOutProductsStillOpen", { count: productsStillOpen })
+              : undefined,
+        });
       }
       if (skipped.length > 0) {
         toast.warning(

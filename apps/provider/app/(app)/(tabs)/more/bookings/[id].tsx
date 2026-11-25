@@ -70,6 +70,11 @@ import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
 import { lookupProviderClientRating, submitProviderClientRating } from "@/lib/provider-client-rating";
 import { CompleteWithBalanceSheet } from "@/components/bookings/CompleteWithBalanceSheet";
+import {
+  BookingCompletionHandoverSheet,
+  type HandoverActionId,
+} from "@/components/bookings/BookingCompletionHandoverSheet";
+import type { CompletionBlocker } from "@beautonomi/provider-booking";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { emitNotificationBadgeRefresh } from "@/lib/notification-badge-events";
 import {
@@ -132,7 +137,8 @@ import { JourneyProgress } from "@/components/bookings/JourneyProgress";
 import { ReassignStaffSheet } from "@/components/bookings/ReassignStaffSheet";
 import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { BookingPaymentTimeline } from "@/components/bookings/BookingPaymentTimeline";
-import { buildBookingCompletionChecklist } from "@/lib/booking-completion-checklist";
+import { buildBookingCompletionChecklist, firstProductHandoverBlocker } from "@/lib/booking-completion-checklist";
+import { handoverPrimaryAction } from "@/components/bookings/BookingCompletionHandoverSheet";
 import { RequirementChecklist } from "@/components/bookings/RequirementChecklist";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
 import { BookingLiveSyncIndicator } from "@/components/bookings/BookingLiveSyncIndicator";
@@ -722,7 +728,7 @@ export default function BookingDetailScreen() {
 
   const router = useRouter();
   const { afterRatingSubmitted, sheetProps: storeReviewSheetProps } = useStoreReviewAfterRating("client_rating");
-  const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm, step, action, posted } =
+  const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm, step, action, posted, handover } =
     useLocalSearchParams<{
     id: string;
     focusPayment?: string;
@@ -736,6 +742,7 @@ export default function BookingDetailScreen() {
     step?: string;
     action?: string;
     posted?: string;
+    handover?: string;
   }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(15);
   const [updateEtaMinutes, setUpdateEtaMinutes] = useState<number | null>(15);
@@ -783,7 +790,12 @@ export default function BookingDetailScreen() {
     refresh: refreshProductOrders,
   } = useApi<AppointmentProductOrderResponse>(appointmentProductOrdersUrl);
   const appointmentProductOrders = appointmentProductOrdersData?.orders ?? [];
-  const openProductOrderCount = countOpenAppointmentProductOrders(appointmentProductOrders);
+  const openProductOrderCount = (() => {
+    const open = countOpenAppointmentProductOrders(appointmentProductOrders);
+    const savedProducts = (data as { products?: unknown[] } | null)?.products?.length ?? 0;
+    if (savedProducts > 0 && appointmentProductOrders.length === 0) return 1;
+    return open;
+  })();
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
   const [resourceAssignLoading, setResourceAssignLoading] = useState(false);
@@ -913,6 +925,7 @@ export default function BookingDetailScreen() {
   const locationPermissionDeniedRef = useRef(false);
   const mainScrollRef = useRef<ScrollView>(null);
   const productsBlockYRef = useRef(0);
+  const chargesBlockYRef = useRef(0);
   const productsBlockRef = useRef<View>(null);
   const nextStepCardYRef = useRef(0);
   const notesBlockYRef = useRef(0);
@@ -1138,6 +1151,8 @@ export default function BookingDetailScreen() {
   const [refundCaps, setRefundCaps] = useState<RefundCapsResponse | null>(null);
   const [refundCapsLoading, setRefundCapsLoading] = useState(false);
   const [unpaidCompleteOpen, setUnpaidCompleteOpen] = useState(false);
+  const [handoverSheetOpen, setHandoverSheetOpen] = useState(false);
+  const [handoverBusy, setHandoverBusy] = useState(false);
   const [unpaidCompleteBody, setUnpaidCompleteBody] = useState("");
   const [unpaidCompleteSubmitting, setUnpaidCompleteSubmitting] = useState(false);
   const [paymentExcellenceDismissed, setPaymentExcellenceDismissed] = useState(false);
@@ -1917,6 +1932,13 @@ export default function BookingDetailScreen() {
   }, [data, bk]);
 
   useEffect(() => {
+    const hp = typeof handover === "string" ? handover : Array.isArray(handover) ? handover[0] : "";
+    if ((hp === "1" || hp === "true") && data) {
+      setHandoverSheetOpen(true);
+    }
+  }, [handover, data]);
+
+  useEffect(() => {
     const fp = typeof focusPayment === "string" ? focusPayment : Array.isArray(focusPayment) ? focusPayment[0] : "";
     if (fp !== "1" && fp !== "true") return;
     if (!data) return;
@@ -1978,6 +2000,49 @@ export default function BookingDetailScreen() {
       hasProductsOnBooking: (row.products?.length ?? 0) > 0,
     });
   }, [resolvedBooking, data, unpaidAdditionalChargesTotal, appointmentProductOrders]);
+
+  useEffect(() => {
+    if (!handoverSheetOpen || !data) return;
+    if (completionChecklist.allDone) setHandoverSheetOpen(false);
+  }, [handoverSheetOpen, data, completionChecklist.allDone]);
+
+  const primaryProductBlocker = useMemo(
+    () => firstProductHandoverBlocker(completionChecklist.blockers),
+    [completionChecklist.blockers],
+  );
+
+  const onPressCompletionChecklistItem = useCallback((itemId: string) => {
+    if (itemId === "payment") {
+      setShowMarkPaid(true);
+      return;
+    }
+    if (itemId === "additional_charges") {
+      mainScrollRef.current?.scrollTo({ y: Math.max(0, chargesBlockYRef.current), animated: true });
+      return;
+    }
+    if (itemId === "products") {
+      setHandoverSheetOpen(true);
+    }
+  }, []);
+
+  const productQuickActionLabel = useMemo(() => {
+    if (!primaryProductBlocker) return null;
+    const action = handoverPrimaryAction(primaryProductBlocker);
+    if (!action) return null;
+    const hp = (key: string) => t(`web.provider.bookings.detail.completion.${key}`);
+    switch (action) {
+      case "mark_collected":
+        return t("web.provider.bookings.detail.products.markCollected");
+      case "manage_delivery":
+        return hp("manageDelivery");
+      case "set_pickup":
+        return t("web.provider.bookings.detail.products.setPickup");
+      case "prepare_order":
+        return hp("prepareOrder");
+      default:
+        return null;
+    }
+  }, [primaryProductBlocker, t]);
 
   if (loading && !data) {
     return (
@@ -2613,53 +2678,7 @@ export default function BookingDetailScreen() {
       }
 
       if (!completionChecklist.allDone) {
-        const cur = b.currency ?? getTenantDefaultCurrency();
-        Alert.alert(
-          bk("beforeCompletingTitle"),
-          bk("beforeCompletingBody", { blockingLabels: completionChecklist.blockingLabels.join(" · ") }),
-          [
-            {
-              text: bk("collectPaymentCta"),
-              onPress: () => setShowMarkPaid(true),
-            },
-            {
-              text: bk("completeAnywayCta"),
-              style: "default",
-              onPress: () => {
-                if (outstanding > 0.01) {
-                  openCompleteWithBalance();
-                  return;
-                }
-                void submitCompleteService({});
-              },
-            },
-            { text: bk("cancelCta"), style: "cancel" },
-          ],
-        );
-        return false;
-      }
-
-      // Gate on unpaid balance: prompt provider to capture payment first.
-      if (outstanding > 0) {
-        const cur = b.currency ?? getTenantDefaultCurrency();
-        Alert.alert(
-          bk("outstandingBalanceTitle"),
-          bk("outstandingBalanceBody", { currency: cur, amount: outstanding.toFixed(2) }),
-          [
-            {
-              text: bk("capturePaymentCta"),
-              onPress: () => {
-                setShowMarkPaid(true);
-              },
-            },
-            {
-              text: bk("completeAnywayCta"),
-              style: "default",
-              onPress: () => openCompleteWithBalance(),
-            },
-            { text: bk("cancelCta"), style: "cancel" },
-          ],
-        );
+        setHandoverSheetOpen(true);
         return false;
       }
 
@@ -2741,10 +2760,56 @@ export default function BookingDetailScreen() {
     Alert.alert(bk("doneTitle"), bk("productCollected"));
   };
 
+  const handleHandoverSheetAction = async (blocker: CompletionBlocker, actionId: HandoverActionId) => {
+    if (actionId === "complete_anyway") {
+      setHandoverSheetOpen(false);
+      if (outstanding > 0.01) {
+        openCompleteWithBalance();
+        return;
+      }
+      void submitCompleteService({});
+      return;
+    }
+    if (actionId === "collect_payment") {
+      setHandoverSheetOpen(false);
+      setShowMarkPaid(true);
+      return;
+    }
+    if (actionId === "view_charges") {
+      setHandoverSheetOpen(false);
+      mainScrollRef.current?.scrollTo({ y: Math.max(0, chargesBlockYRef.current), animated: true });
+      return;
+    }
+    if (actionId === "manage_delivery" && blocker.orderId) {
+      setHandoverSheetOpen(false);
+      router.push(
+        `/(app)/(tabs)/more/product-orders?order=${encodeURIComponent(blocker.orderId)}` as never,
+      );
+      return;
+    }
+    setHandoverBusy(true);
+    try {
+      if (actionId === "mark_collected" && blocker.orderId) {
+        await handleMarkProductCollected(blocker.orderId);
+      } else if (actionId === "set_pickup" && blocker.orderId) {
+        await handleSetProductFulfillmentType(blocker.orderId, "collection");
+      } else if (actionId === "set_delivery" && blocker.orderId) {
+        await handleSetProductFulfillmentType(blocker.orderId, "delivery");
+      } else if (actionId === "prepare_order") {
+        await handlePrepareProductFulfillment();
+      }
+      await Promise.all([refresh(), refreshProductOrders()]);
+    } finally {
+      setHandoverBusy(false);
+    }
+  };
+
   const handlePrepareProductFulfillment = async () => {
     if (!id || !appointmentProductOrdersUrl) return;
     setPreparingFulfillment(true);
-    const { error, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, {});
+    const { error, errorCode } = await patchMutation(`/api/provider/bookings/${id}`, {
+      sync_product_order: true,
+    });
     if (error) {
       setPreparingFulfillment(false);
       Alert.alert(bk("couldNotPrepareFulfillment"), mapProviderBookingActionError(error, errorCode));
@@ -4099,6 +4164,21 @@ export default function BookingDetailScreen() {
               ) : null}
               {detailPrimaryAction && !(b.customer_running_late_at && !b.provider_late_ack_at) ? (
                 <View style={twStyle("mt-3")}>
+                  {detailPrimaryAction.id === "complete_service" &&
+                  productQuickActionLabel &&
+                  primaryProductBlocker ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const action = handoverPrimaryAction(primaryProductBlocker);
+                        if (action) void handleHandoverSheetAction(primaryProductBlocker, action);
+                      }}
+                      disabled={mutating || patchLoading || handoverBusy}
+                      style={twStyle("mb-2 items-center rounded-xl border border-primary py-3")}
+                      accessibilityRole="button"
+                    >
+                      <Text style={twStyle("text-primary font-semibold")}>{productQuickActionLabel}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <ActionButton
                     label={detailPrimaryAction.label}
                     onPress={() => void applyDbStatusTransition(detailPrimaryAction.dbTarget)}
@@ -4118,6 +4198,7 @@ export default function BookingDetailScreen() {
                       done: item.done,
                       detail: item.detail,
                     }))}
+                    onPressItem={onPressCompletionChecklistItem}
                   />
                 </View>
               ) : null}
@@ -4318,6 +4399,7 @@ export default function BookingDetailScreen() {
                         done: item.done,
                         detail: item.detail,
                       }))}
+                      onPressItem={onPressCompletionChecklistItem}
                     />
                   </View>
                 ) : null}
@@ -4334,6 +4416,19 @@ export default function BookingDetailScreen() {
                         amount: outstanding.toFixed(2),
                       })}
                     </Text>
+                  </TouchableOpacity>
+                ) : null}
+                {canCompleteServiceInJourney && productQuickActionLabel && primaryProductBlocker ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      const action = handoverPrimaryAction(primaryProductBlocker);
+                      if (action) void handleHandoverSheetAction(primaryProductBlocker, action);
+                    }}
+                    disabled={mutating || patchLoading || handoverBusy}
+                    style={twStyle("rounded-xl border border-primary py-3 items-center mb-2")}
+                    accessibilityRole="button"
+                  >
+                    <Text style={twStyle("text-primary font-semibold")}>{productQuickActionLabel}</Text>
                   </TouchableOpacity>
                 ) : null}
                 {canCompleteServiceInJourney ? (
@@ -4374,6 +4469,7 @@ export default function BookingDetailScreen() {
                         done: item.done,
                         detail: item.detail,
                       }))}
+                      onPressItem={onPressCompletionChecklistItem}
                     />
                   </View>
                 ) : null}
@@ -5270,7 +5366,12 @@ export default function BookingDetailScreen() {
 
         {/* Additional charges */}
         {additionalCharges.length > 0 && (
-          <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
+          <View
+            style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}
+            onLayout={(e) => {
+              chargesBlockYRef.current = e.nativeEvent.layout.y;
+            }}
+          >
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>{bk("additionalCharges")}</Text>
             {settlementPlan && (
               <View style={twStyle("rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 mb-3")}>
@@ -5863,6 +5964,23 @@ export default function BookingDetailScreen() {
           )}
         </View>
       </BottomSheet>
+
+      <BookingCompletionHandoverSheet
+        visible={handoverSheetOpen}
+        onClose={() => setHandoverSheetOpen(false)}
+        blockers={completionChecklist.blockers}
+        canCompleteAnyway={!completionChecklist.blockers.some((blocker) => blocker.code === "refunded")}
+        busy={handoverBusy}
+        onAction={(blocker, actionId) => void handleHandoverSheetAction(blocker, actionId)}
+        onCompleteAnyway={() => {
+          setHandoverSheetOpen(false);
+          if (outstanding > 0.01) {
+            openCompleteWithBalance();
+            return;
+          }
+          void submitCompleteService({});
+        }}
+      />
 
       <CompleteWithBalanceSheet
         visible={unpaidCompleteOpen}

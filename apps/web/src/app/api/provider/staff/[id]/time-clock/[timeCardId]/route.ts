@@ -35,7 +35,8 @@ export async function GET(
     }
 
     // Verify staff belongs to provider
-    const { data: staff } = await supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: staff } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, name, user_id")
       .eq("id", id)

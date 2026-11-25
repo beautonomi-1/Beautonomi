@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 
 /**
@@ -65,7 +66,8 @@ export async function POST(request: NextRequest) {
         .single();
       exportData.extendedProfile = userProfile;
 
-      const { data: providerRows } = await supabase.from("providers").select("id").eq("user_id", user.id);
+      const admin = getSupabaseAdmin();
+      const { data: providerRows } = await admin.from("providers").select("id").eq("user_id", user.id);
       const providerIds = (providerRows || []).map((p: { id: string }) => p.id);
 
       // Bookings: customer_id is the user; provider_id references providers(id), not users.id

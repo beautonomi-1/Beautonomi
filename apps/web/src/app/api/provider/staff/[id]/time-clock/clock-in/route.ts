@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
 import {
@@ -29,7 +30,7 @@ export async function POST(
     }
 
     // Verify staff belongs to provider
-    const { data: staff, error: staffError } = await supabase
+    const { data: staff, error: staffError } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, user_id, time_clock_enabled, time_clock_pin, name")
       .eq("id", id)

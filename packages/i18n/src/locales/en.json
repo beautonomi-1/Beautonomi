@@ -2902,6 +2902,7 @@
           "closeOutConfirmBody": "Service time will be recorded now.",
           "closeOutBalanceDue": "Balance due — open the booking to take payment before completing.",
           "closeOutCompleted": "Appointment completed",
+          "closeOutProductsStillOpen": "{{count}} product order(s) still need pickup or delivery.",
           "closeOutCompleteFailed": "Could not complete this appointment",
           "closeOutCompleteAll": "Complete all checked in",
           "closeOutCompleteAllTitle": "Complete ready appointments?",
@@ -24305,6 +24306,7 @@
         "groupView": {
           "loadFailed": "Failed to load group booking",
           "markedAs": "Group marked as {{status}}",
+          "productsStillOpenAfterComplete": "{{count}} product order(s) still need pickup or delivery.",
           "statusStarted": "started",
           "statusCompleted": "completed",
           "updateFailed": "Failed to update group status",
@@ -24524,6 +24526,7 @@
           "noMatchFilter": "No bookings match this filter.",
           "needCloseOut": "Need Close Out",
           "closeOutCompleted": "Appointment completed",
+          "closeOutProductsStillOpen": "{{count}} product order(s) still need pickup or delivery.",
           "closeOutCompleteFailed": "Could not complete this appointment",
           "closeOutBalanceDue": "Balance due — open the booking to take payment before completing.",
           "closeOutStartedRetryComplete": "Started, but not completed. Tap Complete again.",
@@ -25085,7 +25088,16 @@
           "completion": {
             "beforeCompleting": "Before completing",
             "stillOpen": "Still open",
-            "blockedItems": "Blocked: {{items}}"
+            "blockedItems": "Blocked: {{items}}",
+            "handoverIntro": "Finish these steps, or choose Complete anyway if you're sure.",
+            "markCollected": "Mark collected",
+            "manageDelivery": "Manage delivery",
+            "setPickup": "Set pickup",
+            "setDelivery": "Set delivery",
+            "prepareOrder": "Create product order",
+            "collectPayment": "Collect payment",
+            "viewCharges": "View charges",
+            "openBookingForPayment": "Open booking to collect payment"
           },
           "fallbacks": {
             "booking": "Booking",

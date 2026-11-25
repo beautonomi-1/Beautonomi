@@ -51,7 +51,8 @@ export async function GET(request: NextRequest) {
       return successResponse({ hasReminders: false });
     }
 
-    const { data: provider } = await supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: provider } = await getSupabaseAdmin()
       .from("providers")
       .select("is_vat_registered, timezone")
       .eq("id", providerId)

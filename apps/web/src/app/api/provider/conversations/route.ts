@@ -43,7 +43,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Get provider's user_id to filter out self-conversations
-    const { data: providerData } = await supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: providerData } = await getSupabaseAdmin()
       .from("providers")
       .select("user_id")
       .eq("id", providerId)

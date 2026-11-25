@@ -62,7 +62,8 @@ async function computeProviderSaleTax(
   currency: string,
 ): Promise<{ taxAmount: number; taxRatePercent: number; inclusive: boolean }> {
   const subtotal = Math.max(0, Number(taxableSubtotal) || 0);
-  const { data: providerRow } = await supabase
+  const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+  const { data: providerRow } = await getSupabaseAdmin()
     .from("providers")
     .select(
       "tenant_id, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number",

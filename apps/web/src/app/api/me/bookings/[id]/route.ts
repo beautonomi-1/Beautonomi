@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, userHasProviderAccessAdmin } from "@/lib/supabase/api-helpers";
 import {
   computeBookingOutstandingDisplay,
   computePackageAppliedForDisplay,
@@ -141,31 +141,13 @@ export async function GET(
     const bookingRow = booking as unknown as Record<string, unknown>;
     const isCustomer = bookingRow.customer_id === auth.user.id;
     if (!isCustomer) {
-      // Check if requester is the provider's owner
-      const { data: providerOwner } = await supabase
-        .from("providers")
-        .select("user_id")
-        .eq("id", bookingRow.provider_id as string)
-        .maybeSingle();
-
-      const isProviderOwner = (providerOwner as { user_id?: string } | null)?.user_id === auth.user.id;
-
-      if (!isProviderOwner) {
-        // Check if requester is active staff for this provider
-        const { data: staffRow } = await supabase
-          .from("provider_staff")
-          .select("id")
-          .eq("user_id", auth.user.id)
-          .eq("provider_id", bookingRow.provider_id as string)
-          .eq("is_active", true)
-          .maybeSingle();
-
-        if (!staffRow) {
-          return NextResponse.json(
-            { data: null, error: { message: "Booking not found", code: "NOT_FOUND" } },
-            { status: 404 }
-          );
-        }
+      const admin = getSupabaseAdmin();
+      const providerId = bookingRow.provider_id as string;
+      if (!(await userHasProviderAccessAdmin(admin, auth.user.id, providerId))) {
+        return NextResponse.json(
+          { data: null, error: { message: "Booking not found", code: "NOT_FOUND" } },
+          { status: 404 }
+        );
       }
     }
 

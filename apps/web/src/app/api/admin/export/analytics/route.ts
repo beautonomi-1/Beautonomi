@@ -102,12 +102,12 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       supabase
         .from("providers")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenantId)
         .gte("created_at", startDate.toISOString()),
       supabase
         .from("bookings")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenantId)
         .gte("created_at", startDate.toISOString()),
       (async () => {

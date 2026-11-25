@@ -214,7 +214,7 @@ export async function GET(
         .limit(25);
       recent_product_orders = recentPo ?? [];
     } else if (userRow.role === "provider_owner") {
-      const { data: ownedProviders, count: providerCount } = await supabase
+      const { data: ownedProviders, count: providerCount } = await admin
         .from("providers")
         .select("id, business_name", { count: "exact" })
         .eq("user_id", id)

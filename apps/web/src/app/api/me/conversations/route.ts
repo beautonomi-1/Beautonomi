@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getPaginationParams, createPaginatedResponse } from "@/lib/supabase/api-helpers";
 import type { Conversation, PaginatedResponse } from "@/types/beautonomi";
 import { getBlockedUserIds } from "@/lib/safety/user-blocks";
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
         unread_count_customer,
         unread_count_provider,
         is_starred_customer,
-        provider:providers(id, user_id, slug, business_name, thumbnail_url, avatar_url, phone, email),
+        provider:providers(id, slug, business_name, thumbnail_url, avatar_url),
         booking:bookings(id, booking_number)
       `,
         wantsPaginated ? { count: "exact" } : undefined,
@@ -61,14 +62,44 @@ export async function GET(request: NextRequest) {
 
     const blockedIds = await getBlockedUserIds(user.id, supabase);
 
+    const admin = getSupabaseAdmin();
+    const providerIds = [
+      ...new Set(
+        (conversations || [])
+          .map((c: { provider_id?: string | null }) => c.provider_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const providerPrivateById = new Map<
+      string,
+      { phone?: string | null; email?: string | null; user_id?: string | null }
+    >();
+    if (providerIds.length > 0) {
+      const { data: privateRows } = await admin
+        .from("providers")
+        .select("id, phone, email, user_id")
+        .in("id", providerIds);
+      for (const row of privateRows ?? []) {
+        const r = row as {
+          id: string;
+          phone?: string | null;
+          email?: string | null;
+          user_id?: string | null;
+        };
+        providerPrivateById.set(r.id, r);
+      }
+    }
+
     const filteredConversations = (conversations || []).filter((c: any) => {
       if (blockedIds.size === 0) return true;
-      const provider = Array.isArray(c.provider) ? c.provider[0] : c.provider;
-      const ownerId = provider?.user_id ?? null;
+      const priv = c.provider_id ? providerPrivateById.get(c.provider_id) : undefined;
+      const ownerId = priv?.user_id ?? null;
       return !ownerId || !blockedIds.has(ownerId);
     });
 
-    const mapped = filteredConversations.map((c: any) => ({
+    const mapped = filteredConversations.map((c: any) => {
+      const priv = c.provider_id ? providerPrivateById.get(c.provider_id) : undefined;
+      return {
       id: c.id,
       booking_id: c.booking_id || null,
       provider_id: c.provider_id || null,
@@ -76,8 +107,8 @@ export async function GET(request: NextRequest) {
       last_message_at: c.last_message_at,
       unread_count: c.unread_count_customer ?? 0,
       provider_name: c.provider?.business_name || null,
-      provider_phone: c.provider?.phone || null,
-      provider_email: c.provider?.email || null,
+      provider_phone: priv?.phone || null,
+      provider_email: priv?.email || null,
       booking_number: c.booking?.booking_number || null,
       avatar: c.provider?.avatar_url ?? c.provider?.thumbnail_url ?? null,
       last_message_preview: c.last_message_preview || null,
@@ -90,10 +121,11 @@ export async function GET(request: NextRequest) {
           }
         : undefined,
       provider_slug: c.provider?.slug ?? null,
-      provider_owner_user_id: (Array.isArray(c.provider) ? c.provider[0] : c.provider)?.user_id ?? null,
+      provider_owner_user_id: priv?.user_id ?? null,
       unread_count_customer: c.unread_count_customer ?? 0,
       is_pinned: Boolean(c.is_starred_customer),
-    }));
+    };
+    });
 
     if (!wantsPaginated) {
       return successResponse(mapped);

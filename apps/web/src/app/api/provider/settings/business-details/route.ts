@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -253,11 +254,19 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const { data: provider, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { error: updateError } = await supabase
       .from("providers")
       .update(updates)
+      .eq("id", providerId);
+    if (updateError) throw updateError;
+
+    const { data: provider, error } = await admin
+      .from("providers")
+      .select(
+        "business_name, website, timezone, time_format, week_start, appointment_color_source, client_notification_language, default_team_language, social_media_links, years_in_business, languages_spoken"
+      )
       .eq("id", providerId)
-      .select()
       .single();
 
     if (error) {

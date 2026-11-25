@@ -6,6 +6,7 @@ import {
   optimisticBookingFieldsForDbTarget,
 } from "@/lib/provider-booking-status-transitions";
 import type { ProviderBookingAction } from "@/lib/provider-booking-action-policy";
+import { bookingNeedsHandoverBeforeComplete } from "@/lib/booking-completion-handover-gate";
 
 export interface UseBookingStatusActionsOptions<T extends { id: string; status: string; current_stage?: string | null }> {
   bookings: T[] | null;
@@ -67,6 +68,15 @@ export function useBookingStatusActions<T extends { id: string; status: string; 
         );
       }
       try {
+        const completing = action?.id === "complete_service" || dbTarget === "completed";
+        if (completing) {
+          const needsHandover = await bookingNeedsHandoverBeforeComplete(bookingId);
+          if (needsHandover) {
+            if (previousBookings && (updatesStatus || updatesStage)) mutate(previousBookings);
+            return { error: null, errorCode: "HANDOVER_REQUIRED" };
+          }
+        }
+
         // Action-driven routing: the action object knows exactly which endpoint to call.
         if (action && action.kind === "post-action" && action.route) {
           const res = await postAction(action.route, action.payload ?? {});

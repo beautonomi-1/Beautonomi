@@ -227,7 +227,7 @@ export async function validateBooking(
   }
 
   // ── Provider ─────────────────────────────────────────────────────────────
-  let providerQuery = supabase
+  let providerQuery = supabaseAdmin
     .from("providers")
     .select(
       "id, tenant_id, timezone, currency, requires_deposit, deposit_percentage, status, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, tips_enabled, customer_fee_config_id, minimum_mobile_booking_amount, online_booking_enabled"

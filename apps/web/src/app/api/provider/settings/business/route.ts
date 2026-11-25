@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all provider business fields (match providers table columns)
-    const { data: provider, error: providerError } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: provider, error: providerError } = await admin
       .from("providers")
       .select(
         "id, business_name, business_type, description, email, phone, website, thumbnail_url, avatar_url, timezone, time_format, week_start, appointment_color_source, client_notification_language, default_team_language, social_media_links, years_in_business, languages_spoken"
@@ -331,11 +332,19 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const { data: provider, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { error: updateError } = await supabase
       .from("providers")
       .update(updates)
+      .eq("id", providerId);
+    if (updateError) throw updateError;
+
+    const { data: provider, error } = await admin
+      .from("providers")
+      .select(
+        "id, business_name, business_type, description, email, phone, website, thumbnail_url, avatar_url, timezone, time_format, week_start, appointment_color_source, client_notification_language, default_team_language, social_media_links, years_in_business, languages_spoken"
+      )
       .eq("id", providerId)
-      .select()
       .single();
 
     if (error) {

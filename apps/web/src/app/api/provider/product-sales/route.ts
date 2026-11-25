@@ -332,7 +332,8 @@ export async function POST(request: NextRequest) {
       if (yocoGate && paycloudGate) return paycloudGate;
     }
 
-    const { data: providerRow, error: provTenantErr } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: providerRow, error: provTenantErr } = await admin
       .from("providers")
       .select("tenant_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number")
       .eq("id", providerId)

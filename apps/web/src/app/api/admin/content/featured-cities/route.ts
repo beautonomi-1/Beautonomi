@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       (cities || []).map(async (city: CityRow) => {
         const { count } = await supabase
           .from("providers")
-          .select("*", { count: "exact", head: true })
+          .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenantId)
           .eq("city", city.name)
           .eq("country", city.country)

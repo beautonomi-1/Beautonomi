@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     // Notify provider
     try {
-      const { data: provider } = await supabase
+      const { data: provider } = await getSupabaseAdmin()
         .from("providers")
         .select("user_id, business_name")
         .eq("id", validated.provider_id)

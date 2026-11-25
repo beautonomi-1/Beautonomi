@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
 
@@ -19,7 +20,8 @@ export async function GET(request: NextRequest) {
       return successResponse({ taxRate: 0, taxInclusive: true, isVatRegistered: false });
     }
 
-    const { data: providerRow } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: providerRow } = await admin
       .from("providers")
       .select("tenant_id, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number")
       .eq("id", providerId)

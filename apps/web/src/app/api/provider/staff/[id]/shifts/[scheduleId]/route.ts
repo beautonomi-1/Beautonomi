@@ -44,7 +44,7 @@ export async function DELETE(
     if (!staffId) return notFoundResponse("Staff member not found");
 
     // Owner / manage_team may edit anyone; staff may edit their own hours.
-    const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+    const ownStaffId = await getProviderStaffIdForUser(user.id, providerId);
     if (user.role !== "superadmin" && ownStaffId !== staffId) {
       const manage = await requirePermission("manage_team", request);
       if (!manage.authorized) {

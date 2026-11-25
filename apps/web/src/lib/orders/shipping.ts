@@ -220,12 +220,12 @@ export async function bookShippingForOrder(
   }
 
   const [{ data: provider }, { data: originLocation }] = await Promise.all([
-    supabase
+    admin
       .from("providers")
       .select("id, business_name, email, phone")
       .eq("id", order.provider_id)
       .single(),
-    supabase
+    admin
       .from("provider_locations")
       .select("name, address_line1, address_line2, city, state, postal_code, country, phone, latitude, longitude")
       .eq("provider_id", order.provider_id)
@@ -545,8 +545,8 @@ export async function quoteRatesForProvider(
       .select("shipping_provider_preference")
       .eq("provider_id", providerId)
       .maybeSingle(),
-    supabase.from("providers").select("id, business_name, email, phone").eq("id", providerId).maybeSingle(),
-    supabase
+    admin.from("providers").select("id, business_name, email, phone").eq("id", providerId).maybeSingle(),
+    admin
       .from("provider_locations")
       .select("name, address_line1, address_line2, city, state, postal_code, country, phone")
       .eq("provider_id", providerId)

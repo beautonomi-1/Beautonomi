@@ -14,6 +14,7 @@ const GROUP_ID = "33333333-3333-4333-8333-333333333333";
 const PROVIDER_ID = "44444444-4444-4444-8444-444444444444";
 
 const mockGetSupabaseAdmin = vi.fn();
+let productOrderRows: { status: string }[] = [];
 const mockGetSupabaseServer = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockRequirePermission = vi.fn();
@@ -54,6 +55,7 @@ vi.mock("@/lib/auth/requirePermission", () => ({
 describe("POST /api/provider/group-bookings/[id]?action=complete_service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    productOrderRows = [];
     mockRequirePermission.mockResolvedValue({
       authorized: true,
       user: { id: "user-1", role: "provider_owner" },
@@ -122,6 +124,15 @@ describe("POST /api/provider/group-bookings/[id]?action=complete_service", () =>
           productChain.is = vi.fn().mockResolvedValue({ data: [], error: null });
           return productChain;
         }
+        if (table === "product_orders") {
+          const orderChain: Record<string, unknown> = {};
+          orderChain.select = vi.fn().mockReturnValue(orderChain);
+          orderChain.eq = vi.fn().mockReturnValue(orderChain);
+          orderChain.in = vi.fn().mockImplementation(() =>
+            Promise.resolve({ data: productOrderRows, error: null }),
+          );
+          return orderChain;
+        }
         throw new Error(`unexpected ${table}`);
       }),
     });
@@ -139,6 +150,7 @@ describe("POST /api/provider/group-bookings/[id]?action=complete_service", () =>
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data.group_booking.status).toBe("completed");
+    expect(body.data.products_still_open).toBeUndefined();
     expect(bookingsUpdateChain.in).toHaveBeenCalledWith("id", ["child-paid"]);
     expect(bookingsUpdateChain.in).toHaveBeenCalledWith("status", [
       "in_progress",
@@ -146,5 +158,21 @@ describe("POST /api/provider/group-bookings/[id]?action=complete_service", () =>
       "waiting",
       "checked_in",
     ]);
+  });
+
+  it("reports open product orders without blocking completion", async () => {
+    productOrderRows = [{ status: "confirmed" }, { status: "delivered" }];
+    const { POST } = await import("../route");
+    const res = await POST(
+      new NextRequest(
+        `http://localhost/api/provider/group-bookings/${GROUP_ID}?action=complete_service`,
+        { method: "POST", body: "{}" }
+      ),
+      { params: Promise.resolve({ id: GROUP_ID }) }
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.group_booking.status).toBe("completed");
+    expect(body.data.products_still_open).toBe(1);
   });
 });

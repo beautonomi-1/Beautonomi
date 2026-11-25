@@ -198,7 +198,7 @@ export async function DELETE(
     try {
       const { data: series } = await supabase
         .from("recurring_appointments")
-        .select("id, customer_id, provider_id, service_id, offerings(title), providers(business_name, user_id)")
+        .select("id, customer_id, provider_id, service_id, offerings(title), providers(business_name)")
         .eq("id", id)
         .maybeSingle();
       if (series?.customer_id) {
@@ -230,10 +230,21 @@ export async function DELETE(
           ["email", "push"],
           { appType: "customer" },
         );
-        if (provider?.user_id) {
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        let providerOwnerUserId: string | null = null;
+        if (series.provider_id) {
+          const { data: ownerRow } = await getSupabaseAdmin()
+            .from("providers")
+            .select("user_id")
+            .eq("id", series.provider_id as string)
+            .maybeSingle();
+          providerOwnerUserId =
+            (ownerRow as { user_id?: string | null } | null)?.user_id ?? null;
+        }
+        if (providerOwnerUserId) {
           await dispatchTemplateNotification(
             "provider_recurring_series_cancelled",
-            [provider.user_id],
+            [providerOwnerUserId],
             {
               ...vars,
               customer_name:

@@ -58,7 +58,7 @@ export async function GET(
     // Get provider count
     const { count } = await supabase
       .from("providers")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
       .eq("city", (city as { name: string; country: string }).name)
       .eq("country", (city as { name: string; country: string }).country)

@@ -772,7 +772,7 @@ async function requireRoleInApiImpl(
 
         // Customer with active provider_staff row gets provider_staff access for provider APIs
         if (userRole === "customer" && roles.includes("provider_staff")) {
-          const { data: staffRow } = await supabase
+          const { data: staffRow } = await admin
             .from("provider_staff")
             .select("id, invite_accepted_at, role")
             .eq("user_id", resolvedUserData!.id)
@@ -845,7 +845,8 @@ async function requireRoleInApiImpl(
     // Customer with active provider_staff row gets provider_staff access for provider APIs
     let effectiveUser = result.user;
     if (effectiveUser.role === "customer" && roles.includes("provider_staff")) {
-      const { data: staffRow } = await supabase
+      const admin = getSupabaseAdmin();
+      const { data: staffRow } = await admin
         .from("provider_staff")
         .select("id")
         .eq("user_id", effectiveUser.id)
@@ -1161,10 +1162,10 @@ export async function getProviderIdForUser(
     return null;
   }
 
-  const supabase = supabaseClient || (await getSupabaseServer());
+  const admin = getSupabaseAdmin();
 
   // First check if user is a provider owner
-  const { data: provider, error: providerError } = await supabase
+  const { data: provider, error: providerError } = await admin
     .from("providers")
     .select("id")
     .eq("user_id", userId)
@@ -1179,7 +1180,7 @@ export async function getProviderIdForUser(
   }
 
   // Staff may have multiple active rows; default: earliest by created_at.
-  const { data: staffRows, error: staffError } = await supabase
+  const { data: staffRows, error: staffError } = await admin
     .from("provider_staff")
     .select("provider_id")
     .eq("user_id", userId)
@@ -1235,29 +1236,27 @@ export async function userHasProviderAccessAdmin(
  * Check if user is provider owner or staff
  */
 export async function isProviderUser(userId: string, providerId: string): Promise<boolean> {
-  const supabase = await getSupabaseServer();
-  
-  // Check if user is provider owner
-  const { data: provider } = await supabase
-    .from('providers')
-    .select('id')
-    .eq('id', providerId)
-    .eq('user_id', userId)
-    .single();
-  
+  const admin = getSupabaseAdmin();
+
+  const { data: provider } = await admin
+    .from("providers")
+    .select("id")
+    .eq("id", providerId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
   if (provider) {
     return true;
   }
-  
-  // Check if user is provider staff
-  const { data: staff } = await supabase
-    .from('provider_staff')
-    .select('id')
-    .eq('provider_id', providerId)
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .single();
-  
+
+  const { data: staff } = await admin
+    .from("provider_staff")
+    .select("id")
+    .eq("provider_id", providerId)
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .maybeSingle();
+
   return !!staff;
 }
 

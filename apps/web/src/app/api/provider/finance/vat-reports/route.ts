@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -37,7 +38,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if provider is VAT-registered
-    const { data: provider, error: providerError } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: provider, error: providerError } = await admin
       .from("providers")
       .select("is_vat_registered, vat_number, tenant_id, timezone")
       .eq("id", providerId)

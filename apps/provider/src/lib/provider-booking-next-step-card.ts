@@ -173,6 +173,34 @@ export function getBookingNextStepCard(
     };
   }
   if (status === "started" || status === "in_progress") {
+    if (options.outstanding > 0) {
+      return {
+        title: "Service in progress",
+        description: "Complete the service when finished, then settle any outstanding balance.",
+        icon: "timer-outline",
+        color: "#d97706",
+      };
+    }
+    const openDuringService = options.openProductCount ?? 0;
+    if (openDuringService > 0) {
+      if (nt) {
+        return {
+          title: nt("products.handOver.title"),
+          description: nt("products.handOver.body", { count: openDuringService }),
+          icon: "cube-outline",
+          color: "#d97706",
+        };
+      }
+      return {
+        title: "Hand over products",
+        description:
+          openDuringService === 1
+            ? "Mark the product collected or finish delivery before completing the visit."
+            : `${openDuringService} product orders still need pickup or delivery.`,
+        icon: "cube-outline",
+        color: "#d97706",
+      };
+    }
     return {
       title: "Service in progress",
       description: "Complete the service when finished, then settle any outstanding balance.",
