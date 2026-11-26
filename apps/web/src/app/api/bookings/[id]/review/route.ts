@@ -162,12 +162,12 @@ export async function POST(
 
     // Notify provider that customer left a review
     try {
-      const supabaseNotify = await getSupabaseServer(request);
-      const { data: providerData } = await supabaseNotify
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const { data: providerData } = await getSupabaseAdmin()
         .from("providers")
         .select("user_id")
         .eq("id", booking.provider_id)
-        .single();
+        .maybeSingle();
 
       if (providerData?.user_id) {
         const { insertNotification } = await import("@/lib/notifications/insert-notification");
@@ -189,7 +189,7 @@ export async function POST(
         // Push/email template notification for provider apps/channels.
         try {
           const { notifyProviderNewReview } = await import("@/lib/notifications/notification-service");
-          const { data: customerUser } = await supabaseNotify
+          const { data: customerUser } = await supabase
             .from("users")
             .select("full_name")
             .eq("id", user.id)
@@ -197,7 +197,7 @@ export async function POST(
           const { providerBookingChannels } = await import(
             "@/lib/notifications/customer-booking-channels"
           );
-          const { data: bookingTenant } = await supabaseNotify
+          const { data: bookingTenant } = await supabase
             .from("bookings")
             .select("tenant_id")
             .eq("id", bookingId)

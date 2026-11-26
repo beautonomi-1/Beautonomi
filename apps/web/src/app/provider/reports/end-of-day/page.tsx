@@ -131,15 +131,23 @@ export default function EndOfDayReportPage() {
     setCloseOutLoading(true);
     try {
       const bulk = await fetcher.post<{
-        data?: { results?: Array<{ id: string; ok: boolean; error?: string }> };
+        data?: {
+          results?: Array<{ id: string; ok: boolean; error?: string; products_still_open?: number }>;
+        };
       }>("/api/provider/bookings/close-out/bulk-complete", {
         booking_ids: eligible.map((b) => b.id),
       });
       const skipped = (bulk?.data?.results ?? []).filter((r) => !r.ok);
+      const productsStillOpen = (bulk?.data?.results ?? [])
+        .filter((r) => r.ok)
+        .reduce((sum, r) => sum + (r.products_still_open ?? 0), 0);
       if (skipped.length > 0) {
         toast.warning(t("web.provider.waitingRoomPanel.completeSkipped", { count: skipped.length }), {
           description: skipped.map((r) => r.error).filter(Boolean).slice(0, 3).join(" · "),
         });
+      }
+      if (productsStillOpen > 0) {
+        toast.message(t("web.provider.bookings.overview.closeOutProductsStillOpen", { count: productsStillOpen }));
       }
       const params = new URLSearchParams();
       appendLocation(params);

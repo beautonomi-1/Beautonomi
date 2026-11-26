@@ -194,8 +194,16 @@ export function GroupBookingViewSheet({
     const id = normalizeGroupBookingId(booking.id);
     setBusy(true);
     try {
-      await fetcher.post(`/api/provider/group-bookings/${id}?action=complete_service`, body);
-      toast.success(t(`${gv}.markedAs`, { status: t(`${gv}.statusCompleted`) }));
+      const res = await fetcher.post<{
+        data?: { products_still_open?: number };
+      }>(`/api/provider/group-bookings/${id}?action=complete_service`, body);
+      const productsOpen = res?.data?.products_still_open ?? 0;
+      toast.success(t(`${gv}.markedAs`, { status: t(`${gv}.statusCompleted`) }), {
+        description:
+          productsOpen > 0
+            ? t(`${gv}.productsStillOpenAfterComplete`, { count: productsOpen })
+            : undefined,
+      });
       await load();
       onRefresh?.();
     } catch (err) {

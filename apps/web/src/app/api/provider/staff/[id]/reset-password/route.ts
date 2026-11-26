@@ -40,7 +40,8 @@ export async function POST(
     }
 
     // Get staff member
-    const { data: staff, error: staffError } = await supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: staff, error: staffError } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, user_id, email")
       .eq("id", id)

@@ -422,30 +422,13 @@ export async function proxy(request: NextRequest) {
               },
             });
             
-            // Fetch provider with user's include_in_search_engines setting
-            const { data: provider } = await supabase
-              .from("providers")
-              .select(`
-                id,
-                user_id,
-                users!inner(include_in_search_engines)
-              `)
-              .eq("slug", decodeURIComponent(slug))
-              .eq("status", "active")
-              .single();
-            
-            if (provider) {
-              const prov = provider as { users?: { include_in_search_engines?: boolean } };
-              const includeInSearchEngines = prov.users?.include_in_search_engines ?? false;
-              
-              // Create response
+            const { data: shouldNoindex } = await supabase.rpc("provider_slug_should_noindex", {
+              p_slug: decodeURIComponent(slug),
+            });
+
+            if (shouldNoindex === true) {
               const response = NextResponse.next();
-              
-              // Set X-Robots-Tag header if include_in_search_engines is false
-              if (!includeInSearchEngines) {
-                response.headers.set('X-Robots-Tag', 'noindex, nofollow');
-              }
-              
+              response.headers.set("X-Robots-Tag", "noindex, nofollow");
               return finalizePageResponse(request, response);
             }
           }
@@ -585,23 +568,12 @@ export async function proxy(request: NextRequest) {
         const role = (userData as { role: string }).role;
 
         // Elevate customer → provider_owner / provider_staff (mirrors /api/me/role)
-        if (role === 'customer') {
-          const { data: ownerRow } = await supabase
-            .from('providers')
-            .select('id')
-            .eq('user_id', userId)
-            .limit(1)
-            .maybeSingle();
-          if (ownerRow) return 'provider_owner';
-
-          const { data: staffRow } = await supabase
-            .from('provider_staff')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-          if (staffRow) return 'provider_staff';
+        if (role === "customer") {
+          const { data: portalRole, error: portalErr } = await supabase.rpc(
+            "auth_user_provider_portal_role",
+          );
+          if (!portalErr && portalRole === "provider_owner") return "provider_owner";
+          if (!portalErr && portalRole === "provider_staff") return "provider_staff";
         }
 
         return role;

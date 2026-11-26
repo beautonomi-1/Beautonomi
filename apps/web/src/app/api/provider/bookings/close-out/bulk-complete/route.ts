@@ -15,6 +15,7 @@ import {
   isAlreadyStartedForCompletion,
   isAtHomeCloseOutBlocked,
 } from "@/lib/bookings/close-out-bulk-complete";
+import { countOpenProductOrdersForBooking } from "@/lib/orders/count-open-product-orders-for-booking";
 
 const BULK_COMPLETE_SELECT =
   "id, status, payment_status, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, group_booking_id, location_type, current_stage, additional_charges(amount, status)";
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
       code?: string;
       balance_due?: number;
       retry?: boolean;
+      products_still_open?: number;
     }> = [];
 
     for (const id of bookingIds) {
@@ -162,12 +164,16 @@ export async function POST(request: NextRequest) {
       }
 
       const complete = await postProviderBookingAction(request, id, "complete-service");
+      const productsStillOpen = complete.ok
+        ? await countOpenProductOrdersForBooking(admin, id, providerId)
+        : undefined;
       results.push({
         id,
         ok: complete.ok,
         error: complete.ok ? undefined : complete.message,
         code: complete.ok ? undefined : complete.code ?? "COMPLETE_SERVICE_FAILED",
         retry: !complete.ok && startedInThisRequest ? true : undefined,
+        products_still_open: productsStillOpen && productsStillOpen > 0 ? productsStillOpen : undefined,
       });
     }
 

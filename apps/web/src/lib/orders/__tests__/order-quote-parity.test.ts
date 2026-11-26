@@ -19,6 +19,27 @@ vi.mock("@/lib/tenant/scoped-overrides", () => ({
     data: { settings: { payouts: { platform_service_fee_type: "fixed", platform_service_fee_fixed: 5 } } },
   })),
 }));
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: {
+              tenant_id: "tenant-1",
+              customer_fee_config_id: null,
+              currency: "ZAR",
+              is_vat_registered: true,
+              tax_rate_percent: 15,
+              tax_inclusive: false,
+              vat_number: "4123456789",
+            },
+          }),
+        }),
+      }),
+    }),
+  }),
+}));
 vi.mock("@/lib/tax/resolve-provider-vat", () => ({
   resolveProviderVat: vi.fn(async () => ({
     registered: true,

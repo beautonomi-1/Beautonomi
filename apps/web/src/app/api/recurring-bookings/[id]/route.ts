@@ -9,6 +9,8 @@ import { preferredTimeSchema } from "@/lib/recurring/preferred-time-schema";
  *
  * Returns the recurring series row plus all bookings linked via `bookings.recurring_series_id`
  * (cron-generated visits and the checkout “source” visit when created via Paystack metadata).
+ * @tenant-hint Series and bookings are loaded with the user-scoped client and .eq("customer_id", user.id).
+ * Service role only reads providers.user_id for that series' provider_id when notifying the owner.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -198,7 +200,7 @@ export async function DELETE(
     try {
       const { data: series } = await supabase
         .from("recurring_appointments")
-        .select("id, customer_id, provider_id, service_id, offerings(title), providers(business_name, user_id)")
+        .select("id, customer_id, provider_id, service_id, offerings(title), providers(business_name)")
         .eq("id", id)
         .maybeSingle();
       if (series?.customer_id) {
@@ -230,10 +232,21 @@ export async function DELETE(
           ["email", "push"],
           { appType: "customer" },
         );
-        if (provider?.user_id) {
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        let providerOwnerUserId: string | null = null;
+        if (series.provider_id) {
+          const { data: ownerRow } = await getSupabaseAdmin()
+            .from("providers")
+            .select("user_id")
+            .eq("id", series.provider_id as string)
+            .maybeSingle();
+          providerOwnerUserId =
+            (ownerRow as { user_id?: string | null } | null)?.user_id ?? null;
+        }
+        if (providerOwnerUserId) {
           await dispatchTemplateNotification(
             "provider_recurring_series_cancelled",
-            [provider.user_id],
+            [providerOwnerUserId],
             {
               ...vars,
               customer_name:

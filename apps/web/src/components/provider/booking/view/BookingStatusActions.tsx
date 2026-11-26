@@ -22,7 +22,11 @@ import { BookingNoShowDialog } from "./BookingNoShowDialog";
 import {
   BookingCompleteConfirmDialog,
   type BookingCompleteConfirmReason,
+  type CompletionHandoverActionId,
 } from "./BookingCompleteConfirmDialog";
+import type { CompletionBlocker } from "@beautonomi/provider-booking";
+import { runCompletionHandoverAction } from "@/lib/provider-booking/completion-handover-actions";
+import { openProductOrderView } from "@/stores/appointment-sidebar-store";
 import { EtaPicker } from "../EtaPicker";
 import { shouldSuppressNoShowAfterRunningLate } from "@/lib/bookings/lifecycle-running-late";
 import { useTranslation } from "@beautonomi/i18n";
@@ -35,6 +39,7 @@ interface BookingStatusActionsProps {
   completionChecklist?: {
     allDone: boolean;
     blockingLabels: string[];
+    blockers: CompletionBlocker[];
   } | null;
   outstanding?: number;
 }
@@ -59,6 +64,7 @@ export function BookingStatusActions({
   const [completeConfirmReason, setCompleteConfirmReason] =
     useState<BookingCompleteConfirmReason>("checklist");
   const [completeConfirmMessage, setCompleteConfirmMessage] = useState("");
+  const [handoverBusy, setHandoverBusy] = useState(false);
   const [journeyEtaMinutes, setJourneyEtaMinutes] = useState<number | null>(15);
   const [updateEtaMinutes, setUpdateEtaMinutes] = useState<number | null>(15);
   const [isUpdatingEta, setIsUpdatingEta] = useState(false);
@@ -154,17 +160,47 @@ export function BookingStatusActions({
       return;
     }
 
-    if (outstanding > 0) {
-      setCompleteConfirmReason("outstanding");
-      setCompleteConfirmMessage(
-        t("web.provider.bookings.statusActions.outstandingCompleteHint"),
-      );
-      setCompleteConfirmOpen(true);
-      return;
-    }
-
     void postCompleteService();
-  }, [appointment.payment_status, completionChecklist, outstanding, postCompleteService]);
+  }, [appointment.payment_status, completionChecklist, postCompleteService]);
+
+  useEffect(() => {
+    if (!completeConfirmOpen || completeConfirmReason !== "checklist") return;
+    if (completionChecklist?.allDone) setCompleteConfirmOpen(false);
+  }, [completeConfirmOpen, completeConfirmReason, completionChecklist?.allDone]);
+
+  const handleHandoverAction = useCallback(
+    async (blocker: CompletionBlocker, actionId: CompletionHandoverActionId) => {
+      if (actionId === "manage_delivery" && blocker.orderId) {
+        setCompleteConfirmOpen(false);
+        openProductOrderView(blocker.orderId);
+        return;
+      }
+      if (actionId === "collect_payment") {
+        setCompleteConfirmOpen(false);
+        onCollectPayment?.();
+        return;
+      }
+      if (actionId === "view_charges") {
+        setCompleteConfirmOpen(false);
+        document.getElementById("booking-additional-charges")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+        return;
+      }
+      setHandoverBusy(true);
+      try {
+        await runCompletionHandoverAction(appointment.id, blocker, actionId);
+        toast.success(t("web.provider.bookings.statusActions.statusUpdated"));
+        onUpdated?.();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t("web.provider.bookings.statusActions.completeFailed"));
+      } finally {
+        setHandoverBusy(false);
+      }
+    },
+    [appointment.id, onCollectPayment, onUpdated, t],
+  );
 
   const runAction = useCallback(
     async (action: ProviderBookingAction) => {
@@ -482,6 +518,9 @@ export function BookingStatusActions({
         reason={completeConfirmReason}
         message={completeConfirmMessage}
         outstandingLabel={outstanding > 0 ? formatMoney(outstanding) : undefined}
+        blockers={completeConfirmReason === "checklist" ? completionChecklist?.blockers : undefined}
+        handoverBusy={handoverBusy}
+        onHandoverAction={(blocker, actionId) => void handleHandoverAction(blocker, actionId)}
         busy={busy === "complete_service"}
         onCollectPayment={
           onCollectPayment

@@ -244,8 +244,7 @@ export async function GET(request: Request) {
       is_featured,
       is_verified,
       currency,
-      description,
-      user_id
+      description
     `;
 
     // Helper function to filter providers by include_in_search_engines setting
@@ -436,7 +435,7 @@ export async function GET(request: Request) {
           
           // Fetch provider names, slugs, and ratings for sorting
           const { data: providersDataRaw } = providerIds.length > 0 ? await providersTable()
-            .select("id, business_name, slug, status, user_id, rating_average, review_count")
+            .select("id, business_name, slug, status, rating_average, review_count")
             .eq("status", "active")
             .in("id", providerIds) : { data: null };
           

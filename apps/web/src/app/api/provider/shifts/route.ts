@@ -336,7 +336,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify staff belongs to provider
-    const { data: staff } = await supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: staff } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, user_id")
       .eq("id", staff_id)

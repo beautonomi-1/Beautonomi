@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  errorResponse,
+  userHasProviderAccessAdmin,
+} from "@/lib/supabase/api-helpers";
 import { syncPushBadgeCountAllApps } from "@/lib/notifications/sync-push-badge-count";
 
 /**
@@ -22,21 +28,10 @@ async function verifyConversationAccess(
   if (!conv) throw Object.assign(new Error("Conversation not found"), { status: 404 });
   if (conv.customer_id === userId) return "customer";
 
-  const { data: providerRow } = await supabase
-    .from("providers")
-    .select("id, user_id")
-    .eq("id", conv.provider_id)
-    .single();
-  const prov = providerRow as { user_id?: string } | null;
-  if (prov?.user_id === userId) return "provider";
-
-  const { data: staff } = await supabase
-    .from("provider_staff")
-    .select("id")
-    .eq("provider_id", conv.provider_id)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (staff) return "provider";
+  const admin = getSupabaseAdmin();
+  if (await userHasProviderAccessAdmin(admin, userId, conv.provider_id)) {
+    return "provider";
+  }
 
   throw Object.assign(new Error("Not authorized"), { status: 403 });
 }

@@ -372,6 +372,7 @@ export default function BookingsListScreen() {
       error?: string;
       balance_due?: number;
       retry?: boolean;
+      products_still_open?: number;
     }>;
   }>("post");
   const [closeOutPendingIds, setCloseOutPendingIds] = useState<Set<string>>(() => new Set());
@@ -1261,6 +1262,10 @@ export default function BookingsListScreen() {
         return;
       }
       const r = await applyStatus(bookingId, action);
+      if (r.errorCode === "HANDOVER_REQUIRED") {
+        router.push(`/(app)/(tabs)/more/bookings/${bookingId}?handover=1` as never);
+        return;
+      }
       if (r.error) {
         setToast({
           message: mapProviderBookingActionError(r.error, r.errorCode, be),
@@ -1305,7 +1310,14 @@ export default function BookingsListScreen() {
           return;
         }
         optimisticRemoveCloseOut(bookingId);
-        setToast({ message: bl("closeOutCompleted"), type: "success" });
+        const productsOpen = row?.products_still_open ?? 0;
+        setToast({
+          message:
+            productsOpen > 0
+              ? `${bl("closeOutCompleted")} ${t("web.provider.bookings.overview.closeOutProductsStillOpen", { count: productsOpen })}`
+              : bl("closeOutCompleted"),
+          type: "success",
+        });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await refreshListsAfterAction();
       } finally {
@@ -1392,7 +1404,16 @@ export default function BookingsListScreen() {
                 (res.data?.results ?? []).filter((row) => row.ok).map((row) => row.id),
               );
               if (completed > 0) {
-                setToast({ message: bl("closeOutCompleteAllDone", { count: completed }), type: "success" });
+                const productsStillOpen = (res.data?.results ?? [])
+                  .filter((row) => row.ok)
+                  .reduce((sum, row) => sum + (row.products_still_open ?? 0), 0);
+                setToast({
+                  message:
+                    productsStillOpen > 0
+                      ? `${bl("closeOutCompleteAllDone", { count: completed })} ${t("web.provider.bookings.overview.closeOutProductsStillOpen", { count: productsStillOpen })}`
+                      : bl("closeOutCompleteAllDone", { count: completed }),
+                  type: "success",
+                });
               } else {
                 setToast({ message: bl("closeOutCompleteAllNone"), type: "error" });
               }

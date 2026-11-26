@@ -171,7 +171,7 @@ export async function requestPaystackTerminalSetupMobile(request: NextRequest) {
 
   const body = setupRequestSchema.parse(await request.json());
 
-  const { data: provider } = await supabase
+  const { data: provider } = await admin
     .from("providers")
     .select("id, tenant_id, currency, business_name, phone, billing_phone, billing_email, user_id")
     .eq("id", providerId)

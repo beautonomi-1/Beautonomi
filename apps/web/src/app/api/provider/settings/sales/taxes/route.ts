@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getPlatformSalesDefaults } from "@/lib/platform-sales-settings";
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabaseAdmin()
       .from("providers")
       .select(
         "tenant_id, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number",

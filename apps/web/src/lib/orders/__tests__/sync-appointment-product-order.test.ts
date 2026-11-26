@@ -400,4 +400,96 @@ describe("syncAppointmentProductOrder", () => {
     expect(productOrderInsertPayloads[1]).not.toHaveProperty("customer_name");
     expect(productOrderInsertPayloads[1]).not.toHaveProperty("customer_phone");
   });
+
+  it("keeps a delivered collection order delivered after completed booking sync", async () => {
+    const orderUpdates: Array<Record<string, unknown>> = [];
+
+    const supabase = {
+      rpc: vi.fn(async () => ({ data: 505, error: null })),
+      from: vi.fn((table: string) => {
+        const state: QueryState = { table, filters: {} };
+        const query: any = {
+          select: vi.fn(() => query),
+          eq: vi.fn((key: string, value: unknown) => {
+            state.filters[key] = value;
+            return query;
+          }),
+          neq: vi.fn(() => query),
+          not: vi.fn(() => query),
+          limit: vi.fn(() => query),
+          order: vi.fn(() => query),
+          maybeSingle: vi.fn(async () => {
+            if (state.table === "bookings") {
+              return {
+                data: {
+                  id: "booking-5",
+                  booking_number: "B-5",
+                  provider_id: "provider-5",
+                  customer_id: "cust-1",
+                  tenant_id: "tenant-5",
+                  location_id: "location-5",
+                  status: "completed",
+                  payment_status: "paid",
+                  currency: "ZAR",
+                  scheduled_at: "2026-05-01T10:00:00.000Z",
+                  customers: { id: "cust-1", full_name: "Client", phone: null },
+                  booking_products: [
+                    {
+                      id: "bp-5",
+                      product_id: "product-5",
+                      product_variant_id: null,
+                      quantity: 1,
+                      unit_price: 80,
+                      total_price: 80,
+                    },
+                  ],
+                },
+                error: null,
+              };
+            }
+            if (state.table === "product_orders") {
+              return {
+                data: {
+                  id: "order-5",
+                  status: "delivered",
+                  fulfillment_type: "collection",
+                },
+                error: null,
+              };
+            }
+            return { data: null, error: null };
+          }),
+          single: vi.fn(async () => ({ data: { id: "order-5" }, error: null })),
+          insert: vi.fn(() => ({
+            select: () => ({
+              single: async () => ({ data: { id: "order-new" }, error: null }),
+            }),
+          })),
+          update: vi.fn((payload: Record<string, unknown>) => {
+            if (state.table === "product_orders") {
+              orderUpdates.push(payload);
+            }
+            return {
+              eq: vi.fn(async () => ({ data: null, error: null })),
+            };
+          }),
+          delete: vi.fn(() => ({
+            eq: vi.fn(async () => ({ data: null, error: null })),
+          })),
+          then: (resolve: (value: { data: Array<Record<string, unknown>>; error: null }) => unknown) =>
+            Promise.resolve({ data: [], error: null }).then(resolve),
+        };
+        return query;
+      }),
+    };
+
+    const result = await syncAppointmentProductOrder(supabase as never, "booking-5");
+
+    expect(result).toEqual({ orderId: "order-5" });
+    expect(orderUpdates.length).toBeGreaterThan(0);
+    for (const payload of orderUpdates) {
+      expect(payload.status).toBeUndefined();
+      expect(payload.fulfillment_type).toBeUndefined();
+    }
+  });
 });

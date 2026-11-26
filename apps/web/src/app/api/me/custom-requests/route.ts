@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       .select(
         `
         *,
-        provider:providers(id, business_name, slug, user_id),
+        provider:providers(id, business_name, slug),
         attachments:custom_request_attachments(id, url, created_at),
         offers:custom_offers(id, price, currency, duration_minutes, expiration_at, notes, status, booking_id, payment_url, payment_reference, paid_at, created_at, staff_id, location_id, scheduled_at, travel_fee, change_request_note, changes_requested_at, staff:provider_staff(id, name), location:provider_locations(id, name))
       `
@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
 
     // Notify provider owner (best-effort)
     try {
-      const { data: providerRow } = await supabase
+      const { data: providerRow } = await getSupabaseAdmin()
         .from("providers")
         .select("user_id, business_name")
         .eq("id", body.provider_id)

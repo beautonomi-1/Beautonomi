@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  errorResponse,
+  userHasProviderAccessAdmin,
+} from "@/lib/supabase/api-helpers";
 import { requireSocialAccess } from "@/lib/safety/require-social-access";
 import {
   assertNotBlocked,
@@ -36,24 +42,10 @@ async function verifyConversationAccess(
 
   if (conv.customer_id === userId) return { conv, role: "customer" };
 
-  const { data: providerRow } = await supabase
-    .from("providers")
-    .select("id, user_id")
-    .eq("id", conv.provider_id)
-    .single();
-
-  if (providerRow && (providerRow as any).user_id === userId) {
+  const admin = getSupabaseAdmin();
+  if (await userHasProviderAccessAdmin(admin, userId, conv.provider_id)) {
     return { conv, role: "provider" };
   }
-
-  const { data: staff } = await supabase
-    .from("provider_staff")
-    .select("id")
-    .eq("provider_id", conv.provider_id)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (staff) return { conv, role: "provider" };
 
   throw Object.assign(new Error("Not authorized"), { status: 403 });
 }

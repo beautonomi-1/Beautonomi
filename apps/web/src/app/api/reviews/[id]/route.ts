@@ -66,12 +66,13 @@ export async function PATCH(
     }
 
     // Check if user is a provider and owns this review
-    const { data: provider } = await supabase
-      .from('providers')
-      .select('id, user_id')
-      .eq('id', review.provider_id)
-      .eq('user_id', user.id)
-      .single();
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: provider } = await getSupabaseAdmin()
+      .from("providers")
+      .select("id, user_id")
+      .eq("id", review.provider_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
 
     if (!provider) {
       return handleApiError(new Error('Unauthorized'), 'You can only rate customers for your own bookings');

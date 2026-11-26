@@ -1,6 +1,6 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PermissionRequestContext } from "@/lib/auth/permissions";
 import { hasPermission, isProviderOwner } from "@/lib/auth/permissions";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /** Full: owner or explicit team visibility. Redacted: calendar/scheduling can still see roster but not colleague PII. */
 export type TeamRosterDetailLevel = "full" | "redacted";
@@ -25,9 +25,9 @@ export async function getTeamRosterDetailLevel(
 export async function getProviderStaffIdForUser(
   userId: string,
   providerId: string,
-  supabase: SupabaseClient,
 ): Promise<string | null> {
-  const { data } = await supabase
+  const admin = getSupabaseAdmin();
+  const { data } = await admin
     .from("provider_staff")
     .select("id")
     .eq("user_id", userId)

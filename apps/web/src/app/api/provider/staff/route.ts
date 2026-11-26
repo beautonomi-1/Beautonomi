@@ -159,7 +159,8 @@ export async function GET(request: NextRequest) {
     
     // Build staff query with optional location filter
     // Start with basic fields to avoid RLS issues with nested relationships
-    let staffQuery = supabase
+    const staffReadClient = getSupabaseAdmin();
+    let staffQuery = staffReadClient
       .from("provider_staff")
       .select(
         `
@@ -649,7 +650,7 @@ export async function POST(request: Request) {
     }
 
     // Check if already a staff member
-    const { data: existingStaff } = await supabase
+    const { data: existingStaff } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id")
       .eq("provider_id", providerId)
@@ -666,7 +667,7 @@ export async function POST(request: Request) {
     const { getStaffNotificationSettingsDefaults } = await import(
       "@/lib/notifications/notification-preferences-defaults"
     );
-    const { data: newStaff, error: insertError } = await supabase
+    const { data: newStaff, error: insertError } = await getSupabaseAdmin()
       .from("provider_staff")
       .insert({
         provider_id: providerId,

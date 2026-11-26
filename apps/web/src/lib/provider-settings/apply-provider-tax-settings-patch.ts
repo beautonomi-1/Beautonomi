@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type ProviderTaxSettingsPatch = {
   tax_rate_percent?: number;
@@ -27,13 +28,14 @@ export async function applyProviderTaxSettingsPatch(
   providerId: string,
   body: ProviderTaxSettingsPatch,
 ): Promise<ApplyProviderTaxSettingsResult> {
+  const admin = getSupabaseAdmin();
   const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   if (body.is_vat_registered !== undefined) {
     updateData.is_vat_registered = body.is_vat_registered;
 
     if (body.is_vat_registered === true) {
-      const { data: providerRow } = await supabase
+      const { data: providerRow } = await admin
         .from("providers")
         .select("tenant_id, tax_inclusive, vat_number")
         .eq("id", providerId)
@@ -93,7 +95,7 @@ export async function applyProviderTaxSettingsPatch(
   }
 
   if (Object.keys(updateData).length <= 1) {
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from("providers")
       .select("tax_rate_percent, is_vat_registered, vat_number, tax_inclusive")
       .eq("id", providerId)
@@ -112,11 +114,18 @@ export async function applyProviderTaxSettingsPatch(
     };
   }
 
-  const { data, error } = await supabase
+  const { error: updateError } = await supabase
     .from("providers")
     .update(updateData)
-    .eq("id", providerId)
+    .eq("id", providerId);
+  if (updateError) {
+    throw updateError;
+  }
+
+  const { data, error } = await admin
+    .from("providers")
     .select("tax_rate_percent, is_vat_registered, vat_number, tax_inclusive")
+    .eq("id", providerId)
     .single();
 
   if (error) {

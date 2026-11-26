@@ -324,7 +324,7 @@ async function runLegacySearch(
       .limit(25);
     const ownerIds = (ownerRows || []).map((u) => (u as { id: string }).id);
     if (ownerIds.length > 0) {
-      const { data: provOwnerRows } = await supabase
+      const { data: provOwnerRows } = await admin
         .from("providers")
         .select("id")
         .eq("tenant_id", tenantId)
@@ -342,7 +342,7 @@ async function runLegacySearch(
     providerOrClauses.push(`id.in.(${ownerMatchedProviderIds.join(",")})`);
   }
 
-  const { data: providersRaw } = await supabase
+  const { data: providersRaw } = await admin
     .from("providers")
     .select("id, business_name, phone, status, user_id, users:user_id(full_name, email)")
     .eq("tenant_id", tenantId)

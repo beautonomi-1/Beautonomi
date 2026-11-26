@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const staffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+    const staffId = await getProviderStaffIdForUser(user.id, providerId);
     const rosterDetailLevel = await getTeamRosterDetailLevel(user.id, request);
     const isOwner = user.role === "superadmin" ? false : await isProviderOwner(user.id, request);
     const canManageTeam =

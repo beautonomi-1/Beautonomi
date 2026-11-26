@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { dispatchTemplateNotification } from "@/lib/notifications/dispatch-template-notification";
 
@@ -141,7 +142,7 @@ export async function dispatchProductOrderStatusNotification(
   let collectionLocationAddress: string | null = null;
   let locationPhone: string | null = null;
   if (status === "ready_for_collection" && collectionLocationId) {
-    const { data: loc } = await (supabase.from("provider_locations") as any)
+    const { data: loc } = await (getSupabaseAdmin().from("provider_locations") as any)
       .select("name, address_line1, address_line2, city, state, postal_code, phone")
       .eq("id", collectionLocationId)
       .maybeSingle();

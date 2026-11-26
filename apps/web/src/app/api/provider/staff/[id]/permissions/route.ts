@@ -55,7 +55,7 @@ export async function GET(
     }
 
     if (user.role !== "superadmin" && providerId) {
-      const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+      const ownStaffId = await getProviderStaffIdForUser(user.id, providerId);
       const canViewOthers =
         (await isProviderOwner(user.id, request)) ||
         (await hasPermission(user.id, "manage_team", undefined, request));
@@ -69,7 +69,8 @@ export async function GET(
     }
 
     // Verify staff member exists
-    let query = supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    let query = getSupabaseAdmin()
       .from("provider_staff")
       .select("id, permissions, role, role_id, is_admin, user_id, provider_id");
 
@@ -125,6 +126,7 @@ export async function PATCH(
     const { requireStepUp } = await import("@/lib/auth/provider-security");
     await requireStepUp(request, user.id, String(user.role), { action: "team_change" });
     const supabase = await getSupabaseServer(request);
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const { id } = await params;
     const body = staffPermissionsPatchSchema.parse(await request.json());
 
@@ -160,7 +162,7 @@ export async function PATCH(
       }
     }
 
-    let verifyQuery = supabase
+    let verifyQuery = getSupabaseAdmin()
       .from("provider_staff")
       .select("id, user_id, role, is_admin, provider_id, role_id")
       .eq("id", id);
@@ -177,7 +179,7 @@ export async function PATCH(
 
     const owner = await isProviderOwner(user.id, request);
     if (!owner && user.role !== "superadmin") {
-      const ownStaffId = await getProviderStaffIdForUser(user.id, providerId!, supabase);
+      const ownStaffId = await getProviderStaffIdForUser(user.id, providerId!);
       if (ownStaffId === id) {
         return errorResponse("You cannot change your own permissions.", "FORBIDDEN", 403);
       }
@@ -185,7 +187,7 @@ export async function PATCH(
 
     const staffUserId = (existing as { user_id?: string | null }).user_id;
     if (providerId && staffUserId) {
-      const { data: provRow } = await supabase
+      const { data: provRow } = await getSupabaseAdmin()
         .from("providers")
         .select("user_id")
         .eq("id", providerId)
@@ -272,7 +274,6 @@ export async function PATCH(
     );
 
     if (providerId) {
-      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
       const { data: prov } = await getSupabaseAdmin()
         .from("providers")
         .select("user_id")

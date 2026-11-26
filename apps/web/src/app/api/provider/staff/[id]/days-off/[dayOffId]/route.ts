@@ -37,7 +37,8 @@ export async function DELETE(
 
     const owner = await isProviderOwner(user.id, request);
     if (!owner) {
-      const { data: selfStaff } = await supabase
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const { data: selfStaff } = await getSupabaseAdmin()
         .from("provider_staff")
         .select("id")
         .eq("provider_id", providerId)

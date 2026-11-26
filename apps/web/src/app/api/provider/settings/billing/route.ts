@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -34,7 +35,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: billingSettings, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: billingSettings, error } = await admin
       .from("providers")
       .select("billing_address, billing_email, billing_phone")
       .eq("id", providerId)
@@ -134,11 +136,17 @@ export async function PATCH(request: NextRequest) {
       updates.billing_phone = body.billingPhone;
     }
 
-    const { data: provider, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { error: updateError } = await supabase
       .from("providers")
       .update(updates)
+      .eq("id", providerId);
+    if (updateError) throw updateError;
+
+    const { data: provider, error } = await admin
+      .from("providers")
+      .select("billing_address, billing_email, billing_phone")
       .eq("id", providerId)
-      .select()
       .single();
 
     if (error) {

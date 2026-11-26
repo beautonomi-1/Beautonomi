@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     const segment = (searchParams.get("segment") ?? "customers").toLowerCase();
 
     if (segment === "providers") {
-      const resolved = await resolveBroadcastProviderUserIds(supabase, tenantId);
+      const resolved = await resolveBroadcastProviderUserIds(getSupabaseAdmin(), tenantId);
       return successResponse({
         count: resolved.userIds.length,
         mode: resolved.mode,

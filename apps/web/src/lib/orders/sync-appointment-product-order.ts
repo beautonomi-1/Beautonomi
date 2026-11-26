@@ -341,7 +341,7 @@ export async function syncAppointmentProductOrder(
 
   const { data: existing } = await supabase
     .from("product_orders")
-    .select("id, status")
+    .select("id, status, fulfillment_type")
     .eq("booking_id", bookingId)
     .maybeSingle();
 
@@ -370,13 +370,27 @@ export async function syncAppointmentProductOrder(
   }, 0);
 
   const customer = one((booking as any).customers);
+  const existingStatus = existing ? String((existing as any).status ?? "").toLowerCase() : "";
+  const existingTerminal = ["delivered", "cancelled", "refunded"].includes(existingStatus);
+
   const orderPayload: Record<string, unknown> = {
     tenant_id: tenantId,
     customer_id: (booking as any).customer_id ?? null,
     provider_id: providerId,
     booking_id: bookingId,
-    status: orderStatusForBooking((booking as any).status),
-    fulfillment_type: "collection",
+    ...(existingTerminal
+      ? {}
+      : {
+          status: orderStatusForBooking((booking as any).status),
+          ...(orderStatusForBooking((booking as any).status) === "cancelled"
+            ? {
+                cancelled_at: new Date().toISOString(),
+                cancellation_reason: "Appointment cancelled",
+              }
+            : {}),
+        }),
+    // New orders default to collection. An existing order keeps its type, including unset.
+    ...(!existing ? { fulfillment_type: "collection" } : {}),
     collection_location_id: collectionLocationId,
     subtotal,
     tax_amount: 0,
@@ -390,10 +404,7 @@ export async function syncAppointmentProductOrder(
     order_source: "appointment",
     customer_name: customer?.full_name ?? (booking as any).customer_name ?? null,
     customer_phone: customer?.phone ?? (booking as any).customer_phone ?? null,
-    confirmed_at: new Date().toISOString(),
-    ...(orderStatusForBooking((booking as any).status) === "cancelled"
-      ? { cancelled_at: new Date().toISOString(), cancellation_reason: "Appointment cancelled" }
-      : {}),
+    ...(!existing ? { confirmed_at: new Date().toISOString() } : {}),
   };
 
   // Remove known-optional columns when a 42703 surfaces — keeps the sync

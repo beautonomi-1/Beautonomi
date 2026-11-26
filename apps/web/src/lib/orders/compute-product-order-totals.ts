@@ -8,6 +8,7 @@ import {
 } from "@/lib/platform-service-fee-settings";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { computeProductOrderDeliveryQuote } from "@/lib/orders/product-order-delivery-quote";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type ProductOrderCartLine = {
   quantity: number;
@@ -173,7 +174,7 @@ export async function computeProductOrderTotals(
 
   const discountedSubtotal = Math.max(0, subtractMoney(subtotal, promotionDiscount));
 
-  const { data: providerRow } = await supabase
+  const { data: providerRow } = await getSupabaseAdmin()
     .from("providers")
     .select(
       "tenant_id, customer_fee_config_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number",

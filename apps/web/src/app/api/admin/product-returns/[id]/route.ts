@@ -32,9 +32,8 @@ export async function GET(
   try {
     const { id } = await params;
     await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
-    const supabase = await getSupabaseServer(request);
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabaseAdmin()
       .from("product_return_requests")
       .select(
         `*,

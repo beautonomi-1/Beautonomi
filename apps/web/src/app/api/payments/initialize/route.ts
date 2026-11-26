@@ -228,8 +228,8 @@ export async function POST(request: Request) {
 
     let stripeConnectAccountId: string | undefined;
     if (bookingDetails?.provider_id) {
-      const { data: providerStripe } = await (supabase
-        .from("providers") as any)
+      const { data: providerStripe } = await admin
+        .from("providers")
         .select("stripe_connect_account_id")
         .eq("id", bookingDetails.provider_id)
         .maybeSingle();

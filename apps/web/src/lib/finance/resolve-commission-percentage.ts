@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 type PayoutCommissionSettings = {
   commission_enabled?: boolean;
@@ -61,7 +62,8 @@ export async function resolveCommissionPercentageForProvider(
   if (!commissionEnabled) return 0;
   if (!opts.providerId) return platformDefaultRate;
 
-  const { data: providerRow } = await supabase
+  const admin = getSupabaseAdmin();
+  const { data: providerRow } = await admin
     .from("providers")
     .select("commission_override")
     .eq("id", opts.providerId)

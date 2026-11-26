@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -35,8 +36,8 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    // Get staff member with all settings
-    const { data: staff, error } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: staff, error } = await admin
       .from("provider_staff")
       .select(`
         id,
@@ -185,6 +186,7 @@ export async function PATCH(
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const { id } = await params;
     const body = await request.json();
 
@@ -206,7 +208,7 @@ export async function PATCH(
     }
 
     // Verify staff belongs to provider
-    const { data: existingStaff } = await supabase
+    const { data: existingStaff } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, user_id")
       .eq("id", id)
@@ -317,16 +319,56 @@ export async function PATCH(
     }
 
     // Update settings
-    const { data: updatedStaff, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from("provider_staff")
       .update(mapped)
       .eq("id", id)
-      .select()
-      .single();
+      .eq("provider_id", providerId);
 
     if (updateError) {
       throw updateError;
     }
+
+    const { data: updatedStaff, error: reloadError } = await admin
+      .from("provider_staff")
+      .select(
+        `
+        id,
+        user_id,
+        name,
+        email,
+        phone,
+        role,
+        public_title,
+        is_active,
+        is_service_provider,
+        enable_in_online_booking,
+        can_be_assigned_to_product_sales,
+        is_admin,
+        email_notifications_enabled,
+        sms_notifications_enabled,
+        desktop_notifications_enabled,
+        work_hours_enabled,
+        commission_enabled,
+        commission_rate,
+        commission_percentage,
+        hourly_rate,
+        salary,
+        tips_enabled,
+        time_clock_enabled,
+        time_clock_pin,
+        phone_call_availability_enabled,
+        mobile_ready,
+        bookable_from,
+        service_commission_rate,
+        product_commission_rate
+      `,
+      )
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .single();
+
+    if (reloadError) throw reloadError;
 
     return successResponse(updatedStaff);
   } catch (error) {

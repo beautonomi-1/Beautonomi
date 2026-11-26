@@ -149,7 +149,7 @@ async function fetchStaffDetailForApi(
   staffId: string,
   providerId: string,
 ): Promise<Record<string, unknown> | null> {
-  const { data: row, error } = await supabase
+  const { data: row, error } = await getSupabaseAdmin()
     .from("provider_staff")
     .select(
       `
@@ -224,7 +224,10 @@ async function fetchStaffDetailForApi(
         .from("provider_locations")
         .select("id, name, city")
         .in("id", locationIds);
-      const locMap = new Map((locationDetails ?? []).map((loc: { id: string; name?: string; city?: string }) => [loc.id, loc]));
+      type StaffLocationRow = { id: string; name?: string | null; city?: string | null };
+      const locMap = new Map<string, StaffLocationRow>(
+        ((locationDetails ?? []) as StaffLocationRow[]).map((loc) => [loc.id, loc]),
+      );
       for (const sl of assignmentRows as { location_id: string; is_primary?: boolean }[]) {
         const loc = locMap.get(sl.location_id);
         locations.push({
@@ -318,7 +321,7 @@ export async function PATCH(
       return notFoundResponse("Provider not found");
     }
 
-    const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+    const ownStaffId = await getProviderStaffIdForUser(user.id, providerId);
     const editingSelf = ownStaffId === id;
 
     const canManageTeam =
@@ -367,7 +370,7 @@ export async function PATCH(
     const replaceLocations = Object.prototype.hasOwnProperty.call(body, "location_ids");
     const replaceServices = Object.prototype.hasOwnProperty.call(body, "service_ids");
 
-    const { data: existingRow, error: existingErr } = await supabase
+    const { data: existingRow, error: existingErr } = await getSupabaseAdmin()
       .from("provider_staff")
       .select(
         "id, role, user_id, commission_rate, commission_percentage, service_commission_rate, product_commission_rate",
@@ -684,7 +687,7 @@ export async function DELETE(
       return notFoundResponse("Provider not found");
     }
 
-    const { data: existingRow, error: existingErr } = await supabase
+    const { data: existingRow, error: existingErr } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id, role, user_id, name, is_active")
       .eq("id", id)

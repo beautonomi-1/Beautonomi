@@ -46,7 +46,12 @@ import { PostCompletionSheet } from "@/components/provider/booking/PostCompletio
 import {
   BookingCompleteConfirmDialog,
   type BookingCompleteConfirmReason,
+  type CompletionHandoverActionId,
 } from "@/components/provider/booking/view/BookingCompleteConfirmDialog";
+import type { CompletionBlocker } from "@beautonomi/provider-booking";
+import { fetchBookingCompletionChecklist } from "@/lib/provider-booking/booking-completion-handover-gate";
+import { runCompletionHandoverAction } from "@/lib/provider-booking/completion-handover-actions";
+import { openProductOrderView } from "@/stores/appointment-sidebar-store";
 import { EtaPicker } from "@/components/provider/booking/EtaPicker";
 import {
   Dialog,
@@ -143,8 +148,10 @@ export function BookingsClient({
     bookingId: string;
     reason: BookingCompleteConfirmReason;
     message: string;
+    blockers?: CompletionBlocker[];
   } | null>(null);
   const [completeBlockBusy, setCompleteBlockBusy] = useState(false);
+  const [handoverBusy, setHandoverBusy] = useState(false);
   const canCreateAppointments = isOwner || hasPermission("create_appointments");
   const canEditAppointments = isOwner || hasPermission("edit_appointments");
   const canCancelAppointments =
@@ -401,18 +408,102 @@ export function BookingsClient({
     return false;
   };
 
+  const beginCompleteBooking = async (booking: ProviderBookingListItem) => {
+    const paymentStatus = (booking.payment_status ?? "").toLowerCase();
+    if (paymentStatus === "refunded") {
+      setCompleteBlock({
+        bookingId: booking.id,
+        reason: "refunded",
+        message: t("web.provider.bookings.statusActions.refundedCompleteHint"),
+      });
+      return;
+    }
+    try {
+      const checklist = await fetchBookingCompletionChecklist(booking.id);
+      if (!checklist.allDone) {
+        setCompleteBlock({
+          bookingId: booking.id,
+          reason: "checklist",
+          message: t("web.provider.bookings.statusActions.checklistCompleteHint", {
+            labels: checklist.blockingLabels.join(" · "),
+          }),
+          blockers: checklist.blockers,
+        });
+        return;
+      }
+    } catch {
+      // Fall through to server-side completion guards.
+    }
+    await handleStatusChange(booking.id, "completed", booking.version);
+  };
+
+  const handleListHandoverAction = async (
+    blocker: CompletionBlocker,
+    actionId: CompletionHandoverActionId,
+  ) => {
+    if (!completeBlock) return;
+    const bookingId = completeBlock.bookingId;
+    if (actionId === "collect_payment") {
+      setCompleteBlock(null);
+      router.push(`/provider/bookings/${bookingId}?focusPayment=1`);
+      return;
+    }
+    if (actionId === "view_charges") {
+      setCompleteBlock(null);
+      router.push(`/provider/bookings/${bookingId}#additional-charges`);
+      return;
+    }
+    if (actionId === "manage_delivery" && blocker.orderId) {
+      setCompleteBlock(null);
+      openProductOrderView(blocker.orderId);
+      return;
+    }
+    setHandoverBusy(true);
+    try {
+      await runCompletionHandoverAction(bookingId, blocker, actionId);
+      toast.success(t("web.provider.bookings.statusActions.statusUpdated"));
+      const checklist = await fetchBookingCompletionChecklist(bookingId);
+      if (checklist.allDone) {
+        setCompleteBlock(null);
+      } else {
+        setCompleteBlock((prev) =>
+          prev
+            ? {
+                ...prev,
+                reason: "checklist",
+                blockers: checklist.blockers,
+                message: t("web.provider.bookings.statusActions.checklistCompleteHint", {
+                  labels: checklist.blockingLabels.join(" · "),
+                }),
+              }
+            : null,
+        );
+      }
+      loadBookings();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("web.provider.bookings.statusActions.completeFailed"));
+    } finally {
+      setHandoverBusy(false);
+    }
+  };
+
   const handleStatusChange = async (
     bookingId: string,
     newStatus: string,
     version?: number,
-    completeBody: { allow_unpaid?: boolean; unpaid_reason?: string } = {},
+    completeBody: { allow_unpaid?: boolean; unpaid_reason?: string; handoverConfirmed?: boolean } = {},
   ) => {
     const booking = bookings.find((b) => b.id === bookingId);
     try {
       setConflictError(null);
 
       if (newStatus === "completed") {
-        await fetcher.post(`/api/provider/bookings/${bookingId}/complete-service`, completeBody);
+        await fetcher.post(
+          `/api/provider/bookings/${bookingId}/complete-service`,
+          completeBody.allow_unpaid
+            ? { allow_unpaid: true, unpaid_reason: completeBody.unpaid_reason }
+            : {},
+        );
         setCompleteBlock(null);
         toast.success(t("web.provider.bookings.toast.serviceCompleted"));
         loadBookings();
@@ -570,7 +661,7 @@ export function BookingsClient({
         return;
       }
       if (action.id === "complete_service") {
-        await handleStatusChange(booking.id, "completed", booking.version);
+        await beginCompleteBooking(booking);
         return;
       }
       if (action.id === "check_in") {
@@ -1604,15 +1695,31 @@ export function BookingsClient({
             }}
             reason={completeBlock.reason}
             message={completeBlock.message}
+            blockers={completeBlock.reason === "checklist" ? completeBlock.blockers : undefined}
+            handoverBusy={handoverBusy}
+            onHandoverAction={(blocker, actionId) => void handleListHandoverAction(blocker, actionId)}
             canCompleteWithBalance={isOwner || isManager}
             busy={completeBlockBusy}
+            onCollectPayment={
+              completeBlock.reason === "checklist" || completeBlock.reason === "outstanding"
+                ? () => {
+                    const id = completeBlock.bookingId;
+                    setCompleteBlock(null);
+                    router.push(`/provider/bookings/${id}?focusPayment=1`);
+                  }
+                : undefined
+            }
             onCompleteAnyway={async (unpaidReason) => {
               setCompleteBlockBusy(true);
               try {
-                await handleStatusChange(completeBlock.bookingId, "completed", undefined, {
-                  allow_unpaid: true,
-                  unpaid_reason: unpaidReason,
-                });
+                await handleStatusChange(
+                  completeBlock.bookingId,
+                  "completed",
+                  undefined,
+                  unpaidReason
+                    ? { allow_unpaid: true, unpaid_reason: unpaidReason, handoverConfirmed: true }
+                    : { handoverConfirmed: true },
+                );
               } finally {
                 setCompleteBlockBusy(false);
               }

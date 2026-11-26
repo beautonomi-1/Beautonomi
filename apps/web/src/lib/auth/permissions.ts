@@ -8,6 +8,7 @@
 
 import type { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getDefaultStaffPermissionsForDbRole } from "@/lib/provider/staff-invite-default-permissions";
 
 /** Incoming HTTP request (cookies or Authorization Bearer) for Supabase server client. */
@@ -67,9 +68,10 @@ export async function getStaffPermissions(
   request?: PermissionRequestContext,
 ): Promise<StaffPermissions> {
   const supabase = await getSupabaseServer(request);
+  const admin = getSupabaseAdmin();
 
   // Get provider ID
-  const { data: provider } = await supabase
+  const { data: provider } = await admin
     .from("providers")
     .select("id")
     .eq("user_id", userId)
@@ -77,7 +79,7 @@ export async function getStaffPermissions(
 
   if (!provider) {
     // Check if user is staff member
-    let staffQuery = supabase
+    let staffQuery = admin
       .from("provider_staff")
       .select("provider_id, role, permissions, role_id, is_admin, user_id")
       .eq("user_id", userId);
@@ -97,7 +99,7 @@ export async function getStaffPermissions(
 
   // User is provider owner - get staff member if staffId provided
   if (staffId) {
-    const { data: staff } = await supabase
+    const { data: staff } = await admin
       .from("provider_staff")
       .select("role, permissions, role_id, is_admin, user_id, provider_id")
       .eq("id", staffId)
@@ -138,7 +140,8 @@ export async function resolveStaffPermissionRow(
 
   const pid = providerId ?? staff.provider_id;
   if (pid && staff.user_id) {
-    const { data: provRow } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: provRow } = await admin
       .from("providers")
       .select("user_id")
       .eq("id", pid)
@@ -344,11 +347,11 @@ export function normalizeStaffPermissions(
  */
 export async function isProviderOwner(
   userId: string,
-  request?: PermissionRequestContext,
+  _request?: PermissionRequestContext,
 ): Promise<boolean> {
-  const supabase = await getSupabaseServer(request);
+  const admin = getSupabaseAdmin();
 
-  const { data: provider } = await supabase
+  const { data: provider } = await admin
     .from("providers")
     .select("id")
     .eq("user_id", userId)
@@ -363,8 +366,8 @@ export async function isProviderOwnerOrManager(
   request?: PermissionRequestContext,
 ): Promise<boolean> {
   if (await isProviderOwner(userId, request)) return true;
-  const supabase = await getSupabaseServer(request);
-  const { data: staff } = await supabase
+  const admin = getSupabaseAdmin();
+  const { data: staff } = await admin
     .from("provider_staff")
     .select("role, is_admin")
     .eq("user_id", userId)
@@ -388,9 +391,9 @@ export async function getStaffMember(
   role: string;
   is_admin: boolean;
 } | null> {
-  const supabase = await getSupabaseServer(request);
+  const admin = getSupabaseAdmin();
 
-  const { data: staff } = await supabase
+  const { data: staff } = await admin
     .from("provider_staff")
     .select("id, provider_id, role, is_admin")
     .eq("user_id", userId)

@@ -40,11 +40,14 @@ describe("POST /api/me/membership/cancel", () => {
     mockResolveTenantIdWithZaFallback.mockResolvedValue("tenant-za");
     mockNotifyProviderMembershipCancelled.mockResolvedValue({ success: true });
     mockGetSupabaseAdmin.mockReturnValue({
-      from: vi.fn(() => ({
+      from: vi.fn((table: string) => ({
         select: vi.fn(() => ({
           eq: vi.fn(() => ({
             maybeSingle: vi.fn(async () => ({
-              data: { full_name: "Jane Customer" },
+              data:
+                table === "providers"
+                  ? { user_id: "owner-1" }
+                  : { full_name: "Jane Customer" },
               error: null,
             })),
           })),

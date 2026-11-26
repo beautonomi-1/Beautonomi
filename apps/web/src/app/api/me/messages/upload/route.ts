@@ -56,17 +56,9 @@ export async function POST(request: NextRequest) {
     const isCustomer = conv.customer_id === user.id;
     let isProvider = false;
     if (!isCustomer) {
-      const { data: providerRow } = await supabase.from("providers").select("id, user_id").eq("id", conv.provider_id).single();
-      if (providerRow && (providerRow as any).user_id === user.id) isProvider = true;
-      if (!isProvider) {
-        const { data: staff } = await supabase
-          .from("provider_staff")
-          .select("id")
-          .eq("provider_id", conv.provider_id)
-          .eq("user_id", user.id)
-          .maybeSingle();
-        isProvider = Boolean(staff);
-      }
+      const supabaseAdmin = getSupabaseAdmin();
+      const { userHasProviderAccessAdmin } = await import("@/lib/supabase/api-helpers");
+      isProvider = await userHasProviderAccessAdmin(supabaseAdmin, user.id, conv.provider_id);
     }
 
     if (!isCustomer && !isProvider) {

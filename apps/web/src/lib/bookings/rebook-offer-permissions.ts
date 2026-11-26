@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { hasPermission, isProviderOwner, getStaffMember } from "@/lib/auth/permissions";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export async function rebookOfferCanSeeClientContact(
   userId: string,
@@ -25,7 +26,8 @@ export async function rebookOfferWhatsAppHandoffAllowed(
 ): Promise<boolean> {
   const supabase = await getSupabaseServer(request);
   const staff = await getStaffMember(userId, request);
-  const { data: provider } = await supabase
+  const admin = getSupabaseAdmin();
+  const { data: provider } = await admin
     .from("providers")
     .select("business_type, user_id")
     .eq("id", providerId)

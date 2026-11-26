@@ -21,6 +21,28 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
 }));
 
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    from: (table: string) => {
+      if (table !== "providers") throw new Error(`Unexpected admin table ${table}`);
+      const chain: Record<string, unknown> = {};
+      chain.select = () => chain;
+      chain.eq = () => chain;
+      chain.maybeSingle = () =>
+        Promise.resolve({
+          data: {
+            is_vat_registered: true,
+            vat_number: "4123456789",
+            tenant_id: "tenant-1",
+            timezone: "Africa/Johannesburg",
+          },
+          error: null,
+        });
+      return chain;
+    },
+  }),
+}));
+
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
   resolveTenantIdWithZaFallback: vi.fn().mockResolvedValue("tenant-1"),
 }));

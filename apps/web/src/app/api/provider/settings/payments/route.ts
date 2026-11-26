@@ -2,6 +2,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -68,7 +69,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Get provider-level payment fields
-    const { data: provider, error: providerError } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: provider, error: providerError } = await admin
       .from("providers")
       .select(
         "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, accept_paystack_terminal, accept_paycloud, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
@@ -303,30 +305,24 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    let provider: Record<string, unknown>;
+    const admin = getSupabaseAdmin();
     if (Object.keys(updates).length > 0) {
-      const { data, error } = await supabase
+      const { error: updateError } = await supabase
         .from("providers")
         .update(updates)
-        .eq("id", providerId)
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
-      provider = data as Record<string, unknown>;
-    } else {
-      const { data, error } = await supabase
-        .from("providers")
-        .select("*")
-        .eq("id", providerId)
-        .single();
-      if (error) {
-        throw error;
-      }
-      provider = data as Record<string, unknown>;
+        .eq("id", providerId);
+      if (updateError) throw updateError;
     }
+
+    const { data, error } = await admin
+      .from("providers")
+      .select(
+        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, accept_paystack_terminal, accept_paycloud, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
+      )
+      .eq("id", providerId)
+      .single();
+    if (error) throw error;
+    const provider = data as Record<string, unknown>;
 
     const onlineBookingUpdates: Record<string, any> = {};
     if (body.requiresDeposit !== undefined) {

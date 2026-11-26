@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -48,7 +49,7 @@ export async function GET(
     }
 
     // Verify staff member belongs to provider
-    const { data: staff, error: staffError } = await supabase
+    const { data: staff, error: staffError } = await getSupabaseAdmin()
       .from("provider_staff")
       .select(
         "id, user_id, commission_enabled, service_commission_rate, product_commission_rate, commission_rate, commission_percentage, hourly_rate, salary, tips_enabled"
@@ -63,7 +64,7 @@ export async function GET(
 
     const seePay = staff.user_id === user.id || (await canViewStaffPay(user.id, request));
     if (!seePay) {
-      const { data: callerStaff } = await supabase
+      const { data: callerStaff } = await getSupabaseAdmin()
         .from("provider_staff")
         .select("role, permissions, role_id, is_admin, user_id, provider_id")
         .eq("user_id", user.id)
@@ -140,7 +141,7 @@ export async function PATCH(
     }
 
     // Verify staff member belongs to provider
-    const { data: existing } = await supabase
+    const { data: existing } = await getSupabaseAdmin()
       .from("provider_staff")
       .select("id")
       .eq("id", id)
@@ -192,7 +193,7 @@ export async function PATCH(
       }
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabaseAdmin()
       .from("provider_staff")
       .update(updateData)
       .eq("id", id)

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
@@ -30,7 +31,7 @@ export async function GET(
     }
 
     // Get location
-    const { data: location, error } = await supabase
+    const { data: location, error } = await getSupabaseAdmin()
       .from("provider_locations")
       .select("*")
       .eq("id", id)
@@ -81,7 +82,7 @@ export async function PATCH(
     }
 
     // Verify location belongs to provider
-    const { data: existingLocation } = await supabase
+    const { data: existingLocation } = await getSupabaseAdmin()
       .from("provider_locations")
       .select("id")
       .eq("id", id)
@@ -93,7 +94,7 @@ export async function PATCH(
     }
 
     // Get existing location data for geocoding
-    const { data: existingLocationData } = await supabase
+    const { data: existingLocationData } = await getSupabaseAdmin()
       .from("provider_locations")
       .select("*")
       .eq("id", id)
@@ -202,14 +203,14 @@ export async function PATCH(
     });
 
     if (body.is_primary === true) {
-      await supabase
+      await getSupabaseAdmin()
         .from("provider_locations")
         .update({ is_primary: false } as any)
         .eq("provider_id", providerId)
         .neq("id", id);
     }
 
-    const { data: updatedLocation, error: updateError } = await (supabase
+    const { data: updatedLocation, error: updateError } = await (getSupabaseAdmin()
       .from("provider_locations") as any)
       .update(updateData)
       .eq("id", id)
@@ -368,7 +369,7 @@ export async function DELETE(
     }
 
     // Verify location belongs to provider
-    const { data: existingLocation } = await supabase
+    const { data: existingLocation } = await getSupabaseAdmin()
       .from("provider_locations")
       .select("id, is_primary")
       .eq("id", id)
@@ -380,7 +381,7 @@ export async function DELETE(
     }
 
     // Try hard delete first; if location is referenced (bookings, sales, staff, etc.), soft-delete instead
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await getSupabaseAdmin()
       .from("provider_locations")
       .delete()
       .eq("id", id);
@@ -391,7 +392,7 @@ export async function DELETE(
       const msg = (errAny.message || "").toLowerCase();
       // PostgreSQL FK violation = location is in use (code shape varies by PostgREST/driver)
       if (code === "23503" || msg.includes("foreign key") || msg.includes("violates foreign key")) {
-        const { error: updateError } = await (supabase
+        const { error: updateError } = await (getSupabaseAdmin()
           .from("provider_locations") as any)
           .update({ is_active: false })
           .eq("id", id);

@@ -79,7 +79,7 @@ export async function computeCustomOfferPricing(
   const subtotalBeforeDiscount = addMoney(Math.max(0, offerPrice), Math.max(0, travelFee));
 
   // Load provider for tax, tips, fee config, tenant (scoped payouts)
-  const { data: provider } = await supabase
+  const { data: provider } = await supabaseAdmin
     .from("providers")
     .select("tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, tips_enabled, customer_fee_config_id, tenant_id")
     .eq("id", providerId)

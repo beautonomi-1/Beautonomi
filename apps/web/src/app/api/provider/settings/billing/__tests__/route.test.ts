@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 const mockRequireRoleInApi = vi.fn();
 const mockRequirePermission = vi.fn();
 const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -17,6 +18,10 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
 vi.mock("@/lib/auth/requirePermission", () => ({
@@ -102,6 +107,7 @@ describe("GET /api/provider/settings/billing", () => {
       ],
     });
     mockGetSupabaseServer.mockResolvedValue({ from: fromMock });
+    mockGetSupabaseAdmin.mockReturnValue({ from: fromMock });
 
     const { GET } = await import("../route");
     const request = new NextRequest("http://localhost/api/provider/settings/billing");

@@ -36,6 +36,7 @@ import {
   sumPendingWalletGiftByBookingIds,
 } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
+import { countOpenProductOrdersForBookings } from "@/lib/orders/count-open-product-orders-for-booking";
 import { wallClockPartsInTz } from "@/lib/dates/provider-tz";
 import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 import { autoInvoiceInlineGroupParticipants } from "@/lib/bookings/create-group-participant-booking";
@@ -1055,7 +1056,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         .select()
         .single();
       if (error) throw error;
-      return successResponse({ group_booking: data, message: "Group service completed" });
+      const productsStillOpen = await countOpenProductOrdersForBookings(
+        admin,
+        [...finishedIds],
+        providerId,
+      );
+      return successResponse({
+        group_booking: data,
+        message: "Group service completed",
+        products_still_open: productsStillOpen > 0 ? productsStillOpen : undefined,
+      });
     }
 
     if (action === "mark_paid") {

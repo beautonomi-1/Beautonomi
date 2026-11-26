@@ -126,7 +126,10 @@ describe("PATCH /api/provider/product-orders/[id] refund tender split", () => {
     const server = makeServerClient(order);
     vi.mocked(getSupabaseServer).mockResolvedValue(server as never);
     adminRpc = vi.fn(async () => ({ data: null, error: null }));
-    vi.mocked(getSupabaseAdmin).mockReturnValue({ rpc: adminRpc } as never);
+    vi.mocked(getSupabaseAdmin).mockReturnValue({
+      rpc: adminRpc,
+      from: (...args: unknown[]) => (server.from as (...a: unknown[]) => unknown)(...args),
+    } as never);
     return server;
   }
 

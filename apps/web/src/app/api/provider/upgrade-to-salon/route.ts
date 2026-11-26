@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireAuthInApi,
   successResponse,
@@ -26,7 +27,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check current business type and subscription
-    const { data: provider, error: providerError } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: provider, error: providerError } = await admin
       .from("providers")
       .select("business_type, subscription_plan_id, capabilities")
       .eq("id", providerId)

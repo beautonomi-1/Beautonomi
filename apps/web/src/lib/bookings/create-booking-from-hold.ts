@@ -9,6 +9,7 @@ import { lockBookingServices } from "./conflict-check";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { addMoney, computeVat, percentOf, sumMoney } from "@beautonomi/utils";
 import { providerVatSnapshotColumns, resolveProviderVat } from "@/lib/tax/resolve-provider-vat";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export interface HoldConsumeInput {
   holdId: string;
@@ -67,7 +68,7 @@ export async function createBookingFromHold(
   const subtotal = services.reduce((sum, s) => addMoney(sum, Number(s.price || 0)), 0);
 
   // Load provider for tax/fee defaults
-  const { data: provider, error: provErr } = await supabase
+  const { data: provider, error: provErr } = await getSupabaseAdmin()
     .from("providers")
     .select("id, tenant_id, currency, tax_rate_percent, tax_inclusive, is_vat_registered, vat_number, customer_fee_config_id, tips_enabled")
     .eq("id", hold.provider_id)

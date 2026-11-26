@@ -12,6 +12,14 @@ vi.mock("@/lib/money/tenant-intl-format", () => ({
   })),
 }));
 
+const { adminRef } = vi.hoisted(() => ({
+  adminRef: { current: null as { from: unknown } | null },
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => adminRef.current,
+}));
+
 import {
   notifyProductOrderStatusChange,
   dispatchProductOrderStatusNotification,
@@ -157,6 +165,7 @@ describe("dispatchProductOrderStatusNotification", () => {
         throw new Error(`unexpected table ${table}`);
       }),
     };
+    adminRef.current = supabase;
 
     await dispatchProductOrderStatusNotification({
       supabase: supabase as never,

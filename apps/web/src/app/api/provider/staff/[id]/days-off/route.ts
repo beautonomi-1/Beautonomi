@@ -35,7 +35,8 @@ async function canAccessStaffDaysOff(
   const owner = await isProviderOwner(userId, request);
   if (owner) return { ok: true as const, staffId: resolvedStaffId };
 
-  const { data: selfStaff } = await supabase
+  const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+  const { data: selfStaff } = await getSupabaseAdmin()
     .from("provider_staff")
     .select("id")
     .eq("provider_id", providerId)

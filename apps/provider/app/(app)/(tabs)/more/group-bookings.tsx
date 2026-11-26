@@ -2194,7 +2194,7 @@ export default function GroupBookingsScreen() {
       return;
     }
     setUnpaidCompleteSubmitting(true);
-    const { error, errorCode } = await postGroupAction(
+    const { error, errorCode, data } = await postGroupAction(
       `/api/provider/group-bookings/${encodeURIComponent(target.group.id)}?action=complete_service`,
       { allow_unpaid: true, unpaid_reason: reason.trim() },
     );
@@ -2207,6 +2207,15 @@ export default function GroupBookingsScreen() {
         Alert.alert(gb("errorTitle"), error);
       }
       return;
+    }
+    const productsStillOpen = Number(
+      (data as { products_still_open?: number } | null)?.products_still_open ?? 0,
+    );
+    if (productsStillOpen > 0) {
+      Alert.alert(
+        gb("statusCompleted"),
+        t("web.provider.bookings.groupView.productsStillOpenAfterComplete", { count: productsStillOpen }),
+      );
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setSelectedGroup(null);
@@ -2262,7 +2271,7 @@ export default function GroupBookingsScreen() {
       return;
     }
 
-    const { error, errorCode } = await postGroupAction(
+    const { error, errorCode, data } = await postGroupAction(
       `/api/provider/group-bookings/${encodeURIComponent(group.id)}?action=${action}`,
       {},
     );
@@ -2273,6 +2282,16 @@ export default function GroupBookingsScreen() {
         Alert.alert(gb("errorTitle"), error);
       }
       return;
+    }
+    const productsStillOpen =
+      newStatus === "completed"
+        ? Number((data as { products_still_open?: number } | null)?.products_still_open ?? 0)
+        : 0;
+    if (productsStillOpen > 0) {
+      Alert.alert(
+        gb("statusCompleted"),
+        t("web.provider.bookings.groupView.productsStillOpenAfterComplete", { count: productsStillOpen }),
+      );
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setSelectedGroup(null);

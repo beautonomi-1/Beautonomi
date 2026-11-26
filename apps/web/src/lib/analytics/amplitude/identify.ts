@@ -4,6 +4,7 @@
  */
 
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 
 export interface UserProperties {
@@ -180,7 +181,7 @@ export async function identifyUser(
           // Count locations
           const { count: locationsCount } = await supabase
             .from("provider_locations")
-            .select("*", { count: "exact", head: true })
+            .select("id", { count: "exact", head: true })
             .eq("provider_id", providerId);
 
           properties.locations_count = locationsCount || 0;
@@ -188,7 +189,7 @@ export async function identifyUser(
           // Count staff
           const { count: staffCount } = await supabase
             .from("provider_staff")
-            .select("*", { count: "exact", head: true })
+            .select("id", { count: "exact", head: true })
             .eq("provider_id", providerId)
             .eq("is_active", true);
 
@@ -228,7 +229,7 @@ export async function identifyUser(
 
         // If staff, get location_id
         if (role === "provider_staff") {
-          const { data: staff } = await supabase
+          const { data: staff } = await getSupabaseAdmin()
             .from("provider_staff")
             .select("location_id")
             .eq("user_id", userId)
@@ -247,7 +248,7 @@ export async function identifyUser(
       // Get booking count
       const { count: bookingCount } = await supabase
         .from("bookings")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("customer_id", userId);
 
       properties.lifetime_bookings = bookingCount || 0;

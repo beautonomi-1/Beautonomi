@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get provider's user_id to exclude self-conversations
-    const { data: providerData } = await supabase
+    const { data: providerData } = await supabaseAdmin
       .from("providers")
       .select("user_id")
       .eq("id", providerId)

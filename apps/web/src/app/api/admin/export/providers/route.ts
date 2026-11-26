@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
     const status = searchParams.get("status");
     const verified = searchParams.get("verified");
 
-    let query = supabase
+    let query = getSupabaseAdmin()
       .from("providers")
       .select(`
         id,

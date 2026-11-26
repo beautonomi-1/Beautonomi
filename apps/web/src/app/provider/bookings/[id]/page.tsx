@@ -66,6 +66,7 @@ type ProviderBookingDetail = Booking & {
   display_time_zone?: string | null;
   db_status?: string | null;
   client_memory?: ProviderClientMemory | null;
+  product_orders?: Array<{ id?: string; status?: string | null; fulfillment_type?: string | null }>;
 };
 import { toast } from "sonner";
 import Link from "next/link";
@@ -102,7 +103,17 @@ import { RebookOfferCard } from "@/components/provider/booking/RebookOfferCard";
 import {
   BookingCompleteConfirmDialog,
   type BookingCompleteConfirmReason,
+  type CompletionHandoverActionId,
+  completionHandoverPrimaryAction,
 } from "@/components/provider/booking/view/BookingCompleteConfirmDialog";
+import {
+  buildBookingCompletionChecklist,
+  firstProductHandoverBlocker,
+  type CompletionBlocker,
+} from "@beautonomi/provider-booking";
+import { runCompletionHandoverAction } from "@/lib/provider-booking/completion-handover-actions";
+import { fetchBookingCompletionChecklist } from "@/lib/provider-booking/booking-completion-handover-gate";
+import { openProductOrderView } from "@/stores/appointment-sidebar-store";
 import { EtaPicker } from "@/components/provider/booking/EtaPicker";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import dynamic from "next/dynamic";
@@ -186,7 +197,9 @@ function ProviderBookingDetail() {
   const [completeBlock, setCompleteBlock] = useState<{
     reason: BookingCompleteConfirmReason;
     message: string;
+    blockers?: CompletionBlocker[];
   } | null>(null);
+  const [handoverBusy, setHandoverBusy] = useState(false);
   const canEditAppointments = isOwner || hasPermission("edit_appointments");
   const canCancelAppointments =
     isOwner || hasPermission("cancel_appointments") || canEditAppointments;
@@ -484,7 +497,7 @@ function ProviderBookingDetail() {
 
   const handleStatusChange = async (
     newStatus: string,
-    completeBody: { allow_unpaid?: boolean; unpaid_reason?: string } = {},
+    completeBody: { allow_unpaid?: boolean; unpaid_reason?: string; handoverConfirmed?: boolean } = {},
   ) => {
     if (!booking) return;
 
@@ -501,12 +514,40 @@ function ProviderBookingDetail() {
       }
 
       if (newStatus === "completed") {
-        const res = await fetcher.post<{ booking: ProviderBookingDetail }>(
+        const ps = (booking.payment_status ?? "").toLowerCase();
+        if (ps === "refunded") {
+          setCompleteBlock({
+            reason: "refunded",
+            message: t("web.provider.bookings.statusActions.refundedCompleteHint"),
+          });
+          return;
+        }
+        if (!completeBody.allow_unpaid && !completeBody.handoverConfirmed && !completionChecklist.allDone) {
+          setCompleteBlock({
+            reason: "checklist",
+            message: t("web.provider.bookings.statusActions.checklistCompleteHint", {
+              labels: completionChecklist.blockingLabels.join(" · "),
+            }),
+            blockers: completionChecklist.blockers,
+          });
+          return;
+        }
+        const res = await fetcher.post<{
+          data?: { booking?: ProviderBookingDetail };
+          booking?: ProviderBookingDetail;
+        }>(
           `/api/provider/bookings/${bookingId}/complete-service`,
-          completeBody,
+          completeBody.allow_unpaid
+            ? { allow_unpaid: true, unpaid_reason: completeBody.unpaid_reason }
+            : {},
         );
+        const completedBooking = res.booking ?? res.data?.booking;
         setCompleteBlock(null);
-        setBooking({ ...booking, status: "completed" as Booking["status"], ...res.booking });
+        setBooking({
+          ...booking,
+          status: "completed" as Booking["status"],
+          ...(completedBooking ?? {}),
+        });
         toast.success(t("web.provider.bookings.detail.toast.serviceCompleted"));
         loadBooking();
         setShowProviderCompletionModal(true);
@@ -1634,6 +1675,179 @@ function ProviderBookingDetail() {
     await submitVerifyQrBody(body);
   };
 
+  const unpaidChargesTotal = useMemo(
+    () =>
+      additionalCharges
+        .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
+        .reduce((sum, ac) => addMoney(sum, Number(ac.amount ?? 0)), 0),
+    [additionalCharges],
+  );
+
+  const completionChecklist = useMemo(() => {
+    if (!booking) {
+      return buildBookingCompletionChecklist({
+        status: null,
+        paymentStatus: null,
+        outstanding: 0,
+        unpaidAdditionalCharges: 0,
+        productOrders: [],
+        hasProductsOnBooking: false,
+      });
+    }
+    const productLines = collectBookingProductLines(booking);
+    const out = computeBookingOutstandingDisplay({
+      totalAmount: Number(booking.total_amount ?? 0),
+      totalPaid: Number(booking.total_paid ?? 0),
+      totalRefunded: Number(booking.total_refunded ?? 0),
+      walletAmount: Number((booking as { wallet_amount?: number }).wallet_amount ?? 0),
+      giftCardAmount: Number((booking as { gift_card_amount?: number }).gift_card_amount ?? 0),
+      unpaidAdditionalCharges: unpaidChargesTotal,
+      paymentStatus: booking.payment_status,
+      pendingWalletGiftAmount: heldWalletGift(booking),
+    });
+    return buildBookingCompletionChecklist({
+      status: booking.status,
+      paymentStatus: booking.payment_status,
+      outstanding: out,
+      unpaidAdditionalCharges: unpaidChargesTotal,
+      productOrders: booking.product_orders ?? [],
+      hasProductsOnBooking: productLines.length > 0,
+    });
+  }, [booking, unpaidChargesTotal]);
+
+  const primaryProductBlocker = useMemo(
+    () => firstProductHandoverBlocker(completionChecklist.blockers),
+    [completionChecklist.blockers],
+  );
+
+  const handleDetailHandoverAction = useCallback(
+    async (blocker: CompletionBlocker, actionId: CompletionHandoverActionId) => {
+      if (actionId === "collect_payment") {
+        setCompleteBlock(null);
+        setShowMarkPaid(true);
+        return;
+      }
+      if (actionId === "view_charges") {
+        setCompleteBlock(null);
+        const el = document.getElementById("additional-charges");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (actionId === "manage_delivery" && blocker.orderId) {
+        setCompleteBlock(null);
+        openProductOrderView(blocker.orderId);
+        return;
+      }
+      setHandoverBusy(true);
+      try {
+        await runCompletionHandoverAction(bookingId, blocker, actionId);
+        toast.success(t("web.provider.bookings.statusActions.statusUpdated"));
+        await loadBooking();
+        const fresh = await fetchBookingCompletionChecklist(bookingId);
+        if (fresh.allDone) {
+          setCompleteBlock(null);
+        } else {
+          setCompleteBlock({
+            reason: "checklist",
+            blockers: fresh.blockers,
+            message: t("web.provider.bookings.statusActions.checklistCompleteHint", {
+              labels: fresh.blockingLabels.join(" · "),
+            }),
+          });
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t("web.provider.bookings.statusActions.completeFailed"));
+      } finally {
+        setHandoverBusy(false);
+      }
+    },
+    [bookingId, loadBooking, t],
+  );
+
+  const markPaidPaymentMethods = useMemo(() => {
+    const bookingCurrency = (booking as { currency?: string } | null)?.currency ?? "ZAR";
+    const outstandingForLabel = computeBookingOutstandingDisplay({
+      totalAmount: Number(booking?.total_amount ?? 0),
+      totalPaid: Number(booking?.total_paid ?? 0),
+      totalRefunded: Number(booking?.total_refunded ?? 0),
+      walletAmount: Number((booking as { wallet_amount?: number } | null)?.wallet_amount ?? 0),
+      giftCardAmount: Number((booking as { gift_card_amount?: number } | null)?.gift_card_amount ?? 0),
+      unpaidAdditionalCharges: unpaidChargesTotal,
+      paymentStatus: booking?.payment_status,
+      pendingWalletGiftAmount: heldWalletGift(booking),
+    });
+    const paycloudCollectContext = inferBookingCollectContext({
+      totalAmount: Number(booking?.total_amount ?? 0),
+      totalPaid: Number(booking?.total_paid ?? 0),
+      unpaidAdditionalCharges: unpaidChargesTotal,
+      outstanding: outstandingForLabel,
+    });
+    const methods: { label: string; value: PaymentMethodMain; helper?: string }[] =
+      PAYMENT_METHODS_MAIN_BASE.filter((m) => m.value !== "card" || manualCardEnabled).map((m) => ({
+        ...m,
+        label: "labelKey" in m && m.labelKey
+          ? t(`web.provider.bookings.detail.paymentMethods.${m.labelKey}`)
+          : m.label,
+      }));
+    if (paystackTerminalReady) {
+      methods.splice(2, 0, { label: t("web.provider.bookings.detail.paymentActions.paystackTerminal"), value: "paystack_terminal" });
+    }
+    if (paycloudEnabled && paycloudCollectEnabled) {
+      methods.splice(2, 0, {
+        label: formatPaycloudCollectLabel({
+          context: paycloudCollectContext,
+          amount: 0,
+          currency: bookingCurrency,
+        }),
+        value: "paycloud_terminal",
+      });
+    }
+    return methods;
+  }, [
+    booking,
+    manualCardEnabled,
+    paycloudCollectEnabled,
+    paycloudEnabled,
+    paystackTerminalReady,
+    t,
+    unpaidChargesTotal,
+  ]);
+
+  const chargePaymentMethods = useMemo(
+    () =>
+      [
+        ...PAYMENT_METHODS_CHARGE_BASE.filter((m) => m.value !== "card" || manualCardEnabled).map((m) => ({
+          ...m,
+          label: "labelKey" in m && m.labelKey
+            ? t(`web.provider.bookings.detail.paymentMethods.${m.labelKey}`)
+            : m.label,
+        })),
+        ...(paycloudEnabled && paycloudCollectEnabled
+          ? [{ label: t("web.provider.bookings.detail.paymentMethods.cardMachine"), value: "paycloud_terminal" as const }]
+          : []),
+      ],
+    [manualCardEnabled, paycloudCollectEnabled, paycloudEnabled, t],
+  );
+
+  const actionModel = useMemo(
+    () =>
+      buildProviderBookingActionModel({
+        id: bookingId,
+        status: booking?.status,
+        db_status: booking?.db_status,
+        payment_status: booking?.payment_status,
+        scheduled_at: booking?.scheduled_at,
+        location_type: booking?.location_type,
+        location_id: booking?.location_id,
+        current_stage: booking?.current_stage,
+        arrival_otp_verified: booking?.arrival_otp_verified,
+        qr_code_verified: booking?.qr_code_verified,
+        arrival_otp_pending: booking?.arrival_otp_pending,
+        qr_arrival_pending: booking?.qr_arrival_pending,
+      }),
+    [booking, bookingId],
+  );
+
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -1660,13 +1874,6 @@ function ProviderBookingDetail() {
   const b = booking;
   /** Snapshot avoids TS narrowing `status` after `.includes()` checks below (TS 5.x). */
   const bookingLifecycleStatus = b.status as Booking["status"];
-
-  const unpaidChargesTotal = useMemo(
-    () => additionalCharges
-      .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
-      .reduce((sum, ac) => addMoney(sum, Number(ac.amount ?? 0)), 0),
-    [additionalCharges],
-  );
 
   const isActive = ["pending", "booked", "confirmed", "waiting", "checked_in"].includes(bookingLifecycleStatus);
   const isStarted = ["started", "in_progress"].includes(bookingLifecycleStatus);
@@ -1795,84 +2002,7 @@ function ProviderBookingDetail() {
     unpaidAdditionalCharges: unpaidChargesTotal,
     outstanding,
   });
-  const markPaidPaymentMethods = useMemo(() => {
-    const methods: { label: string; value: PaymentMethodMain; helper?: string }[] =
-      PAYMENT_METHODS_MAIN_BASE.filter((m) => m.value !== "card" || manualCardEnabled).map((m) => ({
-        ...m,
-        label: "labelKey" in m && m.labelKey
-          ? t(`web.provider.bookings.detail.paymentMethods.${m.labelKey}`)
-          : m.label,
-      }));
-    if (paystackTerminalReady) {
-      methods.splice(2, 0, { label: t("web.provider.bookings.detail.paymentActions.paystackTerminal"), value: "paystack_terminal" });
-    }
-    if (paycloudEnabled && paycloudCollectEnabled) {
-      methods.splice(2, 0, {
-        label: formatPaycloudCollectLabel({
-          context: paycloudCollectContext,
-          amount: 0,
-          currency: bookingCurrency,
-        }),
-        value: "paycloud_terminal",
-      });
-    }
-    return methods;
-  }, [
-    bookingCurrency,
-    manualCardEnabled,
-    paycloudCollectContext,
-    paycloudCollectEnabled,
-    paycloudEnabled,
-    paystackTerminalReady,
-    t,
-  ]);
-  const chargePaymentMethods = useMemo(
-    () =>
-      [
-        ...PAYMENT_METHODS_CHARGE_BASE.filter((m) => m.value !== "card" || manualCardEnabled).map((m) => ({
-          ...m,
-          label: "labelKey" in m && m.labelKey
-            ? t(`web.provider.bookings.detail.paymentMethods.${m.labelKey}`)
-            : m.label,
-        })),
-        ...(paycloudEnabled && paycloudCollectEnabled
-          ? [{ label: t("web.provider.bookings.detail.paymentMethods.cardMachine"), value: "paycloud_terminal" as const }]
-          : []),
-      ],
-    [manualCardEnabled, paycloudCollectEnabled, paycloudEnabled, t],
-  );
   const showPaystackTerminalButton = paystackTerminalReady && canMarkPaid;
-  const actionModel = useMemo(
-    () =>
-      buildProviderBookingActionModel({
-        id: bookingId,
-        status: b.status,
-        db_status: b.db_status,
-        payment_status: b.payment_status,
-        scheduled_at: b.scheduled_at,
-        location_type: b.location_type,
-        location_id: b.location_id,
-        current_stage: b.current_stage,
-        arrival_otp_verified: b.arrival_otp_verified,
-        qr_code_verified: b.qr_code_verified,
-        arrival_otp_pending: b.arrival_otp_pending,
-        qr_arrival_pending: b.qr_arrival_pending,
-      }),
-    [
-      bookingId,
-      b.status,
-      b.db_status,
-      b.payment_status,
-      b.scheduled_at,
-      b.location_type,
-      b.location_id,
-      b.current_stage,
-      b.arrival_otp_verified,
-      b.qr_code_verified,
-      b.arrival_otp_pending,
-      b.qr_arrival_pending,
-    ],
-  );
 
   const actionAllowedByPermission = (action: ProviderBookingAction) => {
     if (action.id === "cancel" || action.id === "mark_no_show") return canCancelAppointments;
@@ -2832,7 +2962,7 @@ function ProviderBookingDetail() {
         </div>
 
         {/* Additional Charges */}
-        <div className="bg-white border rounded-lg p-6 mb-6">
+        <div id="additional-charges" className="bg-white border rounded-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">{t("web.provider.bookings.detail.charges.title")}</h2>
             <Button variant="outline" onClick={loadAdditionalCharges}>
@@ -3067,16 +3197,40 @@ function ProviderBookingDetail() {
                 {actionModel.stepDescription}
               </p>
             </div>
-            {permittedPrimaryAction && (
-              <Button
-                onClick={() => runBookingAction(permittedPrimaryAction)}
-                disabled={isUpdating || isStartingJourney || isMarkingArrived}
-                className="min-h-[44px] shrink-0 bg-blue-600 hover:bg-blue-700"
-              >
-                <CheckCircle2 className="w-4 h-4 me-2" />
-                {permittedPrimaryAction.label}
-              </Button>
-            )}
+            <div className="flex flex-col gap-2 sm:flex-row sm:shrink-0">
+              {permittedPrimaryAction && (
+                <Button
+                  onClick={() => runBookingAction(permittedPrimaryAction)}
+                  disabled={isUpdating || isStartingJourney || isMarkingArrived}
+                  className="min-h-[44px] shrink-0 bg-blue-600 hover:bg-blue-700"
+                >
+                  <CheckCircle2 className="w-4 h-4 me-2" />
+                  {permittedPrimaryAction.label}
+                </Button>
+              )}
+              {permittedPrimaryAction?.id === "complete_service" && primaryProductBlocker ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isUpdating || handoverBusy}
+                  className="min-h-[44px] shrink-0"
+                  onClick={() => {
+                    const action = completionHandoverPrimaryAction(primaryProductBlocker);
+                    if (action) void handleDetailHandoverAction(primaryProductBlocker, action);
+                  }}
+                >
+                  {(() => {
+                    const action = completionHandoverPrimaryAction(primaryProductBlocker);
+                    const p = "web.provider.bookings.detail.completion";
+                    if (action === "mark_collected") return t(`${p}.markCollected`);
+                    if (action === "manage_delivery") return t(`${p}.manageDelivery`);
+                    if (action === "set_pickup") return t(`${p}.setPickup`);
+                    if (action === "prepare_order") return t(`${p}.prepareOrder`);
+                    return t(`${p}.handoverIntro`);
+                  })()}
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -3945,10 +4099,13 @@ function ProviderBookingDetail() {
             }}
             reason={completeBlock.reason}
             message={completeBlock.message}
+            blockers={completeBlock.reason === "checklist" ? completeBlock.blockers : undefined}
+            handoverBusy={handoverBusy}
+            onHandoverAction={(blocker, actionId) => void handleDetailHandoverAction(blocker, actionId)}
             canCompleteWithBalance={isOwner || isManager}
             busy={isUpdating}
             onCollectPayment={
-              completeBlock.reason === "outstanding"
+              completeBlock.reason === "outstanding" || completeBlock.reason === "checklist"
                 ? () => {
                     setCompleteBlock(null);
                     setShowMarkPaid(true);
@@ -3964,7 +4121,12 @@ function ProviderBookingDetail() {
                 : undefined
             }
             onCompleteAnyway={(unpaidReason) =>
-              void handleStatusChange("completed", { allow_unpaid: true, unpaid_reason: unpaidReason })
+              void handleStatusChange(
+                "completed",
+                unpaidReason
+                  ? { allow_unpaid: true, unpaid_reason: unpaidReason, handoverConfirmed: true }
+                  : { handoverConfirmed: true },
+              )
             }
           />
         ) : null}

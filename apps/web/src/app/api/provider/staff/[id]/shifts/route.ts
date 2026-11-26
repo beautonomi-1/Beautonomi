@@ -76,7 +76,7 @@ async function canEditStaffSchedule(
   if (user.role === "superadmin") return true;
   const manage = await requirePermission("manage_team", request);
   if (manage.authorized) return true;
-  const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+  const ownStaffId = await getProviderStaffIdForUser(user.id, providerId);
   return ownStaffId === staffId;
 }
 
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (error) throw error;
 
-    const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+    const ownStaffId = await getProviderStaffIdForUser(user.id, providerId);
     if (ownStaffId !== resolvedStaffId) {
       const dayLabel = result.data.day_of_week.charAt(0).toUpperCase() + result.data.day_of_week.slice(1).toLowerCase();
       void notifyStaffUser(resolvedStaffId, "staff_schedule_changed", {

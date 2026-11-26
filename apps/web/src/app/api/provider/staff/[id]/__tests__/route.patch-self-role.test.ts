@@ -62,7 +62,7 @@ vi.mock("@/lib/provider/staff-offboarding", () => ({
   revokeStaffUserSessionsIfOrphaned: vi.fn(async () => undefined),
 }));
 vi.mock("@/lib/supabase/admin", () => ({
-  getSupabaseAdmin: () => ({}),
+  getSupabaseAdmin: () => buildSupabase(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({

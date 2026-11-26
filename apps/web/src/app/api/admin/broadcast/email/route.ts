@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
       const resolved = await resolveBroadcastCustomerUserIds(supabase, tenantId);
       userIds = resolved.userIds;
     } else if (b.recipient_type === "all_providers") {
-      const resolved = await resolveBroadcastProviderUserIds(supabase, tenantId);
+      const resolved = await resolveBroadcastProviderUserIds(getSupabaseAdmin(), tenantId);
       userIds = resolved.userIds;
     } else if (b.recipient_type === "custom" && b.user_ids) {
       userIds = b.user_ids;

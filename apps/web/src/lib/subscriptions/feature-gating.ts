@@ -93,7 +93,7 @@ export async function checkProviderLimit(
       limit = tier.max_staff_members;
       const { count } = await supabase
         .from("provider_staff")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
         .eq("status", "active");
       
@@ -102,7 +102,7 @@ export async function checkProviderLimit(
       limit = tier.max_locations;
       const { count } = await supabase
         .from("provider_locations")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
         .eq("is_active", true);
       

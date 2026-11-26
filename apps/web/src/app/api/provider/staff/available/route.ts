@@ -59,7 +59,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let query = supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    let query = getSupabaseAdmin()
       .from("provider_staff")
       .select(`
         *,

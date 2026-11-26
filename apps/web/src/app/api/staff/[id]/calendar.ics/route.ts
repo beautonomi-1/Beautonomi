@@ -18,7 +18,8 @@ export async function GET(
     const supabase = await getSupabaseServer();
 
     // Load staff member details
-    const { data: staff, error: staffError } = await supabase
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data: staff, error: staffError } = await getSupabaseAdmin()
       .from('provider_staff')
       .select(`
         id,

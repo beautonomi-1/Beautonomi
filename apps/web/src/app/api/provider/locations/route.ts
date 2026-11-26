@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkLocationFeatureAccess } from "@/lib/subscriptions/feature-access";
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get("include_inactive") === "true";
 
-    let query = supabase
+    let query = getSupabaseAdmin()
       .from("provider_locations")
       .select("*")
       .eq("provider_id", providerId)
@@ -203,7 +204,7 @@ export async function POST(request: NextRequest) {
 
     const locationTypeValue =
       locationType === "base" || locationType === "salon" ? locationType : "salon";
-    const { data: location, error } = await (supabase
+    const { data: location, error } = await (getSupabaseAdmin()
       .from("provider_locations") as any)
       .insert({
         provider_id: providerId,
@@ -230,7 +231,7 @@ export async function POST(request: NextRequest) {
       throw error || new Error("Failed to create location");
     }
 
-    const { data: siblingLocations } = await supabase
+    const { data: siblingLocations } = await getSupabaseAdmin()
       .from("provider_locations")
       .select("id")
       .eq("provider_id", providerId)
@@ -250,7 +251,7 @@ export async function POST(request: NextRequest) {
     }
     await ensureProviderHasPrimaryLocation(supabase, providerId);
 
-    const { data: locationAfterPrimary } = await supabase
+    const { data: locationAfterPrimary } = await getSupabaseAdmin()
       .from("provider_locations")
       .select("*")
       .eq("id", location.id)
