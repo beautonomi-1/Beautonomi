@@ -16,7 +16,27 @@ const salesInsert = vi.fn();
 const saleItemsInsert = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseServer: vi.fn(async () => buildSupabase()) }));
-vi.mock("@/lib/supabase/admin", () => ({ getSupabaseAdmin: () => ({}) }));
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: {
+              tenant_id: "t1",
+              currency: "ZAR",
+              tax_rate_percent: null,
+              tax_inclusive: true,
+              is_vat_registered: false,
+              vat_number: null,
+            },
+            error: null,
+          }),
+        }),
+      }),
+    }),
+  }),
+}));
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
   return { ...actual, getProviderIdForUser: (...a: unknown[]) => mockGetProviderIdForUser(...a) };

@@ -10,8 +10,16 @@ vi.mock("@/lib/auth/permissions", () => ({
   isProviderOwner: vi.fn(),
 }));
 
+const { adminRef } = vi.hoisted(() => ({
+  adminRef: { current: null as { from: (...args: unknown[]) => unknown } | null },
+}));
+
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => adminRef.current,
 }));
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
@@ -56,10 +64,10 @@ describe("PATCH /api/provider/staff/[id]/commission manage payroll gate", () => 
     chain.update = vi.fn(() => chain);
     chain.order = vi.fn(() => Promise.resolve({ data: [], error: null }));
 
+    const client = { from: vi.fn(() => chain) };
+    adminRef.current = client;
     const { getSupabaseServer } = await import("@/lib/supabase/server");
-    vi.mocked(getSupabaseServer).mockResolvedValue({
-      from: vi.fn(() => chain),
-    } as never);
+    vi.mocked(getSupabaseServer).mockResolvedValue(client as never);
 
     const { PATCH } = await import("../route");
     const req = new NextRequest("http://localhost/api/provider/staff/staff-1/commission", {
@@ -107,8 +115,10 @@ describe("GET /api/provider/staff/[id]/commission pay visibility", () => {
       manage_payroll: false,
       manage_team: false,
     } as never);
+    const client = commissionReadClient("someone-else");
+    adminRef.current = client;
     const { getSupabaseServer } = await import("@/lib/supabase/server");
-    vi.mocked(getSupabaseServer).mockResolvedValue(commissionReadClient("someone-else") as never);
+    vi.mocked(getSupabaseServer).mockResolvedValue(client as never);
 
     const { GET } = await import("../route");
     const res = await GET(new NextRequest("http://localhost/api/provider/staff/staff-1/commission"), {
@@ -124,8 +134,10 @@ describe("GET /api/provider/staff/[id]/commission pay visibility", () => {
       manage_payroll: false,
       manage_team: false,
     } as never);
+    const client = commissionReadClient("u1");
+    adminRef.current = client;
     const { getSupabaseServer } = await import("@/lib/supabase/server");
-    vi.mocked(getSupabaseServer).mockResolvedValue(commissionReadClient("u1") as never);
+    vi.mocked(getSupabaseServer).mockResolvedValue(client as never);
 
     const { GET } = await import("../route");
     const res = await GET(new NextRequest("http://localhost/api/provider/staff/staff-1/commission"), {

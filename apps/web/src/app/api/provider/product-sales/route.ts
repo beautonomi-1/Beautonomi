@@ -609,7 +609,6 @@ export async function POST(request: NextRequest) {
     });
     const orderNum = `BO-W${seqData ?? Date.now()}`;
 
-    const admin = getSupabaseAdmin();
     const walkInStaffId = await resolveWalkInStaffId(
       admin,
       providerId,

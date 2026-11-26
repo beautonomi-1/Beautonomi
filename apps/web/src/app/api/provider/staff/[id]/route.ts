@@ -145,7 +145,7 @@ function mapDbRoleToApi(dbRole: string | null | undefined): string {
 }
 
 async function fetchStaffDetailForApi(
-  _supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
   staffId: string,
   providerId: string,
 ): Promise<Record<string, unknown> | null> {
@@ -224,7 +224,10 @@ async function fetchStaffDetailForApi(
         .from("provider_locations")
         .select("id, name, city")
         .in("id", locationIds);
-      const locMap = new Map((locationDetails ?? []).map((loc: { id: string; name?: string; city?: string }) => [loc.id, loc]));
+      type StaffLocationRow = { id: string; name?: string | null; city?: string | null };
+      const locMap = new Map<string, StaffLocationRow>(
+        ((locationDetails ?? []) as StaffLocationRow[]).map((loc) => [loc.id, loc]),
+      );
       for (const sl of assignmentRows as { location_id: string; is_primary?: boolean }[]) {
         const loc = locMap.get(sl.location_id);
         locations.push({

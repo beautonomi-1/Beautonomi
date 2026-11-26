@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 
 const mockRequireRoleInApi = vi.fn();
 const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockApplyTaxPatch = vi.fn();
 const providerUpdate = vi.fn();
@@ -18,6 +19,10 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
 vi.mock("@/lib/tenant/resolve-tenant-from-db", () => ({
@@ -67,7 +72,9 @@ describe("PATCH /api/provider/settings/payments VAT fields", () => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: { id: "user-1" } });
     mockGetProviderIdForUser.mockResolvedValue("provider-1");
-    mockGetSupabaseServer.mockResolvedValue(buildSupabase());
+    const db = buildSupabase();
+    mockGetSupabaseServer.mockResolvedValue(db);
+    mockGetSupabaseAdmin.mockReturnValue(db);
     mockApplyTaxPatch.mockResolvedValue({
       ok: true,
       data: { tax_rate_percent: 15, is_vat_registered: true, vat_number: "4123456789", tax_inclusive: true },

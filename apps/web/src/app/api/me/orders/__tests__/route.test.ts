@@ -223,6 +223,26 @@ describe("POST /api/me/orders", () => {
     vi.clearAllMocks();
     mockGetSupabaseAdmin.mockReturnValue({
       from: (table: string) => {
+        if (table === "providers") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({
+                  data: {
+                    tenant_id: "tenant-za",
+                    currency: "ZAR",
+                    tax_rate_percent: null,
+                    tax_inclusive: true,
+                    is_vat_registered: false,
+                    vat_number: null,
+                    customer_fee_config_id: null,
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
         if (table !== "product_orders") {
           throw new Error(`Unexpected admin table ${table}`);
         }

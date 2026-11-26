@@ -189,7 +189,7 @@ export async function POST(
         // Push/email template notification for provider apps/channels.
         try {
           const { notifyProviderNewReview } = await import("@/lib/notifications/notification-service");
-          const { data: customerUser } = await supabaseNotify
+          const { data: customerUser } = await supabase
             .from("users")
             .select("full_name")
             .eq("id", user.id)
@@ -197,7 +197,7 @@ export async function POST(
           const { providerBookingChannels } = await import(
             "@/lib/notifications/customer-booking-channels"
           );
-          const { data: bookingTenant } = await supabaseNotify
+          const { data: bookingTenant } = await supabase
             .from("bookings")
             .select("tenant_id")
             .eq("id", bookingId)

@@ -1,4 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const { adminRef } = vi.hoisted(() => ({
+  adminRef: { current: null as { from: (table: string) => unknown } | null },
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => adminRef.current,
+}));
+
 import { resolveCommissionPercentageForProvider } from "../resolve-commission-percentage";
 
 type SettingsRow = { tenant_id: string | null; settings: { payouts: Record<string, unknown> } };
@@ -77,6 +86,7 @@ describe("resolveCommissionPercentageForProvider", () => {
       settings: [{ tenant_id: "t1", settings: { payouts: enabled(12) } }],
       provider: { commission_override: 5 },
     });
+    adminRef.current = on;
     await expect(
       resolveCommissionPercentageForProvider(on as never, { tenantId: "t1", providerId: "p1" }),
     ).resolves.toBe(5);

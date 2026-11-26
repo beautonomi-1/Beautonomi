@@ -154,7 +154,7 @@ export async function POST(
           data: {
             review_id: id,
             booking_id: reviewWithCustomer?.booking_id || (reviewWithCustomer as any)?.bookings?.id,
-            provider_id: providerData.id,
+            provider_id: providerId,
           },
         });
       } catch (notifError) {
@@ -338,7 +338,7 @@ export async function PATCH(
           data: {
             review_id: id,
             booking_id: reviewWithCustomer?.booking_id || (reviewWithCustomer as any)?.bookings?.id,
-            provider_id: providerData.id,
+            provider_id: providerId,
           },
         });
       } catch (notifError) {

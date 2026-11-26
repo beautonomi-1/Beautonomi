@@ -16,8 +16,10 @@ const approvePaymentSchema = z.object({
 
 /**
  * POST /api/me/bookings/[id]/approve-payment
- * 
- * Customer approves or rejects additional payment request
+ *
+ * Customer approves or rejects additional payment request.
+ * @tenant-hint Booking is loaded with the user-scoped client and .eq("customer_id", user.id).
+ * Service role only reads providers.user_id for that booking's provider_id to notify the owner.
  */
 export async function POST(
   request: Request,

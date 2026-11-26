@@ -78,6 +78,15 @@ const PROVIDER_ID = "22222222-2222-4222-8222-222222222222";
 const PRODUCT_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
+let adminProviderRow: Record<string, unknown> = {
+  tenant_id: null,
+  currency: "ZAR",
+  tax_rate_percent: null,
+  tax_inclusive: true,
+  is_vat_registered: false,
+  vat_number: null,
+};
+
 /** Fluent stub for `resolveWalkInStaffId` (no matching staff row). */
 function providerStaffLookupChain() {
   const chain: Record<string, unknown> = {};
@@ -93,6 +102,15 @@ function adminWithStaffLookup(fromImpl?: (table: string) => unknown) {
   return {
     from: vi.fn((table: string) => {
       if (table === "provider_staff") return providerStaffLookupChain();
+      if (table === "providers") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: adminProviderRow, error: null })),
+            })),
+          })),
+        };
+      }
       return fromImpl ? fromImpl(table) : {};
     }),
   };
@@ -200,6 +218,14 @@ describe("POST /api/provider/product-sales", () => {
       tenantId: "tenant-from-provider-row",
       defaultCurrency: "ZAR",
     });
+    adminProviderRow = {
+      tenant_id: null,
+      currency: "ZAR",
+      tax_rate_percent: null,
+      tax_inclusive: true,
+      is_vat_registered: false,
+      vat_number: null,
+    };
     mockGetSupabaseAdmin.mockReturnValue(adminWithStaffLookup());
     mockHasProviderActivity.mockReset();
     mockHasProviderActivity.mockResolvedValue(false);
@@ -207,6 +233,7 @@ describe("POST /api/provider/product-sales", () => {
 
   it("sets tenant_id from providers.tenant_id when present", async () => {
     const tenantFromRow = "tenant-from-provider-row";
+    adminProviderRow = { ...adminProviderRow, tenant_id: tenantFromRow };
     const { mockSupabase, insertCalls } = buildWalkInSupabase({
       providerTenantId: tenantFromRow,
     });
@@ -323,6 +350,7 @@ describe("POST /api/provider/product-sales", () => {
     });
 
     const tenantFromRow = "tenant-from-provider-row";
+    adminProviderRow = { ...adminProviderRow, tenant_id: tenantFromRow };
     const { mockSupabase, insertCalls } = buildWalkInSupabase({
       providerTenantId: tenantFromRow,
     });
@@ -346,6 +374,7 @@ describe("POST /api/provider/product-sales", () => {
   it("returns 400 when customer_id is set but client is not saved and there is no prior activity", async () => {
     const orphanCustomerId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     mockHasProviderActivity.mockResolvedValue(false);
+    adminProviderRow = { ...adminProviderRow, tenant_id: "tenant-from-provider-row" };
     const { mockSupabase } = buildWalkInSupabase({
       providerTenantId: "tenant-from-provider-row",
     });
@@ -384,6 +413,7 @@ describe("POST /api/provider/product-sales", () => {
       }),
     );
 
+    adminProviderRow = { ...adminProviderRow, tenant_id: "tenant-from-provider-row" };
     const { mockSupabase, insertCalls } = buildWalkInSupabase({
       providerTenantId: "tenant-from-provider-row",
     });

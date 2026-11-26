@@ -1,5 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+const { adminRef } = vi.hoisted(() => ({
+  adminRef: { current: null as { from: unknown; rpc?: unknown } | null },
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => adminRef.current,
+}));
+
 import { generateProviderInvoice } from "../generate-provider-invoice";
 
 type Row = Record<string, unknown>;
@@ -132,7 +141,9 @@ function makeSupabase(options: {
   // `next_document_number` RPC not deployed → helper falls back to high-water read.
   const rpc = vi.fn(async () => ({ data: null, error: { code: "42883", message: "function does not exist" } }));
 
-  return { supabase: { from, rpc } as unknown as SupabaseClient, inserted };
+  const supabase = { from, rpc };
+  adminRef.current = supabase;
+  return { supabase: supabase as unknown as SupabaseClient, inserted };
 }
 
 const PERIOD = { periodStart: "2026-08-01", periodEnd: "2026-08-31" };

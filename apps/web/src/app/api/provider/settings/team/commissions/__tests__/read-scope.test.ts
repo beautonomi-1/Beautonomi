@@ -24,8 +24,8 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: async () => ({
+function staffListClient() {
+  return {
     from: () => {
       const chain: {
         select: () => typeof chain;
@@ -45,7 +45,15 @@ vi.mock("@/lib/supabase/server", () => ({
       };
       return chain;
     },
-  }),
+  };
+}
+
+vi.mock("@/lib/supabase/server", () => ({
+  getSupabaseServer: async () => staffListClient(),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => staffListClient(),
 }));
 
 describe("GET /api/provider/settings/team/commissions read scope", () => {

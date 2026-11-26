@@ -9,6 +9,8 @@ import { preferredTimeSchema } from "@/lib/recurring/preferred-time-schema";
  *
  * Returns the recurring series row plus all bookings linked via `bookings.recurring_series_id`
  * (cron-generated visits and the checkout “source” visit when created via Paystack metadata).
+ * @tenant-hint Series and bookings are loaded with the user-scoped client and .eq("customer_id", user.id).
+ * Service role only reads providers.user_id for that series' provider_id when notifying the owner.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

@@ -8,6 +8,7 @@ import { NextRequest } from "next/server";
 const mockRequireRoleInApi = vi.fn();
 const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseServer = vi.fn();
+const mockGetSupabaseAdmin = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -20,6 +21,10 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
 
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: (...args: unknown[]) => mockGetSupabaseAdmin(...args),
 }));
 
 const providersTable = () => ({
@@ -80,6 +85,7 @@ describe("POST /api/provider/time-clock (clock-in PIN contract)", () => {
       })),
     };
     mockGetSupabaseServer.mockResolvedValue(supabase);
+    mockGetSupabaseAdmin.mockReturnValue(supabase);
 
     const { POST } = await import("../route");
     const req = new NextRequest("http://localhost/api/provider/time-clock", {
@@ -117,6 +123,7 @@ describe("POST /api/provider/time-clock (clock-in PIN contract)", () => {
       }),
     };
     mockGetSupabaseServer.mockResolvedValue(supabase);
+    mockGetSupabaseAdmin.mockReturnValue(supabase);
 
     const { POST } = await import("../route");
     const req = new NextRequest("http://localhost/api/provider/time-clock", {
@@ -169,6 +176,7 @@ describe("POST /api/provider/time-clock (clock-in PIN contract)", () => {
       }),
     };
     mockGetSupabaseServer.mockResolvedValue(supabase);
+    mockGetSupabaseAdmin.mockReturnValue(supabase);
 
     const { POST } = await import("../route");
     const req = new NextRequest("http://localhost/api/provider/time-clock", {

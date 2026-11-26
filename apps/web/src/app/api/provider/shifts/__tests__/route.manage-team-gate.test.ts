@@ -29,6 +29,7 @@ vi.mock("@/lib/auth/permissions", async (importOriginal) => {
   };
 });
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseServer: vi.fn(async () => buildSupabase()) }));
+vi.mock("@/lib/supabase/admin", () => ({ getSupabaseAdmin: () => buildSupabase() }));
 
 function buildSupabase() {
   return {

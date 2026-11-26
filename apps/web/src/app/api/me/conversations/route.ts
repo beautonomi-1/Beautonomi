@@ -10,6 +10,8 @@ import { getBlockedUserIds } from "@/lib/safety/user-blocks";
  *
  * Returns the current user's conversations ordered by most recent message.
  * Filters out conversations that have never had a message (no last_message_preview).
+ * @tenant-hint Conversations are loaded with the user-scoped client and .eq("customer_id", user.id).
+ * Service role only reads providers.phone/email/user_id for those conversation provider ids.
  */
 export async function GET(request: NextRequest) {
   try {

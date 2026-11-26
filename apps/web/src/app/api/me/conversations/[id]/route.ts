@@ -44,6 +44,8 @@ function mapConversationRow(
  * GET /api/me/conversations/[id]
  *
  * Single conversation metadata for chat header (customer-owned).
+ * @tenant-hint Conversation is loaded with the user-scoped client and .eq("customer_id", user.id).
+ * Service role only reads providers.phone/email/user_id for that conversation's provider_id.
  */
 export async function GET(
   request: NextRequest,

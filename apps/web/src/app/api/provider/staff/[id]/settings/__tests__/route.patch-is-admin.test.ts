@@ -43,6 +43,9 @@ vi.mock("@/lib/subscriptions/feature-access", () => ({
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: vi.fn(async () => buildSupabase()),
 }));
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => buildSupabase(),
+}));
 
 function buildSupabase() {
   return {

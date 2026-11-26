@@ -30,8 +30,8 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: async () => ({
+function staffSettingsClient() {
+  return {
     from: () => {
       const chain = {
         select: () => chain,
@@ -56,7 +56,15 @@ vi.mock("@/lib/supabase/server", () => ({
       };
       return chain;
     },
-  }),
+  };
+}
+
+vi.mock("@/lib/supabase/server", () => ({
+  getSupabaseServer: async () => staffSettingsClient(),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => staffSettingsClient(),
 }));
 
 describe("GET /api/provider/staff/[id]/settings pay redaction", () => {

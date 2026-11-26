@@ -5,6 +5,7 @@ import { requireRoleInApi, successResponse, handleApiError, errorResponse } from
 import { notificationPreferencesSchema as patchSchema } from "@/lib/schemas/provider-booking";
 import { getProviderNotificationDefaults } from "@/lib/notifications/notification-preferences-defaults";
 import { materializeProviderNotificationPreferences } from "@/lib/notifications/materialize-notification-preferences";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/provider/notification-preferences
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
 
-    // For superadmin, allow viewing any provider's notification preferences
+    // Superadmin may view a provider in the request tenant, or pass an explicit user_id.
     let targetUserId: string = user.id;
     if (user.role === "superadmin") {
       const { searchParams } = new URL(request.url);
@@ -27,12 +28,13 @@ export async function GET(request: NextRequest) {
       if (userIdParam) {
         targetUserId = userIdParam;
       } else if (providerIdParam) {
-        // Get user_id from provider_id
+        const tenantId = await resolveTenantIdWithZaFallback(request);
         const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
         const { data: provider, error: providerError } = await getSupabaseAdmin()
           .from("providers")
           .select("user_id")
           .eq("id", providerIdParam)
+          .eq("tenant_id", tenantId)
           .maybeSingle();
         
         if (providerError || !provider) {
@@ -101,7 +103,7 @@ export async function PATCH(request: NextRequest) {
     // Validate request body
     const validatedBody = patchSchema.parse(body);
 
-    // For superadmin, allow updating any provider's notification preferences
+    // Superadmin may update a provider in the request tenant, or pass an explicit user_id.
     let targetUserId: string = user.id;
     if (user.role === "superadmin") {
       const { searchParams } = new URL(request.url);
@@ -111,12 +113,13 @@ export async function PATCH(request: NextRequest) {
       if (userIdParam) {
         targetUserId = userIdParam;
       } else if (providerIdParam) {
-        // Get user_id from provider_id
+        const tenantId = await resolveTenantIdWithZaFallback(request);
         const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
         const { data: provider, error: providerError } = await getSupabaseAdmin()
           .from("providers")
           .select("user_id")
           .eq("id", providerIdParam)
+          .eq("tenant_id", tenantId)
           .maybeSingle();
         
         if (providerError || !provider) {
